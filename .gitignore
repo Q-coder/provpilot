@@ -22,10 +22,10 @@
 *~
 
 # Compiled binaries (keep in bin/ for distribution)
-libgojb.macos.template_debug.arm64.dylib
-libgojb.macos.template_release.arm64.dylib
-libgojb.linux.template_debug.x86_64.so
-libgojb.linux.template_release.x86_64.so
+libprovpilot.macos.template_debug.arm64.dylib
+libprovpilot.macos.template_release.arm64.dylib
+libprovpilot.linux.template_debug.x86_64.so
+libprovpilot.linux.template_release.x86_64.so
 
 # JSBSim build artifacts
 jsbsim/build/
@@ -38,8 +38,9 @@ __pycache__/
 *.uid
 
 # Terrain data (large files, can be regenerated from R16 source)
-gojb/Terra3DData/
-gojb/terrain_data/
+provpilot/Terra3DData/
+provpilot/terrain_data/
+provpilot/terrain_tiles/
 *.r16
 *.exr
 *.hdr
@@ -50,16 +51,16 @@ terrain_cache/
 
 # Building source data (large GDB files - keep only Schaffhausen)
 # Zurich area tiles (1031-*, 1032-*, 1071-*)
-gojb/buildings_data/swissbuildings3d_3_0_*_1031-*
-gojb/buildings_data/swissbuildings3d_3_0_*_1032-*
-gojb/buildings_data/swissbuildings3d_3_0_*_1071-*
-gojb/buildings_data/swissbuildings3d_3_0_*_1072-*
-gojb/buildings_data/test_tile*
+provpilot/buildings_data/swissbuildings3d_3_0_*_1031-*
+provpilot/buildings_data/swissbuildings3d_3_0_*_1032-*
+provpilot/buildings_data/swissbuildings3d_3_0_*_1071-*
+provpilot/buildings_data/swissbuildings3d_3_0_*_1072-*
+provpilot/buildings_data/test_tile*
 
 # Zurich Airport buildings (GLB) - exclude for now
-gojb/Assets/buildings/
+provpilot/Assets/buildings/
 
 # Keep only Schaffhausen buildings (1091-*, 1092-*)
-# gojb/buildings_data/swissbuildings3d_3_0_*_1091-*
-# gojb/buildings_data/swissbuildings3d_3_0_*_1092-*
-# gojb/Assets/buildings_schaffhausen/
+# provpilot/buildings_data/swissbuildings3d_3_0_*_1091-*
+# provpilot/buildings_data/swissbuildings3d_3_0_*_1092-*
+# provpilot/Assets/buildings_schaffhausen/

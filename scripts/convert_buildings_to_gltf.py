@@ -13,7 +13,7 @@ Usage:
     python3 convert_buildings_to_gltf.py <gdb_file_or_directory> [options]
     
 Example:
-    python3 convert_buildings_to_gltf.py gojb/buildings_data/test_tile/*.gdb --output gojb/Assets/buildings
+    python3 convert_buildings_to_gltf.py provpilot/buildings_data/test_tile/*.gdb --output provpilot/Assets/buildings
 """
 
 import argparse
@@ -425,7 +425,7 @@ def main():
     parser = argparse.ArgumentParser(description="Convert SwissTopo buildings to GLTF")
     parser.add_argument("input", type=Path, help="GDB file or directory containing GDB files")
     parser.add_argument("--output", "-o", type=Path, 
-                       default=Path(__file__).parent.parent / "gojb" / "Assets" / "buildings",
+                       default=Path(__file__).parent.parent / "provpilot" / "Assets" / "buildings",
                        help="Output directory for GLB files")
     parser.add_argument("--origin-e", type=float, default=TERRAIN_CENTER_E,
                        help=f"Terrain center Easting (default: {TERRAIN_CENTER_E})")

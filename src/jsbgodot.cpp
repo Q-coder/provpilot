@@ -689,11 +689,13 @@ void JSBGodot::_ready()
         }
     }
 
-    // Set JSBSim root directories with absolute paths for testing
-    FDMExec->SetRootDir(SGPath("/Users/gerhardgubler/code/godotjbsim/jsbsim"));
-    FDMExec->SetAircraftPath(SGPath("/Users/gerhardgubler/code/godotjbsim/jsbsim/aircraft"));
-    FDMExec->SetEnginePath(SGPath("/Users/gerhardgubler/code/godotjbsim/jsbsim/engine"));
-    FDMExec->SetSystemsPath(SGPath("/Users/gerhardgubler/code/godotjbsim/jsbsim/systems"));
+    // Set JSBSim root directories - relative to project root
+    // When running from Godot editor, CWD is the project folder (provpilot/)
+    // jsbsim/ is a sibling directory at the repo root level
+    FDMExec->SetRootDir(SGPath("../jsbsim"));
+    FDMExec->SetAircraftPath(SGPath("../jsbsim/aircraft"));
+    FDMExec->SetEnginePath(SGPath("../jsbsim/engine"));
+    FDMExec->SetSystemsPath(SGPath("../jsbsim/systems"));
     UtilityFunctions::print("JSBSim directories set.");
 
     // Load a known good aircraft model
