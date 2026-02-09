@@ -172,11 +172,10 @@ func _update_tile_loading(aircraft_pos: Vector3) -> void:
 	for tile_info in _tile_list:
 		var tile_id: String = tile_info["id"]
 
-		# Convert absolute Swiss center to current Godot coords
+		# Convert absolute Swiss center to current Godot coords.
+		# _swiss_to_godot uses live TERRAIN_CENTER which already reflects
+		# all floating-origin rebases — no additional offset needed.
 		var tile_center = _swiss_to_godot(tile_info["center_e"], tile_info["center_n"])
-
-		# Apply cumulative floating-origin offset
-		tile_center += _origin_offset
 
 		# Calculate horizontal distance (ignore Y/altitude)
 		var delta = aircraft_pos - tile_center
@@ -267,9 +266,10 @@ func _instantiate_tile(tile_id: String, resource: Resource) -> void:
 
 	# Position: GLB geometry is relative to conversion_origin (the Swiss coord
 	# that was subtracted when converting CityGML → GLB).  Place that origin
-	# in current Godot world-space plus floating-origin offset.
+	# in current Godot world-space.  _swiss_to_godot uses the live
+	# TERRAIN_CENTER which already reflects all floating-origin rebases.
 	var origin_godot = _swiss_to_godot(_conversion_origin_e, _conversion_origin_n)
-	instance.position = origin_godot + _origin_offset
+	instance.position = origin_godot
 
 	# Apply building colors via shader
 	_apply_building_materials(instance)
@@ -328,7 +328,6 @@ func force_load_nearby(distance: float) -> void:
 	for tile_info in _tile_list:
 		var tile_id = tile_info["id"]
 		var tile_center = _swiss_to_godot(tile_info["center_e"], tile_info["center_n"])
-		tile_center += _origin_offset
 
 		var delta = aircraft_pos - tile_center
 		delta.y = 0
