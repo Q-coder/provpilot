@@ -1,0 +1,79 @@
+{
+  "format": "glb",
+  "source": "swissBUILDINGS3D",
+  "conversion_origin_e": 2681968,
+  "conversion_origin_n": 1282869,
+  "note": "GLB models are positioned relative to conversion_origin. At runtime, the loader computes: Godot X = conversion_origin_e - center_e + (TERRAIN_CENTER_E - conversion_origin_e), which simplifies to Godot X = TERRAIN_CENTER_E - center_e. This makes centers origin-agnostic.",
+  "tiles": {
+    "1031-14": {
+      "file": "buildings_1031-14.glb",
+      "center_e": 2679065,
+      "center_n": 1285500
+    },
+    "1031-21": {
+      "file": "buildings_1031-21.glb",
+      "center_e": 2686496,
+      "center_n": 1285484
+    },
+    "1031-22": {
+      "file": "buildings_1031-22.glb",
+      "center_e": 2690893,
+      "center_n": 1285507
+    },
+    "1031-23": {
+      "file": "buildings_1031-23.glb",
+      "center_e": 2683419,
+      "center_n": 1285466
+    },
+    "1031-24": {
+      "file": "buildings_1031-24.glb",
+      "center_e": 2687860,
+      "center_n": 1285497
+    },
+    "1031-32": {
+      "file": "buildings_1031-32.glb",
+      "center_e": 2679054,
+      "center_n": 1282506
+    },
+    "1031-34": {
+      "file": "buildings_1031-34.glb",
+      "center_e": 2679034,
+      "center_n": 1279522
+    },
+    "1031-41": {
+      "file": "buildings_1031-41.glb",
+      "center_e": 2683485,
+      "center_n": 1282506
+    },
+    "1031-42": {
+      "file": "buildings_1031-42.glb",
+      "center_e": 2687812,
+      "center_n": 1282508
+    },
+    "1031-43": {
+      "file": "buildings_1031-43.glb",
+      "center_e": 2683299,
+      "center_n": 1279791
+    },
+    "1031-44": {
+      "file": "buildings_1031-44.glb",
+      "center_e": 2687852,
+      "center_n": 1279501
+    },
+    "1032-11": {
+      "file": "buildings_1032-11.glb",
+      "center_e": 2692211,
+      "center_n": 1285505
+    },
+    "1032-13": {
+      "file": "buildings_1032-13.glb",
+      "center_e": 2692170,
+      "center_n": 1282485
+    },
+    "1032-31": {
+      "file": "buildings_1032-31.glb",
+      "center_e": 2692207,
+      "center_n": 1279496
+    }
+  }
+}

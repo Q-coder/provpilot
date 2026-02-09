@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "coordinate_system": "LV95",
+  "layers": {
+    "terrain": {
+      "path": "terrain/",
+      "tile_size_m": 1024,
+      "resolution_m": 1.0,
+      "format": "float32_raw_le",
+      "pixels_per_tile": 1024
+    },
+    "buildings": {
+      "path": "buildings/",
+      "format": "glb",
+      "source": "swissBUILDINGS3D"
+    },
+    "poi": {
+      "path": "poi/",
+      "format": "json"
+    },
+    "custom": {
+      "path": "custom/",
+      "format": "package"
+    }
+  }
+}

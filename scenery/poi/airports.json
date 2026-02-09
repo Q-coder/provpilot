@@ -1,0 +1,76 @@
+{
+  "type": "airports",
+  "coordinate_system": "LV95",
+  "airports": [
+    {
+      "icao": "LSZN",
+      "name": "Schmerlat / Hettlingen",
+      "type": "grass_strip",
+      "elevation_m": 470,
+      "center_e": 2693200,
+      "center_n": 1265300,
+      "runways": [
+        {
+          "designator": "06/24",
+          "heading_deg": 60,
+          "length_m": 550,
+          "width_m": 18,
+          "surface": "grass",
+          "threshold_06": { "e": 2692960, "n": 1265160 },
+          "threshold_24": { "e": 2693440, "n": 1265440 }
+        }
+      ],
+      "notes": "Private airstrip, PPR. Home field for ProvPilot development."
+    },
+    {
+      "icao": "LSZR",
+      "name": "St. Gallen-Altenrhein",
+      "type": "regional_airport",
+      "elevation_m": 398,
+      "center_e": 2760700,
+      "center_n": 1261500,
+      "runways": [
+        {
+          "designator": "10/28",
+          "heading_deg": 100,
+          "length_m": 1500,
+          "width_m": 30,
+          "surface": "asphalt",
+          "threshold_10": { "e": 2759950, "n": 1261600 },
+          "threshold_28": { "e": 2761450, "n": 1261400 }
+        }
+      ]
+    },
+    {
+      "icao": "LSZH",
+      "name": "Zurich Airport",
+      "type": "international_airport",
+      "elevation_m": 432,
+      "center_e": 2685000,
+      "center_n": 1259000,
+      "runways": [
+        {
+          "designator": "14/32",
+          "heading_deg": 143,
+          "length_m": 3700,
+          "width_m": 60,
+          "surface": "asphalt"
+        },
+        {
+          "designator": "16/34",
+          "heading_deg": 163,
+          "length_m": 3300,
+          "width_m": 60,
+          "surface": "asphalt"
+        },
+        {
+          "designator": "10/28",
+          "heading_deg": 100,
+          "length_m": 2500,
+          "width_m": 60,
+          "surface": "asphalt"
+        }
+      ]
+    }
+  ]
+}

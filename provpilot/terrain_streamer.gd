@@ -23,7 +23,9 @@ signal tiles_changed(loaded: int, unloaded: int, total_loaded: int)
 # ── Configuration ───────────────────────────────────────────────────────
 
 ## Path to the directory containing manifest.json and tile_*.raw files.
-@export var tile_directory: String = "user://terrain_tiles"
+## Can be absolute or relative to the project. At startup, a relative path
+## is resolved against the project's parent directory (workspace root).
+@export var tile_directory: String = "scenery/terrain"
 
 ## NodePath to the Terrain3D node.
 @export var terrain_node_path: NodePath = NodePath("../Terrain3D")
@@ -68,6 +70,10 @@ var _pending_loads: Array[String] = []
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
+
+	# Resolve tile_directory: if not absolute and not res://, resolve
+	# relative to the workspace root (one level above the Godot project).
+	tile_directory = _resolve_scenery_path(tile_directory)
 
 	_center_ei = terrain_center_e / _tile_size
 	_center_ni = terrain_center_n / _tile_size
@@ -470,3 +476,21 @@ func _unload_tile(tile_key: String) -> void:
 		_terrain_data.remove_regionl(rloc, false)
 
 	_loaded_tiles.erase(tile_key)
+
+
+# ── Internal: Path Resolution ──────────────────────────────────────────
+
+## Resolve a scenery path.  If the path is already absolute or starts with
+## res:// / user://, return it unchanged.  Otherwise treat it as relative
+## to the workspace root (the parent of the Godot project directory).
+static func _resolve_scenery_path(path: String) -> String:
+	if path.begins_with("/") or path.begins_with("res://") or path.begins_with("user://"):
+		return path
+	# OS.get_executable_path() is the Godot editor binary — not useful.
+	# ProjectSettings.globalize_path("res://") gives the project dir.
+	var project_dir = ProjectSettings.globalize_path("res://")  # e.g. /Users/.../provpilot/
+	# Workspace root is one level up from the Godot project directory.
+	var workspace_root = project_dir.get_base_dir()  # strip trailing dir
+	var resolved = workspace_root.path_join(path)
+	print("TerrainStreamer: Resolved '%s' → '%s'" % [path, resolved])
+	return resolved
