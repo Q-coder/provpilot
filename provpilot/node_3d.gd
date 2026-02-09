@@ -1,11 +1,14 @@
 extends Node3D
 
-# Terrain coordinate system constants (Swiss LV95)
+# Terrain coordinate system (Swiss LV95)
 # These define the relationship between Godot world coords and Swiss coordinates
 # Terrain origin — aligned to 1024m tile grid for streaming.
-# Schmerlat Airfield is at Godot X≈-912, Z≈-203 from origin.
-const TERRAIN_CENTER_E: float = 2682880.0  # Swiss Easting at Godot X=0 (2620 * 1024)
-const TERRAIN_CENTER_N: float = 1283072.0  # Swiss Northing at Godot Z=0 (1253 * 1024)
+# Updated at runtime by floating-origin rebase.
+var TERRAIN_CENTER_E: float = 2682880.0  # Swiss Easting at Godot X=0
+var TERRAIN_CENTER_N: float = 1283072.0  # Swiss Northing at Godot Z=0
+
+# Floating origin: rebase when aircraft moves more than this distance from (0,0)
+const ORIGIN_REBASE_THRESHOLD: float = 5000.0  # meters
 
 # Assuming your JSBGodot node is a child of the current node
 var jsb_node: Node
@@ -521,6 +524,9 @@ func _process(delta: float) -> void:
 	
 	# Update terrain elevation for JSBSim ground collision
 	_update_terrain_elevation()
+	
+	# Floating origin: rebase if aircraft is too far from Godot origin
+	_check_origin_rebase()
 		
 	if jsb_node:
 		var airspeed = jsb_node.get_airspeed_knots()
@@ -964,6 +970,77 @@ func animate_control_surfaces() -> void:
 		var flap_angle = -flap_input * FLAP_MAX_ANGLE  # Inverted
 		right_flap_node.transform = right_flap_base_transform
 		right_flap_node.rotation_degrees.x = right_flap_base_transform.basis.get_euler().x * (180.0/PI) + flap_angle
+
+
+# ── Floating Origin ────────────────────────────────────────────────────────
+
+## Check if origin rebase is needed (called every frame during normal flight).
+func _check_origin_rebase() -> void:
+	if not terrain_initialized or not jsb_node:
+		return
+	var ac_node = get_node_or_null("AC")
+	if not ac_node:
+		return
+	
+	var pos = ac_node.global_position
+	if absf(pos.x) > ORIGIN_REBASE_THRESHOLD or absf(pos.z) > ORIGIN_REBASE_THRESHOLD:
+		_perform_origin_rebase()
+
+
+## Perform a floating-origin rebase: shift everything so the aircraft is near (0,Y,0).
+func _perform_origin_rebase() -> void:
+	var ac_node = get_node_or_null("AC")
+	if not ac_node or not jsb_node:
+		return
+	
+	# 1. Compute the aircraft's invariant Swiss coordinates.
+	var swiss_e = TERRAIN_CENTER_E - ac_node.global_position.x
+	var swiss_n = TERRAIN_CENTER_N + ac_node.global_position.z
+	
+	# 2. Snap new terrain center to 1024m grid (required for tile alignment).
+	var old_center_e = TERRAIN_CENTER_E
+	var old_center_n = TERRAIN_CENTER_N
+	TERRAIN_CENTER_E = roundf(swiss_e / 1024.0) * 1024.0
+	TERRAIN_CENTER_N = roundf(swiss_n / 1024.0) * 1024.0
+	
+	# 3. Derive the Godot-space shift from the center change.
+	#    Godot X = CENTER_E - Swiss_E  →  delta_x = new_E - old_E
+	#    Godot Z = Swiss_N - CENTER_N  →  delta_z = -(new_N - old_N)
+	var shift := Vector3(
+		TERRAIN_CENTER_E - old_center_e,
+		0.0,
+		-(TERRAIN_CENTER_N - old_center_n)
+	)
+	if shift == Vector3.ZERO:
+		return
+	
+	print("=== FLOATING ORIGIN REBASE ===")
+	print("  AC before: ", ac_node.global_position)
+	print("  Center E: %d -> %d" % [int(old_center_e), int(TERRAIN_CENTER_E)])
+	print("  Center N: %d -> %d" % [int(old_center_n), int(TERRAIN_CENTER_N)])
+	print("  Godot shift: ", shift)
+	
+	# 4. Shift C++ lat/lon reference by the SAME amount so both coordinate
+	#    systems stay in sync (no misalignment from grid snap).
+	jsb_node.adjust_origin(shift)
+	
+	# 5. Shift the aircraft node immediately.
+	#    On the next frame copy_outputs_from_JSBSim will produce the same
+	#    shifted value, so there is no visual jump.
+	ac_node.global_position += shift
+	print("  AC after: ", ac_node.global_position)
+	
+	# 6. Reload terrain at the new center.
+	var streamer = get_node_or_null("TerrainStreamer")
+	if streamer and streamer.has_method("rebase_center"):
+		streamer.rebase_center(int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N))
+	
+	# 7. Shift all building instances.
+	var building_loader = get_node_or_null("BuildingLoader")
+	if building_loader and building_loader.has_method("shift_all_buildings"):
+		building_loader.shift_all_buildings(shift)
+	
+	print("=== REBASE COMPLETE ===")
 
 
 # Convert Swiss LV95 coordinates to WGS84 latitude/longitude

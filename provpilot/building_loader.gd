@@ -113,6 +113,10 @@ var _loaded_tiles: Dictionary = {}  # tile_id -> Node3D instance
 var _loading_tiles: Dictionary = {}  # tile_id -> ResourceLoader ticket
 var _pending_loads: Array[String] = []  # Queue of tile IDs to load
 
+# Cumulative origin offset from floating-origin rebases.
+# Applied to hardcoded tile centers for distance checks and new tile placement.
+var _origin_offset: Vector3 = Vector3.ZERO
+
 # Statistics
 var tiles_loaded: int = 0
 var tiles_in_memory: int = 0
@@ -156,6 +160,9 @@ func _update_tile_loading(aircraft_pos: Vector3) -> void:
 		# Apply origin offset so distance is measured in current terrain coords
 		if terrain_area == TerrainArea.SCHAFFHAUSEN:
 			tile_center += BUILDING_ORIGIN_OFFSET
+		
+		# Apply cumulative floating-origin offset
+		tile_center += _origin_offset
 		
 		# Calculate horizontal distance (ignore Y/altitude)
 		var delta = aircraft_pos - tile_center
@@ -247,7 +254,7 @@ func _instantiate_tile(tile_id: String, resource: Resource) -> void:
 	
 	# Apply building offset (buildings already have correct Swiss ASL elevations)
 	# Add terrain center offset if buildings were converted with different origin
-	var offset = building_offset
+	var offset = building_offset + _origin_offset
 	if terrain_area == TerrainArea.SCHAFFHAUSEN:
 		offset += BUILDING_ORIGIN_OFFSET
 	instance.position = offset
@@ -322,6 +329,19 @@ func unload_all() -> void:
 		_unload_tile(tile_id)
 	_pending_loads.clear()
 	_loading_tiles.clear()
+
+
+## Floating origin: shift all loaded building instances by an offset vector.
+## Called during origin rebase to keep buildings at correct world-relative positions.
+func shift_all_buildings(offset: Vector3) -> void:
+	_origin_offset += offset
+	var count = 0
+	for tile_id in _loaded_tiles:
+		var instance = _loaded_tiles[tile_id]
+		if instance != null and is_instance_valid(instance):
+			instance.position += offset
+			count += 1
+	print("BuildingLoader: Shifted %d building tiles by offset (%0.1f, %0.1f)" % [count, offset.x, offset.z])
 
 
 ## Get statistics

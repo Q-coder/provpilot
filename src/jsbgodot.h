@@ -112,6 +112,11 @@ namespace godot
         // Reinitialize JSBSim from current Godot position (used after slew mode)
         void reinitialize_from_godot_position(Vector3 godot_pos, double heading_rad);
         
+        // Floating origin: shift the lat_lon_alt_to_local reference by godot_shift
+        // so all Godot positions shift by that amount.  Must match the terrain
+        // center change to keep C++ and Swiss→Godot mappings in sync.
+        void adjust_origin(Vector3 godot_shift);
+        
         // Get current position data
         double get_latitude_deg() const;
         double get_longitude_deg() const;

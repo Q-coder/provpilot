@@ -248,6 +248,47 @@ jsbsim_psi     = (360 - visual_heading) mod 360
 - GDScript sets `rotation.y = -deg_to_rad(visual_heading)` for the model orientation
 - The slew mode HUD computes heading as `fmod(rad_to_deg(-rotation.y) + 360, 360)`
 
+### Floating Origin
+
+Godot uses 32-bit floats for positions, causing visible jitter beyond ~10 km from the world origin. Since Switzerland spans ~350 × 220 km, a **floating origin** system keeps the aircraft near Godot (0, Y, 0) at all times.
+
+#### How It Works
+
+1. **Threshold check** (`_check_origin_rebase` in `node_3d.gd`): Every frame, if the aircraft's |X| or |Z| exceeds `ORIGIN_REBASE_THRESHOLD` (5000 m), a rebase triggers.
+
+2. **Center snap** (`_perform_origin_rebase` in `node_3d.gd`):
+   - Computes the aircraft's Swiss LV95 position (invariant)
+   - Snaps `TERRAIN_CENTER_E` / `TERRAIN_CENTER_N` to the nearest 1024 m grid point around the aircraft
+   - Derives the Godot-space shift vector from the center change
+
+3. **C++ reference shift** (`adjust_origin()` in `jsbgodot.cpp`):
+   - Adjusts the internal lat/lon → Godot reference by the **same** Godot-space shift
+   - This keeps the C++ flat-earth mapping in sync with the Swiss → Godot terrain mapping (no misalignment from grid snap)
+
+4. **Scene shift** (continues in `_perform_origin_rebase`):
+   - Shifts the aircraft node by the shift vector
+   - Calls `terrain_streamer.rebase_center()` to clear and reload terrain regions at the new center
+   - Calls `building_loader.shift_all_buildings()` to shift loaded buildings and accumulate a cumulative offset
+
+#### Key Functions
+
+| Component | Method | Purpose |
+|-----------|--------|---------|
+| `jsbgodot.cpp` | `adjust_origin(shift)` | Shift lat/lon reference by Godot-space amount |
+| `jsbgodot.cpp` | `adjust_lat_lon_reference()` | Low-level ref shift (file-scope) |
+| `node_3d.gd` | `_check_origin_rebase()` | Threshold test each frame |
+| `node_3d.gd` | `_perform_origin_rebase()` | Orchestrate the full rebase |
+| `terrain_streamer.gd` | `rebase_center(e, n)` | Clear regions, reload at new center |
+| `building_loader.gd` | `shift_all_buildings(offset)` | Shift instances + accumulate `_origin_offset` |
+
+#### Design Notes
+
+- **JSBSim is unaffected**: it uses double-precision lat/lon internally and never loses precision.
+- **Terrain3D `top_level = true`**: Terrain3D positions regions absolutely in world space, so regions are cleared and reloaded rather than shifted.
+- **Building `_origin_offset`**: Because building tile centers are hardcoded constants, a cumulative offset vector is maintained in `BuildingLoader` and applied to (a) distance checks for load/unload decisions, and (b) position of newly instantiated tile scenes.
+- **Consistent shift**: The Godot-space shift derived from the terrain center change is applied to **both** the C++ lat/lon reference and the scene objects, eliminating any mismatch between the two coordinate systems.
+- **1024 m grid snap**: The new terrain center is snapped to multiples of 1024 to maintain tile-to-region alignment. After snap, the aircraft is at most ~512 m from Godot origin — well within the 5000 m threshold.
+
 ## Aircraft Model
 
 ### Scale
@@ -270,8 +311,9 @@ Control surfaces are individual `MeshInstance3D` nodes within the aircraft hiera
 
 | Variable | Value | Purpose |
 |----------|-------|---------|
-| `TERRAIN_CENTER_E` | 2,682,880.0 | Swiss Easting at Godot X=0 |
-| `TERRAIN_CENTER_N` | 1,283,072.0 | Swiss Northing at Godot Z=0 |
+| `TERRAIN_CENTER_E` | 2,682,880.0 | Swiss Easting at Godot X=0 (var, updated on rebase) |
+| `TERRAIN_CENTER_N` | 1,283,072.0 | Swiss Northing at Godot Z=0 (var, updated on rebase) |
+| `ORIGIN_REBASE_THRESHOLD` | 5000.0 | Distance triggering floating-origin rebase |
 | `HEAD_YAW_MAX` | 120° | Max pilot head look left/right |
 | `HEAD_PITCH_MAX` | 60° | Max pilot head look up/down |
 | `ORBIT_DISTANCE_MIN` | 1.5m | Closest external camera zoom |

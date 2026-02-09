@@ -195,6 +195,50 @@ func get_max_loadable() -> int:
 	return mini(side * side, 1024)
 
 
+## Floating origin: update center coordinates and reload all terrain.
+## new_center_e and new_center_n MUST be multiples of tile_size (1024).
+func rebase_center(new_center_e: int, new_center_n: int) -> void:
+	if new_center_e % _tile_size != 0 or new_center_n % _tile_size != 0:
+		push_error("TerrainStreamer.rebase_center: new center (%d, %d) must be multiples of %d"
+				   % [new_center_e, new_center_n, _tile_size])
+		return
+	
+	print("TerrainStreamer: Rebasing center E=%d -> %d, N=%d -> %d"
+		  % [terrain_center_e, new_center_e, terrain_center_n, new_center_n])
+	
+	# Update center
+	terrain_center_e = new_center_e
+	terrain_center_n = new_center_n
+	_center_ei = terrain_center_e / _tile_size
+	_center_ni = terrain_center_n / _tile_size
+	
+	# Clear all loaded regions — they're at wrong Godot positions now
+	_clear_all_regions()
+	_pending_loads.clear()
+	
+	# Immediately reload around current aircraft position
+	var pos = _get_aircraft_position()
+	var swiss = godot_to_swiss(pos)
+	var center_tile = _swiss_to_tile_index(swiss.x, swiss.y)
+	
+	var count = 0
+	for dei in range(-load_radius, load_radius + 1):
+		for dni in range(-load_radius, load_radius + 1):
+			var ei = center_tile.x + dei
+			var ni = center_tile.y + dni
+			var key = "%d_%d" % [ei * _tile_size, ni * _tile_size]
+			if _manifest["tiles"].has(key):
+				var rloc = _tile_to_region(ei, ni)
+				if _is_valid_region(rloc):
+					if _load_tile(key):
+						count += 1
+	
+	if count > 0:
+		_terrain_data.update_maps()
+	
+	print("TerrainStreamer: Rebase complete — %d regions reloaded" % count)
+
+
 # ── Internal: Manifest ──────────────────────────────────────────────────
 
 func _load_manifest() -> bool:

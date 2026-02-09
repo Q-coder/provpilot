@@ -20,8 +20,10 @@ using namespace godot;
 
 const float EARTH_RADIUS = 6371000.0; // Radius of Earth in meters
 
-// Forward declaration - defined later in file
+// Forward declarations - defined later in file
 Vector3 lat_lon_alt_to_local(float latitude, float longitude, float altitude);
+void reset_lat_lon_reference(double new_ref_lat_deg, double new_ref_lon_deg);
+void adjust_lat_lon_reference(double godot_shift_x, double godot_shift_z);
 
 void JSBGodot::_bind_methods()
 {
@@ -50,6 +52,7 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("set_slew_mode", "enabled"), &JSBGodot::set_slew_mode);
     ClassDB::bind_method(D_METHOD("get_slew_mode"), &JSBGodot::get_slew_mode);
     ClassDB::bind_method(D_METHOD("reinitialize_from_godot_position", "godot_pos", "heading_rad"), &JSBGodot::reinitialize_from_godot_position);
+    ClassDB::bind_method(D_METHOD("adjust_origin", "godot_shift"), &JSBGodot::adjust_origin);
     ClassDB::bind_method(D_METHOD("set_godot_terrain_y_offset", "offset_m"), &JSBGodot::set_godot_terrain_y_offset);
     ClassDB::bind_method(D_METHOD("get_godot_terrain_y_offset"), &JSBGodot::get_godot_terrain_y_offset);
     ClassDB::bind_method(D_METHOD("get_latitude_deg"), &JSBGodot::get_latitude_deg);
@@ -491,6 +494,17 @@ Vector3 JSBGodot::get_godot_position() const
     return cached_godot_position;
 }
 
+void JSBGodot::adjust_origin(Vector3 godot_shift)
+{
+    // Floating origin: shift the lat/lon→local reference so that all future
+    // Godot positions shift by godot_shift.  This keeps C++ positions in sync
+    // with the Swiss→Godot terrain mapping after a terrain-center change.
+    
+    adjust_lat_lon_reference(godot_shift.x, godot_shift.z);
+    
+    UtilityFunctions::print("adjust_origin: shifted ref by X=", godot_shift.x, " Z=", godot_shift.z);
+}
+
 void JSBGodot::_input(const Ref<InputEvent> event)
 {
     if (event->is_class("InputEventKey"))
@@ -824,34 +838,65 @@ Vector3 lat_lon_alt_to_cartesian(float latitude, float longitude, float altitude
     return Vector3(x, y, z);
 }
 
+// Shared static state for lat/lon ↔ local coordinate conversion.
+// These are file-scope so both lat_lon_alt_to_local and reset_lat_lon_reference
+// can access them.
+static bool   g_reference_set = false;
+static double g_ref_lat_rad = 0.0;
+static double g_ref_lon_rad = 0.0;
+static double g_ref_alt = 0.0;
+
 Vector3 lat_lon_alt_to_local(float latitude, float longitude, float altitude)
 {
-    static bool reference_set = false;
-    static double ref_lat_rad, ref_lon_rad, ref_alt;
-
     double lat_rad = Math::deg_to_rad(latitude);
     double lon_rad = Math::deg_to_rad(longitude);
 
-    if (!reference_set)
+    if (!g_reference_set)
     {
-        ref_lat_rad = lat_rad;
-        ref_lon_rad = lon_rad;
-        ref_alt = altitude;
-        reference_set = true;
+        g_ref_lat_rad = lat_rad;
+        g_ref_lon_rad = lon_rad;
+        g_ref_alt = altitude;
+        g_reference_set = true;
     }
 
-    double d_lat = lat_rad - ref_lat_rad;
-    double d_lon = lon_rad - ref_lon_rad;
-    double d_alt = altitude - ref_alt;
+    double d_lat = lat_rad - g_ref_lat_rad;
+    double d_lon = lon_rad - g_ref_lon_rad;
+    double d_alt = altitude - g_ref_alt;
 
     const double R = 6378137.0; // Earth's radius in meters
 
     double north = d_lat * R;
-    double east = d_lon * R * cos(ref_lat_rad);
+    double east = d_lon * R * cos(g_ref_lat_rad);
     double up = d_alt;
 
     // Map to Godot's coordinate system (X-East, Y-Up, Z-North)
     return Vector3(east, up, north);
+}
+
+/// Reset the lat/lon→local reference point to new coordinates (degrees).
+/// After this call, lat_lon_alt_to_local(new_lat, new_lon, 0) will return (0, 0, 0).
+void reset_lat_lon_reference(double new_ref_lat_deg, double new_ref_lon_deg)
+{
+    g_ref_lat_rad = Math::deg_to_rad(new_ref_lat_deg);
+    g_ref_lon_rad = Math::deg_to_rad(new_ref_lon_deg);
+    g_ref_alt = 0.0;
+    g_reference_set = true;
+}
+
+/// Shift the lat/lon→local reference so that all Godot positions change by
+/// (godot_shift_x, 0, godot_shift_z).  Derivation:
+///   east_new  = (lon - ref_lon_new) * R * cos(ref_lat)
+///             = east_old + shift_x
+///   => ref_lon_new = ref_lon_old - shift_x / (R * cos(ref_lat))
+///   north_new = (lat - ref_lat_new) * R = north_old + shift_z
+///   => ref_lat_new = ref_lat_old - shift_z / R
+void adjust_lat_lon_reference(double godot_shift_x, double godot_shift_z)
+{
+    const double R = 6378137.0;
+    double cos_ref = cos(g_ref_lat_rad);
+    if (cos_ref < 1e-10) cos_ref = 1e-10;  // safety
+    g_ref_lon_rad -= godot_shift_x / (R * cos_ref);
+    g_ref_lat_rad -= godot_shift_z / R;
 }
 
 void JSBGodot::copy_outputs_from_JSBSim()
