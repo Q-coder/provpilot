@@ -6,6 +6,8 @@ A flight simulator built with [JSBSim](https://github.com/JSBSim-Team/jsbsim) fl
 
 ProVPilot is a flight simulation framework that combines JSBSim's accurate 6-DOF flight physics with Godot's 3D rendering engine. Fly a Cessna 172 Skyhawk over real Swiss terrain with proper elevations, 3D buildings, and full cockpit controls.
 
+The default start position is Schmerlat Airfield (Godot X=980.8, Z=−227.1), facing heading 250° (WSW).
+
 Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/master/demo) for Godot 3, this version has been completely rewritten for Godot 4.6 with many new features.
 
 ## Features

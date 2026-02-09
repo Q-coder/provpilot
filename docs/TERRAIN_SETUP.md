@@ -216,20 +216,37 @@ func lv95_to_wgs84(easting: float, northing: float) -> Vector2:
 2. TerrainStreamer performs `initial_load()` — loads tiles around aircraft start position
 3. Terrain data becomes available; `_initialize_jsbsim_on_terrain()` is called
 4. On first `_process()` frame, `_do_deferred_terrain_init()`:
+   - Moves aircraft to start position (Schmerlat Airfield: Godot X=980.8, Z=−227.1)
+   - Sets visual heading to 250° (WSW)
    - Queries terrain height at aircraft position
    - Tries `get_intersection()` (raymarching) then physics raycast as fallback
    - Positions aircraft on terrain with gear clearance
-   - Initializes JSBSim with correct ASL elevation
+   - Calls `initialize_at_terrain()` with terrain elevation, Godot position, and heading
    - Sets `WHEEL_GROUND_CLEARANCE` offset (0.1m)
 5. After 60-frame stabilization delay, per-frame terrain updates begin
 
 ### JSBSim Integration (jsbgodot.cpp)
 
 Key methods:
-- `initialize_at_terrain(elevation_m)` — Sets initial ground elevation before first physics step
+- `initialize_at_terrain(elevation_m, godot_pos, heading_deg)` — Sets initial ground elevation, position, and heading before first physics step. Converts Godot XZ to lat/lon and visual heading to JSBSim psi.
 - `set_terrain_elevation(elevation_m)` — Updates ground height each frame (converts to feet internally)
 - `set_godot_terrain_y_offset(offset_m)` — Small Y offset to prevent wheel clipping
 - `reinitialize_from_godot_position(pos, heading)` — Re-init after slew mode
+
+### Heading Convention
+
+JSBSim psi and Godot `rotation.y` relate as:
+
+```
+visual_heading = (360 - jsbsim_psi) mod 360
+jsbsim_psi     = (360 - visual_heading) mod 360
+```
+
+- **Visual heading** is what the pilot sees (0° = North, 90° = East, 250° = WSW)
+- **JSBSim psi** is set via `SetPsiDegIC()` and read from `attitude/psi-deg`
+- The C++ `get_heading()` method returns the visual heading (after 360−psi conversion)
+- GDScript sets `rotation.y = -deg_to_rad(visual_heading)` for the model orientation
+- The slew mode HUD computes heading as `fmod(rad_to_deg(-rotation.y) + 360, 360)`
 
 ## Aircraft Model
 

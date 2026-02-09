@@ -93,9 +93,9 @@ namespace godot
         // Set terrain elevation for ground collision (meters)
         void set_terrain_elevation(double elevation_m);
         
-        // Initialize aircraft at specific terrain elevation (meters)
+        // Initialize aircraft at specific terrain elevation (meters) and Godot position
         // This must be called before the first physics step for proper ground collision
-        void initialize_at_terrain(double terrain_elevation_m);
+        void initialize_at_terrain(double terrain_elevation_m, Vector3 godot_pos, double heading_deg);
         
         // Set Godot world Y offset for terrain (transforms JSBSim altitude to Godot Y)
         // godot_y = jsbsim_altitude - terrain_elevation + godot_terrain_y

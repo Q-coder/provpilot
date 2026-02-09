@@ -20,6 +20,9 @@ using namespace godot;
 
 const float EARTH_RADIUS = 6371000.0; // Radius of Earth in meters
 
+// Forward declaration - defined later in file
+Vector3 lat_lon_alt_to_local(float latitude, float longitude, float altitude);
+
 void JSBGodot::_bind_methods()
 {
     // Don't bind _process - it's a virtual method that's automatically overridden
@@ -42,7 +45,7 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_flaps"), &JSBGodot::get_flaps);
     ClassDB::bind_method(D_METHOD("get_propeller_rpm"), &JSBGodot::get_propeller_rpm);
     ClassDB::bind_method(D_METHOD("set_terrain_elevation", "elevation_m"), &JSBGodot::set_terrain_elevation);
-    ClassDB::bind_method(D_METHOD("initialize_at_terrain", "terrain_elevation_m"), &JSBGodot::initialize_at_terrain);
+    ClassDB::bind_method(D_METHOD("initialize_at_terrain", "terrain_elevation_m", "godot_pos", "heading_deg"), &JSBGodot::initialize_at_terrain);
     ClassDB::bind_method(D_METHOD("is_initialized"), &JSBGodot::is_initialized);
     ClassDB::bind_method(D_METHOD("set_slew_mode", "enabled"), &JSBGodot::set_slew_mode);
     ClassDB::bind_method(D_METHOD("get_slew_mode"), &JSBGodot::get_slew_mode);
@@ -263,22 +266,41 @@ void JSBGodot::set_terrain_elevation(double elevation_m)
     }
 }
 
-void JSBGodot::initialize_at_terrain(double terrain_elevation_m)
+void JSBGodot::initialize_at_terrain(double terrain_elevation_m, Vector3 godot_pos, double heading_deg_param)
 {
-    // Re-initialize JSBSim with correct terrain elevation
+    // Re-initialize JSBSim with correct terrain elevation and starting position
     // This must be called after terrain is known but before physics runs
     if (!FDMExec) {
         UtilityFunctions::print("Cannot initialize_at_terrain: FDMExec not created");
         return;
     }
     
+    // CRITICAL: Force-initialize lat_lon_alt_to_local's static reference point
+    // to (0,0,0) BEFORE copy_outputs_from_JSBSim ever calls it.
+    // Without this, the first call sets the reference to the aircraft's starting
+    // lat/lon, making d_lat=0, d_lon=0 → position always maps back to (0, Y, 0).
+    lat_lon_alt_to_local(0.0f, 0.0f, 0.0f);
+    
     double terrain_ft = terrain_elevation_m * 3.28084;  // meters to feet
     double gear_height_ft = 4.0;  // Approximate C172 gear height in feet
     double aircraft_altitude_ft = terrain_ft + gear_height_ft;
     
+    // Convert Godot XZ position to lat/lon offsets
+    // lat_lon_alt_to_local uses ref at (0,0), so we reverse it:
+    //   north = d_lat * R  =>  d_lat = Z / R   (Z = north)
+    //   east  = d_lon * R  =>  d_lon = X / R   (X = east, cos(0)=1)
+    const double R = 6378137.0;
+    double d_lat_rad = godot_pos.z / R;
+    double d_lon_rad = godot_pos.x / R;
+    double lat_deg = Math::rad_to_deg(d_lat_rad);
+    double lon_deg = Math::rad_to_deg(d_lon_rad);
+    
     UtilityFunctions::print("Initializing JSBSim at terrain elevation:");
     UtilityFunctions::print("  Terrain: ", terrain_elevation_m, "m (", terrain_ft, " ft)");
     UtilityFunctions::print("  Aircraft altitude: ", aircraft_altitude_ft, " ft ASL");
+    UtilityFunctions::print("  Godot pos: X=", godot_pos.x, " Y=", godot_pos.y, " Z=", godot_pos.z);
+    UtilityFunctions::print("  Lat/Lon: ", lat_deg, ", ", lon_deg);
+    UtilityFunctions::print("  Heading: ", heading_deg_param, " deg");
     
     std::shared_ptr<JSBSim::FGInitialCondition> ic = FDMExec->GetIC();
     
@@ -288,14 +310,18 @@ void JSBGodot::initialize_at_terrain(double terrain_elevation_m)
     // Set aircraft altitude above terrain
     ic->SetAltitudeASLFtIC(aircraft_altitude_ft);
     
-    // Set initial position (keep lat/lon at 0,0 for now)
-    ic->SetLatitudeDegIC(0.0);
-    ic->SetLongitudeDegIC(0.0);
+    // Set initial position from Godot coordinates
+    ic->SetLatitudeDegIC(lat_deg);
+    ic->SetLongitudeDegIC(lon_deg);
     
     // Set initial orientation
+    // heading_deg_param is the desired VISUAL heading (e.g. 250° = WSW)
+    // Godot's rotation convention: visual_heading = (360 - psi) mod 360
+    // So JSBSim psi = (360 - visual_heading) mod 360
+    double jsbsim_psi = fmod(360.0 - heading_deg_param + 360.0, 360.0);
     ic->SetThetaDegIC(0.0);  // Pitch
     ic->SetPhiDegIC(0.0);    // Roll
-    ic->SetPsiDegIC(0.0);    // Yaw (heading)
+    ic->SetPsiDegIC(jsbsim_psi);  // Yaw (converted from visual heading)
     
     // Set initial velocities (stationary on ground)
     ic->SetUBodyFpsIC(0.0);
@@ -388,6 +414,7 @@ void JSBGodot::reinitialize_from_godot_position(Vector3 godot_pos, double headin
     ic->SetAltitudeASLFtIC(altitude_ft);
     
     // Set orientation - keep level, set heading from aircraft rotation
+    // rotation.y = psi directly, so pass through
     ic->SetThetaDegIC(0.0);  // Pitch = 0
     ic->SetPhiDegIC(0.0);    // Roll = 0
     ic->SetPsiDegIC(Math::rad_to_deg(heading_rad));  // Yaw = heading
@@ -873,7 +900,8 @@ void JSBGodot::copy_outputs_from_JSBSim()
     double heading = Propagate->GetEuler(3); // Yaw
 
     // Map Euler angles to Godot's coordinate system
-    Vector3 newRot = Vector3(-pitch, heading, -bank); // Adjust signs as needed
+    // rotation.y = psi (heading CW from North=+Z), display = rad_to_deg(rotation.y)
+    Vector3 newRot = Vector3(-pitch, heading, -bank);
 
     // Get the parent node
     Node3D *parent_node = Object::cast_to<Node3D>(get_parent());
@@ -907,8 +935,9 @@ void JSBGodot::copy_outputs_from_JSBSim()
     airspeed_knots = FDMExec->GetPropertyValue("velocities/vc-kts");
 
     // Get the heading in degrees from the property tree
+    // Convert JSBSim psi to visual heading: visual = (360 - psi) mod 360
     heading_deg = FDMExec->GetPropertyValue("attitude/psi-deg");
-    heading_deg = fmod(360.0 - heading_deg, 360.0);
+    heading_deg = fmod(360.0 - heading_deg + 360.0, 360.0);
 
     // Convert heading to radians if needed
     double heading_rad = Math::deg_to_rad(heading_deg);

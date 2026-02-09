@@ -302,26 +302,29 @@ func _do_deferred_terrain_init() -> void:
 		print("Cannot initialize JSBSim on terrain - missing AC or JSBGodot node")
 		return
 	
-	# Move aircraft to origin first for proper terrain alignment
-	ac_node.global_position.x = 0.0
-	ac_node.global_position.z = 0.0
+	# Move aircraft to initial start position (Schmerlat Airfield)
+	ac_node.global_position.x = 980.8
+	ac_node.global_position.z = -227.1
+	ac_node.rotation.y = -deg_to_rad(250.0)  # Visual heading 250° (WSW)
 	
 	# DEBUG: Check terrain heights at multiple points
+	var start_pos = Vector3(ac_node.global_position.x, 0, ac_node.global_position.z)
 	print("=== TERRAIN HEIGHT DEBUG ===")
-	for test_pos in [Vector3(0, 0, 0), Vector3(100, 0, 100), Vector3(-100, 0, -100), Vector3(500, 0, 500)]:
+	for offset in [Vector3(0, 0, 0), Vector3(100, 0, 100), Vector3(-100, 0, -100), Vector3(500, 0, 500)]:
+		var test_pos = start_pos + offset
 		var h = terrain_data.get_height(test_pos)
 		print("  get_height(", test_pos.x, ", ", test_pos.z, ") = ", h, "m = ", h * 3.28084, " ft")
 	
 	# Get terrain height from API
-	var api_height = terrain_data.get_height(Vector3(0, 0, 0))
-	print("=== Terrain3D API get_height(0,0,0) = ", api_height, "m ===")
+	var api_height = terrain_data.get_height(start_pos)
+	print("=== Terrain3D API get_height(", start_pos.x, ", ", start_pos.z, ") = ", api_height, "m ===")
 	
 	# Try Terrain3D's get_intersection() method (raymarching, no physics needed)
 	var visual_terrain_height: float = api_height
 	var terrain3d = terrain3d_node  # The actual Terrain3D node
 	
 	if terrain3d and terrain3d.has_method("get_intersection"):
-		var ray_origin = Vector3(0, 2000, 0)
+		var ray_origin = Vector3(start_pos.x, 2000, start_pos.z)
 		var ray_dir = Vector3(0, -1, 0)  # Straight down
 		var intersection = terrain3d.get_intersection(ray_origin, ray_dir)
 		if intersection != Vector3.INF and not is_nan(intersection.y):
@@ -335,8 +338,8 @@ func _do_deferred_terrain_init() -> void:
 	# Fallback to physics raycast
 	if visual_terrain_height == api_height:
 		var space_state = get_world_3d().direct_space_state
-		var ray_origin = Vector3(0, 2000, 0)  # Start high above
-		var ray_end = Vector3(0, -500, 0)     # Go below expected terrain
+		var ray_origin = Vector3(start_pos.x, 2000, start_pos.z)  # Start high above
+		var ray_end = Vector3(start_pos.x, -500, start_pos.z)     # Go below expected terrain
 		var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
 		query.collide_with_areas = false
 		query.collide_with_bodies = true
@@ -376,8 +379,11 @@ func _do_deferred_terrain_init() -> void:
 	print("=== Setting wheel clearance offset: ", WHEEL_GROUND_CLEARANCE, "m ===")
 	jsb_node.set_godot_terrain_y_offset(WHEEL_GROUND_CLEARANCE)
 	
-	# Initialize JSBSim with the REAL terrain height for ground collision & altimeter
-	jsb_node.initialize_at_terrain(jsbsim_terrain_elevation)
+	# Initialize JSBSim with terrain height, start position, and heading
+	var start_heading_deg = 250.0  # WSW (Schmerlat runway)
+	var start_godot_pos = ac_node.global_position
+	jsb_node.initialize_at_terrain(jsbsim_terrain_elevation, start_godot_pos, start_heading_deg)
+	print("=== JSBSim initialized at Godot pos: ", start_godot_pos, " heading: ", start_heading_deg, "° ===")
 	
 	terrain_initialized = true
 	print("=== JSBSim terrain initialization complete ===")
