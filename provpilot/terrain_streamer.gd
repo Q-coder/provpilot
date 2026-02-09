@@ -489,8 +489,11 @@ static func _resolve_scenery_path(path: String) -> String:
 	# OS.get_executable_path() is the Godot editor binary — not useful.
 	# ProjectSettings.globalize_path("res://") gives the project dir.
 	var project_dir = ProjectSettings.globalize_path("res://")  # e.g. /Users/.../provpilot/
+	# Strip trailing slash so get_base_dir() returns the actual parent directory.
+	if project_dir.ends_with("/"):
+		project_dir = project_dir.left(project_dir.length() - 1)
 	# Workspace root is one level up from the Godot project directory.
-	var workspace_root = project_dir.get_base_dir()  # strip trailing dir
+	var workspace_root = project_dir.get_base_dir()
 	var resolved = workspace_root.path_join(path)
 	print("TerrainStreamer: Resolved '%s' → '%s'" % [path, resolved])
 	return resolved
