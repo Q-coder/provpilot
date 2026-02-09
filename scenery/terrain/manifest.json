@@ -10,7 +10,7 @@
     "row_direction": "South to North (Godot +Z)"
   },
   "grid": {
-    "ei_min": 2612,
+    "ei_min": 2610,
     "ei_max": 2631,
     "ni_min": 1243,
     "ni_max": 1262
@@ -19,6 +19,726 @@
     "description": "Given floating origin (CENTER_E, CENTER_N) aligned to tile_size boundaries: region_x = CENTER_E/tile_size - tile_ei - 1, region_z = tile_ni - CENTER_N/tile_size"
   },
   "tiles": {
+    "2693120_1272832": {
+      "swiss_e": 2693120,
+      "swiss_n": 1272832,
+      "tile_ei": 2630,
+      "tile_ni": 1243,
+      "file": "tile_2693120_1272832.raw",
+      "min_elev": 354.8,
+      "max_elev": 402.5
+    },
+    "2693120_1273856": {
+      "swiss_e": 2693120,
+      "swiss_n": 1273856,
+      "tile_ei": 2630,
+      "tile_ni": 1244,
+      "file": "tile_2693120_1273856.raw",
+      "min_elev": 366.2,
+      "max_elev": 433.0
+    },
+    "2693120_1274880": {
+      "swiss_e": 2693120,
+      "swiss_n": 1274880,
+      "tile_ei": 2630,
+      "tile_ni": 1245,
+      "file": "tile_2693120_1274880.raw",
+      "min_elev": 398.7,
+      "max_elev": 424.1
+    },
+    "2693120_1275904": {
+      "swiss_e": 2693120,
+      "swiss_n": 1275904,
+      "tile_ei": 2630,
+      "tile_ni": 1246,
+      "file": "tile_2693120_1275904.raw",
+      "min_elev": 400.3,
+      "max_elev": 431.9
+    },
+    "2693120_1276928": {
+      "swiss_e": 2693120,
+      "swiss_n": 1276928,
+      "tile_ei": 2630,
+      "tile_ni": 1247,
+      "file": "tile_2693120_1276928.raw",
+      "min_elev": 405.7,
+      "max_elev": 505.4
+    },
+    "2693120_1277952": {
+      "swiss_e": 2693120,
+      "swiss_n": 1277952,
+      "tile_ei": 2630,
+      "tile_ni": 1248,
+      "file": "tile_2693120_1277952.raw",
+      "min_elev": 466.6,
+      "max_elev": 541.7
+    },
+    "2693120_1278976": {
+      "swiss_e": 2693120,
+      "swiss_n": 1278976,
+      "tile_ei": 2630,
+      "tile_ni": 1249,
+      "file": "tile_2693120_1278976.raw",
+      "min_elev": 434.9,
+      "max_elev": 562.5
+    },
+    "2693120_1280000": {
+      "swiss_e": 2693120,
+      "swiss_n": 1280000,
+      "tile_ei": 2630,
+      "tile_ni": 1250,
+      "file": "tile_2693120_1280000.raw",
+      "min_elev": 420.6,
+      "max_elev": 558.2
+    },
+    "2693120_1281024": {
+      "swiss_e": 2693120,
+      "swiss_n": 1281024,
+      "tile_ei": 2630,
+      "tile_ni": 1251,
+      "file": "tile_2693120_1281024.raw",
+      "min_elev": 395.3,
+      "max_elev": 530.2
+    },
+    "2693120_1282048": {
+      "swiss_e": 2693120,
+      "swiss_n": 1282048,
+      "tile_ei": 2630,
+      "tile_ni": 1252,
+      "file": "tile_2693120_1282048.raw",
+      "min_elev": 379.1,
+      "max_elev": 410.4
+    },
+    "2693120_1283072": {
+      "swiss_e": 2693120,
+      "swiss_n": 1283072,
+      "tile_ei": 2630,
+      "tile_ni": 1253,
+      "file": "tile_2693120_1283072.raw",
+      "min_elev": 390.8,
+      "max_elev": 431.3
+    },
+    "2693120_1284096": {
+      "swiss_e": 2693120,
+      "swiss_n": 1284096,
+      "tile_ei": 2630,
+      "tile_ni": 1254,
+      "file": "tile_2693120_1284096.raw",
+      "min_elev": 409.6,
+      "max_elev": 476.0
+    },
+    "2693120_1285120": {
+      "swiss_e": 2693120,
+      "swiss_n": 1285120,
+      "tile_ei": 2630,
+      "tile_ni": 1255,
+      "file": "tile_2693120_1285120.raw",
+      "min_elev": 433.8,
+      "max_elev": 493.8
+    },
+    "2693120_1286144": {
+      "swiss_e": 2693120,
+      "swiss_n": 1286144,
+      "tile_ei": 2630,
+      "tile_ni": 1256,
+      "file": "tile_2693120_1286144.raw",
+      "min_elev": 450.3,
+      "max_elev": 500.2
+    },
+    "2693120_1287168": {
+      "swiss_e": 2693120,
+      "swiss_n": 1287168,
+      "tile_ei": 2630,
+      "tile_ni": 1257,
+      "file": "tile_2693120_1287168.raw",
+      "min_elev": 422.5,
+      "max_elev": 492.9
+    },
+    "2693120_1288192": {
+      "swiss_e": 2693120,
+      "swiss_n": 1288192,
+      "tile_ei": 2630,
+      "tile_ni": 1258,
+      "file": "tile_2693120_1288192.raw",
+      "min_elev": 428.4,
+      "max_elev": 537.8
+    },
+    "2693120_1289216": {
+      "swiss_e": 2693120,
+      "swiss_n": 1289216,
+      "tile_ei": 2630,
+      "tile_ni": 1259,
+      "file": "tile_2693120_1289216.raw",
+      "min_elev": 442.8,
+      "max_elev": 586.7
+    },
+    "2693120_1290240": {
+      "swiss_e": 2693120,
+      "swiss_n": 1290240,
+      "tile_ei": 2630,
+      "tile_ni": 1260,
+      "file": "tile_2693120_1290240.raw",
+      "min_elev": 443.7,
+      "max_elev": 614.3
+    },
+    "2693120_1291264": {
+      "swiss_e": 2693120,
+      "swiss_n": 1291264,
+      "tile_ei": 2630,
+      "tile_ni": 1261,
+      "file": "tile_2693120_1291264.raw",
+      "min_elev": 374.6,
+      "max_elev": 544.6
+    },
+    "2693120_1292288": {
+      "swiss_e": 2693120,
+      "swiss_n": 1292288,
+      "tile_ei": 2630,
+      "tile_ni": 1262,
+      "file": "tile_2693120_1292288.raw",
+      "min_elev": 492.9,
+      "max_elev": 563.1
+    },
+    "2694144_1272832": {
+      "swiss_e": 2694144,
+      "swiss_n": 1272832,
+      "tile_ei": 2631,
+      "tile_ni": 1243,
+      "file": "tile_2694144_1272832.raw",
+      "min_elev": 373.4,
+      "max_elev": 427.3
+    },
+    "2694144_1273856": {
+      "swiss_e": 2694144,
+      "swiss_n": 1273856,
+      "tile_ei": 2631,
+      "tile_ni": 1244,
+      "file": "tile_2694144_1273856.raw",
+      "min_elev": 393.8,
+      "max_elev": 445.4
+    },
+    "2694144_1274880": {
+      "swiss_e": 2694144,
+      "swiss_n": 1274880,
+      "tile_ei": 2631,
+      "tile_ni": 1245,
+      "file": "tile_2694144_1274880.raw",
+      "min_elev": 403.2,
+      "max_elev": 434.9
+    },
+    "2694144_1275904": {
+      "swiss_e": 2694144,
+      "swiss_n": 1275904,
+      "tile_ei": 2631,
+      "tile_ni": 1246,
+      "file": "tile_2694144_1275904.raw",
+      "min_elev": 405.4,
+      "max_elev": 486.6
+    },
+    "2694144_1276928": {
+      "swiss_e": 2694144,
+      "swiss_n": 1276928,
+      "tile_ei": 2631,
+      "tile_ni": 1247,
+      "file": "tile_2694144_1276928.raw",
+      "min_elev": 429.1,
+      "max_elev": 498.9
+    },
+    "2694144_1277952": {
+      "swiss_e": 2694144,
+      "swiss_n": 1277952,
+      "tile_ei": 2631,
+      "tile_ni": 1248,
+      "file": "tile_2694144_1277952.raw",
+      "min_elev": 431.1,
+      "max_elev": 502.9
+    },
+    "2694144_1278976": {
+      "swiss_e": 2694144,
+      "swiss_n": 1278976,
+      "tile_ei": 2631,
+      "tile_ni": 1249,
+      "file": "tile_2694144_1278976.raw",
+      "min_elev": 412.5,
+      "max_elev": 466.6
+    },
+    "2694144_1280000": {
+      "swiss_e": 2694144,
+      "swiss_n": 1280000,
+      "tile_ei": 2631,
+      "tile_ni": 1250,
+      "file": "tile_2694144_1280000.raw",
+      "min_elev": 403.5,
+      "max_elev": 437.7
+    },
+    "2694144_1281024": {
+      "swiss_e": 2694144,
+      "swiss_n": 1281024,
+      "tile_ei": 2631,
+      "tile_ni": 1251,
+      "file": "tile_2694144_1281024.raw",
+      "min_elev": 399.7,
+      "max_elev": 428.8
+    },
+    "2694144_1282048": {
+      "swiss_e": 2694144,
+      "swiss_n": 1282048,
+      "tile_ei": 2631,
+      "tile_ni": 1252,
+      "file": "tile_2694144_1282048.raw",
+      "min_elev": 390.8,
+      "max_elev": 407.8
+    },
+    "2694144_1283072": {
+      "swiss_e": 2694144,
+      "swiss_n": 1283072,
+      "tile_ei": 2631,
+      "tile_ni": 1253,
+      "file": "tile_2694144_1283072.raw",
+      "min_elev": 390.8,
+      "max_elev": 440.5
+    },
+    "2694144_1284096": {
+      "swiss_e": 2694144,
+      "swiss_n": 1284096,
+      "tile_ei": 2631,
+      "tile_ni": 1254,
+      "file": "tile_2694144_1284096.raw",
+      "min_elev": 404.4,
+      "max_elev": 446.2
+    },
+    "2694144_1285120": {
+      "swiss_e": 2694144,
+      "swiss_n": 1285120,
+      "tile_ei": 2631,
+      "tile_ni": 1255,
+      "file": "tile_2694144_1285120.raw",
+      "min_elev": 421.7,
+      "max_elev": 495.9
+    },
+    "2694144_1286144": {
+      "swiss_e": 2694144,
+      "swiss_n": 1286144,
+      "tile_ei": 2631,
+      "tile_ni": 1256,
+      "file": "tile_2694144_1286144.raw",
+      "min_elev": 451.5,
+      "max_elev": 497.6
+    },
+    "2694144_1287168": {
+      "swiss_e": 2694144,
+      "swiss_n": 1287168,
+      "tile_ei": 2631,
+      "tile_ni": 1257,
+      "file": "tile_2694144_1287168.raw",
+      "min_elev": 428.9,
+      "max_elev": 518.9
+    },
+    "2694144_1288192": {
+      "swiss_e": 2694144,
+      "swiss_n": 1288192,
+      "tile_ei": 2631,
+      "tile_ni": 1258,
+      "file": "tile_2694144_1288192.raw",
+      "min_elev": 430.8,
+      "max_elev": 533.2
+    },
+    "2694144_1289216": {
+      "swiss_e": 2694144,
+      "swiss_n": 1289216,
+      "tile_ei": 2631,
+      "tile_ni": 1259,
+      "file": "tile_2694144_1289216.raw",
+      "min_elev": 433.5,
+      "max_elev": 503.6
+    },
+    "2694144_1290240": {
+      "swiss_e": 2694144,
+      "swiss_n": 1290240,
+      "tile_ei": 2631,
+      "tile_ni": 1260,
+      "file": "tile_2694144_1290240.raw",
+      "min_elev": 446.0,
+      "max_elev": 549.4
+    },
+    "2694144_1291264": {
+      "swiss_e": 2694144,
+      "swiss_n": 1291264,
+      "tile_ei": 2631,
+      "tile_ni": 1261,
+      "file": "tile_2694144_1291264.raw",
+      "min_elev": 500.9,
+      "max_elev": 549.1
+    },
+    "2694144_1292288": {
+      "swiss_e": 2694144,
+      "swiss_n": 1292288,
+      "tile_ei": 2631,
+      "tile_ni": 1262,
+      "file": "tile_2694144_1292288.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2672640_1272832": {
+      "swiss_e": 2672640,
+      "swiss_n": 1272832,
+      "tile_ei": 2610,
+      "tile_ni": 1243,
+      "file": "tile_2672640_1272832.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2672640_1273856": {
+      "swiss_e": 2672640,
+      "swiss_n": 1273856,
+      "tile_ei": 2610,
+      "tile_ni": 1244,
+      "file": "tile_2672640_1273856.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2672640_1274880": {
+      "swiss_e": 2672640,
+      "swiss_n": 1274880,
+      "tile_ei": 2610,
+      "tile_ni": 1245,
+      "file": "tile_2672640_1274880.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2672640_1275904": {
+      "swiss_e": 2672640,
+      "swiss_n": 1275904,
+      "tile_ei": 2610,
+      "tile_ni": 1246,
+      "file": "tile_2672640_1275904.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2672640_1276928": {
+      "swiss_e": 2672640,
+      "swiss_n": 1276928,
+      "tile_ei": 2610,
+      "tile_ni": 1247,
+      "file": "tile_2672640_1276928.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2672640_1277952": {
+      "swiss_e": 2672640,
+      "swiss_n": 1277952,
+      "tile_ei": 2610,
+      "tile_ni": 1248,
+      "file": "tile_2672640_1277952.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2672640_1278976": {
+      "swiss_e": 2672640,
+      "swiss_n": 1278976,
+      "tile_ei": 2610,
+      "tile_ni": 1249,
+      "file": "tile_2672640_1278976.raw",
+      "min_elev": 416.5,
+      "max_elev": 509.0
+    },
+    "2672640_1280000": {
+      "swiss_e": 2672640,
+      "swiss_n": 1280000,
+      "tile_ei": 2610,
+      "tile_ni": 1250,
+      "file": "tile_2672640_1280000.raw",
+      "min_elev": 344.8,
+      "max_elev": 533.6
+    },
+    "2672640_1281024": {
+      "swiss_e": 2672640,
+      "swiss_n": 1281024,
+      "tile_ei": 2610,
+      "tile_ni": 1251,
+      "file": "tile_2672640_1281024.raw",
+      "min_elev": 469.8,
+      "max_elev": 572.5
+    },
+    "2672640_1282048": {
+      "swiss_e": 2672640,
+      "swiss_n": 1282048,
+      "tile_ei": 2610,
+      "tile_ni": 1252,
+      "file": "tile_2672640_1282048.raw",
+      "min_elev": 453.9,
+      "max_elev": 569.6
+    },
+    "2672640_1283072": {
+      "swiss_e": 2672640,
+      "swiss_n": 1283072,
+      "tile_ei": 2610,
+      "tile_ni": 1253,
+      "file": "tile_2672640_1283072.raw",
+      "min_elev": 409.9,
+      "max_elev": 508.9
+    },
+    "2672640_1284096": {
+      "swiss_e": 2672640,
+      "swiss_n": 1284096,
+      "tile_ei": 2610,
+      "tile_ni": 1254,
+      "file": "tile_2672640_1284096.raw",
+      "min_elev": 310.1,
+      "max_elev": 521.1
+    },
+    "2672640_1285120": {
+      "swiss_e": 2672640,
+      "swiss_n": 1285120,
+      "tile_ei": 2610,
+      "tile_ni": 1255,
+      "file": "tile_2672640_1285120.raw",
+      "min_elev": 420.0,
+      "max_elev": 594.4
+    },
+    "2672640_1286144": {
+      "swiss_e": 2672640,
+      "swiss_n": 1286144,
+      "tile_ei": 2610,
+      "tile_ni": 1256,
+      "file": "tile_2672640_1286144.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2672640_1287168": {
+      "swiss_e": 2672640,
+      "swiss_n": 1287168,
+      "tile_ei": 2610,
+      "tile_ni": 1257,
+      "file": "tile_2672640_1287168.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2672640_1288192": {
+      "swiss_e": 2672640,
+      "swiss_n": 1288192,
+      "tile_ei": 2610,
+      "tile_ni": 1258,
+      "file": "tile_2672640_1288192.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2672640_1289216": {
+      "swiss_e": 2672640,
+      "swiss_n": 1289216,
+      "tile_ei": 2610,
+      "tile_ni": 1259,
+      "file": "tile_2672640_1289216.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2672640_1290240": {
+      "swiss_e": 2672640,
+      "swiss_n": 1290240,
+      "tile_ei": 2610,
+      "tile_ni": 1260,
+      "file": "tile_2672640_1290240.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2672640_1291264": {
+      "swiss_e": 2672640,
+      "swiss_n": 1291264,
+      "tile_ei": 2610,
+      "tile_ni": 1261,
+      "file": "tile_2672640_1291264.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2672640_1292288": {
+      "swiss_e": 2672640,
+      "swiss_n": 1292288,
+      "tile_ei": 2610,
+      "tile_ni": 1262,
+      "file": "tile_2672640_1292288.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2673664_1272832": {
+      "swiss_e": 2673664,
+      "swiss_n": 1272832,
+      "tile_ei": 2611,
+      "tile_ni": 1243,
+      "file": "tile_2673664_1272832.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2673664_1273856": {
+      "swiss_e": 2673664,
+      "swiss_n": 1273856,
+      "tile_ei": 2611,
+      "tile_ni": 1244,
+      "file": "tile_2673664_1273856.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2673664_1274880": {
+      "swiss_e": 2673664,
+      "swiss_n": 1274880,
+      "tile_ei": 2611,
+      "tile_ni": 1245,
+      "file": "tile_2673664_1274880.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2673664_1275904": {
+      "swiss_e": 2673664,
+      "swiss_n": 1275904,
+      "tile_ei": 2611,
+      "tile_ni": 1246,
+      "file": "tile_2673664_1275904.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2673664_1276928": {
+      "swiss_e": 2673664,
+      "swiss_n": 1276928,
+      "tile_ei": 2611,
+      "tile_ni": 1247,
+      "file": "tile_2673664_1276928.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2673664_1277952": {
+      "swiss_e": 2673664,
+      "swiss_n": 1277952,
+      "tile_ei": 2611,
+      "tile_ni": 1248,
+      "file": "tile_2673664_1277952.raw",
+      "min_elev": 388.4,
+      "max_elev": 416.2
+    },
+    "2673664_1278976": {
+      "swiss_e": 2673664,
+      "swiss_n": 1278976,
+      "tile_ei": 2611,
+      "tile_ni": 1249,
+      "file": "tile_2673664_1278976.raw",
+      "min_elev": 243.0,
+      "max_elev": 483.0
+    },
+    "2673664_1280000": {
+      "swiss_e": 2673664,
+      "swiss_n": 1280000,
+      "tile_ei": 2611,
+      "tile_ni": 1250,
+      "file": "tile_2673664_1280000.raw",
+      "min_elev": 402.9,
+      "max_elev": 493.4
+    },
+    "2673664_1281024": {
+      "swiss_e": 2673664,
+      "swiss_n": 1281024,
+      "tile_ei": 2611,
+      "tile_ni": 1251,
+      "file": "tile_2673664_1281024.raw",
+      "min_elev": 415.7,
+      "max_elev": 570.5
+    },
+    "2673664_1282048": {
+      "swiss_e": 2673664,
+      "swiss_n": 1282048,
+      "tile_ei": 2611,
+      "tile_ni": 1252,
+      "file": "tile_2673664_1282048.raw",
+      "min_elev": 469.3,
+      "max_elev": 575.0
+    },
+    "2673664_1283072": {
+      "swiss_e": 2673664,
+      "swiss_n": 1283072,
+      "tile_ei": 2611,
+      "tile_ni": 1253,
+      "file": "tile_2673664_1283072.raw",
+      "min_elev": 469.3,
+      "max_elev": 590.1
+    },
+    "2673664_1284096": {
+      "swiss_e": 2673664,
+      "swiss_n": 1284096,
+      "tile_ei": 2611,
+      "tile_ni": 1254,
+      "file": "tile_2673664_1284096.raw",
+      "min_elev": 419.9,
+      "max_elev": 535.7
+    },
+    "2673664_1285120": {
+      "swiss_e": 2673664,
+      "swiss_n": 1285120,
+      "tile_ei": 2611,
+      "tile_ni": 1255,
+      "file": "tile_2673664_1285120.raw",
+      "min_elev": 419.9,
+      "max_elev": 547.8
+    },
+    "2673664_1286144": {
+      "swiss_e": 2673664,
+      "swiss_n": 1286144,
+      "tile_ei": 2611,
+      "tile_ni": 1256,
+      "file": "tile_2673664_1286144.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2673664_1287168": {
+      "swiss_e": 2673664,
+      "swiss_n": 1287168,
+      "tile_ei": 2611,
+      "tile_ni": 1257,
+      "file": "tile_2673664_1287168.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2673664_1288192": {
+      "swiss_e": 2673664,
+      "swiss_n": 1288192,
+      "tile_ei": 2611,
+      "tile_ni": 1258,
+      "file": "tile_2673664_1288192.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2673664_1289216": {
+      "swiss_e": 2673664,
+      "swiss_n": 1289216,
+      "tile_ei": 2611,
+      "tile_ni": 1259,
+      "file": "tile_2673664_1289216.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2673664_1290240": {
+      "swiss_e": 2673664,
+      "swiss_n": 1290240,
+      "tile_ei": 2611,
+      "tile_ni": 1260,
+      "file": "tile_2673664_1290240.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2673664_1291264": {
+      "swiss_e": 2673664,
+      "swiss_n": 1291264,
+      "tile_ei": 2611,
+      "tile_ni": 1261,
+      "file": "tile_2673664_1291264.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
+    "2673664_1292288": {
+      "swiss_e": 2673664,
+      "swiss_n": 1292288,
+      "tile_ei": 2611,
+      "tile_ni": 1262,
+      "file": "tile_2673664_1292288.raw",
+      "min_elev": 0.0,
+      "max_elev": 0.0
+    },
     "2674688_1272832": {
       "swiss_e": 2674688,
       "swiss_n": 1272832,
@@ -3238,7 +3958,7 @@
       "tile_ei": 2629,
       "tile_ni": 1260,
       "file": "tile_2692096_1290240.raw",
-      "min_elev": 530.2,
+      "min_elev": 530.3,
       "max_elev": 666.4
     },
     "2692096_1291264": {
@@ -3258,367 +3978,7 @@
       "file": "tile_2692096_1292288.raw",
       "min_elev": 460.7,
       "max_elev": 541.1
-    },
-    "2693120_1272832": {
-      "swiss_e": 2693120,
-      "swiss_n": 1272832,
-      "tile_ei": 2630,
-      "tile_ni": 1243,
-      "file": "tile_2693120_1272832.raw",
-      "min_elev": 354.8,
-      "max_elev": 402.5
-    },
-    "2693120_1273856": {
-      "swiss_e": 2693120,
-      "swiss_n": 1273856,
-      "tile_ei": 2630,
-      "tile_ni": 1244,
-      "file": "tile_2693120_1273856.raw",
-      "min_elev": 366.2,
-      "max_elev": 433.0
-    },
-    "2693120_1274880": {
-      "swiss_e": 2693120,
-      "swiss_n": 1274880,
-      "tile_ei": 2630,
-      "tile_ni": 1245,
-      "file": "tile_2693120_1274880.raw",
-      "min_elev": 398.7,
-      "max_elev": 424.1
-    },
-    "2693120_1275904": {
-      "swiss_e": 2693120,
-      "swiss_n": 1275904,
-      "tile_ei": 2630,
-      "tile_ni": 1246,
-      "file": "tile_2693120_1275904.raw",
-      "min_elev": 400.3,
-      "max_elev": 431.9
-    },
-    "2693120_1276928": {
-      "swiss_e": 2693120,
-      "swiss_n": 1276928,
-      "tile_ei": 2630,
-      "tile_ni": 1247,
-      "file": "tile_2693120_1276928.raw",
-      "min_elev": 405.7,
-      "max_elev": 505.4
-    },
-    "2693120_1277952": {
-      "swiss_e": 2693120,
-      "swiss_n": 1277952,
-      "tile_ei": 2630,
-      "tile_ni": 1248,
-      "file": "tile_2693120_1277952.raw",
-      "min_elev": 466.6,
-      "max_elev": 541.7
-    },
-    "2693120_1278976": {
-      "swiss_e": 2693120,
-      "swiss_n": 1278976,
-      "tile_ei": 2630,
-      "tile_ni": 1249,
-      "file": "tile_2693120_1278976.raw",
-      "min_elev": 434.9,
-      "max_elev": 562.5
-    },
-    "2693120_1280000": {
-      "swiss_e": 2693120,
-      "swiss_n": 1280000,
-      "tile_ei": 2630,
-      "tile_ni": 1250,
-      "file": "tile_2693120_1280000.raw",
-      "min_elev": 420.6,
-      "max_elev": 558.2
-    },
-    "2693120_1281024": {
-      "swiss_e": 2693120,
-      "swiss_n": 1281024,
-      "tile_ei": 2630,
-      "tile_ni": 1251,
-      "file": "tile_2693120_1281024.raw",
-      "min_elev": 395.3,
-      "max_elev": 530.2
-    },
-    "2693120_1282048": {
-      "swiss_e": 2693120,
-      "swiss_n": 1282048,
-      "tile_ei": 2630,
-      "tile_ni": 1252,
-      "file": "tile_2693120_1282048.raw",
-      "min_elev": 379.1,
-      "max_elev": 410.4
-    },
-    "2693120_1283072": {
-      "swiss_e": 2693120,
-      "swiss_n": 1283072,
-      "tile_ei": 2630,
-      "tile_ni": 1253,
-      "file": "tile_2693120_1283072.raw",
-      "min_elev": 390.8,
-      "max_elev": 431.3
-    },
-    "2693120_1284096": {
-      "swiss_e": 2693120,
-      "swiss_n": 1284096,
-      "tile_ei": 2630,
-      "tile_ni": 1254,
-      "file": "tile_2693120_1284096.raw",
-      "min_elev": 409.6,
-      "max_elev": 476.0
-    },
-    "2693120_1285120": {
-      "swiss_e": 2693120,
-      "swiss_n": 1285120,
-      "tile_ei": 2630,
-      "tile_ni": 1255,
-      "file": "tile_2693120_1285120.raw",
-      "min_elev": 433.8,
-      "max_elev": 493.8
-    },
-    "2693120_1286144": {
-      "swiss_e": 2693120,
-      "swiss_n": 1286144,
-      "tile_ei": 2630,
-      "tile_ni": 1256,
-      "file": "tile_2693120_1286144.raw",
-      "min_elev": 450.3,
-      "max_elev": 500.2
-    },
-    "2693120_1287168": {
-      "swiss_e": 2693120,
-      "swiss_n": 1287168,
-      "tile_ei": 2630,
-      "tile_ni": 1257,
-      "file": "tile_2693120_1287168.raw",
-      "min_elev": 422.5,
-      "max_elev": 492.9
-    },
-    "2693120_1288192": {
-      "swiss_e": 2693120,
-      "swiss_n": 1288192,
-      "tile_ei": 2630,
-      "tile_ni": 1258,
-      "file": "tile_2693120_1288192.raw",
-      "min_elev": 428.4,
-      "max_elev": 537.8
-    },
-    "2693120_1289216": {
-      "swiss_e": 2693120,
-      "swiss_n": 1289216,
-      "tile_ei": 2630,
-      "tile_ni": 1259,
-      "file": "tile_2693120_1289216.raw",
-      "min_elev": 442.8,
-      "max_elev": 586.7
-    },
-    "2693120_1290240": {
-      "swiss_e": 2693120,
-      "swiss_n": 1290240,
-      "tile_ei": 2630,
-      "tile_ni": 1260,
-      "file": "tile_2693120_1290240.raw",
-      "min_elev": 443.7,
-      "max_elev": 614.3
-    },
-    "2693120_1291264": {
-      "swiss_e": 2693120,
-      "swiss_n": 1291264,
-      "tile_ei": 2630,
-      "tile_ni": 1261,
-      "file": "tile_2693120_1291264.raw",
-      "min_elev": 374.6,
-      "max_elev": 544.6
-    },
-    "2693120_1292288": {
-      "swiss_e": 2693120,
-      "swiss_n": 1292288,
-      "tile_ei": 2630,
-      "tile_ni": 1262,
-      "file": "tile_2693120_1292288.raw",
-      "min_elev": 492.9,
-      "max_elev": 563.1
-    },
-    "2694144_1272832": {
-      "swiss_e": 2694144,
-      "swiss_n": 1272832,
-      "tile_ei": 2631,
-      "tile_ni": 1243,
-      "file": "tile_2694144_1272832.raw",
-      "min_elev": 373.4,
-      "max_elev": 427.3
-    },
-    "2694144_1273856": {
-      "swiss_e": 2694144,
-      "swiss_n": 1273856,
-      "tile_ei": 2631,
-      "tile_ni": 1244,
-      "file": "tile_2694144_1273856.raw",
-      "min_elev": 393.8,
-      "max_elev": 445.4
-    },
-    "2694144_1274880": {
-      "swiss_e": 2694144,
-      "swiss_n": 1274880,
-      "tile_ei": 2631,
-      "tile_ni": 1245,
-      "file": "tile_2694144_1274880.raw",
-      "min_elev": 403.2,
-      "max_elev": 434.9
-    },
-    "2694144_1275904": {
-      "swiss_e": 2694144,
-      "swiss_n": 1275904,
-      "tile_ei": 2631,
-      "tile_ni": 1246,
-      "file": "tile_2694144_1275904.raw",
-      "min_elev": 405.4,
-      "max_elev": 486.6
-    },
-    "2694144_1276928": {
-      "swiss_e": 2694144,
-      "swiss_n": 1276928,
-      "tile_ei": 2631,
-      "tile_ni": 1247,
-      "file": "tile_2694144_1276928.raw",
-      "min_elev": 429.1,
-      "max_elev": 498.9
-    },
-    "2694144_1277952": {
-      "swiss_e": 2694144,
-      "swiss_n": 1277952,
-      "tile_ei": 2631,
-      "tile_ni": 1248,
-      "file": "tile_2694144_1277952.raw",
-      "min_elev": 431.1,
-      "max_elev": 502.9
-    },
-    "2694144_1278976": {
-      "swiss_e": 2694144,
-      "swiss_n": 1278976,
-      "tile_ei": 2631,
-      "tile_ni": 1249,
-      "file": "tile_2694144_1278976.raw",
-      "min_elev": 412.5,
-      "max_elev": 466.6
-    },
-    "2694144_1280000": {
-      "swiss_e": 2694144,
-      "swiss_n": 1280000,
-      "tile_ei": 2631,
-      "tile_ni": 1250,
-      "file": "tile_2694144_1280000.raw",
-      "min_elev": 403.5,
-      "max_elev": 437.7
-    },
-    "2694144_1281024": {
-      "swiss_e": 2694144,
-      "swiss_n": 1281024,
-      "tile_ei": 2631,
-      "tile_ni": 1251,
-      "file": "tile_2694144_1281024.raw",
-      "min_elev": 399.7,
-      "max_elev": 428.8
-    },
-    "2694144_1282048": {
-      "swiss_e": 2694144,
-      "swiss_n": 1282048,
-      "tile_ei": 2631,
-      "tile_ni": 1252,
-      "file": "tile_2694144_1282048.raw",
-      "min_elev": 390.8,
-      "max_elev": 407.8
-    },
-    "2694144_1283072": {
-      "swiss_e": 2694144,
-      "swiss_n": 1283072,
-      "tile_ei": 2631,
-      "tile_ni": 1253,
-      "file": "tile_2694144_1283072.raw",
-      "min_elev": 390.8,
-      "max_elev": 440.5
-    },
-    "2694144_1284096": {
-      "swiss_e": 2694144,
-      "swiss_n": 1284096,
-      "tile_ei": 2631,
-      "tile_ni": 1254,
-      "file": "tile_2694144_1284096.raw",
-      "min_elev": 404.4,
-      "max_elev": 446.2
-    },
-    "2694144_1285120": {
-      "swiss_e": 2694144,
-      "swiss_n": 1285120,
-      "tile_ei": 2631,
-      "tile_ni": 1255,
-      "file": "tile_2694144_1285120.raw",
-      "min_elev": 421.7,
-      "max_elev": 495.9
-    },
-    "2694144_1286144": {
-      "swiss_e": 2694144,
-      "swiss_n": 1286144,
-      "tile_ei": 2631,
-      "tile_ni": 1256,
-      "file": "tile_2694144_1286144.raw",
-      "min_elev": 451.5,
-      "max_elev": 497.6
-    },
-    "2694144_1287168": {
-      "swiss_e": 2694144,
-      "swiss_n": 1287168,
-      "tile_ei": 2631,
-      "tile_ni": 1257,
-      "file": "tile_2694144_1287168.raw",
-      "min_elev": 428.9,
-      "max_elev": 518.9
-    },
-    "2694144_1288192": {
-      "swiss_e": 2694144,
-      "swiss_n": 1288192,
-      "tile_ei": 2631,
-      "tile_ni": 1258,
-      "file": "tile_2694144_1288192.raw",
-      "min_elev": 430.8,
-      "max_elev": 533.2
-    },
-    "2694144_1289216": {
-      "swiss_e": 2694144,
-      "swiss_n": 1289216,
-      "tile_ei": 2631,
-      "tile_ni": 1259,
-      "file": "tile_2694144_1289216.raw",
-      "min_elev": 433.5,
-      "max_elev": 503.6
-    },
-    "2694144_1290240": {
-      "swiss_e": 2694144,
-      "swiss_n": 1290240,
-      "tile_ei": 2631,
-      "tile_ni": 1260,
-      "file": "tile_2694144_1290240.raw",
-      "min_elev": 446.0,
-      "max_elev": 549.4
-    },
-    "2694144_1291264": {
-      "swiss_e": 2694144,
-      "swiss_n": 1291264,
-      "tile_ei": 2631,
-      "tile_ni": 1261,
-      "file": "tile_2694144_1291264.raw",
-      "min_elev": 500.9,
-      "max_elev": 549.1
-    },
-    "2694144_1292288": {
-      "swiss_e": 2694144,
-      "swiss_n": 1292288,
-      "tile_ei": 2631,
-      "tile_ni": 1262,
-      "file": "tile_2694144_1292288.raw",
-      "min_elev": 0.0,
-      "max_elev": 0.0
     }
   },
-  "tile_count": 400
+  "tile_count": 440
 }

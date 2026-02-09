@@ -136,11 +136,13 @@ def terrain_download_tile(url, cache_dir):
 
 def terrain_merge_and_generate_tiles(tif_paths, west, south, east, north,
                                      tile_dir, tile_size=TILE_SIZE,
-                                     target_resolution=1.0):
+                                     target_resolution=1.0,
+                                     skip_existing=None):
     """
     Merge GeoTIFFs, crop, resample to target_resolution, then split into
     tile_size × tile_size float32 raw tiles for Terrain3D streaming.
 
+    skip_existing: set of tile keys ("easting_northing") to skip writing.
     Returns dict of new tiles: {tile_key: tile_info}
     """
     print(f"\n  Merging {len(tif_paths)} GeoTIFF tiles...")
@@ -208,11 +210,18 @@ def terrain_merge_and_generate_tiles(tif_paths, west, south, east, north,
 
     new_tiles = {}
     pix_per_tile = tile_size  # 1 pixel per meter at 1m resolution
+    if skip_existing is None:
+        skip_existing = set()
 
     for ei in range(ei_min, ei_max + 1):
         for ni in range(ni_min, ni_max + 1):
             e_sw = ei * tile_size
             n_sw = ni * tile_size
+            tile_key = f"{e_sw}_{n_sw}"
+
+            # Skip tiles that already exist on disk
+            if tile_key in skip_existing:
+                continue
 
             # Pixel coords in the merged array (GeoTIFF: row 0 = north)
             col_start = int(round((e_sw - grid_west) / target_resolution))
@@ -376,23 +385,16 @@ def run_terrain_pipeline(center_e, center_n, radius, cache_dir,
         except Exception as e:
             print(f"\n    ERROR downloading {e_km}-{n_km}: {e}")
 
-    # Merge & generate tiles
+    # Merge & generate tiles (skip tiles that already exist)
     new_tiles = terrain_merge_and_generate_tiles(
         tif_paths, west, south, east, north,
-        TERRAIN_DIR, TILE_SIZE, target_resolution=1.0
+        TERRAIN_DIR, TILE_SIZE, target_resolution=1.0,
+        skip_existing=existing,
     )
 
-    # Skip tiles that already exist (don't overwrite)
-    truly_new = {k: v for k, v in new_tiles.items() if k not in existing}
-    # Remove .raw files for tiles that already existed
-    for k in set(new_tiles.keys()) - set(truly_new.keys()):
-        dup_path = TERRAIN_DIR / new_tiles[k]["file"]
-        if dup_path.exists():
-            dup_path.unlink()
-
-    if truly_new:
-        terrain_update_manifest(TERRAIN_DIR, truly_new)
-        print(f"  ✓ {len(truly_new)} new terrain tiles generated")
+    if new_tiles:
+        terrain_update_manifest(TERRAIN_DIR, new_tiles)
+        print(f"  ✓ {len(new_tiles)} new terrain tiles generated")
     else:
         print(f"  No new tiles to add")
 
