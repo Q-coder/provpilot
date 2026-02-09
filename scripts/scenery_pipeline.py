@@ -649,29 +649,43 @@ def run_buildings_pipeline(center_e, center_n, radius, cache_dir,
                            origin_e=None, origin_n=None,
                            dry_run=False, clean_cache=False):
     """Full buildings pipeline: discover → download GDB → convert to GLB → manifest."""
-    if origin_e is None:
-        origin_e = center_e
-    if origin_n is None:
-        origin_n = center_n
-
     half = radius
     west = center_e - half
     south = center_n - half
     east = center_e + half
     north = center_n + half
 
+    # Check existing manifest — if one exists, REUSE its conversion origin
+    # so new GLBs are compatible with existing ones.
+    existing = set()
+    bldg_manifest = BUILDINGS_DIR / "manifest.json"
+    if bldg_manifest.exists():
+        with open(bldg_manifest) as f:
+            manifest_data = json.load(f)
+        existing = set(manifest_data.get("tiles", {}).keys())
+        existing_origin_e = manifest_data.get("conversion_origin_e")
+        existing_origin_n = manifest_data.get("conversion_origin_n")
+        if existing_origin_e and existing_origin_n:
+            if origin_e is not None and origin_e != existing_origin_e:
+                print(f"  WARNING: Overriding existing conversion origin "
+                      f"E={existing_origin_e} → {origin_e}")
+                print(f"  Existing GLBs will need reconversion!")
+            else:
+                origin_e = int(existing_origin_e)
+                origin_n = int(existing_origin_n)
+                print(f"  Using existing conversion origin: E={origin_e} N={origin_n}")
+
+    # Fallback: use center as origin (first run)
+    if origin_e is None:
+        origin_e = center_e
+    if origin_n is None:
+        origin_n = center_n
+
     print(f"\n{'='*60}")
     print(f"BUILDINGS PIPELINE")
     print(f"{'='*60}")
     print(f"  Bounds: W={west} S={south} E={east} N={north}")
     print(f"  Conversion origin: E={origin_e} N={origin_n}")
-
-    # Check existing tiles
-    existing = set()
-    bldg_manifest = BUILDINGS_DIR / "manifest.json"
-    if bldg_manifest.exists():
-        with open(bldg_manifest) as f:
-            existing = set(json.load(f).get("tiles", {}).keys())
 
     # Discover building tiles
     print(f"\n  Searching STAC API for building tiles...")
@@ -696,11 +710,9 @@ def run_buildings_pipeline(center_e, center_n, radius, cache_dir,
     buildings_cache = cache_dir / "buildings"
     buildings_cache.mkdir(parents=True, exist_ok=True)
 
-    # Determine Godot Assets subdirectory name based on area
-    # Use the first map sheet number for the subdirectory name
-    sheet_ids = set(t["tile_id"].split("-")[0] for t in new_tiles_to_process)
-    assets_subdir = f"buildings_{'_'.join(sorted(sheet_ids))}"
-    godot_buildings = GODOT_ASSETS_DIR / assets_subdir
+    # All GLBs go in a single Godot Assets directory so the building_loader's
+    # single res:// prefix (buildings_res_prefix) can find them all.
+    godot_buildings = GODOT_ASSETS_DIR / "buildings"
     godot_buildings.mkdir(parents=True, exist_ok=True)
 
     new_manifest_tiles = {}
@@ -987,8 +999,8 @@ Examples:
     if do_buildings:
         run_buildings_pipeline(
             args.center_e, args.center_n, args.radius, cache_dir,
-            origin_e=args.building_origin_e or args.center_e,
-            origin_n=args.building_origin_n or args.center_n,
+            origin_e=args.building_origin_e,  # None = auto-detect from existing manifest
+            origin_n=args.building_origin_n,
             dry_run=args.dry_run, clean_cache=args.clean_cache,
         )
 

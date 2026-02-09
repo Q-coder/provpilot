@@ -18,7 +18,7 @@ class_name BuildingLoader
 @export var buildings_directory: String = "scenery/buildings"
 
 ## Godot res:// prefix for GLB loading (ResourceLoader needs res:// paths)
-@export var buildings_res_prefix: String = "res://Assets/buildings_schaffhausen"
+@export var buildings_res_prefix: String = "res://Assets/buildings"
 
 ## The node to track for position (usually the aircraft)
 @export var aircraft_node: Node3D
