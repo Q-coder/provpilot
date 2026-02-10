@@ -77,6 +77,25 @@
           "threshold_28": { "e": 2684600, "n": 1257050 }
         }
       ]
+    },
+    {
+      "icao": "LSZW",
+      "name": "Thun",
+      "type": "military_airfield",
+      "elevation_m": 560,
+      "center_e": 2612370,
+      "center_n": 1178370,
+      "runways": [
+        {
+          "designator": "06/24",
+          "heading_deg": 60,
+          "length_m": 600,
+          "width_m": 20,
+          "surface": "grass",
+          "threshold_06": { "e": 2612100, "n": 1178220 },
+          "threshold_24": { "e": 2612640, "n": 1178520 }
+        }
+      ]
     }
   ]
 }
