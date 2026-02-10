@@ -28,6 +28,7 @@ func _ready() -> void:
 	exclusive = true
 	unresizable = true
 	transient = true
+	add_theme_font_size_override("title_font_size", 28)
 
 	# Build UI
 	var margin = MarginContainer.new()
