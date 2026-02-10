@@ -88,6 +88,10 @@ var slew_fast_multiplier: float = 5.0  # Speed multiplier when holding boost
 var slew_vertical_speed: float = 60.0  # Vertical movement speed
 var _slew_key_held: bool = false  # Prevent key repeat
 
+# Position dialog (Shift+P)
+var _position_dialog: Window = null
+var _position_key_held: bool = false
+
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	print("Node3D _ready() starting...")
@@ -497,6 +501,14 @@ func _process(delta: float) -> void:
 			toggle_slew_mode()
 	else:
 		_slew_key_held = false
+
+	# Position dialog with Shift+P
+	if Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_P):
+		if not _position_key_held:
+			_position_key_held = true
+			_show_position_dialog()
+	else:
+		_position_key_held = false
 	
 	# Handle slew mode movement
 	if slew_mode:
@@ -1087,3 +1099,103 @@ func format_swiss_coord(value: float) -> String:
 		result = str_val[i] + result
 		count += 1
 	return result
+
+
+# ── Position / Teleport ────────────────────────────────────────────────────
+
+## Show the position dialog (Shift+P)
+func _show_position_dialog() -> void:
+	# Create dialog on first use
+	if _position_dialog == null:
+		var dialog_script = load("res://position_dialog.gd")
+		_position_dialog = Window.new()
+		_position_dialog.set_script(dialog_script)
+		add_child(_position_dialog)
+		_position_dialog.teleport_requested.connect(_on_teleport_requested)
+
+	# Populate airports from POILoader
+	var poi_loader = get_node_or_null("POILoader")
+	if poi_loader and poi_loader.airports.size() > 0:
+		_position_dialog.populate_airports(poi_loader.airports)
+
+	# Show current position
+	var ac_node = get_node_or_null("AC")
+	if ac_node:
+		var pos = ac_node.global_position
+		var swiss_e = TERRAIN_CENTER_E - pos.x
+		var swiss_n = TERRAIN_CENTER_N + pos.z
+		var heading_deg = rad_to_deg(ac_node.rotation.y)
+		# Normalize heading to 0-360
+		if heading_deg < 0:
+			heading_deg += 360.0
+		_position_dialog.set_current_position(swiss_e, swiss_n, heading_deg)
+
+	_position_dialog.popup_centered()
+
+
+## Handle teleport request from the dialog
+func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) -> void:
+	print("=== TELEPORT REQUESTED ===")
+	print("  Target: E=%d N=%d Heading=%.0f°" % [int(swiss_e), int(swiss_n), heading_deg])
+
+	var ac_node = get_node_or_null("AC")
+	if not ac_node or not jsb_node:
+		push_error("Cannot teleport: missing AC or JSBGodot node")
+		return
+
+	# 1. Snap new terrain center to 1024m grid around target
+	var old_center_e = TERRAIN_CENTER_E
+	var old_center_n = TERRAIN_CENTER_N
+	TERRAIN_CENTER_E = roundf(swiss_e / 1024.0) * 1024.0
+	TERRAIN_CENTER_N = roundf(swiss_n / 1024.0) * 1024.0
+
+	# 2. Compute new Godot position from Swiss coords
+	var new_godot_x = TERRAIN_CENTER_E - swiss_e
+	var new_godot_z = swiss_n - TERRAIN_CENTER_N
+
+	# 3. Reload terrain around new center
+	var streamer = get_node_or_null("TerrainStreamer")
+	if streamer and streamer.has_method("rebase_center"):
+		streamer.rebase_center(int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N))
+
+	# 4. Get terrain height at new position
+	var terrain_height := 0.0
+	if is_instance_valid(terrain3d_node):
+		var terrain_data = terrain3d_node.get("data")
+		if terrain_data and terrain_data.has_method("get_height"):
+			var probe_pos = Vector3(new_godot_x, 0.0, new_godot_z)
+			var h = terrain_data.get_height(probe_pos)
+			if not is_nan(h):
+				terrain_height = h
+				print("  Terrain height at target: %.1fm" % terrain_height)
+			else:
+				print("  WARNING: No terrain data at target — using 0m")
+
+	# 5. Place aircraft on terrain with gear clearance
+	var gear_height := 1.5
+	ac_node.global_position = Vector3(new_godot_x, terrain_height + gear_height, new_godot_z)
+	ac_node.rotation.y = deg_to_rad(heading_deg)
+
+	print("  New Godot pos: ", ac_node.global_position)
+	print("  New center: E=%d N=%d" % [int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N)])
+
+	# 6. Shift buildings to match new origin
+	var shift := Vector3(
+		TERRAIN_CENTER_E - old_center_e,
+		0.0,
+		-(TERRAIN_CENTER_N - old_center_n)
+	)
+	if shift != Vector3.ZERO:
+		jsb_node.adjust_origin(shift)
+		var building_loader = get_node_or_null("BuildingLoader")
+		if building_loader and building_loader.has_method("shift_all_buildings"):
+			building_loader.shift_all_buildings(shift)
+
+	# 7. Reinitialize JSBSim at new position
+	if jsb_node.has_method("reinitialize_from_godot_position"):
+		jsb_node.reinitialize_from_godot_position(ac_node.global_position, ac_node.rotation.y)
+
+	# 8. Update terrain elevation for JSBSim
+	_update_terrain_elevation()
+
+	print("=== TELEPORT COMPLETE ===")
