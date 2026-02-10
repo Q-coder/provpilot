@@ -91,6 +91,7 @@ var _slew_key_held: bool = false  # Prevent key repeat
 # Position dialog (Shift+P)
 var _position_dialog: Window = null
 var _position_key_held: bool = false
+var _pre_slew_airspeed_kts: float = 0.0  # saved airspeed for slew mode restore
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
