@@ -62,6 +62,9 @@ func _ready() -> void:
 	_location_picker.add_theme_font_size_override("font_size", 28)
 	_location_picker.custom_minimum_size.y = 56
 	_location_picker.item_selected.connect(_on_location_selected)
+	# Make dropdown popup items larger too
+	var popup = _location_picker.get_popup()
+	popup.add_theme_font_size_override("font_size", 28)
 	vbox.add_child(_location_picker)
 
 	# Separator
