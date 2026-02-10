@@ -1143,22 +1143,43 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 		push_error("Cannot teleport: missing AC or JSBGodot node")
 		return
 
-	# 1. Snap new terrain center to 1024m grid around target
+	# 1. Force JSBSim into slew (pauses physics position updates)
+	if jsb_node.has_method("set_slew_mode"):
+		jsb_node.set_slew_mode(true)
+
+	# 2. Snap new terrain center to 1024m grid around target
 	var old_center_e = TERRAIN_CENTER_E
 	var old_center_n = TERRAIN_CENTER_N
 	TERRAIN_CENTER_E = roundf(swiss_e / 1024.0) * 1024.0
 	TERRAIN_CENTER_N = roundf(swiss_n / 1024.0) * 1024.0
 
-	# 2. Compute new Godot position from Swiss coords
-	var new_godot_x = TERRAIN_CENTER_E - swiss_e
-	var new_godot_z = swiss_n - TERRAIN_CENTER_N
+	# 3. Compute Godot-space shift from center change
+	var shift := Vector3(
+		TERRAIN_CENTER_E - old_center_e,
+		0.0,
+		-(TERRAIN_CENTER_N - old_center_n)
+	)
 
-	# 3. Reload terrain around new center
+	# 4. Update JSBSim's coordinate reference
+	if shift != Vector3.ZERO:
+		jsb_node.adjust_origin(shift)
+
+	# 5. Reload terrain around new center
 	var streamer = get_node_or_null("TerrainStreamer")
 	if streamer and streamer.has_method("rebase_center"):
 		streamer.rebase_center(int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N))
 
-	# 4. Get terrain height at new position
+	# 6. Shift existing building instances
+	if shift != Vector3.ZERO:
+		var building_loader = get_node_or_null("BuildingLoader")
+		if building_loader and building_loader.has_method("shift_all_buildings"):
+			building_loader.shift_all_buildings(shift)
+
+	# 7. Compute new Godot position from Swiss coords
+	var new_godot_x = TERRAIN_CENTER_E - swiss_e
+	var new_godot_z = swiss_n - TERRAIN_CENTER_N
+
+	# 8. Get terrain height at new position
 	var terrain_height := 0.0
 	if is_instance_valid(terrain3d_node):
 		var terrain_data = terrain3d_node.get("data")
@@ -1171,7 +1192,7 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 			else:
 				print("  WARNING: No terrain data at target — using 0m")
 
-	# 5. Place aircraft on terrain with gear clearance
+	# 9. Place aircraft on terrain with gear clearance
 	var gear_height := 1.5
 	ac_node.global_position = Vector3(new_godot_x, terrain_height + gear_height, new_godot_z)
 	ac_node.rotation.y = deg_to_rad(heading_deg)
@@ -1179,23 +1200,15 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	print("  New Godot pos: ", ac_node.global_position)
 	print("  New center: E=%d N=%d" % [int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N)])
 
-	# 6. Shift buildings to match new origin
-	var shift := Vector3(
-		TERRAIN_CENTER_E - old_center_e,
-		0.0,
-		-(TERRAIN_CENTER_N - old_center_n)
-	)
-	if shift != Vector3.ZERO:
-		jsb_node.adjust_origin(shift)
-		var building_loader = get_node_or_null("BuildingLoader")
-		if building_loader and building_loader.has_method("shift_all_buildings"):
-			building_loader.shift_all_buildings(shift)
-
-	# 7. Reinitialize JSBSim at new position
+	# 10. Reinitialize JSBSim at the new position and resume
 	if jsb_node.has_method("reinitialize_from_godot_position"):
 		jsb_node.reinitialize_from_godot_position(ac_node.global_position, ac_node.rotation.y)
-
-	# 8. Update terrain elevation for JSBSim
 	_update_terrain_elevation()
+
+	# 11. Exit slew mode so normal flight resumes
+	if jsb_node.has_method("set_slew_mode"):
+		jsb_node.set_slew_mode(false)
+	slew_mode = false
+	$Control/Label8.text = ""
 
 	print("=== TELEPORT COMPLETE ===")

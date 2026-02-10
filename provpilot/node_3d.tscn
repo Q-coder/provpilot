@@ -7,7 +7,7 @@
 [ext_resource type="Script" uid="uid://dquxbff4b1psj" path="res://building_loader.gd" id="7_bldng"]
 [ext_resource type="Texture2D" uid="uid://tgqmh32fcwbu" path="res://Textures/coast_sand_rocks_02_rough_4k.png" id="7_wc5p8"]
 [ext_resource type="Script" uid="uid://2qlddvn2d0d0" path="res://terrain_streamer.gd" id="8_strm"]
-[ext_resource type="Script" path="res://poi_loader.gd" id="9_poild"]
+[ext_resource type="Script" uid="uid://frvhamoexvx8" path="res://poi_loader.gd" id="9_poild"]
 
 [sub_resource type="Gradient" id="Gradient_wc5p8"]
 offsets = PackedFloat32Array(0.2, 1)
@@ -84,7 +84,7 @@ normal_texture = ExtResource("7_wc5p8")
 mesh_list = Array[Terrain3DMeshAsset]([SubResource("Terrain3DMeshAsset_cdqbm")])
 texture_list = Array[Terrain3DTextureAsset]([SubResource("Terrain3DTextureAsset_wc5p8")])
 
-[node name="Node3D" type="Node3D" unique_id=778369784]
+[node name="node_3d" type="Node3D" unique_id=778369784]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.3009338, 0)
 script = ExtResource("1_1r08c")
 
@@ -192,10 +192,9 @@ metadata/_edit_lock_ = true
 
 [node name="TerrainStreamer" type="Node" parent="." unique_id=540872246]
 script = ExtResource("8_strm")
-tile_directory = "scenery/terrain"
 
 [node name="BuildingLoader" type="Node3D" parent="." unique_id=1549025246]
 script = ExtResource("7_bldng")
 
-[node name="POILoader" type="Node" parent="."]
+[node name="POILoader" type="Node" parent="." unique_id=1327574823]
 script = ExtResource("9_poild")

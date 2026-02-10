@@ -74,6 +74,681 @@
       "file": "buildings_1032-31.glb",
       "center_e": 2692207,
       "center_n": 1279496
+    },
+    "1011-34": {
+      "file": "buildings_1011-34.glb",
+      "center_e": 2679880,
+      "center_n": 1290615
+    },
+    "1011-42": {
+      "file": "buildings_1011-42.glb",
+      "center_e": 2687493,
+      "center_n": 1294196
+    },
+    "1011-43": {
+      "file": "buildings_1011-43.glb",
+      "center_e": 2682522,
+      "center_n": 1291434
+    },
+    "1011-44": {
+      "file": "buildings_1011-44.glb",
+      "center_e": 2687744,
+      "center_n": 1290609
+    },
+    "1012-31": {
+      "file": "buildings_1012-31.glb",
+      "center_e": 2691864,
+      "center_n": 1293466
+    },
+    "1012-33": {
+      "file": "buildings_1012-33.glb",
+      "center_e": 2692149,
+      "center_n": 1290985
+    },
+    "1031-11": {
+      "file": "buildings_1031-11.glb",
+      "center_e": 2676468,
+      "center_n": 1288890
+    },
+    "1031-12": {
+      "file": "buildings_1031-12.glb",
+      "center_e": 2678545,
+      "center_n": 1289118
+    },
+    "1031-13": {
+      "file": "buildings_1031-13.glb",
+      "center_e": 2676028,
+      "center_n": 1284927
+    },
+    "1031-31": {
+      "file": "buildings_1031-31.glb",
+      "center_e": 2676289,
+      "center_n": 1283157
+    },
+    "1031-33": {
+      "file": "buildings_1031-33.glb",
+      "center_e": 2674756,
+      "center_n": 1280101
+    },
+    "1032-33": {
+      "file": "buildings_1032-33.glb",
+      "center_e": 2691587,
+      "center_n": 1279225
+    },
+    "1051-12": {
+      "file": "buildings_1051-12.glb",
+      "center_e": 2678330,
+      "center_n": 1277652
+    },
+    "1051-13": {
+      "file": "buildings_1051-13.glb",
+      "center_e": 2676734,
+      "center_n": 1272435
+    },
+    "1051-14": {
+      "file": "buildings_1051-14.glb",
+      "center_e": 2679766,
+      "center_n": 1272947
+    },
+    "1051-21": {
+      "file": "buildings_1051-21.glb",
+      "center_e": 2682215,
+      "center_n": 1275352
+    },
+    "1051-22": {
+      "file": "buildings_1051-22.glb",
+      "center_e": 2687814,
+      "center_n": 1277027
+    },
+    "1051-23": {
+      "file": "buildings_1051-23.glb",
+      "center_e": 2682777,
+      "center_n": 1274001
+    },
+    "1051-24": {
+      "file": "buildings_1051-24.glb",
+      "center_e": 2687404,
+      "center_n": 1273323
+    },
+    "1052-11": {
+      "file": "buildings_1052-11.glb",
+      "center_e": 2692125,
+      "center_n": 1276350
+    },
+    "1052-13": {
+      "file": "buildings_1052-13.glb",
+      "center_e": 2692893,
+      "center_n": 1272847
+    },
+    "1091-23": {
+      "file": "buildings_1091-23.glb",
+      "center_e": 2683150,
+      "center_n": 1249173
+    },
+    "1050-14": {
+      "file": "buildings_1050-14.glb",
+      "center_e": 2661317,
+      "center_n": 1273074
+    },
+    "1050-23": {
+      "file": "buildings_1050-23.glb",
+      "center_e": 2664171,
+      "center_n": 1272469
+    },
+    "1050-32": {
+      "file": "buildings_1050-32.glb",
+      "center_e": 2661414,
+      "center_n": 1270096
+    },
+    "1050-34": {
+      "file": "buildings_1050-34.glb",
+      "center_e": 2661624,
+      "center_n": 1268448
+    },
+    "1050-41": {
+      "file": "buildings_1050-41.glb",
+      "center_e": 2664958,
+      "center_n": 1270518
+    },
+    "1050-42": {
+      "file": "buildings_1050-42.glb",
+      "center_e": 2669196,
+      "center_n": 1269113
+    },
+    "1050-43": {
+      "file": "buildings_1050-43.glb",
+      "center_e": 2665093,
+      "center_n": 1267509
+    },
+    "1050-44": {
+      "file": "buildings_1050-44.glb",
+      "center_e": 2670179,
+      "center_n": 1267592
+    },
+    "1070-12": {
+      "file": "buildings_1070-12.glb",
+      "center_e": 2661129,
+      "center_n": 1264516
+    },
+    "1070-14": {
+      "file": "buildings_1070-14.glb",
+      "center_e": 2661491,
+      "center_n": 1261090
+    },
+    "1070-21": {
+      "file": "buildings_1070-21.glb",
+      "center_e": 2665888,
+      "center_n": 1264590
+    },
+    "1070-22": {
+      "file": "buildings_1070-22.glb",
+      "center_e": 2669785,
+      "center_n": 1263768
+    },
+    "1070-23": {
+      "file": "buildings_1070-23.glb",
+      "center_e": 2666175,
+      "center_n": 1260818
+    },
+    "1070-24": {
+      "file": "buildings_1070-24.glb",
+      "center_e": 2670227,
+      "center_n": 1261704
+    },
+    "1070-32": {
+      "file": "buildings_1070-32.glb",
+      "center_e": 2661098,
+      "center_n": 1258723
+    },
+    "1070-34": {
+      "file": "buildings_1070-34.glb",
+      "center_e": 2661798,
+      "center_n": 1255732
+    },
+    "1070-41": {
+      "file": "buildings_1070-41.glb",
+      "center_e": 2665998,
+      "center_n": 1258374
+    },
+    "1070-42": {
+      "file": "buildings_1070-42.glb",
+      "center_e": 2671491,
+      "center_n": 1257695
+    },
+    "1070-43": {
+      "file": "buildings_1070-43.glb",
+      "center_e": 2665744,
+      "center_n": 1255617
+    },
+    "1070-44": {
+      "file": "buildings_1070-44.glb",
+      "center_e": 2670255,
+      "center_n": 1255265
+    },
+    "1090-12": {
+      "file": "buildings_1090-12.glb",
+      "center_e": 2661917,
+      "center_n": 1252152
+    },
+    "1090-14": {
+      "file": "buildings_1090-14.glb",
+      "center_e": 2661627,
+      "center_n": 1249211
+    },
+    "1090-21": {
+      "file": "buildings_1090-21.glb",
+      "center_e": 2665937,
+      "center_n": 1252520
+    },
+    "1090-22": {
+      "file": "buildings_1090-22.glb",
+      "center_e": 2670616,
+      "center_n": 1252739
+    },
+    "1090-23": {
+      "file": "buildings_1090-23.glb",
+      "center_e": 2665919,
+      "center_n": 1249540
+    },
+    "1090-24": {
+      "file": "buildings_1090-24.glb",
+      "center_e": 2671055,
+      "center_n": 1249800
+    },
+    "1090-32": {
+      "file": "buildings_1090-32.glb",
+      "center_e": 2661510,
+      "center_n": 1246273
+    },
+    "1090-41": {
+      "file": "buildings_1090-41.glb",
+      "center_e": 2665727,
+      "center_n": 1246798
+    },
+    "1090-42": {
+      "file": "buildings_1090-42.glb",
+      "center_e": 2669862,
+      "center_n": 1246238
+    },
+    "1032-14": {
+      "file": "buildings_1032-14.glb",
+      "center_e": 2696132,
+      "center_n": 1284926
+    },
+    "1032-23": {
+      "file": "buildings_1032-23.glb",
+      "center_e": 2702128,
+      "center_n": 1285459
+    },
+    "1032-32": {
+      "file": "buildings_1032-32.glb",
+      "center_e": 2697781,
+      "center_n": 1282643
+    },
+    "1032-34": {
+      "file": "buildings_1032-34.glb",
+      "center_e": 2696497,
+      "center_n": 1279978
+    },
+    "1032-41": {
+      "file": "buildings_1032-41.glb",
+      "center_e": 2699894,
+      "center_n": 1282147
+    },
+    "1032-43": {
+      "file": "buildings_1032-43.glb",
+      "center_e": 2700340,
+      "center_n": 1279700
+    },
+    "1032-44": {
+      "file": "buildings_1032-44.glb",
+      "center_e": 2706209,
+      "center_n": 1279537
+    },
+    "1051-31": {
+      "file": "buildings_1051-31.glb",
+      "center_e": 2674102,
+      "center_n": 1269117
+    },
+    "1051-32": {
+      "file": "buildings_1051-32.glb",
+      "center_e": 2679361,
+      "center_n": 1270425
+    },
+    "1051-33": {
+      "file": "buildings_1051-33.glb",
+      "center_e": 2674879,
+      "center_n": 1267999
+    },
+    "1051-34": {
+      "file": "buildings_1051-34.glb",
+      "center_e": 2679326,
+      "center_n": 1267624
+    },
+    "1051-41": {
+      "file": "buildings_1051-41.glb",
+      "center_e": 2682988,
+      "center_n": 1270046
+    },
+    "1051-42": {
+      "file": "buildings_1051-42.glb",
+      "center_e": 2687792,
+      "center_n": 1270156
+    },
+    "1051-43": {
+      "file": "buildings_1051-43.glb",
+      "center_e": 2683850,
+      "center_n": 1267361
+    },
+    "1051-44": {
+      "file": "buildings_1051-44.glb",
+      "center_e": 2688620,
+      "center_n": 1267475
+    },
+    "1052-12": {
+      "file": "buildings_1052-12.glb",
+      "center_e": 2696642,
+      "center_n": 1276237
+    },
+    "1052-14": {
+      "file": "buildings_1052-14.glb",
+      "center_e": 2696616,
+      "center_n": 1273944
+    },
+    "1052-21": {
+      "file": "buildings_1052-21.glb",
+      "center_e": 2701355,
+      "center_n": 1276660
+    },
+    "1052-22": {
+      "file": "buildings_1052-22.glb",
+      "center_e": 2704913,
+      "center_n": 1276145
+    },
+    "1052-23": {
+      "file": "buildings_1052-23.glb",
+      "center_e": 2700840,
+      "center_n": 1273431
+    },
+    "1052-24": {
+      "file": "buildings_1052-24.glb",
+      "center_e": 2705321,
+      "center_n": 1273442
+    },
+    "1052-31": {
+      "file": "buildings_1052-31.glb",
+      "center_e": 2692612,
+      "center_n": 1270464
+    },
+    "1052-32": {
+      "file": "buildings_1052-32.glb",
+      "center_e": 2696698,
+      "center_n": 1270580
+    },
+    "1052-33": {
+      "file": "buildings_1052-33.glb",
+      "center_e": 2693043,
+      "center_n": 1267579
+    },
+    "1052-34": {
+      "file": "buildings_1052-34.glb",
+      "center_e": 2696638,
+      "center_n": 1267194
+    },
+    "1052-41": {
+      "file": "buildings_1052-41.glb",
+      "center_e": 2700581,
+      "center_n": 1270146
+    },
+    "1052-42": {
+      "file": "buildings_1052-42.glb",
+      "center_e": 2705215,
+      "center_n": 1270205
+    },
+    "1052-43": {
+      "file": "buildings_1052-43.glb",
+      "center_e": 2701088,
+      "center_n": 1267319
+    },
+    "1052-44": {
+      "file": "buildings_1052-44.glb",
+      "center_e": 2705460,
+      "center_n": 1267307
+    },
+    "1071-11": {
+      "file": "buildings_1071-11.glb",
+      "center_e": 2675044,
+      "center_n": 1264620
+    },
+    "1071-12": {
+      "file": "buildings_1071-12.glb",
+      "center_e": 2678739,
+      "center_n": 1264412
+    },
+    "1071-13": {
+      "file": "buildings_1071-13.glb",
+      "center_e": 2674686,
+      "center_n": 1261309
+    },
+    "1071-14": {
+      "file": "buildings_1071-14.glb",
+      "center_e": 2679174,
+      "center_n": 1261602
+    },
+    "1071-21": {
+      "file": "buildings_1071-21.glb",
+      "center_e": 2683308,
+      "center_n": 1264073
+    },
+    "1071-22": {
+      "file": "buildings_1071-22.glb",
+      "center_e": 2686909,
+      "center_n": 1264523
+    },
+    "1071-23": {
+      "file": "buildings_1071-23.glb",
+      "center_e": 2683573,
+      "center_n": 1261768
+    },
+    "1071-24": {
+      "file": "buildings_1071-24.glb",
+      "center_e": 2687578,
+      "center_n": 1261546
+    },
+    "1071-31": {
+      "file": "buildings_1071-31.glb",
+      "center_e": 2675352,
+      "center_n": 1258613
+    },
+    "1071-32": {
+      "file": "buildings_1071-32.glb",
+      "center_e": 2679438,
+      "center_n": 1258723
+    },
+    "1071-33": {
+      "file": "buildings_1071-33.glb",
+      "center_e": 2674917,
+      "center_n": 1255650
+    },
+    "1071-34": {
+      "file": "buildings_1071-34.glb",
+      "center_e": 2678062,
+      "center_n": 1255340
+    },
+    "1071-41": {
+      "file": "buildings_1071-41.glb",
+      "center_e": 2683134,
+      "center_n": 1258932
+    },
+    "1071-42": {
+      "file": "buildings_1071-42.glb",
+      "center_e": 2687115,
+      "center_n": 1258083
+    },
+    "1071-43": {
+      "file": "buildings_1071-43.glb",
+      "center_e": 2683394,
+      "center_n": 1255411
+    },
+    "1071-44": {
+      "file": "buildings_1071-44.glb",
+      "center_e": 2687705,
+      "center_n": 1255711
+    },
+    "1072-11": {
+      "file": "buildings_1072-11.glb",
+      "center_e": 2692153,
+      "center_n": 1264108
+    },
+    "1072-12": {
+      "file": "buildings_1072-12.glb",
+      "center_e": 2696541,
+      "center_n": 1264665
+    },
+    "1072-13": {
+      "file": "buildings_1072-13.glb",
+      "center_e": 2692616,
+      "center_n": 1262046
+    },
+    "1072-14": {
+      "file": "buildings_1072-14.glb",
+      "center_e": 2696674,
+      "center_n": 1261752
+    },
+    "1072-21": {
+      "file": "buildings_1072-21.glb",
+      "center_e": 2700658,
+      "center_n": 1264385
+    },
+    "1072-22": {
+      "file": "buildings_1072-22.glb",
+      "center_e": 2705371,
+      "center_n": 1264504
+    },
+    "1072-23": {
+      "file": "buildings_1072-23.glb",
+      "center_e": 2700443,
+      "center_n": 1261590
+    },
+    "1072-24": {
+      "file": "buildings_1072-24.glb",
+      "center_e": 2705553,
+      "center_n": 1261597
+    },
+    "1072-31": {
+      "file": "buildings_1072-31.glb",
+      "center_e": 2692042,
+      "center_n": 1258165
+    },
+    "1072-32": {
+      "file": "buildings_1072-32.glb",
+      "center_e": 2695655,
+      "center_n": 1259029
+    },
+    "1072-33": {
+      "file": "buildings_1072-33.glb",
+      "center_e": 2692007,
+      "center_n": 1255339
+    },
+    "1072-34": {
+      "file": "buildings_1072-34.glb",
+      "center_e": 2695868,
+      "center_n": 1255571
+    },
+    "1072-41": {
+      "file": "buildings_1072-41.glb",
+      "center_e": 2700595,
+      "center_n": 1258632
+    },
+    "1072-42": {
+      "file": "buildings_1072-42.glb",
+      "center_e": 2705124,
+      "center_n": 1258527
+    },
+    "1072-43": {
+      "file": "buildings_1072-43.glb",
+      "center_e": 2701229,
+      "center_n": 1255284
+    },
+    "1072-44": {
+      "file": "buildings_1072-44.glb",
+      "center_e": 2705588,
+      "center_n": 1255324
+    },
+    "1091-11": {
+      "file": "buildings_1091-11.glb",
+      "center_e": 2674512,
+      "center_n": 1252244
+    },
+    "1091-12": {
+      "file": "buildings_1091-12.glb",
+      "center_e": 2678976,
+      "center_n": 1252270
+    },
+    "1091-13": {
+      "file": "buildings_1091-13.glb",
+      "center_e": 2674593,
+      "center_n": 1249801
+    },
+    "1091-14": {
+      "file": "buildings_1091-14.glb",
+      "center_e": 2679498,
+      "center_n": 1249470
+    },
+    "1091-21": {
+      "file": "buildings_1091-21.glb",
+      "center_e": 2683637,
+      "center_n": 1252219
+    },
+    "1091-22": {
+      "file": "buildings_1091-22.glb",
+      "center_e": 2687743,
+      "center_n": 1252408
+    },
+    "1091-24": {
+      "file": "buildings_1091-24.glb",
+      "center_e": 2688270,
+      "center_n": 1249937
+    },
+    "1091-31": {
+      "file": "buildings_1091-31.glb",
+      "center_e": 2675705,
+      "center_n": 1246309
+    },
+    "1091-32": {
+      "file": "buildings_1091-32.glb",
+      "center_e": 2679754,
+      "center_n": 1246828
+    },
+    "1091-41": {
+      "file": "buildings_1091-41.glb",
+      "center_e": 2683491,
+      "center_n": 1246814
+    },
+    "1091-42": {
+      "file": "buildings_1091-42.glb",
+      "center_e": 2687124,
+      "center_n": 1245994
+    },
+    "1092-11": {
+      "file": "buildings_1092-11.glb",
+      "center_e": 2692181,
+      "center_n": 1252635
+    },
+    "1092-12": {
+      "file": "buildings_1092-12.glb",
+      "center_e": 2696370,
+      "center_n": 1252381
+    },
+    "1092-13": {
+      "file": "buildings_1092-13.glb",
+      "center_e": 2692274,
+      "center_n": 1249290
+    },
+    "1092-14": {
+      "file": "buildings_1092-14.glb",
+      "center_e": 2696092,
+      "center_n": 1249404
+    },
+    "1092-21": {
+      "file": "buildings_1092-21.glb",
+      "center_e": 2700934,
+      "center_n": 1252711
+    },
+    "1092-22": {
+      "file": "buildings_1092-22.glb",
+      "center_e": 2705419,
+      "center_n": 1252877
+    },
+    "1092-23": {
+      "file": "buildings_1092-23.glb",
+      "center_e": 2700379,
+      "center_n": 1249572
+    },
+    "1092-24": {
+      "file": "buildings_1092-24.glb",
+      "center_e": 2706046,
+      "center_n": 1249370
+    },
+    "1092-31": {
+      "file": "buildings_1092-31.glb",
+      "center_e": 2691748,
+      "center_n": 1246712
+    },
+    "1092-32": {
+      "file": "buildings_1092-32.glb",
+      "center_e": 2696498,
+      "center_n": 1245928
+    },
+    "1092-41": {
+      "file": "buildings_1092-41.glb",
+      "center_e": 2701542,
+      "center_n": 1247012
+    },
+    "1092-42": {
+      "file": "buildings_1092-42.glb",
+      "center_e": 2704954,
+      "center_n": 1246861
     }
   }
 }

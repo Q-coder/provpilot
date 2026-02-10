@@ -24,7 +24,7 @@ var _airports: Array[Dictionary] = []
 
 func _ready() -> void:
 	title = "Set Aircraft Position"
-	size = Vector2i(420, 380)
+	size = Vector2i(640, 520)
 	exclusive = true
 	unresizable = true
 	transient = true
@@ -32,20 +32,20 @@ func _ready() -> void:
 	# Build UI
 	var margin = MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 16)
-	margin.add_theme_constant_override("margin_right", 16)
-	margin.add_theme_constant_override("margin_top", 12)
-	margin.add_theme_constant_override("margin_bottom", 12)
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_bottom", 20)
 	add_child(margin)
 
 	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
+	vbox.add_theme_constant_override("separation", 12)
 	margin.add_child(vbox)
 
 	# Current position
 	_current_pos_label = Label.new()
 	_current_pos_label.text = "Current: —"
-	_current_pos_label.add_theme_font_size_override("font_size", 13)
+	_current_pos_label.add_theme_font_size_override("font_size", 18)
 	vbox.add_child(_current_pos_label)
 
 	# Separator
@@ -54,10 +54,13 @@ func _ready() -> void:
 	# Saved locations dropdown
 	var loc_label = Label.new()
 	loc_label.text = "Saved Locations:"
+	loc_label.add_theme_font_size_override("font_size", 16)
 	vbox.add_child(loc_label)
 
 	_location_picker = OptionButton.new()
 	_location_picker.add_item("— Select location —", 0)
+	_location_picker.add_theme_font_size_override("font_size", 16)
+	_location_picker.custom_minimum_size.y = 36
 	_location_picker.item_selected.connect(_on_location_selected)
 	vbox.add_child(_location_picker)
 
@@ -67,17 +70,21 @@ func _ready() -> void:
 	# Manual coordinates
 	var coord_label = Label.new()
 	coord_label.text = "Swiss LV95 Coordinates:"
+	coord_label.add_theme_font_size_override("font_size", 16)
 	vbox.add_child(coord_label)
 
 	# Easting
 	var e_hbox = HBoxContainer.new()
 	var e_label = Label.new()
 	e_label.text = "Easting (E):"
-	e_label.custom_minimum_size.x = 100
+	e_label.custom_minimum_size.x = 130
+	e_label.add_theme_font_size_override("font_size", 16)
 	e_hbox.add_child(e_label)
 	_easting_input = LineEdit.new()
 	_easting_input.placeholder_text = "e.g. 2693200"
 	_easting_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_easting_input.add_theme_font_size_override("font_size", 16)
+	_easting_input.custom_minimum_size.y = 36
 	e_hbox.add_child(_easting_input)
 	vbox.add_child(e_hbox)
 
@@ -85,11 +92,14 @@ func _ready() -> void:
 	var n_hbox = HBoxContainer.new()
 	var n_label = Label.new()
 	n_label.text = "Northing (N):"
-	n_label.custom_minimum_size.x = 100
+	n_label.custom_minimum_size.x = 130
+	n_label.add_theme_font_size_override("font_size", 16)
 	n_hbox.add_child(n_label)
 	_northing_input = LineEdit.new()
 	_northing_input.placeholder_text = "e.g. 1265300"
 	_northing_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_northing_input.add_theme_font_size_override("font_size", 16)
+	_northing_input.custom_minimum_size.y = 36
 	n_hbox.add_child(_northing_input)
 	vbox.add_child(n_hbox)
 
@@ -97,12 +107,15 @@ func _ready() -> void:
 	var h_hbox = HBoxContainer.new()
 	var h_label = Label.new()
 	h_label.text = "Heading (°):"
-	h_label.custom_minimum_size.x = 100
+	h_label.custom_minimum_size.x = 130
+	h_label.add_theme_font_size_override("font_size", 16)
 	h_hbox.add_child(h_label)
 	_heading_input = LineEdit.new()
 	_heading_input.placeholder_text = "0-360 (default: 0)"
 	_heading_input.text = "0"
 	_heading_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_heading_input.add_theme_font_size_override("font_size", 16)
+	_heading_input.custom_minimum_size.y = 36
 	h_hbox.add_child(_heading_input)
 	vbox.add_child(h_hbox)
 
@@ -120,13 +133,15 @@ func _ready() -> void:
 
 	var cancel_btn = Button.new()
 	cancel_btn.text = "Cancel"
-	cancel_btn.custom_minimum_size.x = 90
+	cancel_btn.custom_minimum_size = Vector2(110, 38)
+	cancel_btn.add_theme_font_size_override("font_size", 16)
 	cancel_btn.pressed.connect(_on_cancel)
 	btn_hbox.add_child(cancel_btn)
 
 	var teleport_btn = Button.new()
 	teleport_btn.text = "Teleport"
-	teleport_btn.custom_minimum_size.x = 90
+	teleport_btn.custom_minimum_size = Vector2(110, 38)
+	teleport_btn.add_theme_font_size_override("font_size", 16)
 	teleport_btn.pressed.connect(_on_teleport)
 	btn_hbox.add_child(teleport_btn)
 
