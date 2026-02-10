@@ -46,29 +46,35 @@
       "name": "Zurich Airport",
       "type": "international_airport",
       "elevation_m": 432,
-      "center_e": 2685000,
-      "center_n": 1259000,
+      "center_e": 2683650,
+      "center_n": 1257000,
       "runways": [
         {
           "designator": "14/32",
           "heading_deg": 143,
           "length_m": 3700,
           "width_m": 60,
-          "surface": "asphalt"
+          "surface": "asphalt",
+          "threshold_14": { "e": 2683250, "n": 1259000 },
+          "threshold_32": { "e": 2685100, "n": 1256300 }
         },
         {
           "designator": "16/34",
           "heading_deg": 163,
           "length_m": 3300,
           "width_m": 60,
-          "surface": "asphalt"
+          "surface": "asphalt",
+          "threshold_16": { "e": 2684850, "n": 1259100 },
+          "threshold_34": { "e": 2684350, "n": 1256200 }
         },
         {
           "designator": "10/28",
           "heading_deg": 100,
           "length_m": 2500,
           "width_m": 60,
-          "surface": "asphalt"
+          "surface": "asphalt",
+          "threshold_10": { "e": 2682050, "n": 1257500 },
+          "threshold_28": { "e": 2684600, "n": 1257050 }
         }
       ]
     }

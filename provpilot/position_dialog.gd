@@ -24,7 +24,7 @@ var _airports: Array[Dictionary] = []
 
 func _ready() -> void:
 	title = "Set Aircraft Position"
-	size = Vector2i(640, 520)
+	size = Vector2i(800, 600)
 	exclusive = true
 	unresizable = true
 	transient = true
@@ -32,20 +32,20 @@ func _ready() -> void:
 	# Build UI
 	var margin = MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 24)
-	margin.add_theme_constant_override("margin_right", 24)
-	margin.add_theme_constant_override("margin_top", 20)
-	margin.add_theme_constant_override("margin_bottom", 20)
+	margin.add_theme_constant_override("margin_left", 32)
+	margin.add_theme_constant_override("margin_right", 32)
+	margin.add_theme_constant_override("margin_top", 28)
+	margin.add_theme_constant_override("margin_bottom", 28)
 	add_child(margin)
 
 	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 12)
+	vbox.add_theme_constant_override("separation", 16)
 	margin.add_child(vbox)
 
 	# Current position
 	_current_pos_label = Label.new()
 	_current_pos_label.text = "Current: —"
-	_current_pos_label.add_theme_font_size_override("font_size", 18)
+	_current_pos_label.add_theme_font_size_override("font_size", 22)
 	vbox.add_child(_current_pos_label)
 
 	# Separator
@@ -54,13 +54,13 @@ func _ready() -> void:
 	# Saved locations dropdown
 	var loc_label = Label.new()
 	loc_label.text = "Saved Locations:"
-	loc_label.add_theme_font_size_override("font_size", 16)
+	loc_label.add_theme_font_size_override("font_size", 20)
 	vbox.add_child(loc_label)
 
 	_location_picker = OptionButton.new()
 	_location_picker.add_item("— Select location —", 0)
-	_location_picker.add_theme_font_size_override("font_size", 16)
-	_location_picker.custom_minimum_size.y = 36
+	_location_picker.add_theme_font_size_override("font_size", 20)
+	_location_picker.custom_minimum_size.y = 44
 	_location_picker.item_selected.connect(_on_location_selected)
 	vbox.add_child(_location_picker)
 
@@ -70,21 +70,21 @@ func _ready() -> void:
 	# Manual coordinates
 	var coord_label = Label.new()
 	coord_label.text = "Swiss LV95 Coordinates:"
-	coord_label.add_theme_font_size_override("font_size", 16)
+	coord_label.add_theme_font_size_override("font_size", 20)
 	vbox.add_child(coord_label)
 
 	# Easting
 	var e_hbox = HBoxContainer.new()
 	var e_label = Label.new()
 	e_label.text = "Easting (E):"
-	e_label.custom_minimum_size.x = 130
-	e_label.add_theme_font_size_override("font_size", 16)
+	e_label.custom_minimum_size.x = 160
+	e_label.add_theme_font_size_override("font_size", 20)
 	e_hbox.add_child(e_label)
 	_easting_input = LineEdit.new()
 	_easting_input.placeholder_text = "e.g. 2693200"
 	_easting_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_easting_input.add_theme_font_size_override("font_size", 16)
-	_easting_input.custom_minimum_size.y = 36
+	_easting_input.add_theme_font_size_override("font_size", 20)
+	_easting_input.custom_minimum_size.y = 44
 	e_hbox.add_child(_easting_input)
 	vbox.add_child(e_hbox)
 
@@ -92,14 +92,14 @@ func _ready() -> void:
 	var n_hbox = HBoxContainer.new()
 	var n_label = Label.new()
 	n_label.text = "Northing (N):"
-	n_label.custom_minimum_size.x = 130
-	n_label.add_theme_font_size_override("font_size", 16)
+	n_label.custom_minimum_size.x = 160
+	n_label.add_theme_font_size_override("font_size", 20)
 	n_hbox.add_child(n_label)
 	_northing_input = LineEdit.new()
 	_northing_input.placeholder_text = "e.g. 1265300"
 	_northing_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_northing_input.add_theme_font_size_override("font_size", 16)
-	_northing_input.custom_minimum_size.y = 36
+	_northing_input.add_theme_font_size_override("font_size", 20)
+	_northing_input.custom_minimum_size.y = 44
 	n_hbox.add_child(_northing_input)
 	vbox.add_child(n_hbox)
 
@@ -107,15 +107,15 @@ func _ready() -> void:
 	var h_hbox = HBoxContainer.new()
 	var h_label = Label.new()
 	h_label.text = "Heading (°):"
-	h_label.custom_minimum_size.x = 130
-	h_label.add_theme_font_size_override("font_size", 16)
+	h_label.custom_minimum_size.x = 160
+	h_label.add_theme_font_size_override("font_size", 20)
 	h_hbox.add_child(h_label)
 	_heading_input = LineEdit.new()
 	_heading_input.placeholder_text = "0-360 (default: 0)"
 	_heading_input.text = "0"
 	_heading_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_heading_input.add_theme_font_size_override("font_size", 16)
-	_heading_input.custom_minimum_size.y = 36
+	_heading_input.add_theme_font_size_override("font_size", 20)
+	_heading_input.custom_minimum_size.y = 44
 	h_hbox.add_child(_heading_input)
 	vbox.add_child(h_hbox)
 
@@ -123,25 +123,25 @@ func _ready() -> void:
 	_status_label = Label.new()
 	_status_label.text = ""
 	_status_label.add_theme_color_override("font_color", Color.ORANGE_RED)
-	_status_label.add_theme_font_size_override("font_size", 12)
+	_status_label.add_theme_font_size_override("font_size", 16)
 	vbox.add_child(_status_label)
 
 	# Buttons
 	var btn_hbox = HBoxContainer.new()
 	btn_hbox.alignment = BoxContainer.ALIGNMENT_END
-	btn_hbox.add_theme_constant_override("separation", 12)
+	btn_hbox.add_theme_constant_override("separation", 16)
 
 	var cancel_btn = Button.new()
 	cancel_btn.text = "Cancel"
-	cancel_btn.custom_minimum_size = Vector2(110, 38)
-	cancel_btn.add_theme_font_size_override("font_size", 16)
+	cancel_btn.custom_minimum_size = Vector2(130, 44)
+	cancel_btn.add_theme_font_size_override("font_size", 20)
 	cancel_btn.pressed.connect(_on_cancel)
 	btn_hbox.add_child(cancel_btn)
 
 	var teleport_btn = Button.new()
 	teleport_btn.text = "Teleport"
-	teleport_btn.custom_minimum_size = Vector2(110, 38)
-	teleport_btn.add_theme_font_size_override("font_size", 16)
+	teleport_btn.custom_minimum_size = Vector2(130, 44)
+	teleport_btn.add_theme_font_size_override("font_size", 20)
 	teleport_btn.pressed.connect(_on_teleport)
 	btn_hbox.add_child(teleport_btn)
 
@@ -176,13 +176,26 @@ func _on_location_selected(index: int) -> void:
 		return
 
 	var ap = _airports[index - 1]
-	_easting_input.text = str(ap.get("center_e", 0))
-	_northing_input.text = str(ap.get("center_n", 0))
-
-	# Use first runway heading if available
 	var runways = ap.get("runways", [])
+
+	# Prefer first runway threshold (puts you ON the runway)
 	if runways.size() > 0:
-		_heading_input.text = str(runways[0].get("heading_deg", 0))
+		var rwy = runways[0]
+		var desig = rwy.get("designator", "")
+		var first_rwy = desig.split("/")[0] if "/" in desig else desig
+		var threshold_key = "threshold_" + first_rwy
+		var threshold = rwy.get(threshold_key, {})
+		if threshold.has("e") and threshold.has("n"):
+			_easting_input.text = str(threshold["e"])
+			_northing_input.text = str(threshold["n"])
+		else:
+			# Fallback to airport center
+			_easting_input.text = str(ap.get("center_e", 0))
+			_northing_input.text = str(ap.get("center_n", 0))
+		_heading_input.text = str(rwy.get("heading_deg", 0))
+	else:
+		_easting_input.text = str(ap.get("center_e", 0))
+		_northing_input.text = str(ap.get("center_n", 0))
 
 	_status_label.text = ""
 
