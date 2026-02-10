@@ -59,6 +59,7 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("set_slew_mode", "enabled"), &JSBGodot::set_slew_mode);
     ClassDB::bind_method(D_METHOD("get_slew_mode"), &JSBGodot::get_slew_mode);
     ClassDB::bind_method(D_METHOD("reinitialize_from_godot_position", "godot_pos", "heading_rad"), &JSBGodot::reinitialize_from_godot_position);
+    ClassDB::bind_method(D_METHOD("reinitialize_from_godot_position_with_speed", "godot_pos", "heading_rad", "airspeed_kts"), &JSBGodot::reinitialize_from_godot_position_with_speed);
     ClassDB::bind_method(D_METHOD("adjust_origin", "godot_shift"), &JSBGodot::adjust_origin);
     ClassDB::bind_method(D_METHOD("set_godot_terrain_y_offset", "offset_m"), &JSBGodot::set_godot_terrain_y_offset);
     ClassDB::bind_method(D_METHOD("get_godot_terrain_y_offset"), &JSBGodot::get_godot_terrain_y_offset);
@@ -440,6 +441,57 @@ void JSBGodot::reinitialize_from_godot_position(Vector3 godot_pos, double headin
     FDMExec->SetPropertyValue("propulsion/magneto_cmd", 3);
     
     UtilityFunctions::print("JSBSim reinitialized from Godot position successfully!");
+}
+
+void JSBGodot::reinitialize_from_godot_position_with_speed(Vector3 godot_pos, double heading_rad, double airspeed_kts)
+{
+    if (!FDMExec)
+    {
+        UtilityFunctions::print("Cannot reinitialize: FDMExec not created");
+        return;
+    }
+    
+    double altitude_m = godot_pos.y;
+    double altitude_ft = altitude_m * 3.28084;
+    double terrain_ft = (altitude_m - 2.0) * 3.28084;
+    
+    UtilityFunctions::print("Reinitializing JSBSim with speed:");
+    UtilityFunctions::print("  Godot pos: X=", godot_pos.x, " Y=", godot_pos.y, " Z=", godot_pos.z);
+    UtilityFunctions::print("  Heading: ", Math::rad_to_deg(heading_rad), " deg");
+    UtilityFunctions::print("  Airspeed: ", airspeed_kts, " kts");
+    
+    std::shared_ptr<JSBSim::FGInitialCondition> ic = FDMExec->GetIC();
+    
+    const double R = 6378137.0;
+    double cos_ref = cos(g_ref_lat_rad);
+    if (cos_ref < 1e-10) cos_ref = 1e-10;
+    
+    double new_lat_rad = g_ref_lat_rad + godot_pos.z / R;
+    double new_lon_rad = g_ref_lon_rad + godot_pos.x / (R * cos_ref);
+    
+    ic->SetTerrainElevationFtIC(terrain_ft);
+    ic->SetLatitudeDegIC(Math::rad_to_deg(new_lat_rad));
+    ic->SetLongitudeDegIC(Math::rad_to_deg(new_lon_rad));
+    ic->SetAltitudeASLFtIC(altitude_ft);
+    
+    // Preserve pitch/roll from current state, set heading
+    double current_pitch = FDMExec->GetPropagate()->GetEuler(2);
+    double current_roll = FDMExec->GetPropagate()->GetEuler(1);
+    ic->SetThetaDegIC(Math::rad_to_deg(current_pitch));
+    ic->SetPhiDegIC(Math::rad_to_deg(current_roll));
+    ic->SetPsiDegIC(Math::rad_to_deg(heading_rad));
+    
+    // Set calibrated airspeed instead of zero body velocities
+    ic->SetVcalibratedKtsIC(airspeed_kts);
+    
+    FDMExec->RunIC();
+    
+    // Ensure engine is running
+    FDMExec->SetPropertyValue("propulsion/engine[0]/set-running", 1);
+    FDMExec->SetPropertyValue("fcs/mixture-cmd-norm", 1.0);
+    FDMExec->SetPropertyValue("propulsion/magneto_cmd", 3);
+    
+    UtilityFunctions::print("JSBSim reinitialized with speed successfully!");
 }
 
 void JSBGodot::set_godot_terrain_y_offset(double offset_m)

@@ -576,7 +576,11 @@ func toggle_slew_mode() -> void:
 		jsb_node.set_slew_mode(slew_mode)
 	
 	if slew_mode:
+		# Save current airspeed before entering slew
+		if jsb_node:
+			_pre_slew_airspeed_kts = jsb_node.get_airspeed_knots()
 		print("=== SLEW MODE ENABLED ===")
+		print("  Saved airspeed: %.1f kts" % _pre_slew_airspeed_kts)
 		print("  Controls:")
 		print("    Left stick / WASD: Move horizontally")
 		print("    Right stick Y / Q,E: Move up/down")
@@ -587,16 +591,19 @@ func toggle_slew_mode() -> void:
 		print("=== SLEW MODE DISABLED ===")
 		# Clear slew-only HUD elements
 		$Control/Label8.text = ""
-		# Re-initialize JSBSim at new position
+		# Re-initialize JSBSim at new position with saved airspeed
 		var ac_node = $AC
 		if ac_node and jsb_node:
 			var pos = ac_node.global_position
 			var heading = ac_node.rotation.y
 			print("  Reinitializing JSBSim at Godot position: ", pos)
 			print("  Heading: ", rad_to_deg(heading), " degrees")
+			print("  Restoring airspeed: %.1f kts" % _pre_slew_airspeed_kts)
 			
-			# Call JSBGodot to reinitialize at new position
-			if jsb_node.has_method("reinitialize_from_godot_position"):
+			# Reinitialize with preserved airspeed
+			if jsb_node.has_method("reinitialize_from_godot_position_with_speed"):
+				jsb_node.reinitialize_from_godot_position_with_speed(pos, heading, _pre_slew_airspeed_kts)
+			elif jsb_node.has_method("reinitialize_from_godot_position"):
 				jsb_node.reinitialize_from_godot_position(pos, heading)
 			
 			# Update terrain elevation at new position
