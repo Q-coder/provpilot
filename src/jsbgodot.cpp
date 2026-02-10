@@ -25,6 +25,13 @@ Vector3 lat_lon_alt_to_local(float latitude, float longitude, float altitude);
 void reset_lat_lon_reference(double new_ref_lat_deg, double new_ref_lon_deg);
 void adjust_lat_lon_reference(double godot_shift_x, double godot_shift_z);
 
+// Shared static state for lat/lon <-> local coordinate conversion.
+// Declared here so reinitialize_from_godot_position can access them.
+static bool   g_reference_set = false;
+static double g_ref_lat_rad = 0.0;
+static double g_ref_lon_rad = 0.0;
+static double g_ref_alt = 0.0;
+
 void JSBGodot::_bind_methods()
 {
     // Don't bind _process - it's a virtual method that's automatically overridden
@@ -380,8 +387,6 @@ void JSBGodot::reinitialize_from_godot_position(Vector3 godot_pos, double headin
     double altitude_ft = altitude_m * 3.28084;
     
     // Query terrain height at current position for terrain elevation
-    // We'll use the current aircraft altitude minus a small buffer as a reasonable terrain estimate
-    // The caller should provide accurate terrain info if available
     double terrain_ft = (altitude_m - 2.0) * 3.28084;  // Assume 2m AGL as default
     
     UtilityFunctions::print("Reinitializing JSBSim from Godot position:");
@@ -391,20 +396,19 @@ void JSBGodot::reinitialize_from_godot_position(Vector3 godot_pos, double headin
     
     std::shared_ptr<JSBSim::FGInitialCondition> ic = FDMExec->GetIC();
     
-    // Convert Godot XZ to lat/lon offsets
-    // Godot X = east offset, Godot Z = north offset
-    // We use the same reference point conversion as lat_lon_alt_to_local
-    const double R = 6378137.0; // Earth's radius in meters
+    // Convert Godot XZ back to lat/lon using the SAME reference as
+    // lat_lon_alt_to_local (exact inverse of that function).
+    //   godot_x = (lon - ref_lon) * R * cos(ref_lat)   => lon = ref_lon + godot_x / (R * cos(ref_lat))
+    //   godot_z = (lat - ref_lat) * R                   => lat = ref_lat + godot_z / R
+    const double R = 6378137.0;
+    double cos_ref = cos(g_ref_lat_rad);
+    if (cos_ref < 1e-10) cos_ref = 1e-10;  // safety
     
-    // Reverse the conversion: lat/lon from local offsets
-    // north = d_lat * R  =>  d_lat = north / R
-    // east = d_lon * R * cos(ref_lat)  =>  d_lon = east / (R * cos(ref_lat))
-    // For simplicity, since we start at lat=0, cos(0) = 1
-    double d_lat_rad = godot_pos.z / R;  // Z is north
-    double d_lon_rad = godot_pos.x / R;  // X is east
+    double new_lat_rad = g_ref_lat_rad + godot_pos.z / R;
+    double new_lon_rad = g_ref_lon_rad + godot_pos.x / (R * cos_ref);
     
-    double new_lat_deg = Math::rad_to_deg(d_lat_rad);
-    double new_lon_deg = Math::rad_to_deg(d_lon_rad);
+    double new_lat_deg = Math::rad_to_deg(new_lat_rad);
+    double new_lon_deg = Math::rad_to_deg(new_lon_rad);
     
     UtilityFunctions::print("  New lat/lon: ", new_lat_deg, ", ", new_lon_deg);
     
@@ -688,6 +692,11 @@ void JSBGodot::_physics_process(const real_t delta)
             return;
         }
         
+        // Skip physics simulation entirely in slew mode
+        if (slew_mode) {
+            return;
+        }
+        
         // Apply continuous throttle from triggers
         if (trigger_right_value > 0.1f) {
             set_input_throttle(input_throttle + trigger_right_value * 0.005f);
@@ -837,14 +846,6 @@ Vector3 lat_lon_alt_to_cartesian(float latitude, float longitude, float altitude
 
     return Vector3(x, y, z);
 }
-
-// Shared static state for lat/lon ↔ local coordinate conversion.
-// These are file-scope so both lat_lon_alt_to_local and reset_lat_lon_reference
-// can access them.
-static bool   g_reference_set = false;
-static double g_ref_lat_rad = 0.0;
-static double g_ref_lon_rad = 0.0;
-static double g_ref_alt = 0.0;
 
 Vector3 lat_lon_alt_to_local(float latitude, float longitude, float altitude)
 {
