@@ -206,7 +206,7 @@ def main():
                         metavar=('WEST', 'SOUTH', 'EAST', 'NORTH'),
                         help='Bounds in LV95 coordinates (e.g., 2682872 1253719 2690872 1261719)')
     parser.add_argument('--output', required=True, help='Output R16 file path')
-    parser.add_argument('--cache-dir', default='./terrain_cache', help='Directory to cache downloaded tiles')
+    parser.add_argument('--cache-dir', default='/Users/gerhardgubler/Desktop/usb-ssd/Mac/terrain_cache', help='Directory to cache downloaded tiles')
     parser.add_argument('--target-size', type=int, help='Resample to square size (e.g., 8192)')
     
     args = parser.parse_args()

@@ -83,7 +83,7 @@ var terrain3d_node: Node
 
 # Slew mode - free movement without physics
 var slew_mode: bool = false
-var slew_speed: float = 100.0  # Base speed in m/s
+var slew_speed: float = 400.0  # Base speed in m/s
 var slew_fast_multiplier: float = 5.0  # Speed multiplier when holding boost
 var slew_vertical_speed: float = 60.0  # Vertical movement speed
 var _slew_key_held: bool = false  # Prevent key repeat
@@ -366,7 +366,7 @@ func _do_deferred_terrain_init() -> void:
 	
 	# Position aircraft on the visual terrain (Godot Y coordinate)
 	# Note: JSBSim will take over position control after initialization
-	var gear_height = 1.5
+	var gear_height = 2.0
 	var new_y = visual_terrain_height + gear_height
 	
 	print("=== Initial aircraft position at Godot Y: ", new_y, "m (terrain: ", visual_terrain_height, "m) ===")
@@ -521,6 +521,8 @@ func _process(delta: float) -> void:
 			handle_head_look(delta)
 		else:
 			handle_orbit_camera(delta)
+		# Floating origin: rebase if aircraft is too far from Godot origin
+		_check_origin_rebase()
 		return  # Skip flight controls and HUD updates in slew mode
 	
 	if Input.is_action_just_pressed("flip_camera"):
@@ -1060,6 +1062,21 @@ func _perform_origin_rebase() -> void:
 	if building_loader and building_loader.has_method("shift_all_buildings"):
 		building_loader.shift_all_buildings(shift)
 	
+	# 8. Shift all road instances.
+	var road_loader = get_node_or_null("RoadLoader")
+	if road_loader and road_loader.has_method("shift_all_roads"):
+		road_loader.shift_all_roads(shift)
+	
+	# 9. Shift all water instances.
+	var water_loader = get_node_or_null("WaterLoader")
+	if water_loader and water_loader.has_method("shift_all_water"):
+		water_loader.shift_all_water(shift)
+	
+	# 10. Shift all runway instances.
+	var runway_loader = get_node_or_null("RunwayLoader")
+	if runway_loader and runway_loader.has_method("shift_all_runways"):
+		runway_loader.shift_all_runways(shift)
+	
 	print("=== REBASE COMPLETE ===")
 
 
@@ -1182,28 +1199,54 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 		var building_loader = get_node_or_null("BuildingLoader")
 		if building_loader and building_loader.has_method("shift_all_buildings"):
 			building_loader.shift_all_buildings(shift)
+		var road_loader = get_node_or_null("RoadLoader")
+		if road_loader and road_loader.has_method("shift_all_roads"):
+			road_loader.shift_all_roads(shift)
+		var water_loader = get_node_or_null("WaterLoader")
+		if water_loader and water_loader.has_method("shift_all_water"):
+			water_loader.shift_all_water(shift)
+		var runway_loader = get_node_or_null("RunwayLoader")
+		if runway_loader and runway_loader.has_method("shift_all_runways"):
+			runway_loader.shift_all_runways(shift)
 
 	# 7. Compute new Godot position from Swiss coords
 	var new_godot_x = TERRAIN_CENTER_E - swiss_e
 	var new_godot_z = swiss_n - TERRAIN_CENTER_N
 
-	# 8. Get terrain height at new position
+	# 8. Get terrain height at new position — sample a grid around the
+	#    threshold and use the maximum, matching the runway mesh approach.
 	var terrain_height := 0.0
 	if is_instance_valid(terrain3d_node):
 		var terrain_data = terrain3d_node.get("data")
 		if terrain_data and terrain_data.has_method("get_height"):
-			var probe_pos = Vector3(new_godot_x, 0.0, new_godot_z)
-			var h = terrain_data.get_height(probe_pos)
-			if not is_nan(h):
-				terrain_height = h
-				print("  Terrain height at target: %.1fm" % terrain_height)
+			var max_h := -1e9
+			var heading_rad := deg_to_rad(heading_deg)
+			# Sample centre + 4 offsets along/across runway (±25 m each way)
+			var offsets: Array = [
+				Vector3(0, 0, 0),
+				Vector3(-sin(heading_rad) * 25.0, 0, cos(heading_rad) * 25.0),
+				Vector3(sin(heading_rad) * 25.0, 0, -cos(heading_rad) * 25.0),
+				Vector3(cos(heading_rad) * 15.0, 0, sin(heading_rad) * 15.0),
+				Vector3(-cos(heading_rad) * 15.0, 0, -sin(heading_rad) * 15.0),
+			]
+			for off in offsets:
+				var probe := Vector3(new_godot_x + off.x, 0.0, new_godot_z + off.z)
+				var h = terrain_data.get_height(probe)
+				if not is_nan(h) and h > max_h:
+					max_h = h
+			if max_h > -1e8:
+				terrain_height = max_h
+				print("  Terrain height at target (max of 5 samples): %.1fm" % terrain_height)
 			else:
 				print("  WARNING: No terrain data at target — using 0m")
 
-	# 9. Place aircraft on terrain with gear clearance
-	var gear_height := 1.5
-	ac_node.global_position = Vector3(new_godot_x, terrain_height + gear_height, new_godot_z)
-	ac_node.rotation.y = deg_to_rad(heading_deg)
+	# 9. Place aircraft on runway surface with gear clearance
+	# Runway surface sits y_offset (0.1 m) above raw terrain;
+	# gear_height accounts for model origin being above the wheels.
+	var runway_surface_offset := 0.1
+	var gear_height := 2.0
+	ac_node.global_position = Vector3(new_godot_x, terrain_height + runway_surface_offset + gear_height, new_godot_z)
+	ac_node.rotation.y = -deg_to_rad(heading_deg)
 
 	print("  New Godot pos: ", ac_node.global_position)
 	print("  New center: E=%d N=%d" % [int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N)])

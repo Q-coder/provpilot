@@ -1,99 +1,1259 @@
 {
   "type": "airports",
   "coordinate_system": "LV95",
+  "source": "OSM Overpass + Swiss AIP, verified manually",
+  "generated": true,
+  "notes": "Built by scripts/build_airports_json.py from OSM-verified MANUAL_RUNWAYS in generate_airports.py. 47 airports.",
   "airports": [
     {
-      "icao": "LSZN",
-      "name": "Schmerlat / Hettlingen",
-      "type": "grass_strip",
-      "elevation_m": 470,
-      "center_e": 2693200,
-      "center_n": 1265300,
+      "icao": "LSGC",
+      "name": "La Chaux-de-Fonds-Les Eplatures",
+      "type": "regional_airport",
+      "elevation_m": 1017,
+      "center_e": 2550990,
+      "center_n": 1214984,
+      "area_ha": 60.0,
       "runways": [
         {
           "designator": "06/24",
-          "heading_deg": 60,
-          "length_m": 550,
-          "width_m": 18,
-          "surface": "grass",
-          "threshold_06": { "e": 2692960, "n": 1265160 },
-          "threshold_24": { "e": 2693440, "n": 1265440 }
+          "heading_deg": 55,
+          "length_m": 1020,
+          "width_m": 27,
+          "surface": "asphalt",
+          "threshold_06": {
+            "e": 2550574,
+            "n": 1214689
+          },
+          "threshold_24": {
+            "e": 2551407,
+            "n": 1215278
+          }
         }
-      ],
-      "notes": "Private airstrip, PPR. Home field for ProvPilot development."
+      ]
+    },
+    {
+      "icao": "LSGE",
+      "name": "Ecuvillens",
+      "type": "regional_airport",
+      "elevation_m": 700,
+      "center_e": 2572277,
+      "center_n": 1178296,
+      "area_ha": 40.0,
+      "runways": [
+        {
+          "designator": "09/27",
+          "heading_deg": 95,
+          "length_m": 800,
+          "width_m": 23,
+          "surface": "asphalt",
+          "threshold_09": {
+            "e": 2571878,
+            "n": 1178332
+          },
+          "threshold_27": {
+            "e": 2572676,
+            "n": 1178259
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSGG",
+      "name": "Genève",
+      "type": "international_airport",
+      "elevation_m": 430,
+      "center_e": 2497434,
+      "center_n": 1121603,
+      "area_ha": 340.0,
+      "runways": [
+        {
+          "designator": "04/22",
+          "heading_deg": 46,
+          "length_m": 3900,
+          "width_m": 50,
+          "surface": "asphalt",
+          "threshold_04": {
+            "e": 2496010,
+            "n": 1120251
+          },
+          "threshold_22": {
+            "e": 2498858,
+            "n": 1122955
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSGK",
+      "name": "Saanen",
+      "type": "grass_strip",
+      "elevation_m": 1005,
+      "center_e": 2585388,
+      "center_n": 1148372,
+      "area_ha": 40.0,
+      "runways": [
+        {
+          "designator": "08/26",
+          "heading_deg": 79,
+          "length_m": 780,
+          "width_m": 40,
+          "surface": "asphalt",
+          "threshold_08": {
+            "e": 2585005,
+            "n": 1148301
+          },
+          "threshold_26": {
+            "e": 2585771,
+            "n": 1148444
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSGL",
+      "name": "Lausanne-La Blécherette",
+      "type": "regional_airport",
+      "elevation_m": 617,
+      "center_e": 2536954,
+      "center_n": 1155202,
+      "area_ha": 50.0,
+      "runways": [
+        {
+          "designator": "18/36",
+          "heading_deg": 4,
+          "length_m": 875,
+          "width_m": 23,
+          "surface": "asphalt",
+          "threshold_18": {
+            "e": 2536920,
+            "n": 1154766
+          },
+          "threshold_36": {
+            "e": 2536987,
+            "n": 1155638
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSGN",
+      "name": "Neuchâtel",
+      "type": "grass_strip",
+      "elevation_m": 434,
+      "center_e": 2556302,
+      "center_n": 1200860,
+      "area_ha": 30.0,
+      "runways": [
+        {
+          "designator": "05/23",
+          "heading_deg": 52,
+          "length_m": 700,
+          "width_m": 20,
+          "surface": "asphalt",
+          "threshold_05": {
+            "e": 2556030,
+            "n": 1200646
+          },
+          "threshold_23": {
+            "e": 2556574,
+            "n": 1201073
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSGS",
+      "name": "Sion",
+      "type": "regional_airport",
+      "elevation_m": 482,
+      "center_e": 2591386,
+      "center_n": 1118661,
+      "area_ha": 130.0,
+      "runways": [
+        {
+          "designator": "07/25",
+          "heading_deg": 73,
+          "length_m": 2000,
+          "width_m": 40,
+          "surface": "asphalt",
+          "threshold_07": {
+            "e": 2590489,
+            "n": 1118387
+          },
+          "threshold_25": {
+            "e": 2592282,
+            "n": 1118935
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSGT",
+      "name": "Gruyères",
+      "type": "grass_strip",
+      "elevation_m": 677,
+      "center_e": 2573618,
+      "center_n": 1160382,
+      "area_ha": 30.0,
+      "runways": [
+        {
+          "designator": "17/35",
+          "heading_deg": 173,
+          "length_m": 875,
+          "width_m": 20,
+          "surface": "grass",
+          "threshold_17": {
+            "e": 2573568,
+            "n": 1159948
+          },
+          "threshold_35": {
+            "e": 2573668,
+            "n": 1160817
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSGX",
+      "name": "Bex",
+      "type": "grass_strip",
+      "elevation_m": 411,
+      "center_e": 2565140,
+      "center_n": 1123050,
+      "area_ha": 15.0,
+      "runways": [
+        {
+          "designator": "15/33",
+          "heading_deg": 147,
+          "length_m": 440,
+          "width_m": 30,
+          "surface": "grass",
+          "threshold_15": {
+            "e": 2565019,
+            "n": 1123234
+          },
+          "threshold_33": {
+            "e": 2565261,
+            "n": 1122866
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSGY",
+      "name": "Yverdon",
+      "type": "grass_strip",
+      "elevation_m": 432,
+      "center_e": 2536944,
+      "center_n": 1179302,
+      "area_ha": 30.0,
+      "runways": [
+        {
+          "designator": "04/22",
+          "heading_deg": 47,
+          "length_m": 855,
+          "width_m": 18,
+          "surface": "asphalt",
+          "threshold_04": {
+            "e": 2536624,
+            "n": 1179007
+          },
+          "threshold_22": {
+            "e": 2537264,
+            "n": 1179596
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSMA",
+      "name": "Alpnach",
+      "type": "regional_airport",
+      "elevation_m": 460,
+      "center_e": 2664351,
+      "center_n": 1199428,
+      "area_ha": 100.0,
+      "runways": [
+        {
+          "designator": "01/19",
+          "heading_deg": 11,
+          "length_m": 1500,
+          "width_m": 40,
+          "surface": "asphalt",
+          "threshold_01": {
+            "e": 2664206,
+            "n": 1198693
+          },
+          "threshold_19": {
+            "e": 2664496,
+            "n": 1200162
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSMD",
+      "name": "Dübendorf",
+      "type": "regional_airport",
+      "elevation_m": 440,
+      "center_e": 2691312,
+      "center_n": 1250440,
+      "area_ha": 230.0,
+      "runways": [
+        {
+          "designator": "11/29",
+          "heading_deg": 107,
+          "length_m": 2300,
+          "width_m": 40,
+          "surface": "asphalt",
+          "threshold_11": {
+            "e": 2690210,
+            "n": 1250775
+          },
+          "threshold_29": {
+            "e": 2692413,
+            "n": 1250106
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSME",
+      "name": "Emmen",
+      "type": "regional_airport",
+      "elevation_m": 430,
+      "center_e": 2665770,
+      "center_n": 1216050,
+      "area_ha": 200.0,
+      "runways": [
+        {
+          "designator": "04/22",
+          "heading_deg": 37,
+          "length_m": 2200,
+          "width_m": 40,
+          "surface": "asphalt",
+          "threshold_04": {
+            "e": 2665102,
+            "n": 1215166
+          },
+          "threshold_22": {
+            "e": 2666437,
+            "n": 1216933
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSMF",
+      "name": "Mollis",
+      "type": "regional_airport",
+      "elevation_m": 435,
+      "center_e": 2723540,
+      "center_n": 1215707,
+      "area_ha": 120.0,
+      "runways": [
+        {
+          "designator": "01/19",
+          "heading_deg": 12,
+          "length_m": 1500,
+          "width_m": 40,
+          "surface": "asphalt",
+          "threshold_01": {
+            "e": 2723443,
+            "n": 1215246
+          },
+          "threshold_19": {
+            "e": 2723637,
+            "n": 1216168
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSML",
+      "name": "Lodrino",
+      "type": "grass_strip",
+      "elevation_m": 297,
+      "center_e": 2719758,
+      "center_n": 1128160,
+      "area_ha": 30.0,
+      "runways": [
+        {
+          "designator": "16/34",
+          "heading_deg": 160,
+          "length_m": 620,
+          "width_m": 40,
+          "surface": "asphalt",
+          "threshold_16": {
+            "e": 2719649,
+            "n": 1128450
+          },
+          "threshold_34": {
+            "e": 2719866,
+            "n": 1127869
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSMM",
+      "name": "Meiringen",
+      "type": "regional_airport",
+      "elevation_m": 590,
+      "center_e": 2651220,
+      "center_n": 1177013,
+      "area_ha": 150.0,
+      "runways": [
+        {
+          "designator": "10/28",
+          "heading_deg": 96,
+          "length_m": 2000,
+          "width_m": 40,
+          "surface": "concrete",
+          "threshold_10": {
+            "e": 2650227,
+            "n": 1177119
+          },
+          "threshold_28": {
+            "e": 2652214,
+            "n": 1176907
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSMP",
+      "name": "Payerne",
+      "type": "regional_airport",
+      "elevation_m": 465,
+      "center_e": 2560057,
+      "center_n": 1188148,
+      "area_ha": 350.0,
+      "runways": [
+        {
+          "designator": "05/23",
+          "heading_deg": 49,
+          "length_m": 3230,
+          "width_m": 40,
+          "surface": "asphalt",
+          "threshold_05": {
+            "e": 2558838,
+            "n": 1187085
+          },
+          "threshold_23": {
+            "e": 2561276,
+            "n": 1189212
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSPD",
+      "name": "Dittingen",
+      "type": "grass_strip",
+      "elevation_m": 370,
+      "center_e": 2603852,
+      "center_n": 1254268,
+      "area_ha": 25.0,
+      "runways": [
+        {
+          "designator": "11/29",
+          "heading_deg": 110,
+          "length_m": 650,
+          "width_m": 30,
+          "surface": "grass",
+          "threshold_11": {
+            "e": 2603546,
+            "n": 1254382
+          },
+          "threshold_29": {
+            "e": 2604159,
+            "n": 1254154
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSPG",
+      "name": "Kägiswil",
+      "type": "grass_strip",
+      "elevation_m": 475,
+      "center_e": 2662059,
+      "center_n": 1195468,
+      "area_ha": 35.0,
+      "runways": [
+        {
+          "designator": "03/21",
+          "heading_deg": 26,
+          "length_m": 900,
+          "width_m": 39,
+          "surface": "asphalt",
+          "threshold_03": {
+            "e": 2661863,
+            "n": 1195063
+          },
+          "threshold_21": {
+            "e": 2662255,
+            "n": 1195872
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSPL",
+      "name": "Langenthal",
+      "type": "grass_strip",
+      "elevation_m": 460,
+      "center_e": 2622924,
+      "center_n": 1225798,
+      "area_ha": 12.0,
+      "runways": [
+        {
+          "designator": "05/23",
+          "heading_deg": 52,
+          "length_m": 460,
+          "width_m": 18,
+          "surface": "asphalt",
+          "threshold_05": {
+            "e": 2622742,
+            "n": 1225656
+          },
+          "threshold_23": {
+            "e": 2623106,
+            "n": 1225939
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSPM",
+      "name": "Ambrì-Piotta",
+      "type": "grass_strip",
+      "elevation_m": 1000,
+      "center_e": 2696306,
+      "center_n": 1151996,
+      "area_ha": 40.0,
+      "runways": [
+        {
+          "designator": "10/28",
+          "heading_deg": 103,
+          "length_m": 990,
+          "width_m": 40,
+          "surface": "asphalt",
+          "threshold_10": {
+            "e": 2695822,
+            "n": 1152106
+          },
+          "threshold_28": {
+            "e": 2696789,
+            "n": 1151886
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSPN",
+      "name": "Triengen",
+      "type": "grass_strip",
+      "elevation_m": 440,
+      "center_e": 2648448,
+      "center_n": 1230782,
+      "area_ha": 12.0,
+      "runways": [
+        {
+          "designator": "15/33",
+          "heading_deg": 148,
+          "length_m": 424,
+          "width_m": 15,
+          "surface": "asphalt",
+          "threshold_15": {
+            "e": 2648337,
+            "n": 1230963
+          },
+          "threshold_33": {
+            "e": 2648559,
+            "n": 1230602
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSPS",
+      "name": "Sitterdorf",
+      "type": "grass_strip",
+      "elevation_m": 540,
+      "center_e": 2737406,
+      "center_n": 1263622,
+      "area_ha": 15.0,
+      "runways": [
+        {
+          "designator": "08/26",
+          "heading_deg": 76,
+          "length_m": 480,
+          "width_m": 20,
+          "surface": "grass",
+          "threshold_08": {
+            "e": 2737173,
+            "n": 1263563
+          },
+          "threshold_26": {
+            "e": 2737638,
+            "n": 1263680
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSPU",
+      "name": "Münster",
+      "type": "grass_strip",
+      "elevation_m": 1352,
+      "center_e": 2663327,
+      "center_n": 1147965,
+      "area_ha": 35.0,
+      "runways": [
+        {
+          "designator": "05/23",
+          "heading_deg": 47,
+          "length_m": 876,
+          "width_m": 30,
+          "surface": "asphalt",
+          "threshold_05": {
+            "e": 2663004,
+            "n": 1147668
+          },
+          "threshold_23": {
+            "e": 2663650,
+            "n": 1148262
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSTA",
+      "name": "Raron",
+      "type": "grass_strip",
+      "elevation_m": 636,
+      "center_e": 2629327,
+      "center_n": 1128192,
+      "area_ha": 30.0,
+      "runways": [
+        {
+          "designator": "10/28",
+          "heading_deg": 91,
+          "length_m": 820,
+          "width_m": 30,
+          "surface": "asphalt",
+          "threshold_10": {
+            "e": 2628917,
+            "n": 1128200
+          },
+          "threshold_28": {
+            "e": 2629737,
+            "n": 1128185
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSTB",
+      "name": "Reichenbach",
+      "type": "grass_strip",
+      "elevation_m": 700,
+      "center_e": 2618326,
+      "center_n": 1162530,
+      "area_ha": 30.0,
+      "runways": [
+        {
+          "designator": "03/21",
+          "heading_deg": 38,
+          "length_m": 900,
+          "width_m": 23,
+          "surface": "asphalt",
+          "threshold_03": {
+            "e": 2618047,
+            "n": 1162178
+          },
+          "threshold_21": {
+            "e": 2618606,
+            "n": 1162881
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSTS",
+      "name": "St.Stephan",
+      "type": "grass_strip",
+      "elevation_m": 999,
+      "center_e": 2597819,
+      "center_n": 1149730,
+      "area_ha": 50.0,
+      "runways": [
+        {
+          "designator": "14/32",
+          "heading_deg": 135,
+          "length_m": 915,
+          "width_m": 40,
+          "surface": "concrete",
+          "threshold_14": {
+            "e": 2597497,
+            "n": 1150056
+          },
+          "threshold_32": {
+            "e": 2598141,
+            "n": 1149403
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSTZ",
+      "name": "Zweisimmen",
+      "type": "grass_strip",
+      "elevation_m": 940,
+      "center_e": 2595582,
+      "center_n": 1155610,
+      "area_ha": 15.0,
+      "runways": [
+        {
+          "designator": "17/35",
+          "heading_deg": 173,
+          "length_m": 486,
+          "width_m": 20,
+          "surface": "asphalt",
+          "threshold_17": {
+            "e": 2595551,
+            "n": 1155851
+          },
+          "threshold_35": {
+            "e": 2595613,
+            "n": 1155369
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZA",
+      "name": "Lugano-Agno",
+      "type": "regional_airport",
+      "elevation_m": 279,
+      "center_e": 2714008,
+      "center_n": 1095768,
+      "area_ha": 45.0,
+      "runways": [
+        {
+          "designator": "01/19",
+          "heading_deg": 18,
+          "length_m": 1024,
+          "width_m": 30,
+          "surface": "asphalt",
+          "threshold_01": {
+            "e": 2713851,
+            "n": 1095281
+          },
+          "threshold_19": {
+            "e": 2714165,
+            "n": 1096256
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZB",
+      "name": "Bern-Belp",
+      "type": "regional_airport",
+      "elevation_m": 510,
+      "center_e": 2604527,
+      "center_n": 1195809,
+      "area_ha": 140.0,
+      "runways": [
+        {
+          "designator": "14/32",
+          "heading_deg": 140,
+          "length_m": 1780,
+          "width_m": 30,
+          "surface": "asphalt",
+          "threshold_14": {
+            "e": 2603956,
+            "n": 1196491
+          },
+          "threshold_32": {
+            "e": 2605098,
+            "n": 1195127
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZC",
+      "name": "Buochs",
+      "type": "regional_airport",
+      "elevation_m": 450,
+      "center_e": 2672918,
+      "center_n": 1203035,
+      "area_ha": 120.0,
+      "runways": [
+        {
+          "designator": "06/24",
+          "heading_deg": 64,
+          "length_m": 1870,
+          "width_m": 40,
+          "surface": "asphalt",
+          "threshold_06": {
+            "e": 2672076,
+            "n": 1202619
+          },
+          "threshold_24": {
+            "e": 2673759,
+            "n": 1203451
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZE",
+      "name": "Bad Ragaz",
+      "type": "grass_strip",
+      "elevation_m": 496,
+      "center_e": 2755347,
+      "center_n": 1209114,
+      "area_ha": 20.0,
+      "runways": [
+        {
+          "designator": "12/30",
+          "heading_deg": 118,
+          "length_m": 487,
+          "width_m": 30,
+          "surface": "asphalt",
+          "threshold_12": {
+            "e": 2755131,
+            "n": 1209228
+          },
+          "threshold_30": {
+            "e": 2755563,
+            "n": 1209000
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZF",
+      "name": "Birrfeld",
+      "type": "regional_airport",
+      "elevation_m": 400,
+      "center_e": 2660020,
+      "center_n": 1255074,
+      "area_ha": 40.0,
+      "runways": [
+        {
+          "designator": "08/26",
+          "heading_deg": 80,
+          "length_m": 690,
+          "width_m": 20,
+          "surface": "asphalt",
+          "threshold_08": {
+            "e": 2659719,
+            "n": 1255020
+          },
+          "threshold_26": {
+            "e": 2660321,
+            "n": 1255129
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZG",
+      "name": "Grenchen",
+      "type": "regional_airport",
+      "elevation_m": 430,
+      "center_e": 2598374,
+      "center_n": 1225629,
+      "area_ha": 60.0,
+      "runways": [
+        {
+          "designator": "06/24",
+          "heading_deg": 66,
+          "length_m": 1000,
+          "width_m": 23,
+          "surface": "asphalt",
+          "threshold_06": {
+            "e": 2597918,
+            "n": 1225422
+          },
+          "threshold_24": {
+            "e": 2598830,
+            "n": 1225836
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZH",
+      "name": "Zürich",
+      "type": "international_airport",
+      "elevation_m": 432,
+      "center_e": 2683791,
+      "center_n": 1257566,
+      "area_ha": 880.0,
+      "runways": [
+        {
+          "designator": "14/32",
+          "heading_deg": 136,
+          "length_m": 3300,
+          "width_m": 60,
+          "surface": "asphalt",
+          "threshold_14": {
+            "e": 2682612,
+            "n": 1259722
+          },
+          "threshold_32": {
+            "e": 2684888,
+            "n": 1257332
+          }
+        },
+        {
+          "designator": "16/34",
+          "heading_deg": 154,
+          "length_m": 3700,
+          "width_m": 60,
+          "surface": "asphalt",
+          "threshold_16": {
+            "e": 2682715,
+            "n": 1258905
+          },
+          "threshold_34": {
+            "e": 2684328,
+            "n": 1255575
+          }
+        },
+        {
+          "designator": "10/28",
+          "heading_deg": 95,
+          "length_m": 2500,
+          "width_m": 60,
+          "surface": "asphalt",
+          "threshold_10": {
+            "e": 2682857,
+            "n": 1257042
+          },
+          "threshold_28": {
+            "e": 2685347,
+            "n": 1256817
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZI",
+      "name": "Fricktal-Schupfart",
+      "type": "grass_strip",
+      "elevation_m": 410,
+      "center_e": 2638512,
+      "center_n": 1262158,
+      "area_ha": 20.0,
+      "runways": [
+        {
+          "designator": "07/25",
+          "heading_deg": 74,
+          "length_m": 530,
+          "width_m": 30,
+          "surface": "grass",
+          "threshold_07": {
+            "e": 2638257,
+            "n": 1262086
+          },
+          "threshold_25": {
+            "e": 2638767,
+            "n": 1262230
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZK",
+      "name": "Speck-Fehraltorf",
+      "type": "grass_strip",
+      "elevation_m": 525,
+      "center_e": 2699604,
+      "center_n": 1248126,
+      "area_ha": 20.0,
+      "runways": [
+        {
+          "designator": "12/30",
+          "heading_deg": 122,
+          "length_m": 625,
+          "width_m": 20,
+          "surface": "grass",
+          "threshold_12": {
+            "e": 2699339,
+            "n": 1248294
+          },
+          "threshold_30": {
+            "e": 2699869,
+            "n": 1247957
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZL",
+      "name": "Locarno",
+      "type": "regional_airport",
+      "elevation_m": 198,
+      "center_e": 2711196,
+      "center_n": 1113674,
+      "area_ha": 40.0,
+      "runways": [
+        {
+          "designator": "08/26",
+          "heading_deg": 78,
+          "length_m": 620,
+          "width_m": 25,
+          "surface": "asphalt",
+          "threshold_08": {
+            "e": 2710893,
+            "n": 1113609
+          },
+          "threshold_26": {
+            "e": 2711498,
+            "n": 1113738
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZN",
+      "name": "Schaffhausen",
+      "type": "grass_strip",
+      "elevation_m": 415,
+      "center_e": 2681658,
+      "center_n": 1282748,
+      "area_ha": 15.0,
+      "runways": [
+        {
+          "designator": "07/25",
+          "heading_deg": 67,
+          "length_m": 620,
+          "width_m": 20,
+          "surface": "grass",
+          "threshold_07": {
+            "e": 2681372,
+            "n": 1282626
+          },
+          "threshold_25": {
+            "e": 2681943,
+            "n": 1282869
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZO",
+      "name": "Luzern-Beromünster",
+      "type": "grass_strip",
+      "elevation_m": 650,
+      "center_e": 2658060,
+      "center_n": 1226844,
+      "area_ha": 20.0,
+      "runways": [
+        {
+          "designator": "15/33",
+          "heading_deg": 157,
+          "length_m": 530,
+          "width_m": 30,
+          "surface": "grass",
+          "threshold_15": {
+            "e": 2657958,
+            "n": 1227088
+          },
+          "threshold_33": {
+            "e": 2658163,
+            "n": 1226600
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZP",
+      "name": "Biel-Kappelen",
+      "type": "grass_strip",
+      "elevation_m": 438,
+      "center_e": 2588644,
+      "center_n": 1215260,
+      "area_ha": 25.0,
+      "runways": [
+        {
+          "designator": "04/22",
+          "heading_deg": 46,
+          "length_m": 690,
+          "width_m": 30,
+          "surface": "grass",
+          "threshold_04": {
+            "e": 2588395,
+            "n": 1215021
+          },
+          "threshold_22": {
+            "e": 2588894,
+            "n": 1215498
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZQ",
+      "name": "Bressaucourt",
+      "type": "grass_strip",
+      "elevation_m": 510,
+      "center_e": 2569072,
+      "center_n": 1249146,
+      "area_ha": 30.0,
+      "runways": [
+        {
+          "designator": "07/25",
+          "heading_deg": 70,
+          "length_m": 790,
+          "width_m": 18,
+          "surface": "asphalt",
+          "threshold_07": {
+            "e": 2568700,
+            "n": 1249014
+          },
+          "threshold_25": {
+            "e": 2569445,
+            "n": 1249279
+          }
+        }
+      ]
     },
     {
       "icao": "LSZR",
       "name": "St. Gallen-Altenrhein",
       "type": "regional_airport",
       "elevation_m": 398,
-      "center_e": 2760700,
-      "center_n": 1261500,
+      "center_e": 2759887,
+      "center_n": 1261531,
+      "area_ha": 80.0,
       "runways": [
         {
           "designator": "10/28",
-          "heading_deg": 100,
-          "length_m": 1500,
+          "heading_deg": 97,
+          "length_m": 1320,
           "width_m": 30,
           "surface": "asphalt",
-          "threshold_10": { "e": 2759950, "n": 1261600 },
-          "threshold_28": { "e": 2761450, "n": 1261400 }
+          "threshold_10": {
+            "e": 2759231,
+            "n": 1261613
+          },
+          "threshold_28": {
+            "e": 2760543,
+            "n": 1261449
+          }
         }
       ]
     },
     {
-      "icao": "LSZH",
-      "name": "Zurich Airport",
-      "type": "international_airport",
-      "elevation_m": 432,
-      "center_e": 2683650,
-      "center_n": 1257000,
+      "icao": "LSZS",
+      "name": "Samedan",
+      "type": "regional_airport",
+      "elevation_m": 1707,
+      "center_e": 2787568,
+      "center_n": 1156584,
+      "area_ha": 100.0,
       "runways": [
         {
-          "designator": "14/32",
-          "heading_deg": 143,
-          "length_m": 3700,
-          "width_m": 60,
+          "designator": "03/21",
+          "heading_deg": 27,
+          "length_m": 1840,
+          "width_m": 40,
           "surface": "asphalt",
-          "threshold_14": { "e": 2683250, "n": 1259000 },
-          "threshold_32": { "e": 2685100, "n": 1256300 }
-        },
+          "threshold_03": {
+            "e": 2787143,
+            "n": 1155767
+          },
+          "threshold_21": {
+            "e": 2787992,
+            "n": 1157401
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZV",
+      "name": "Hausen am Albis",
+      "type": "grass_strip",
+      "elevation_m": 600,
+      "center_e": 2681542,
+      "center_n": 1232522,
+      "area_ha": 25.0,
+      "runways": [
         {
-          "designator": "16/34",
-          "heading_deg": 163,
-          "length_m": 3300,
-          "width_m": 60,
+          "designator": "09/27",
+          "heading_deg": 90,
+          "length_m": 700,
+          "width_m": 30,
           "surface": "asphalt",
-          "threshold_16": { "e": 2684850, "n": 1259100 },
-          "threshold_34": { "e": 2684350, "n": 1256200 }
-        },
-        {
-          "designator": "10/28",
-          "heading_deg": 100,
-          "length_m": 2500,
-          "width_m": 60,
-          "surface": "asphalt",
-          "threshold_10": { "e": 2682050, "n": 1257500 },
-          "threshold_28": { "e": 2684600, "n": 1257050 }
+          "threshold_09": {
+            "e": 2681195,
+            "n": 1232525
+          },
+          "threshold_27": {
+            "e": 2681889,
+            "n": 1232520
+          }
         }
       ]
     },
     {
       "icao": "LSZW",
       "name": "Thun",
-      "type": "military_airfield",
+      "type": "grass_strip",
       "elevation_m": 560,
-      "center_e": 2612370,
-      "center_n": 1178370,
+      "center_e": 2612360,
+      "center_n": 1178358,
+      "area_ha": 25.0,
       "runways": [
         {
-          "designator": "06/24",
-          "heading_deg": 60,
-          "length_m": 600,
+          "designator": "14/32",
+          "heading_deg": 140,
+          "length_m": 800,
           "width_m": 20,
           "surface": "grass",
-          "threshold_06": { "e": 2612100, "n": 1178220 },
-          "threshold_24": { "e": 2612640, "n": 1178520 }
+          "threshold_14": {
+            "e": 2612105,
+            "n": 1178666
+          },
+          "threshold_32": {
+            "e": 2612616,
+            "n": 1178051
+          }
+        }
+      ]
+    },
+    {
+      "icao": "LSZX",
+      "name": "Schänis",
+      "type": "grass_strip",
+      "elevation_m": 416,
+      "center_e": 2721346,
+      "center_n": 1225784,
+      "area_ha": 15.0,
+      "runways": [
+        {
+          "designator": "16/34",
+          "heading_deg": 161,
+          "length_m": 465,
+          "width_m": 15,
+          "surface": "asphalt",
+          "threshold_16": {
+            "e": 2721272,
+            "n": 1226004
+          },
+          "threshold_34": {
+            "e": 2721420,
+            "n": 1225564
+          }
         }
       ]
     }

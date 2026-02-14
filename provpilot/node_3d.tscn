@@ -8,6 +8,9 @@
 [ext_resource type="Texture2D" uid="uid://tgqmh32fcwbu" path="res://Textures/coast_sand_rocks_02_rough_4k.png" id="7_wc5p8"]
 [ext_resource type="Script" uid="uid://2qlddvn2d0d0" path="res://terrain_streamer.gd" id="8_strm"]
 [ext_resource type="Script" uid="uid://frvhamoexvx8" path="res://poi_loader.gd" id="9_poild"]
+[ext_resource type="Script" path="res://road_loader.gd" id="10_rdldr"]
+[ext_resource type="Script" path="res://water_loader.gd" id="11_wtrld"]
+[ext_resource type="Script" path="res://runway_loader.gd" id="12_rwyldr"]
 
 [sub_resource type="Gradient" id="Gradient_wc5p8"]
 offsets = PackedFloat32Array(0.2, 1)
@@ -182,7 +185,6 @@ offset_top = 85.0
 offset_right = 2051.2
 offset_bottom = 151.4
 scale = Vector2(5, 5)
-text = ""
 
 [node name="Terrain3D" type="Terrain3D" parent="." unique_id=962717072]
 material = SubResource("Terrain3DMaterial_6iypd")
@@ -198,3 +200,15 @@ script = ExtResource("7_bldng")
 
 [node name="POILoader" type="Node" parent="." unique_id=1327574823]
 script = ExtResource("9_poild")
+
+[node name="RoadLoader" type="Node3D" parent="."]
+top_level = true
+script = ExtResource("10_rdldr")
+
+[node name="WaterLoader" type="Node3D" parent="."]
+top_level = true
+script = ExtResource("11_wtrld")
+
+[node name="RunwayLoader" type="Node3D" parent="."]
+top_level = true
+script = ExtResource("12_rwyldr")

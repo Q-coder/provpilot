@@ -66,7 +66,7 @@ SCENERY_DIR = WORKSPACE_ROOT / "scenery"
 TERRAIN_DIR = SCENERY_DIR / "terrain"
 BUILDINGS_DIR = SCENERY_DIR / "buildings"
 GODOT_ASSETS_DIR = WORKSPACE_ROOT / "provpilot" / "Assets"
-DEFAULT_CACHE_DIR = WORKSPACE_ROOT / "terrain_cache"
+DEFAULT_CACHE_DIR = Path("/Users/gerhardgubler/Desktop/usb-ssd/Mac/terrain_cache")
 
 TILE_SIZE = 1024  # meters, must match Terrain3D region_size
 
@@ -95,24 +95,51 @@ def lv95_to_wgs84(easting, northing):
 # TERRAIN PIPELINE
 # ══════════════════════════════════════════════════════════════════════════════
 
+# SwissALTI3D coverage bounding box (in km, LV95)
+# Generous margins around Switzerland's actual boundary
+SWISS_E_MIN_KM, SWISS_E_MAX_KM = 2480, 2840
+SWISS_N_MIN_KM, SWISS_N_MAX_KM = 1070, 1300
+
+
 def terrain_get_needed_tiles(west, south, east, north):
-    """Return list of (easting_km, northing_km) SwissTopo tile coords."""
+    """Return list of (easting_km, northing_km) SwissTopo tile coords.
+    Filters out tiles outside the SwissALTI3D coverage area."""
     tiles = []
     for e_km in range(west // 1000, (east - 1) // 1000 + 1):
+        if e_km < SWISS_E_MIN_KM or e_km > SWISS_E_MAX_KM:
+            continue
         for n_km in range(south // 1000, (north - 1) // 1000 + 1):
+            if n_km < SWISS_N_MIN_KM or n_km > SWISS_N_MAX_KM:
+                continue
             tiles.append((e_km, n_km))
     return tiles
 
 
+# Shared session for connection pooling
+_http_session = None
+
+def _get_session():
+    global _http_session
+    if _http_session is None:
+        _http_session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=20, pool_maxsize=20, max_retries=1
+        )
+        _http_session.mount('https://', adapter)
+        _http_session.mount('http://', adapter)
+    return _http_session
+
+
 def terrain_discover_url(e_km, n_km, resolution=0.5):
     """Try direct URL construction for a SwissTopo ALTI3D tile."""
+    session = _get_session()
     res_str = "0.5" if resolution == 0.5 else str(int(resolution))
     for year in [2024, 2023, 2022, 2021, 2020, 2019]:
         tile_id = f"swissalti3d_{year}_{e_km}-{n_km}"
         filename = f"{tile_id}_{res_str}_2056_5728.tif"
         url = f"{ALTI3D_DATA}/{tile_id}/{filename}"
         try:
-            resp = requests.head(url, timeout=10, allow_redirects=True)
+            resp = session.head(url, timeout=5, allow_redirects=True)
             if resp.status_code == 200:
                 return url
         except requests.RequestException:
@@ -145,18 +172,11 @@ def terrain_merge_and_generate_tiles(tif_paths, west, south, east, north,
     skip_existing: set of tile keys ("easting_northing") to skip writing.
     Returns dict of new tiles: {tile_key: tile_info}
     """
-    print(f"\n  Merging {len(tif_paths)} GeoTIFF tiles...")
-    datasets = []
-    for p in tif_paths:
-        try:
-            datasets.append(rasterio.open(p))
-        except Exception as e:
-            print(f"    WARNING: Could not open {p}: {e}")
-
-    if not datasets:
-        raise RuntimeError("No valid GeoTIFFs to merge")
-
-    crs = datasets[0].crs
+    # Process in spatial chunks to avoid OOM when merging thousands of tiles.
+    # Each chunk covers a 2D block of the output grid and only opens the
+    # GeoTIFFs that overlap it.
+    CHUNK_TILES = 20  # Process 20×20 output tiles per chunk
+    chunk_m = CHUNK_TILES * tile_size  # Must be a multiple of tile_size!
 
     # Snap bounds to tile grid
     grid_west = (west // tile_size) * tile_size
@@ -164,99 +184,172 @@ def terrain_merge_and_generate_tiles(tif_paths, west, south, east, north,
     grid_east = ((east + tile_size - 1) // tile_size) * tile_size
     grid_north = ((north + tile_size - 1) // tile_size) * tile_size
 
-    mosaic, mosaic_transform = rasterio_merge(
-        datasets, bounds=(grid_west, grid_south, grid_east, grid_north)
-    )
-    for ds in datasets:
-        ds.close()
-
-    data = mosaic[0]
-    print(f"  Merged: {data.shape[1]}×{data.shape[0]} px")
-
-    # Resample to target resolution if needed
-    src_res = abs(mosaic_transform.a)
-    target_w = int((grid_east - grid_west) / target_resolution)
-    target_h = int((grid_north - grid_south) / target_resolution)
-
-    if data.shape[1] != target_w or data.shape[0] != target_h:
-        print(f"  Resampling {src_res:.2f}m → {target_resolution:.2f}m "
-              f"({target_w}×{target_h} px)")
-        dst_transform = transform_from_bounds(
-            grid_west, grid_south, grid_east, grid_north, target_w, target_h
-        )
-        dst_data = np.zeros((target_h, target_w), dtype=data.dtype)
-        reproject(
-            source=data, destination=dst_data,
-            src_transform=mosaic_transform, src_crs=crs,
-            dst_transform=dst_transform, dst_crs=crs,
-            resampling=Resampling.bilinear,
-        )
-        data = dst_data
-    else:
-        dst_transform = mosaic_transform
-
-    # Handle nodata
-    data = data.astype(np.float32)
-    data[data < 0] = 0
-    data[np.isnan(data)] = 0
-
-    # Generate individual tiles
     tile_dir.mkdir(parents=True, exist_ok=True)
-
-    ei_min = grid_west // tile_size
-    ei_max = grid_east // tile_size - 1
-    ni_min = grid_south // tile_size
-    ni_max = grid_north // tile_size - 1
-
-    new_tiles = {}
-    pix_per_tile = tile_size  # 1 pixel per meter at 1m resolution
     if skip_existing is None:
         skip_existing = set()
 
-    for ei in range(ei_min, ei_max + 1):
-        for ni in range(ni_min, ni_max + 1):
-            e_sw = ei * tile_size
-            n_sw = ni * tile_size
-            tile_key = f"{e_sw}_{n_sw}"
+    # Build a spatial index: for each tif, get its bounds
+    print(f"\n  Indexing {len(tif_paths)} GeoTIFF tiles...")
+    tif_bounds = []
+    sample_crs = None
+    for p in tif_paths:
+        try:
+            with rasterio.open(p) as ds:
+                tif_bounds.append((p, ds.bounds))
+                if sample_crs is None:
+                    sample_crs = ds.crs
+        except Exception as e:
+            print(f"    WARNING: Could not open {p}: {e}")
 
-            # Skip tiles that already exist on disk
-            if tile_key in skip_existing:
+    if not tif_bounds:
+        raise RuntimeError("No valid GeoTIFFs to merge")
+
+    new_tiles = {}
+    pix_per_tile = tile_size  # 1 pixel per meter at 1m resolution
+    n_chunks_e = max(1, (grid_east - grid_west + chunk_m - 1) // chunk_m)
+    n_chunks_n = max(1, (grid_north - grid_south + chunk_m - 1) // chunk_m)
+    total_chunks = n_chunks_e * n_chunks_n
+    print(f"  Processing in {n_chunks_e}×{n_chunks_n} = {total_chunks} chunks "
+          f"of {chunk_m}×{chunk_m} m ({CHUNK_TILES}×{CHUNK_TILES} tiles)...")
+
+    chunk_num = 0
+    for chunk_ei in range(n_chunks_e):
+        c_west = grid_west + chunk_ei * chunk_m
+        c_east = min(c_west + chunk_m, grid_east)
+
+        for chunk_ni in range(n_chunks_n):
+            c_south = grid_south + chunk_ni * chunk_m
+            c_north = min(c_south + chunk_m, grid_north)
+            chunk_num += 1
+
+            # Check if all output tiles in this chunk already exist
+            ei_min = c_west // tile_size
+            ei_max = c_east // tile_size - 1
+            ni_min = c_south // tile_size
+            ni_max = c_north // tile_size - 1
+
+            all_exist = True
+            for ei in range(ei_min, ei_max + 1):
+                for ni in range(ni_min, ni_max + 1):
+                    tile_key = f"{ei * tile_size}_{ni * tile_size}"
+                    if tile_key not in skip_existing:
+                        all_exist = False
+                        break
+                if not all_exist:
+                    break
+
+            if all_exist:
                 continue
 
-            # Pixel coords in the merged array (GeoTIFF: row 0 = north)
-            col_start = int(round((e_sw - grid_west) / target_resolution))
-            col_end = col_start + pix_per_tile
-            row_start = int(round((grid_north - n_sw - tile_size) / target_resolution))
-            row_end = row_start + pix_per_tile
-
-            if (col_end <= 0 or col_start >= data.shape[1] or
-                    row_end <= 0 or row_start >= data.shape[0]):
+            # Find GeoTIFFs that overlap this chunk
+            chunk_tifs = [
+                p for p, b in tif_bounds
+                if b.right > c_west and b.left < c_east
+                and b.top > c_south and b.bottom < c_north
+            ]
+            if not chunk_tifs:
                 continue
 
-            tile_data = np.zeros((pix_per_tile, pix_per_tile), dtype=np.float32)
-            sr0, sr1 = max(0, row_start), min(data.shape[0], row_end)
-            sc0, sc1 = max(0, col_start), min(data.shape[1], col_end)
-            dr0, dr1 = sr0 - row_start, sr0 - row_start + (sr1 - sr0)
-            dc0, dc1 = sc0 - col_start, sc0 - col_start + (sc1 - sc0)
-            tile_data[dr0:dr1, dc0:dc1] = data[sr0:sr1, sc0:sc1]
+            print(f"\n  Chunk {chunk_num}/{total_chunks}: "
+                  f"E={c_west}-{c_east} N={c_south}-{c_north} "
+                  f"({len(chunk_tifs)} tiles)")
 
-            # Apply Terrain3D orientation: pixel(0,0) = SE corner
-            tile_data = np.flipud(np.fliplr(tile_data))
+            datasets = []
+            for p in chunk_tifs:
+                try:
+                    datasets.append(rasterio.open(p))
+                except Exception as e:
+                    print(f"    WARNING: Could not open {p}: {e}")
 
-            tile_name = f"tile_{e_sw}_{n_sw}.raw"
-            tile_path = tile_dir / tile_name
-            tile_data.astype("<f4").tofile(tile_path)
+            if not datasets:
+                continue
 
-            valid = tile_data[tile_data > 0]
-            new_tiles[f"{e_sw}_{n_sw}"] = {
-                "swiss_e": int(e_sw),
-                "swiss_n": int(n_sw),
-                "tile_ei": int(ei),
-                "tile_ni": int(ni),
-                "file": tile_name,
-                "min_elev": round(float(valid.min()), 1) if len(valid) > 0 else 0.0,
-                "max_elev": round(float(tile_data.max()), 1),
-            }
+            mosaic, mosaic_transform = rasterio_merge(
+                datasets, bounds=(c_west, c_south, c_east, c_north)
+            )
+            for ds in datasets:
+                ds.close()
+
+            data = mosaic[0]
+
+            # Resample to target resolution if needed
+            src_res = abs(mosaic_transform.a)
+            target_w = int((c_east - c_west) / target_resolution)
+            target_h = int((c_north - c_south) / target_resolution)
+
+            if data.shape[1] != target_w or data.shape[0] != target_h:
+                dst_transform = transform_from_bounds(
+                    c_west, c_south, c_east, c_north, target_w, target_h
+                )
+                dst_data = np.zeros((target_h, target_w), dtype=data.dtype)
+                reproject(
+                    source=data, destination=dst_data,
+                    src_transform=mosaic_transform, src_crs=sample_crs,
+                    dst_transform=dst_transform, dst_crs=sample_crs,
+                    resampling=Resampling.bilinear,
+                )
+                data = dst_data
+            else:
+                dst_transform = mosaic_transform
+
+            del mosaic  # Free memory
+
+            # Handle nodata
+            data = data.astype(np.float32)
+            data[data < 0] = 0
+            data[np.isnan(data)] = 0
+
+            # Generate individual tiles for this chunk
+            for ei in range(ei_min, ei_max + 1):
+                for ni in range(ni_min, ni_max + 1):
+                    e_sw = ei * tile_size
+                    n_sw = ni * tile_size
+                    tile_key = f"{e_sw}_{n_sw}"
+
+                    # Skip tiles that already exist on disk
+                    if tile_key in skip_existing:
+                        continue
+
+                    # Pixel coords relative to this chunk
+                    col_start = int(round((e_sw - c_west) / target_resolution))
+                    col_end = col_start + pix_per_tile
+                    row_start = int(round((c_north - n_sw - tile_size) / target_resolution))
+                    row_end = row_start + pix_per_tile
+
+                    if (col_end <= 0 or col_start >= data.shape[1] or
+                            row_end <= 0 or row_start >= data.shape[0]):
+                        continue
+
+                    tile_data = np.zeros((pix_per_tile, pix_per_tile), dtype=np.float32)
+                    sr0, sr1 = max(0, row_start), min(data.shape[0], row_end)
+                    sc0, sc1 = max(0, col_start), min(data.shape[1], col_end)
+                    dr0, dr1 = sr0 - row_start, sr0 - row_start + (sr1 - sr0)
+                    dc0, dc1 = sc0 - col_start, sc0 - col_start + (sc1 - sc0)
+                    tile_data[dr0:dr1, dc0:dc1] = data[sr0:sr1, sc0:sc1]
+
+                    # Apply Terrain3D orientation: pixel(0,0) = SE corner
+                    tile_data = np.flipud(np.fliplr(tile_data))
+
+                    # Skip empty tiles (no elevation data — outside Swiss borders)
+                    if tile_data.max() <= 0:
+                        continue
+
+                    tile_name = f"tile_{e_sw}_{n_sw}.raw"
+                    tile_path = tile_dir / tile_name
+                    tile_data.astype("<f4").tofile(tile_path)
+
+                    valid = tile_data[tile_data > 0]
+                    new_tiles[f"{e_sw}_{n_sw}"] = {
+                        "swiss_e": int(e_sw),
+                        "swiss_n": int(n_sw),
+                        "tile_ei": int(ei),
+                        "tile_ni": int(ni),
+                        "file": tile_name,
+                        "min_elev": round(float(valid.min()), 1) if len(valid) > 0 else 0.0,
+                        "max_elev": round(float(tile_data.max()), 1),
+                    }
+
+            del data  # Free chunk memory
 
     return new_tiles
 
@@ -327,12 +420,16 @@ def run_terrain_pipeline(center_e, center_n, radius, cache_dir,
     print(f"  Bounds: W={west} S={south} E={east} N={north}")
     print(f"  Coverage: {(east-west)/1000:.0f}×{(north-south)/1000:.0f} km")
 
-    # Check which tiles already exist
+    # Check which tiles already exist (verify files on disk, not just manifest)
     existing = set()
     terrain_manifest = TERRAIN_DIR / "manifest.json"
     if terrain_manifest.exists():
         with open(terrain_manifest) as f:
-            existing = set(json.load(f).get("tiles", {}).keys())
+            manifest_tiles = json.load(f).get("tiles", {})
+        for key, info in manifest_tiles.items():
+            tile_path = TERRAIN_DIR / info.get("file", "")
+            if tile_path.exists() and tile_path.stat().st_size > 0:
+                existing.add(key)
 
     # Determine needed 1024m output tiles
     needed_output = set()
@@ -360,24 +457,77 @@ def run_terrain_pipeline(center_e, center_n, radius, cache_dir,
 
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # Discover & download
+    # Discover & download (skip tiles already cached on disk)
+    # Build an index of cached tiles once (fast even on external drives)
+    print(f"\n  Indexing cache directory...")
+    import re
+    _cache_index = {}  # (e_km, n_km) -> Path
+    for p in cache_dir.glob("swissalti3d_*.tif"):
+        m = re.search(r'_(\d+)-(\d+)_', p.name)
+        if m and p.stat().st_size > 0:
+            _cache_index[(int(m.group(1)), int(m.group(2)))] = p
+    print(f"  {len(_cache_index)} tiles already in cache")
+
+    # Load negative cache (tiles known not to exist on SwissTopo)
+    neg_cache_path = cache_dir / "_negative_cache.json"
+    if neg_cache_path.exists():
+        with open(neg_cache_path) as f:
+            neg_cache = set(tuple(k) for k in json.load(f))
+    else:
+        neg_cache = set()
+    print(f"  {len(neg_cache)} tiles in negative cache (known non-existent)")
+
     print(f"\n  Discovering tile URLs...")
     tile_urls = {}
-    for e_km, n_km in tqdm(source_tiles, desc="  Discovering"):
-        url = terrain_discover_url(e_km, n_km, tile_resolution)
-        if url:
-            tile_urls[(e_km, n_km)] = url
+    cached_paths = []
+    skipped_neg = 0
+
+    # Split tiles into cached, negative-cached, and needing discovery
+    tiles_to_discover = []
+    for e_km, n_km in source_tiles:
+        cached_path = _cache_index.get((e_km, n_km))
+        if cached_path:
+            cached_paths.append(cached_path)
+        elif (e_km, n_km) in neg_cache:
+            skipped_neg += 1
         else:
-            pass  # Tiles near borders may not exist
+            tiles_to_discover.append((e_km, n_km))
 
-    print(f"  Found {len(tile_urls)}/{len(source_tiles)} source tiles")
+    print(f"  {len(cached_paths)} cached, {skipped_neg} known-empty, "
+          f"{len(tiles_to_discover)} to discover")
 
-    if not tile_urls:
+    # Discover URLs in parallel (20 concurrent requests)
+    if tiles_to_discover:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        def _discover(coords):
+            e_km, n_km = coords
+            url = terrain_discover_url(e_km, n_km, tile_resolution)
+            return (e_km, n_km), url
+
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            futures = {executor.submit(_discover, c): c for c in tiles_to_discover}
+            for future in tqdm(as_completed(futures), total=len(futures),
+                               desc="  Discovering"):
+                (e_km, n_km), url = future.result()
+                if url:
+                    tile_urls[(e_km, n_km)] = url
+                else:
+                    neg_cache.add((e_km, n_km))
+
+    # Save updated negative cache
+    with open(neg_cache_path, 'w') as f:
+        json.dump(list(neg_cache), f)
+
+    print(f"  Found {len(tile_urls)} new + {len(cached_paths)} cached "
+          f"+ {skipped_neg} known-empty of {len(source_tiles)} source tiles")
+
+    if not tile_urls and not cached_paths:
         print("  ERROR: No source tiles found!")
         return
 
-    print(f"\n  Downloading tiles...")
-    tif_paths = []
+    print(f"\n  Downloading {len(tile_urls)} tiles...")
+    tif_paths = list(cached_paths)  # Start with already-cached files
     for (e_km, n_km), url in tqdm(tile_urls.items(), desc="  Downloading"):
         try:
             path = terrain_download_tile(url, cache_dir)

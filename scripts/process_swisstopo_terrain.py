@@ -752,8 +752,8 @@ Examples:
                         help="SwissTopo tile resolution (default: 0.5)")
     parser.add_argument("--output", type=str,
                         help="Output R16 file path")
-    parser.add_argument("--cache-dir", type=str, default="./terrain_cache",
-                        help="Tile cache directory (default: ./terrain_cache)")
+    parser.add_argument("--cache-dir", type=str, default="/Users/gerhardgubler/Desktop/usb-ssd/Mac/terrain_cache",
+                        help="Tile cache directory (default: /Users/gerhardgubler/Desktop/usb-ssd/Mac/terrain_cache)")
     parser.add_argument("--list-tiles", action="store_true",
                         help="Only list required tiles")
     parser.add_argument("--verify", type=str,
