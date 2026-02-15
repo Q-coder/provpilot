@@ -16,6 +16,10 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 - **Real-World Terrain**: SwissTopo swissALTI3D elevation data at 1m resolution
 - **Terrain Streaming**: Dynamic tile-based loading — fly over unlimited terrain without loading screens
 - **3D Buildings**: SwissTopo swissBUILDINGS3D models loaded dynamically by proximity
+- **Roads & Railroads**: swissTLM3D road and railway network rendered as coloured ribbons
+- **Water Bodies**: Rivers, lakes, and streams from swissTLM3D
+- **47 Swiss Airports**: OSM-verified runway geometry with procedural terrain-following runway rendering
+- **Airport Teleport**: Search, filter by type, select runway — teleport anywhere in Switzerland (Shift+P)
 - **Multiple Camera Views**:
   - Cockpit camera with pilot head look (hat switch / D-pad / arrow keys)
   - External orbit camera with full rotation and zoom
@@ -23,6 +27,7 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 - **Animated Control Surfaces**: Ailerons, elevators, rudder, flaps, propeller with blur disc, nose gear steering
 - **Elevator Trim**: Fine-tune pitch with Y/X buttons
 - **Slew Mode**: Reposition aircraft freely, then resume flight (Shift+Y)
+- **Floating Origin**: Automatic coordinate rebasing for precision across all of Switzerland
 - **HUD**: Airspeed, altitude, vertical speed, heading, throttle, Swiss/WGS84 coordinates
 
 ## Controls
@@ -41,6 +46,7 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 | Trim Up | Y Button | — |
 | Trim Down | X Button | — |
 | Slew Mode | — | Shift+Y |
+| Position Dialog | — | Shift+P |
 
 ### Camera Controls
 | Control | Gamepad | Keyboard |
@@ -125,18 +131,36 @@ provpilot/
 │   ├── node_3d.gd              # Main scene script (controls, HUD, cameras)
 │   ├── terrain_streamer.gd     # Dynamic terrain tile loader
 │   ├── building_loader.gd      # Dynamic building GLB loader
+│   ├── road_loader.gd          # Road & railroad network loader
+│   ├── water_loader.gd         # River & lake loader
+│   ├── runway_loader.gd        # Procedural runway renderer
+│   ├── poi_loader.gd           # Airport/POI database loader
+│   ├── position_dialog.gd      # Airport search & teleport UI
 │   ├── node_3d.tscn            # Main scene
 │   ├── C172p.tscn              # Aircraft scene
 │   ├── environment.tscn        # Sky/environment
 │   ├── bin/                    # GDExtension binaries
-│   ├── Assets/                 # 3D models (Cessna, buildings)
+│   ├── Assets/                 # 3D models (Cessna, symlinks to scenery)
 │   ├── addons/terrain_3d/      # Terrain3D plugin
 │   ├── shaders/                # Custom shaders
 │   └── project.godot
+├── scenery/                     # Scenery data (large files gitignored)
+│   ├── terrain/                # Elevation heightmaps (.raw)
+│   ├── buildings/              # 3D building models (.glb)
+│   ├── roads/                  # Road & railroad meshes (.glb)
+│   ├── water/                  # River & lake meshes (.glb)
+│   ├── poi/                    # Airport database (airports.json)
+│   └── custom/                 # Hand-crafted scenery packages
 ├── scripts/                     # Tooling
 │   ├── process_swisstopo_terrain.py  # Terrain pipeline (download → tiles)
-│   └── convert_buildings_to_gltf.py  # Building GDB → GLB converter
+│   ├── convert_buildings_to_gltf.py  # Building GDB → GLB converter
+│   ├── generate_roads.py            # Road/railroad GeoPackage → GLB
+│   ├── generate_water.py            # Water body GeoPackage → GLB
+│   ├── generate_airports.py         # Airport extraction from swissTLM3D
+│   ├── build_airports_json.py       # Build airports.json from verified data
+│   └── fetch_osm_runways.py         # Fetch runway data from OSM Overpass
 ├── docs/                        # Additional documentation
+│   ├── SCENERY_ARCHITECTURE.md  # Scenery data architecture & formats
 │   └── TERRAIN_SETUP.md        # Terrain & collision architecture
 ├── jsbsim/                      # JSBSim flight dynamics (submodule)
 ├── godot-cpp/                   # Godot C++ bindings (submodule)
@@ -158,12 +182,25 @@ See [docs/TERRAIN_SETUP.md](docs/TERRAIN_SETUP.md) for full details on the terra
 
 ## Building System
 
-3D buildings from SwissTopo swissBUILDINGS3D are converted to GLB format and loaded dynamically based on aircraft proximity. Multiple regions are supported:
+3D buildings from SwissTopo swissBUILDINGS3D are converted to GLB format and loaded dynamically based on aircraft proximity. Buildings are colored procedurally with configurable roof (terracotta) and wall (cream) colors.
 
-- **Schaffhausen/Schmerlat**: Hallau, Schaffhausen area
-- **Zurich Airport**: Kloten, surrounding area
+## Road & Railroad System
 
-Buildings are colored procedurally with configurable roof (terracotta) and wall (cream) colors.
+Roads and railroads from SwissTopo swissTLM3D are rendered as coloured ribbons on the terrain surface, tiled into 4096m grid cells and loaded by proximity. Road types include motorways, primary/secondary roads, residential streets, tracks, paths, and railway lines — each with a distinct colour.
+
+## Water System
+
+Rivers, lakes, and streams from SwissTopo swissTLM3D are rendered as blue surfaces. Lakes are filled polygons; rivers and streams are width-proportional ribbons. Also tiled into 4096m cells with proximity loading.
+
+## Airport & Runway System
+
+47 Swiss airports are included with OSM-verified runway geometry. Runways are rendered procedurally as terrain-following segmented meshes with centerline and threshold markings. Airport types include international airports, regional airports, grass strips, and heliports.
+
+The position dialog (Shift+P) provides:
+- Full-text search by ICAO code or name
+- Type filters (international, regional, grass, heliport)
+- Runway selector with heading, length, and surface info
+- One-click teleport to any runway threshold
 
 ## Control Surface Animation
 
@@ -205,15 +242,18 @@ This project combines multiple open-source components:
 - Terrain3D: MIT
 - Aircraft models: Various (see individual model licenses)
 - Terrain data: SwissTopo Open Data (free for commercial & non-commercial use)
+- Road, water, airport data: SwissTopo swissTLM3D (Open Data)
 
 ## Acknowledgments
 
 - [JSBSim Team](https://github.com/JSBSim-Team/jsbsim) for the flight dynamics engine
 - [chunky/jsbgodot](https://github.com/chunky/jsbgodot) for the original Godot 3 integration
 - [Terrain3D](https://github.com/TokisanGames/Terrain3D) for the terrain rendering plugin
-- [SwissTopo](https://www.swisstopo.admin.ch/) for high-resolution terrain and building data
+- [SwissTopo](https://www.swisstopo.admin.ch/) for high-resolution terrain, building, and geographic data
   - [swissALTI3D](https://www.swisstopo.admin.ch/de/hoehenmodell-swissalti3d) — elevation model
   - [swissBUILDINGS3D](https://www.swisstopo.admin.ch/de/landschaftsmodell-swissbuildings3d) — 3D buildings
+  - [swissTLM3D](https://www.swisstopo.admin.ch/de/landschaftsmodell-swisstlm3d) — roads, railroads, water, airports
+- [OpenStreetMap](https://www.openstreetmap.org/) for runway verification data
 - Sketchfab artists for aircraft models
 
 ### Model Credits

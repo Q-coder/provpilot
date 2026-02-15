@@ -15,7 +15,10 @@ This document defines the scenery data strategy for ProvPilot — the directory 
 |-------|--------|---------|--------|
 | Terrain elevation | [swissALTI3D](https://www.swisstopo.admin.ch/de/hoehenmodell-swissalti3d) | Open (OGD) | Cloud-Optimized GeoTIFF |
 | Buildings | [swissBUILDINGS3D](https://www.swisstopo.admin.ch/de/gebaudemodell-swissbuildings3d) | Open (OGD) | GDB → GLB |
-| POI / Airports | OpenAIP, custom | Various | JSON |
+| Roads & railroads | [swissTLM3D](https://www.swisstopo.admin.ch/de/landschaftsmodell-swisstlm3d) | Open (OGD) | GeoPackage → GLB |
+| Water bodies | [swissTLM3D](https://www.swisstopo.admin.ch/de/landschaftsmodell-swisstlm3d) | Open (OGD) | GeoPackage → GLB |
+| Airports / POI | swissTLM3D + OSM Overpass | Open | JSON |
+| Runways | OSM-verified + Swiss AIP | Various | Procedural (from JSON) |
 | Custom scenery | Hand-crafted | Project | GLB + JSON |
 
 ### Disk Space Budget
@@ -25,8 +28,10 @@ This document defines the scenery data strategy for ProvPilot — the directory 
 | Terrain (1m float32) | 4 MB | ~42,000 | **~165 GB** |
 | SwissTopo GeoTIFF cache (2m) | ~0.5 MB | 80,485 | ~37 GB (deletable) |
 | Buildings (GLB) | varies | ~200 sheets | ~5–10 GB (est.) |
-| POI / JSON | — | — | < 1 MB |
-| **Total deployed** | | | **~170–175 GB** |
+| Roads & railroads (GLB) | ~300 KB avg | ~2,300 tiles | ~670 MB |
+| Water bodies (GLB) | ~300 KB avg | ~2,700 tiles | ~840 MB |
+| Airports / POI (JSON) | — | — | < 1 MB |
+| **Total deployed** | | | **~172–177 GB** |
 
 The 0.5m source GeoTIFFs (~577 GB) are **not** downloaded; the 2m GeoTIFFs (~37 GB) are used as source and can be deleted after processing. Source data remains available at SwissTopo.
 
@@ -50,11 +55,21 @@ scenery/                              # Root (configurable via project settings)
 │   ├── 1031-23.glb
 │   └── ...
 │
+├── roads/                            # Road & railroad network
+│   ├── manifest.json                 # Tile index with centers
+│   ├── roads_2682880_1283072.glb     # Per 4096m tile
+│   └── ...
+│
+├── water/                            # Rivers, lakes, streams
+│   ├── manifest.json                 # Tile index with centers
+│   ├── water_2682880_1283072.glb     # Per 4096m tile
+│   └── ...
+│
 ├── poi/                              # Points of Interest (lightweight JSON)
-│   ├── airports.json                 # Runways, frequencies, ICAO codes
-│   ├── navaids.json                  # VOR, NDB, waypoints
-│   ├── airspace.json                 # CTR/TMA boundaries (optional)
-│   └── landmarks.json                # Peaks, cities, lakes
+│   ├── airports.json                 # 47 Swiss airports with runway geometry
+│   ├── navaids.json                  # VOR, NDB, waypoints (planned)
+│   ├── airspace.json                 # CTR/TMA boundaries (planned)
+│   └── landmarks.json                # Peaks, cities, lakes (planned)
 │
 └── custom/                           # Hand-crafted scenery packages
     ├── schmerlat_airfield/
@@ -154,30 +169,91 @@ Same format as the current `terrain_tiles/manifest.json` — already well-struct
 
 The building loader reads this manifest at startup instead of using hardcoded tile arrays — centers are computed dynamically relative to the current `TERRAIN_CENTER_E/N`.
 
-### POI Format (`scenery/poi/airports.json`)
+### Road Manifest (`scenery/roads/manifest.json`)
 
 ```json
 {
+  "format": "glb",
+  "source": "swissTLM3D",
+  "tile_size_m": 4096,
+  "feature_types": ["motorway", "trunk", "primary", "secondary", "tertiary",
+                     "residential", "track", "path", "railway"],
+  "tiles": {
+    "2682880_1283072": {
+      "file": "roads_2682880_1283072.glb",
+      "center_e": 2684928,
+      "center_n": 1285120
+    }
+  }
+}
+```
+
+Roads are color-coded by type: motorways (dark gray), primary roads (lighter gray), railways (brown), paths (sandy). The loader uses the same proximity-based loading as buildings.
+
+### Water Manifest (`scenery/water/manifest.json`)
+
+```json
+{
+  "format": "glb",
+  "source": "swissTLM3D",
+  "tile_size_m": 4096,
+  "feature_types": ["lake", "river", "stream", "canal"],
+  "tiles": {
+    "2682880_1283072": {
+      "file": "water_2682880_1283072.glb",
+      "center_e": 2684928,
+      "center_n": 1285120
+    }
+  }
+}
+```
+
+Water bodies are rendered as blue surfaces. Lakes are filled polygons; rivers and streams are width-proportional ribbons.
+
+### Airport Database (`scenery/poi/airports.json`)
+
+```json
+{
+  "type": "airports",
+  "coordinate_system": "LV95",
+  "source": "OSM Overpass + Swiss AIP, verified manually",
   "airports": [
     {
-      "icao": "LSZS",
-      "name": "Schmerlat",
-      "type": "grass_strip",
-      "elevation_m": 464,
+      "icao": "LSZB",
+      "name": "Bern-Belp",
+      "type": "regional_airport",
+      "elevation_m": 510,
+      "center_e": 2604527,
+      "center_n": 1195809,
+      "area_ha": 140.0,
       "runways": [
         {
-          "heading": 70,
-          "length_m": 600,
-          "width_m": 20,
-          "surface": "grass",
-          "threshold_e": 2681968,
-          "threshold_n": 1282869
+          "designator": "14/32",
+          "heading_deg": 140,
+          "length_m": 1780,
+          "width_m": 30,
+          "surface": "asphalt",
+          "threshold_14": { "e": 2603956, "n": 1196491 },
+          "threshold_32": { "e": 2605098, "n": 1195127 }
         }
-      ],
-      "frequencies": []
+      ]
     }
   ]
 }
+```
+
+Airport types: `international_airport`, `regional_airport`, `grass_strip`, `heliport`.
+Runway threshold coordinates are in Swiss LV95 (EPSG:2056), verified against OSM Overpass data.
+Heliports have a `pad` object instead of `runways`.
+
+### Runway Rendering
+
+Runways are **procedurally generated** by `runway_loader.gd` — no GLB files needed. The loader:
+- Reads threshold positions from `airports.json`
+- Builds terrain-following segmented meshes (~50m segments) using `SurfaceTool`
+- Adds centerline dashes and threshold bar markings
+- Applies material by surface type (concrete gray for asphalt, muted green for grass)
+- Loads/unloads based on aircraft proximity (25 km load, 30 km unload)
 ```
 
 ### Custom Scenery Package (`scenery/custom/*/package.json`)
@@ -242,12 +318,16 @@ For development, this can point to a local directory. For distribution, `user://
 
 ### Loader Changes
 
-| Component | Current | Target |
-|-----------|---------|--------|
-| `terrain_streamer.gd` | Reads `tile_directory` export | Reads `scenery_path + "/terrain/"` |
-| `building_loader.gd` | Hardcoded tile arrays + offsets | Reads `buildings/manifest.json`, computes centers dynamically |
-| POI loader | Does not exist | New: loads `poi/*.json` at startup |
-| Custom scenery loader | Does not exist | New: scans `custom/*/package.json`, loads GLBs by proximity |
+| Component | Status | Description |
+|-----------|--------|-------------|
+| `terrain_streamer.gd` | ✅ Done | Reads `scenery/terrain/manifest.json`, streams 1024m tiles |
+| `building_loader.gd` | ✅ Done | Reads `scenery/buildings/manifest.json`, proximity loading |
+| `road_loader.gd` | ✅ Done | Reads `scenery/roads/manifest.json`, proximity loading |
+| `water_loader.gd` | ✅ Done | Reads `scenery/water/manifest.json`, proximity loading |
+| `poi_loader.gd` | ✅ Done | Loads `scenery/poi/airports.json` at startup |
+| `runway_loader.gd` | ✅ Done | Procedural terrain-following runway meshes from airport data |
+| `position_dialog.gd` | ✅ Done | Airport search/filter/teleport UI |
+| Custom scenery loader | Planned | Scans `custom/*/package.json`, loads GLBs by proximity |
 
 ### Building Loader Simplification
 
@@ -272,11 +352,6 @@ python scripts/process_swisstopo_terrain.py \
     --full-switzerland \
     --output scenery/terrain/ \
     --source-resolution 2  # Use 2m source (37 GB download vs 577 GB)
-
-# Or generate a regional pack
-python scripts/process_swisstopo_terrain.py \
-    --region ch-northeast \
-    --output scenery/terrain/
 ```
 
 ### Buildings
@@ -286,11 +361,36 @@ python scripts/process_swisstopo_terrain.py \
 python scripts/convert_buildings_to_gltf.py \
     --full-switzerland \
     --output scenery/buildings/
+```
 
-# Or a specific region
-python scripts/convert_buildings_to_gltf.py \
-    --region ch-northeast \
-    --output scenery/buildings/
+### Roads & Railroads
+
+```bash
+# Generate road/railroad tiles from swissTLM3D GeoPackage
+python scripts/generate_roads.py \
+    --gpkg /path/to/swissTLM3D.gpkg \
+    --output scenery/roads/
+```
+
+### Water Bodies
+
+```bash
+# Generate river/lake tiles from swissTLM3D GeoPackage
+python scripts/generate_water.py \
+    --gpkg /path/to/swissTLM3D.gpkg \
+    --output scenery/water/
+```
+
+### Airport Database
+
+```bash
+# Build airports.json from OSM-verified runway data
+python scripts/build_airports_json.py
+
+# Or regenerate from swissTLM3D GeoPackage (includes auto-estimation)
+python scripts/generate_airports.py \
+    --gpkg /path/to/swissTLM3D.gpkg \
+    --output scenery/poi/airports.json
 ```
 
 ## Migration Plan
@@ -312,7 +412,8 @@ python scripts/convert_buildings_to_gltf.py \
 
 - **Texture tiles**: Ortho imagery (swissimage) for ground textures — same 1024m grid, ~4 MB/tile JPEG
 - **Vegetation**: Tree placement from swissTLM3D
-- **Water bodies**: Lake/river polygons for visual water rendering
+- **Navaids**: VOR, NDB, waypoints from Swiss AIP for instrument navigation
+- **Airspace**: CTR/TMA boundaries for airspace awareness
 - **Compression**: Consider zstd-compressed terrain tiles to reduce from 4 MB → ~1–2 MB per tile (~80 GB total)
 - **LOD**: Multi-resolution terrain (1m near aircraft, 4m distant) to reduce memory
 - **Streaming from network**: Load tiles from a local server or CDN instead of requiring full local copy
