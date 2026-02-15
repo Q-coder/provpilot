@@ -327,7 +327,31 @@ For development, this can point to a local directory. For distribution, `user://
 | `poi_loader.gd` | ✅ Done | Loads `scenery/poi/airports.json` at startup |
 | `runway_loader.gd` | ✅ Done | Procedural terrain-following runway meshes from airport data |
 | `position_dialog.gd` | ✅ Done | Airport search/filter/teleport UI |
+| `distant_terrain.gd` | ✅ Done | Low-res mesh horizon (256m/vertex) from pre-generated heightmap |
 | Custom scenery loader | Planned | Scans `custom/*/package.json`, loads GLBs by proximity |
+
+### Performance: Progressive Loading & Floating-Origin Rebase
+
+All scenery loading is designed to avoid blocking the main thread:
+
+**Terrain streaming** (`terrain_streamer.gd`):
+- **Initial load**: Loads 25 tiles immediately (5×5 ring under the aircraft for ground collision), then queues remaining ~600 tiles for progressive loading at 8 tiles/frame.
+- **Floating-origin rebase**: Uses **in-memory region recycling** — extracts heightmap Images from existing Terrain3D regions before clearing, then re-adds them at new grid positions without disk I/O. Only genuinely new border tiles (~25 per 1024m shift) require file reads, loaded progressively.
+- Normal streaming loads/unloads tiles at the boundary every 30 physics frames with a budget of 4 tiles per cycle.
+
+**Building / Road / Water loaders**:
+- Use `ResourceLoader.load_threaded_request()` for async GLB loading (1–2 tiles per frame budget).
+- Proximity checks run every `_process()` frame but are lightweight (distance calculations only).
+- Floating-origin rebase shifts all loaded instances by the offset vector — no reload needed.
+
+**Distant terrain** (`distant_terrain.gd`):
+- Pre-generated 256m-resolution heightmap covers all of Switzerland.
+- Mesh chunks are generated **incrementally** at 2 chunks per frame during startup, avoiding a multi-second freeze.
+- Near-clip shader fades out where Terrain3D begins, preventing z-fighting.
+
+**Runway loader** (`runway_loader.gd`):
+- Procedural mesh generation is fast (SurfaceTool); no threaded loading needed.
+- Load/unload by proximity (25 km / 30 km).
 
 ### Building Loader Simplification
 

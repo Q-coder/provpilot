@@ -32,8 +32,8 @@ signal tiles_changed(loaded: int, unloaded: int, total_loaded: int)
 
 ## How many tiles in each direction to keep loaded around the aircraft.
 ## Loaded area = (2 * load_radius + 1)² tiles.
-## E.g. load_radius=8 → 17×17 = 289 tiles ≈ 17km × 17km.
-@export_range(1, 15) var load_radius: int = 8
+## E.g. load_radius=12 → 25×25 = 625 tiles ≈ 25km × 25km.
+@export_range(1, 15) var load_radius: int = 12
 
 ## Extra tiles beyond load_radius before unloading (hysteresis to avoid
 ## rapid load/unload at boundaries).
@@ -65,6 +65,18 @@ var _loaded_tiles: Dictionary = {}   # "E_N" -> Vector2i(region_x, region_z)
 var _frame_counter: int = 0
 var _initialized: bool = false
 var _pending_loads: Array[String] = []
+var _rebase_in_progress: bool = false
+
+## Budget: tiles loaded per frame during progressive (rebase / initial) loading.
+## Higher = faster terrain fill but bigger per-frame cost.  8 tiles ≈ 32 MB I/O
+## ≈ 16 ms on a typical SSD — acceptable for one frame of elevated load.
+const REBASE_TILES_PER_FRAME: int = 8
+
+## Tiles loaded synchronously during a floating-origin rebase (ground collision).
+const IMMEDIATE_TILES_REBASE: int = 9      # ~3×3 ring
+
+## Tiles loaded synchronously during initial startup load.
+const IMMEDIATE_TILES_INITIAL: int = 25    # ~5×5 ring
 
 
 func _ready() -> void:
@@ -110,6 +122,27 @@ func _physics_process(_delta: float) -> void:
 	if not _initialized or Engine.is_editor_hint():
 		return
 
+	# During rebase or initial progressive loading, load tiles every frame
+	# with a higher budget so terrain fills in within a few seconds.
+	if _rebase_in_progress:
+		if not _pending_loads.is_empty():
+			var budget := REBASE_TILES_PER_FRAME
+			var batch = _pending_loads.slice(0, budget)
+			_pending_loads = _pending_loads.slice(budget)
+			var loaded := 0
+			for key in batch:
+				if not _loaded_tiles.has(key):
+					if _load_tile(key):
+						loaded += 1
+			if loaded > 0:
+				_terrain_data.update_maps()
+				tiles_changed.emit(loaded, 0, _loaded_tiles.size())
+		else:
+			_rebase_in_progress = false
+			print("TerrainStreamer: Progressive loading complete — %d regions active"
+				  % _loaded_tiles.size())
+		return
+
 	_frame_counter += 1
 	if _frame_counter % update_interval != 0:
 		return
@@ -144,8 +177,8 @@ func initial_load(godot_position: Vector3) -> int:
 	var swiss = godot_to_swiss(godot_position)
 	var center_tile = _swiss_to_tile_index(swiss.x, swiss.y)
 
-	var count := 0
-	var to_load: Array[String] = []
+	# Collect all valid tiles with distance from aircraft for priority sorting
+	var tile_entries: Array = []
 
 	for dei in range(-load_radius, load_radius + 1):
 		for dni in range(-load_radius, load_radius + 1):
@@ -156,18 +189,31 @@ func initial_load(godot_position: Vector3) -> int:
 			if _manifest["tiles"].has(key):
 				var rloc = _tile_to_region(ei, ni)
 				if _is_valid_region(rloc):
-					to_load.append(key)
+					tile_entries.append({"key": key, "dist": absi(dei) + absi(dni)})
 
-	print("TerrainStreamer: Initial load — %d tiles to load" % to_load.size())
+	# Sort nearest-first so ground under the aircraft loads first
+	tile_entries.sort_custom(func(a, b): return a["dist"] < b["dist"])
 
-	for key in to_load:
-		if _load_tile(key):
-			count += 1
+	# Load a small set immediately (essential for ground collision & JSBSim init)
+	var count := 0
+	var queued: Array[String] = []
+	for entry in tile_entries:
+		if count < IMMEDIATE_TILES_INITIAL:
+			if _load_tile(entry["key"]):
+				count += 1
+		else:
+			queued.append(entry["key"])
 
 	if count > 0:
 		_terrain_data.update_maps()
 
-	print("TerrainStreamer: Initial load complete — %d regions active" % count)
+	# Queue remaining tiles for progressive loading across subsequent frames
+	_pending_loads = queued
+	if not _pending_loads.is_empty():
+		_rebase_in_progress = true
+
+	print("TerrainStreamer: Initial load — %d tiles immediate, %d queued for progressive load"
+		  % [count, queued.size()])
 	terrain_ready.emit()
 	return count
 
@@ -201,48 +247,108 @@ func get_max_loadable() -> int:
 	return mini(side * side, 1024)
 
 
-## Floating origin: update center coordinates and reload all terrain.
+## Floating origin: update center coordinates and reload terrain.
+## Uses in-memory region recycling: extracts heightmaps from existing
+## Terrain3D regions, clears, and re-adds them at new grid positions —
+## avoiding disk I/O for all tiles that remain in range.  Only genuinely
+## new border tiles (typically ~25 per 1024m shift) need file reads.
 ## new_center_e and new_center_n MUST be multiples of tile_size (1024).
 func rebase_center(new_center_e: int, new_center_n: int) -> void:
 	if new_center_e % _tile_size != 0 or new_center_n % _tile_size != 0:
 		push_error("TerrainStreamer.rebase_center: new center (%d, %d) must be multiples of %d"
 				   % [new_center_e, new_center_n, _tile_size])
 		return
-	
+
 	print("TerrainStreamer: Rebasing center E=%d -> %d, N=%d -> %d"
 		  % [terrain_center_e, new_center_e, terrain_center_n, new_center_n])
-	
-	# Update center
+
+	# ── 1. Extract heightmaps from all currently loaded regions ────────
+	# Duplicate() each Image so the data survives _clear_all_regions()
+	# removing the Terrain3DRegion objects that originally owned them.
+	var saved_tiles: Dictionary = {}   # tile_key -> Image (heightmap)
+	for key in _loaded_tiles:
+		var rloc: Vector2i = _loaded_tiles[key]
+		var region = _terrain_data.get_region(rloc)
+		if region:
+			var hmap = region.get_height_map()
+			if hmap:
+				saved_tiles[key] = hmap.duplicate()
+
+	var saved_count := saved_tiles.size()
+
+	# ── 2. Clear all regions (Terrain3D requires this because region
+	#        grid positions are changing) ───────────────────────────────
+	_clear_all_regions()
+	_pending_loads.clear()
+
+	# ── 3. Update center coordinates ──────────────────────────────────
 	terrain_center_e = new_center_e
 	terrain_center_n = new_center_n
 	_center_ei = terrain_center_e / _tile_size
 	_center_ni = terrain_center_n / _tile_size
-	
-	# Clear all loaded regions — they're at wrong Godot positions now
-	_clear_all_regions()
-	_pending_loads.clear()
-	
-	# Immediately reload around current aircraft position
+
+	# ── 4. Re-add saved tiles at their new region positions ───────────
+	# No file I/O — each region is rebuilt from the cached Image.
+	var recycled := 0
+	for key in saved_tiles:
+		var tile_info = _manifest["tiles"].get(key)
+		if not tile_info:
+			continue
+		var ei = int(tile_info["tile_ei"])
+		var ni = int(tile_info["tile_ni"])
+		var new_rloc = _tile_to_region(ei, ni)
+		if not _is_valid_region(new_rloc):
+			continue   # tile shifted out of the 32×32 grid — drop it
+
+		var region = Terrain3DRegion.new()
+		region.set_location(new_rloc)
+		region.set_region_size(_tile_size)
+		region.set_vertex_spacing(1.0)
+		region.set_height_map(saved_tiles[key])
+		region.sanitize_maps()
+		var err = _terrain_data.add_region(region, false)
+		if err == OK:
+			_loaded_tiles[key] = new_rloc
+			recycled += 1
+
+	# ── 5. Find NEW border tiles that weren't loaded before ───────────
 	var pos = _get_aircraft_position()
 	var swiss = godot_to_swiss(pos)
 	var center_tile = _swiss_to_tile_index(swiss.x, swiss.y)
-	
-	var count = 0
+	var new_tile_entries: Array = []
+
 	for dei in range(-load_radius, load_radius + 1):
 		for dni in range(-load_radius, load_radius + 1):
 			var ei = center_tile.x + dei
 			var ni = center_tile.y + dni
 			var key = "%d_%d" % [ei * _tile_size, ni * _tile_size]
+			if _loaded_tiles.has(key):
+				continue   # already recycled from memory
 			if _manifest["tiles"].has(key):
 				var rloc = _tile_to_region(ei, ni)
 				if _is_valid_region(rloc):
-					if _load_tile(key):
-						count += 1
-	
-	if count > 0:
-		_terrain_data.update_maps()
-	
-	print("TerrainStreamer: Rebase complete — %d regions reloaded" % count)
+					new_tile_entries.append({"key": key, "dist": absi(dei) + absi(dni)})
+
+	# Sort new tiles nearest-first
+	new_tile_entries.sort_custom(func(a, b): return a["dist"] < b["dist"])
+
+	# Load a small immediate set of new tiles (ground under aircraft)
+	var immediate_new := 0
+	var queued: Array[String] = []
+	for entry in new_tile_entries:
+		if immediate_new < IMMEDIATE_TILES_REBASE:
+			if _load_tile(entry["key"]):
+				immediate_new += 1
+		else:
+			queued.append(entry["key"])
+
+	# ── 6. Commit and queue remainder ─────────────────────────────────
+	_terrain_data.update_maps()
+	_pending_loads = queued
+	_rebase_in_progress = not _pending_loads.is_empty()
+
+	print("TerrainStreamer: Rebase — %d recycled in-memory, %d new immediate, %d queued"
+		  % [recycled, immediate_new, queued.size()])
 
 
 # ── Internal: Manifest ──────────────────────────────────────────────────
