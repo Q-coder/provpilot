@@ -49,6 +49,10 @@ var _pending_loads: Array[String] = []
 var _origin_offset: Vector3 = Vector3.ZERO
 var _main_node: Node = null
 
+# Frame counter for throttling tile distance checks
+var _frame_counter: int = 0
+const UPDATE_TILE_INTERVAL: int = 30
+
 var tiles_loaded: int = 0
 var tiles_in_memory: int = 0
 
@@ -79,7 +83,10 @@ func _process(_delta: float) -> void:
 	if not enabled or aircraft_node == null:
 		return
 	var aircraft_pos = aircraft_node.global_position
-	_update_tile_loading(aircraft_pos)
+	_frame_counter += 1
+	if _frame_counter >= UPDATE_TILE_INTERVAL:
+		_frame_counter = 0
+		_update_tile_loading(aircraft_pos)
 	_process_pending_loads()
 	_check_loading_progress()
 

@@ -20,6 +20,13 @@ env.Append(CPPPATH=['.', godot_headers_path, jsb_headers_path, cpp_bindings_path
 env.Append(LIBPATH=[cpp_bindings_path + 'bin/', jsb_library_path1, jsb_library_path2])
 env.Append(LIBS=[jsb_library])
 
+# On Windows, JSBSim is built as a static library so we must define JSBSIM_STATIC_LINK
+# to avoid __declspec(dllimport) on JSBSim symbols.
+import platform
+if platform.system() == 'Windows':
+    env.Append(CPPDEFINES=['JSBSIM_STATIC_LINK'])
+    env.Append(LIBS=['ws2_32'])  # JSBSim uses sockets on Windows
+
 #env.Append(LIBS=['JSBSim'])
 #env.Append(LIBPATH=['/path/to/jsbsim/library'])  # Adjust the path
 #env.Append(LIB="....")

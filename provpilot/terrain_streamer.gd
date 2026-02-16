@@ -32,8 +32,8 @@ signal tiles_changed(loaded: int, unloaded: int, total_loaded: int)
 
 ## How many tiles in each direction to keep loaded around the aircraft.
 ## Loaded area = (2 * load_radius + 1)² tiles.
-## E.g. load_radius=12 → 25×25 = 625 tiles ≈ 25km × 25km.
-@export_range(1, 15) var load_radius: int = 12
+## E.g. load_radius=8 → 17×17 = 289 tiles ≈ 17km × 17km.
+@export_range(1, 15) var load_radius: int = 8
 
 ## Extra tiles beyond load_radius before unloading (hysteresis to avoid
 ## rapid load/unload at boundaries).
@@ -68,15 +68,15 @@ var _pending_loads: Array[String] = []
 var _rebase_in_progress: bool = false
 
 ## Budget: tiles loaded per frame during progressive (rebase / initial) loading.
-## Higher = faster terrain fill but bigger per-frame cost.  8 tiles ≈ 32 MB I/O
-## ≈ 16 ms on a typical SSD — acceptable for one frame of elevated load.
-const REBASE_TILES_PER_FRAME: int = 8
+## Higher = faster terrain fill but bigger per-frame cost.  4 tiles ≈ 16 MB I/O
+## ≈ 8 ms on a typical SSD — acceptable for one frame of elevated load.
+const REBASE_TILES_PER_FRAME: int = 4
 
 ## Tiles loaded synchronously during a floating-origin rebase (ground collision).
 const IMMEDIATE_TILES_REBASE: int = 9      # ~3×3 ring
 
 ## Tiles loaded synchronously during initial startup load.
-const IMMEDIATE_TILES_INITIAL: int = 25    # ~5×5 ring
+const IMMEDIATE_TILES_INITIAL: int = 9     # ~3×3 ring
 
 
 func _ready() -> void:

@@ -12,7 +12,9 @@
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/variant/utility_functions.hpp> // For UtilityFunctions::print
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 #include <cmath>
 #include <exception>
 
@@ -782,6 +784,8 @@ void JSBGodot::_ready()
         FDMExec = new JSBSim::FGFDMExec();
         if (FDMExec)
         {
+            // Suppress JSBSim debug output to avoid per-frame console spam
+            FDMExec->SetDebugLevel(0);
             UtilityFunctions::print("FGFDMExec instance created successfully.");
         }
         else
@@ -1027,19 +1031,10 @@ void JSBGodot::copy_outputs_from_JSBSim()
 
     double engine_thrust = FDMExec->GetPropulsion()->GetEngine(0)->GetThruster()->GetThrust();
 
-    printf("Engine Thrust: %f N\n", engine_thrust);
-    printf("roll: %f, pitch: %f, yaw: %f\n", bank, pitch, heading);
-
     airspeed_knots = FDMExec->GetPropertyValue("velocities/vc-kts");
 
     // Get the heading in degrees from the property tree
     // Convert JSBSim psi to visual heading: visual = (360 - psi) mod 360
     heading_deg = FDMExec->GetPropertyValue("attitude/psi-deg");
     heading_deg = fmod(360.0 - heading_deg + 360.0, 360.0);
-
-    // Convert heading to radians if needed
-    double heading_rad = Math::deg_to_rad(heading_deg);
-
-    printf("heading %f\n", heading_deg);
-    printf("heading_rad %f\n", heading_rad);
 }

@@ -57,6 +57,10 @@ var _loaded_tiles: Dictionary = {}    # tile_id -> Node3D instance
 var _loading_tiles: Dictionary = {}   # tile_id -> res:// path
 var _pending_loads: Array[String] = []
 
+# Frame counter for throttling tile distance checks
+var _frame_counter: int = 0
+const UPDATE_TILE_INTERVAL: int = 30  # Only check tile distances every N frames
+
 # Cumulative origin offset from floating-origin rebases.
 var _origin_offset: Vector3 = Vector3.ZERO
 
@@ -102,7 +106,10 @@ func _process(_delta: float) -> void:
 
 	var aircraft_pos = aircraft_node.global_position
 
-	_update_tile_loading(aircraft_pos)
+	_frame_counter += 1
+	if _frame_counter >= UPDATE_TILE_INTERVAL:
+		_frame_counter = 0
+		_update_tile_loading(aircraft_pos)
 	_process_pending_loads()
 	_check_loading_progress()
 
