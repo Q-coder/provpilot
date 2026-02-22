@@ -27,6 +27,11 @@ signal tiles_changed(loaded: int, unloaded: int, total_loaded: int)
 ## is resolved against the project's parent directory (workspace root).
 @export var tile_directory: String = "scenery/terrain"
 
+## Path to the directory containing orthophoto manifest.json and ortho_*.jpg
+## files (produced by process_swissimage_orthophoto.py). Leave empty to
+## disable orthophoto color maps.  Resolved like tile_directory.
+@export var orthophoto_directory: String = "scenery/orthophoto"
+
 ## NodePath to the Terrain3D node.
 @export var terrain_node_path: NodePath = NodePath("../Terrain3D")
 
@@ -57,6 +62,7 @@ signal tiles_changed(loaded: int, unloaded: int, total_loaded: int)
 var _terrain: Node = null
 var _terrain_data: Object = null
 var _manifest: Dictionary = {}
+var _ortho_manifest: Dictionary = {}   # orthophoto manifest (may be empty)
 var _tile_size: int = 1024
 var _pixels_per_tile: int = 1024
 var _center_ei: int = 0
@@ -86,6 +92,8 @@ func _ready() -> void:
 	# Resolve tile_directory: if not absolute and not res://, resolve
 	# relative to the workspace root (one level above the Godot project).
 	tile_directory = _resolve_scenery_path(tile_directory)
+	if not orthophoto_directory.is_empty():
+		orthophoto_directory = _resolve_scenery_path(orthophoto_directory)
 
 	_center_ei = terrain_center_e / _tile_size
 	_center_ni = terrain_center_n / _tile_size
@@ -101,6 +109,10 @@ func _ready() -> void:
 	if not _load_manifest():
 		return
 
+	# Load orthophoto manifest (optional — not fatal if missing)
+	if not orthophoto_directory.is_empty():
+		_load_ortho_manifest()
+
 	# Get Terrain3D references
 	_terrain = get_node_or_null(terrain_node_path)
 	if not _terrain:
@@ -111,6 +123,16 @@ func _ready() -> void:
 	if not _terrain_data:
 		push_error("TerrainStreamer: Cannot access Terrain3DData from Terrain3D node")
 		return
+
+	# Enable show_colormap on the material when orthophoto data is available.
+	# This makes Terrain3D use the color map as the direct terrain albedo
+	# (ALBEDO = color_map.rgb) instead of multiplying it with the auto-shader
+	# textures (ALBEDO = texture * color_map * macro_variation).
+	if not _ortho_manifest.is_empty():
+		var mat = _terrain.get("material")
+		if mat:
+			mat.set("show_colormap", true)
+			print("TerrainStreamer: Enabled show_colormap for orthophoto rendering")
 
 	_initialized = true
 	print("TerrainStreamer: Ready — %d tiles available, center E=%d N=%d (ei=%d ni=%d)"
@@ -262,10 +284,11 @@ func rebase_center(new_center_e: int, new_center_n: int) -> void:
 	print("TerrainStreamer: Rebasing center E=%d -> %d, N=%d -> %d"
 		  % [terrain_center_e, new_center_e, terrain_center_n, new_center_n])
 
-	# ── 1. Extract heightmaps from all currently loaded regions ────────
-	# Duplicate() each Image so the data survives _clear_all_regions()
-	# removing the Terrain3DRegion objects that originally owned them.
+	# ── 1. Extract heightmaps and color maps from all currently loaded
+	#        regions.  Duplicate() each Image so the data survives
+	#        _clear_all_regions() removing the owning Terrain3DRegion. ──
 	var saved_tiles: Dictionary = {}   # tile_key -> Image (heightmap)
+	var saved_colors: Dictionary = {}  # tile_key -> Image (color map)
 	for key in _loaded_tiles:
 		var rloc: Vector2i = _loaded_tiles[key]
 		var region = _terrain_data.get_region(rloc)
@@ -273,6 +296,9 @@ func rebase_center(new_center_e: int, new_center_n: int) -> void:
 			var hmap = region.get_height_map()
 			if hmap:
 				saved_tiles[key] = hmap.duplicate()
+			var cmap = region.get_color_map()
+			if cmap:
+				saved_colors[key] = cmap.duplicate()
 
 	var saved_count := saved_tiles.size()
 
@@ -305,6 +331,14 @@ func rebase_center(new_center_e: int, new_center_n: int) -> void:
 		region.set_region_size(_tile_size)
 		region.set_vertex_spacing(1.0)
 		region.set_height_map(saved_tiles[key])
+		# Restore orthophoto color map if it was saved
+		if saved_colors.has(key):
+			region.set_color_map(saved_colors[key])
+		elif not _ortho_manifest.is_empty():
+			# Fall back to loading from disk
+			var ortho_img := _load_ortho_tile(key)
+			if ortho_img:
+				region.set_color_map(ortho_img)
 		region.sanitize_maps()
 		var err = _terrain_data.add_region(region, false)
 		if err == OK:
@@ -377,6 +411,67 @@ func _load_manifest() -> bool:
 		return false
 
 	return true
+
+
+func _load_ortho_manifest() -> void:
+	var manifest_path = orthophoto_directory + "/manifest.json"
+	var file = FileAccess.open(manifest_path, FileAccess.READ)
+	if not file:
+		print("TerrainStreamer: No orthophoto manifest at '%s' — color maps disabled" % manifest_path)
+		return
+
+	var json_parser = JSON.new()
+	var err = json_parser.parse(file.get_as_text())
+	file.close()
+
+	if err != OK:
+		push_warning("TerrainStreamer: Bad orthophoto manifest JSON: %s" % json_parser.get_error_message())
+		return
+
+	_ortho_manifest = json_parser.data
+	var tile_count = _ortho_manifest.get("tile_count", 0)
+	print("TerrainStreamer: Orthophoto manifest loaded — %d tiles available" % tile_count)
+
+
+func _load_ortho_tile(tile_key: String) -> Image:
+	## Load an orthophoto JPEG tile and return it as an RGBA8 Image suitable
+	## for Terrain3DRegion.set_color_map().  Returns null if not available.
+	var ortho_tiles: Dictionary = _ortho_manifest.get("tiles", {})
+	var ortho_info = ortho_tiles.get(tile_key)
+	if not ortho_info:
+		return null
+
+	var ortho_path: String = orthophoto_directory + "/" + str(ortho_info["file"])
+	var ortho_img := Image.new()
+	var err := ortho_img.load(ortho_path)
+	if err != OK:
+		push_warning("TerrainStreamer: Cannot load orthophoto '%s': error %d" % [ortho_path, err])
+		return null
+
+	# Terrain3D color maps must be the same size as height maps
+	if ortho_img.get_width() != _pixels_per_tile or ortho_img.get_height() != _pixels_per_tile:
+		ortho_img.resize(_pixels_per_tile, _pixels_per_tile, Image.INTERPOLATE_BILINEAR)
+
+	# Ensure RGBA8 format (Terrain3D expects this for color maps)
+	if ortho_img.get_format() != Image.FORMAT_RGBA8:
+		ortho_img.convert(Image.FORMAT_RGBA8)
+
+	# Set alpha to 128 (0.5) for all pixels.
+	# Terrain3D's shader uses the color map alpha to modify roughness:
+	#   roughness = clamp((color_map.a - 0.5) * 2.0 + base_roughness, 0, 1)
+	# Alpha 0.5 (128) is neutral — no roughness modification.
+	# JPEG images get alpha=255 (1.0) after RGBA8 conversion, which would
+	# add +1.0 to roughness making the terrain unrealistically matte.
+	# Operate on raw bytes for speed (GDScript per-pixel loops are too slow).
+	var raw := ortho_img.get_data()
+	for i in range(3, raw.size(), 4):   # every 4th byte is alpha (RGBA8)
+		raw[i] = 128
+	ortho_img = Image.create_from_data(
+		ortho_img.get_width(), ortho_img.get_height(),
+		false, Image.FORMAT_RGBA8, raw
+	)
+
+	return ortho_img
 
 
 # ── Internal: Coordinate Mapping ────────────────────────────────────────
@@ -561,7 +656,17 @@ func _load_tile(tile_key: String) -> bool:
 	region.set_region_size(_tile_size)
 	region.set_vertex_spacing(1.0)
 	region.set_height_map(img)  # Also calls calc_height_range() internally
-	region.sanitize_maps()      # Creates blank control + color maps
+
+	# Load orthophoto color map if available
+	var ortho_loaded := false
+	if not _ortho_manifest.is_empty():
+		var ortho_img := _load_ortho_tile(tile_key)
+		if ortho_img:
+			region.set_color_map(ortho_img)
+			ortho_loaded = true
+
+	region.sanitize_maps()      # Creates blank control + color maps (fills
+								# any map not already set)
 
 	var err = _terrain_data.add_region(region, false)
 	if err != OK:

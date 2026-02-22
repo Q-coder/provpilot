@@ -104,10 +104,10 @@ func rebase_center(new_center_e: float, new_center_n: float) -> void:
 	_terrain_center_n = new_center_n
 
 	# Shift all mesh nodes by the delta (in Godot coords)
-	# Godot X = center_e - swiss_e → delta_x = -(delta_e)
-	# Godot Z = swiss_n - center_n → delta_z = -(delta_n)
+	# Godot X = center_e - swiss_e  →  shift_x = +delta_e
+	# Godot Z = swiss_n - center_n  →  shift_z = -delta_n
 	for mesh_node in _mesh_nodes:
-		mesh_node.position.x -= delta_e
+		mesh_node.position.x += delta_e
 		mesh_node.position.z -= delta_n
 
 
@@ -218,11 +218,12 @@ func _create_material() -> void:
 	_material.shader = shader
 	if _color_texture:
 		_material.set_shader_parameter("color_texture", _color_texture)
-	# Fog starts where Terrain3D ends (~12km radius), fades to horizon
-	# Near clip: hide the mesh within the Terrain3D loaded area to prevent overlap
-	# load_radius=12 → 12×1024 = 12,288m, use 11km with 3km fade
-	_material.set_shader_parameter("near_clip", 11000.0)
-	_material.set_shader_parameter("near_fade_width", 3000.0)
+	# Near clip: hide the mesh within the Terrain3D loaded area to prevent overlap.
+	# load_radius=8 → 8×1024 = 8,192m along axes, but aircraft can be up to
+	# ~512m from tile center, so worst-case extent is ~7,680m. Use 6km with
+	# 2km fade (fully opaque at 8km) to ensure solid overlap and no visible gap.
+	_material.set_shader_parameter("near_clip", 6000.0)
+	_material.set_shader_parameter("near_fade_width", 2000.0)
 	# Fog: starts at 80km, full fog at 250km — clear weather visibility
 	_material.set_shader_parameter("fog_start", 80000.0)
 	_material.set_shader_parameter("fog_end", 250000.0)
@@ -347,23 +348,12 @@ func _generate_chunk(col_start: int, row_start: int, col_end: int, row_end: int)
 			# UV: map to the color texture
 			uvs[vi] = Vector2(
 				float(gc) / float(_cols),
-				1.0 - float(gr) / float(_rows)  # Flip V (Godot UV origin is top-left)
+				float(gr) / float(_rows)  # No V flip: PNG row 0 = south = top of image, matching gr=0
 			)
 
-	# Build a validity lookup: true if height is valid (not NaN)
-	var valid: PackedByteArray = PackedByteArray()
-	valid.resize(w * h)
-	for r in range(h):
-		for c in range(w):
-			var gr = row_start + r
-			var gc = col_start + c
-			var idx = gr * _cols + gc
-			if idx < _heightmap.size() and not is_nan(_heightmap[idx]):
-				valid[r * w + c] = 1
-			else:
-				valid[r * w + c] = 0
-
-	# Generate triangle indices — skip triangles where ANY vertex has no data
+	# Generate triangle indices — skip quads where any vertex has no data.
+	# NaN holes in the heightmap are pre-filled by generate_distant_terrain.py,
+	# so this only skips quads at the very edge of the data coverage.
 	var indices: PackedInt32Array = PackedInt32Array()
 	# Pre-allocate max size, then resize to actual at the end
 	indices.resize((w - 1) * (h - 1) * 6)
@@ -376,8 +366,19 @@ func _generate_chunk(col_start: int, row_start: int, col_end: int, row_end: int)
 			var bl = (r + 1) * w + c
 			var br = (r + 1) * w + c + 1
 
-			# Skip quad if any corner vertex has no data
-			if valid[tl] == 0 or valid[tr] == 0 or valid[bl] == 0 or valid[br] == 0:
+			var gr = row_start + r
+			var gc = col_start + c
+
+			# Check all four corners for valid data
+			var idx_tl = gr * _cols + gc
+			var idx_tr = gr * _cols + gc + 1
+			var idx_bl = (gr + 1) * _cols + gc
+			var idx_br = (gr + 1) * _cols + gc + 1
+
+			if idx_br >= _heightmap.size():
+				continue
+			if is_nan(_heightmap[idx_tl]) and is_nan(_heightmap[idx_tr]) \
+			   and is_nan(_heightmap[idx_bl]) and is_nan(_heightmap[idx_br]):
 				continue
 
 			# Triangle 1: TL - BL - TR

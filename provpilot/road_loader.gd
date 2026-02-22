@@ -19,10 +19,10 @@ class_name RoadLoader
 @export var aircraft_node: Node3D
 
 ## Distance (in meters) at which to load road tiles
-@export var load_distance: float = 15000.0
+@export var load_distance: float = 10000.0
 
 ## Distance (in meters) at which to unload road tiles
-@export var unload_distance: float = 20000.0
+@export var unload_distance: float = 12000.0
 
 ## Maximum tiles to load per frame
 @export var max_loads_per_frame: int = 2

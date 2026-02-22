@@ -9,6 +9,14 @@
       "format": "float32_raw_le",
       "pixels_per_tile": 1024
     },
+    "orthophoto": {
+      "path": "orthophoto/",
+      "tile_size_m": 1024,
+      "resolution_m": 1.0,
+      "format": "jpeg_rgb",
+      "pixels_per_tile": 1024,
+      "source": "SWISSIMAGE 10cm (ch.swisstopo.swissimage-dop10)"
+    },
     "buildings": {
       "path": "buildings/",
       "format": "glb",

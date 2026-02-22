@@ -52,10 +52,16 @@ terrain_cache/
 # Scenery data (large binary files — terrain .raw, building/road/water .glb)
 # Manifests and metadata JSON files ARE tracked.
 scenery/terrain/*.raw
+scenery/terrain/distant_terrain_color.png
+scenery/terrain/distant_terrain_color.elevation.png
 scenery/buildings/*.glb
 scenery/roads/*.glb
 scenery/water/*.glb
 scenery/custom/*/
+
+# Orthophoto tiles (large, ~13 GB — regenerate with scripts)
+scenery/orthophoto/*.jpg
+scenery/orthophoto_hires/*.jpg
 
 # Building source data (large GDB files - keep only Schaffhausen)
 # Zurich area tiles (1031-*, 1032-*, 1071-*)

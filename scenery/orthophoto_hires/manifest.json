@@ -1,0 +1,309 @@
+{
+  "tile_size_m": 1024,
+  "pixels_per_tile": 1024,
+  "pixel_resolution_m": 1.0,
+  "format": "jpeg_rgb",
+  "jpeg_quality": 90,
+  "orientation": {
+    "pixel_0_0": "SE corner of Swiss tile",
+    "col_direction": "East to West (Godot +X)",
+    "row_direction": "South to North (Godot +Z)"
+  },
+  "grid": {
+    "ei_min": 2617,
+    "ei_max": 2622,
+    "ni_min": 1250,
+    "ni_max": 1255
+  },
+  "tiles": {
+    "2679808_1280000": {
+      "swiss_e": 2679808,
+      "swiss_n": 1280000,
+      "tile_ei": 2617,
+      "tile_ni": 1250,
+      "file": "ortho_2679808_1280000.jpg",
+      "size_bytes": 508394
+    },
+    "2679808_1281024": {
+      "swiss_e": 2679808,
+      "swiss_n": 1281024,
+      "tile_ei": 2617,
+      "tile_ni": 1251,
+      "file": "ortho_2679808_1281024.jpg",
+      "size_bytes": 352851
+    },
+    "2679808_1282048": {
+      "swiss_e": 2679808,
+      "swiss_n": 1282048,
+      "tile_ei": 2617,
+      "tile_ni": 1252,
+      "file": "ortho_2679808_1282048.jpg",
+      "size_bytes": 294544
+    },
+    "2679808_1283072": {
+      "swiss_e": 2679808,
+      "swiss_n": 1283072,
+      "tile_ei": 2617,
+      "tile_ni": 1253,
+      "file": "ortho_2679808_1283072.jpg",
+      "size_bytes": 227538
+    },
+    "2679808_1284096": {
+      "swiss_e": 2679808,
+      "swiss_n": 1284096,
+      "tile_ei": 2617,
+      "tile_ni": 1254,
+      "file": "ortho_2679808_1284096.jpg",
+      "size_bytes": 261856
+    },
+    "2679808_1285120": {
+      "swiss_e": 2679808,
+      "swiss_n": 1285120,
+      "tile_ei": 2617,
+      "tile_ni": 1255,
+      "file": "ortho_2679808_1285120.jpg",
+      "size_bytes": 222068
+    },
+    "2680832_1280000": {
+      "swiss_e": 2680832,
+      "swiss_n": 1280000,
+      "tile_ei": 2618,
+      "tile_ni": 1250,
+      "file": "ortho_2680832_1280000.jpg",
+      "size_bytes": 508389
+    },
+    "2680832_1281024": {
+      "swiss_e": 2680832,
+      "swiss_n": 1281024,
+      "tile_ei": 2618,
+      "tile_ni": 1251,
+      "file": "ortho_2680832_1281024.jpg",
+      "size_bytes": 398264
+    },
+    "2680832_1282048": {
+      "swiss_e": 2680832,
+      "swiss_n": 1282048,
+      "tile_ei": 2618,
+      "tile_ni": 1252,
+      "file": "ortho_2680832_1282048.jpg",
+      "size_bytes": 246986
+    },
+    "2680832_1283072": {
+      "swiss_e": 2680832,
+      "swiss_n": 1283072,
+      "tile_ei": 2618,
+      "tile_ni": 1253,
+      "file": "ortho_2680832_1283072.jpg",
+      "size_bytes": 242220
+    },
+    "2680832_1284096": {
+      "swiss_e": 2680832,
+      "swiss_n": 1284096,
+      "tile_ei": 2618,
+      "tile_ni": 1254,
+      "file": "ortho_2680832_1284096.jpg",
+      "size_bytes": 234711
+    },
+    "2680832_1285120": {
+      "swiss_e": 2680832,
+      "swiss_n": 1285120,
+      "tile_ei": 2618,
+      "tile_ni": 1255,
+      "file": "ortho_2680832_1285120.jpg",
+      "size_bytes": 351252
+    },
+    "2681856_1280000": {
+      "swiss_e": 2681856,
+      "swiss_n": 1280000,
+      "tile_ei": 2619,
+      "tile_ni": 1250,
+      "file": "ortho_2681856_1280000.jpg",
+      "size_bytes": 491678
+    },
+    "2681856_1281024": {
+      "swiss_e": 2681856,
+      "swiss_n": 1281024,
+      "tile_ei": 2619,
+      "tile_ni": 1251,
+      "file": "ortho_2681856_1281024.jpg",
+      "size_bytes": 489909
+    },
+    "2681856_1282048": {
+      "swiss_e": 2681856,
+      "swiss_n": 1282048,
+      "tile_ei": 2619,
+      "tile_ni": 1252,
+      "file": "ortho_2681856_1282048.jpg",
+      "size_bytes": 343248
+    },
+    "2681856_1283072": {
+      "swiss_e": 2681856,
+      "swiss_n": 1283072,
+      "tile_ei": 2619,
+      "tile_ni": 1253,
+      "file": "ortho_2681856_1283072.jpg",
+      "size_bytes": 205055
+    },
+    "2681856_1284096": {
+      "swiss_e": 2681856,
+      "swiss_n": 1284096,
+      "tile_ei": 2619,
+      "tile_ni": 1254,
+      "file": "ortho_2681856_1284096.jpg",
+      "size_bytes": 364109
+    },
+    "2681856_1285120": {
+      "swiss_e": 2681856,
+      "swiss_n": 1285120,
+      "tile_ei": 2619,
+      "tile_ni": 1255,
+      "file": "ortho_2681856_1285120.jpg",
+      "size_bytes": 479631
+    },
+    "2682880_1280000": {
+      "swiss_e": 2682880,
+      "swiss_n": 1280000,
+      "tile_ei": 2620,
+      "tile_ni": 1250,
+      "file": "ortho_2682880_1280000.jpg",
+      "size_bytes": 490078
+    },
+    "2682880_1281024": {
+      "swiss_e": 2682880,
+      "swiss_n": 1281024,
+      "tile_ei": 2620,
+      "tile_ni": 1251,
+      "file": "ortho_2682880_1281024.jpg",
+      "size_bytes": 467539
+    },
+    "2682880_1282048": {
+      "swiss_e": 2682880,
+      "swiss_n": 1282048,
+      "tile_ei": 2620,
+      "tile_ni": 1252,
+      "file": "ortho_2682880_1282048.jpg",
+      "size_bytes": 237045
+    },
+    "2682880_1283072": {
+      "swiss_e": 2682880,
+      "swiss_n": 1283072,
+      "tile_ei": 2620,
+      "tile_ni": 1253,
+      "file": "ortho_2682880_1283072.jpg",
+      "size_bytes": 286294
+    },
+    "2682880_1284096": {
+      "swiss_e": 2682880,
+      "swiss_n": 1284096,
+      "tile_ei": 2620,
+      "tile_ni": 1254,
+      "file": "ortho_2682880_1284096.jpg",
+      "size_bytes": 427562
+    },
+    "2682880_1285120": {
+      "swiss_e": 2682880,
+      "swiss_n": 1285120,
+      "tile_ei": 2620,
+      "tile_ni": 1255,
+      "file": "ortho_2682880_1285120.jpg",
+      "size_bytes": 512253
+    },
+    "2683904_1280000": {
+      "swiss_e": 2683904,
+      "swiss_n": 1280000,
+      "tile_ei": 2621,
+      "tile_ni": 1250,
+      "file": "ortho_2683904_1280000.jpg",
+      "size_bytes": 491923
+    },
+    "2683904_1281024": {
+      "swiss_e": 2683904,
+      "swiss_n": 1281024,
+      "tile_ei": 2621,
+      "tile_ni": 1251,
+      "file": "ortho_2683904_1281024.jpg",
+      "size_bytes": 466780
+    },
+    "2683904_1282048": {
+      "swiss_e": 2683904,
+      "swiss_n": 1282048,
+      "tile_ei": 2621,
+      "tile_ni": 1252,
+      "file": "ortho_2683904_1282048.jpg",
+      "size_bytes": 241539
+    },
+    "2683904_1283072": {
+      "swiss_e": 2683904,
+      "swiss_n": 1283072,
+      "tile_ei": 2621,
+      "tile_ni": 1253,
+      "file": "ortho_2683904_1283072.jpg",
+      "size_bytes": 257953
+    },
+    "2683904_1284096": {
+      "swiss_e": 2683904,
+      "swiss_n": 1284096,
+      "tile_ei": 2621,
+      "tile_ni": 1254,
+      "file": "ortho_2683904_1284096.jpg",
+      "size_bytes": 454927
+    },
+    "2683904_1285120": {
+      "swiss_e": 2683904,
+      "swiss_n": 1285120,
+      "tile_ei": 2621,
+      "tile_ni": 1255,
+      "file": "ortho_2683904_1285120.jpg",
+      "size_bytes": 372064
+    },
+    "2684928_1280000": {
+      "swiss_e": 2684928,
+      "swiss_n": 1280000,
+      "tile_ei": 2622,
+      "tile_ni": 1250,
+      "file": "ortho_2684928_1280000.jpg",
+      "size_bytes": 445638
+    },
+    "2684928_1281024": {
+      "swiss_e": 2684928,
+      "swiss_n": 1281024,
+      "tile_ei": 2622,
+      "tile_ni": 1251,
+      "file": "ortho_2684928_1281024.jpg",
+      "size_bytes": 474688
+    },
+    "2684928_1282048": {
+      "swiss_e": 2684928,
+      "swiss_n": 1282048,
+      "tile_ei": 2622,
+      "tile_ni": 1252,
+      "file": "ortho_2684928_1282048.jpg",
+      "size_bytes": 341667
+    },
+    "2684928_1283072": {
+      "swiss_e": 2684928,
+      "swiss_n": 1283072,
+      "tile_ei": 2622,
+      "tile_ni": 1253,
+      "file": "ortho_2684928_1283072.jpg",
+      "size_bytes": 447377
+    },
+    "2684928_1284096": {
+      "swiss_e": 2684928,
+      "swiss_n": 1284096,
+      "tile_ei": 2622,
+      "tile_ni": 1254,
+      "file": "ortho_2684928_1284096.jpg",
+      "size_bytes": 404742
+    },
+    "2684928_1285120": {
+      "swiss_e": 2684928,
+      "swiss_n": 1285120,
+      "tile_ei": 2622,
+      "tile_ni": 1255,
+      "file": "ortho_2684928_1285120.jpg",
+      "size_bytes": 434670
+    }
+  },
+  "tile_count": 36
+}

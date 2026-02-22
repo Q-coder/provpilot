@@ -1076,6 +1076,11 @@ func _perform_origin_rebase() -> void:
 	var runway_loader = get_node_or_null("RunwayLoader")
 	if runway_loader and runway_loader.has_method("shift_all_runways"):
 		runway_loader.shift_all_runways(shift)
+
+	# 11. Rebase distant terrain mesh.
+	var distant_terrain = get_node_or_null("DistantTerrain")
+	if distant_terrain and distant_terrain.has_method("rebase_center"):
+		distant_terrain.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
 	
 	print("=== REBASE COMPLETE ===")
 
@@ -1208,6 +1213,9 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 		var runway_loader = get_node_or_null("RunwayLoader")
 		if runway_loader and runway_loader.has_method("shift_all_runways"):
 			runway_loader.shift_all_runways(shift)
+		var distant_terrain = get_node_or_null("DistantTerrain")
+		if distant_terrain and distant_terrain.has_method("rebase_center"):
+			distant_terrain.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
 
 	# 7. Compute new Godot position from Swiss coords
 	var new_godot_x = TERRAIN_CENTER_E - swiss_e

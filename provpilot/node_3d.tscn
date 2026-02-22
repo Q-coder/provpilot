@@ -8,9 +8,10 @@
 [ext_resource type="Texture2D" uid="uid://tgqmh32fcwbu" path="res://Textures/coast_sand_rocks_02_rough_4k.png" id="7_wc5p8"]
 [ext_resource type="Script" uid="uid://2qlddvn2d0d0" path="res://terrain_streamer.gd" id="8_strm"]
 [ext_resource type="Script" uid="uid://frvhamoexvx8" path="res://poi_loader.gd" id="9_poild"]
-[ext_resource type="Script" path="res://road_loader.gd" id="10_rdldr"]
-[ext_resource type="Script" path="res://water_loader.gd" id="11_wtrld"]
-[ext_resource type="Script" path="res://runway_loader.gd" id="12_rwyldr"]
+[ext_resource type="Script" uid="uid://ugt8ng7xoq48" path="res://road_loader.gd" id="10_rdldr"]
+[ext_resource type="Script" uid="uid://dt0vt6fod13j0" path="res://water_loader.gd" id="11_wtrld"]
+[ext_resource type="Script" uid="uid://2rdyd4gbir03" path="res://runway_loader.gd" id="12_rwyldr"]
+[ext_resource type="Script" uid="uid://dvinwwhfgiyua" path="res://distant_terrain.gd" id="13_dstrn"]
 
 [sub_resource type="Gradient" id="Gradient_wc5p8"]
 offsets = PackedFloat32Array(0.2, 1)
@@ -108,52 +109,52 @@ offset_bottom = 208.0
 [node name="Label" type="Label" parent="Control" unique_id=1807507576]
 modulate = Color(0.509804, 1, 1, 1)
 layout_mode = 0
-offset_left = 75.0
-offset_top = 2206.0002
-offset_right = 296.0
-offset_bottom = 2279.0002
-scale = Vector2(5, 5)
+offset_left = 49.0
+offset_top = 1410.0
+offset_right = 270.0
+offset_bottom = 1483.0
+scale = Vector2(2, 2)
 text = "Text"
 vertical_alignment = 1
 
 [node name="Label2" type="Label" parent="Control" unique_id=144761800]
 modulate = Color(0.364706, 1, 1, 1)
 layout_mode = 0
-offset_left = 1122.0
-offset_top = 2353.0
-offset_right = 1357.0
-offset_bottom = 2406.0
-scale = Vector2(5, 5)
+offset_left = 590.0
+offset_top = 1457.0
+offset_right = 825.0
+offset_bottom = 1510.0
+scale = Vector2(2, 2)
 text = "text 2"
 
 [node name="Label3" type="Label" parent="Control" unique_id=1719974323]
 modulate = Color(0.482353, 1, 1, 1)
 layout_mode = 0
-offset_left = 1999.0
-offset_top = 2342.0
-offset_right = 2301.0
-offset_bottom = 2402.0
-scale = Vector2(5, 5)
+offset_left = 1313.0
+offset_top = 1479.0
+offset_right = 1614.9999
+offset_bottom = 1539.0
+scale = Vector2(2, 2)
 text = "text 3"
 
 [node name="Label4" type="Label" parent="Control" unique_id=531801771]
 modulate = Color(0.490196, 1, 1, 1)
 layout_mode = 0
-offset_left = 3089.0
-offset_top = 2329.0
-offset_right = 3330.0
-offset_bottom = 2371.0
-scale = Vector2(5, 5)
+offset_left = 2092.0
+offset_top = 1489.0
+offset_right = 2333.0
+offset_bottom = 1531.0
+scale = Vector2(2, 2)
 text = "Text 4"
 
 [node name="Label5" type="Label" parent="Control" unique_id=201692843]
 modulate = Color(0.329412, 1, 1, 1)
 layout_mode = 0
-offset_left = 3823.0
-offset_top = 2313.0
-offset_right = 4069.0
-offset_bottom = 2362.0
-scale = Vector2(5, 5)
+offset_left = 2667.0
+offset_top = 1480.0
+offset_right = 2913.0
+offset_bottom = 1529.0
+scale = Vector2(2, 2)
 text = "Text 5
 "
 
@@ -162,9 +163,9 @@ modulate = Color(0.8, 1, 0.8, 1)
 layout_mode = 0
 offset_left = 40.0
 offset_top = 207.00049
-offset_right = 405.0
-offset_bottom = 280.0005
-scale = Vector2(5, 5)
+offset_right = 333.0
+offset_bottom = 239.20038
+scale = Vector2(2, 2)
 text = "Godot: X Y Z"
 
 [node name="Label7" type="Label" parent="Control" unique_id=1386947090]
@@ -172,9 +173,9 @@ modulate = Color(1, 0.9, 0.6, 1)
 layout_mode = 0
 offset_left = 40.0
 offset_top = 67.00049
-offset_right = 405.0
-offset_bottom = 140.00049
-scale = Vector2(5, 5)
+offset_right = 312.0
+offset_bottom = 111.0
+scale = Vector2(2, 2)
 text = "Lat/Lon: 0.0 / 0.0"
 
 [node name="Label8" type="Label" parent="Control" unique_id=307479243]
@@ -189,6 +190,7 @@ scale = Vector2(5, 5)
 [node name="Terrain3D" type="Terrain3D" parent="." unique_id=962717072]
 material = SubResource("Terrain3DMaterial_6iypd")
 assets = SubResource("Terrain3DAssets_tcnuu")
+mesh_lods = 8
 top_level = true
 metadata/_edit_lock_ = true
 
@@ -201,14 +203,18 @@ script = ExtResource("7_bldng")
 [node name="POILoader" type="Node" parent="." unique_id=1327574823]
 script = ExtResource("9_poild")
 
-[node name="RoadLoader" type="Node3D" parent="."]
+[node name="RoadLoader" type="Node3D" parent="." unique_id=2020264858]
 top_level = true
 script = ExtResource("10_rdldr")
 
-[node name="WaterLoader" type="Node3D" parent="."]
+[node name="WaterLoader" type="Node3D" parent="." unique_id=844572235]
 top_level = true
 script = ExtResource("11_wtrld")
 
-[node name="RunwayLoader" type="Node3D" parent="."]
+[node name="RunwayLoader" type="Node3D" parent="." unique_id=843368179]
 top_level = true
 script = ExtResource("12_rwyldr")
+
+[node name="DistantTerrain" type="Node3D" parent="." unique_id=53086857]
+top_level = true
+script = ExtResource("13_dstrn")

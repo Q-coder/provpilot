@@ -24,8 +24,8 @@ Terrain is divided into 1024×1024m tiles aligned to the Swiss LV95 coordinate g
 | **Pixels per Tile** | 1024 × 1024 (1m resolution) |
 | **Terrain Center** | E 2,682,880 / N 1,283,072 |
 | **Grid Alignment** | Center is 2620 × 1024 (E), 1253 × 1024 (N) |
-| **Load Radius** | 8 tiles (configurable) |
-| **Loaded Area** | 17 × 17 tiles = ~17km × 17km |
+| **Load Radius** | 12 tiles (configurable) |
+| **Loaded Area** | 25 × 25 tiles = ~25km × 25km |
 | **Unload Margin** | 2 tiles (hysteresis) |
 | **Format** | Raw float32 heightmaps |
 
@@ -92,6 +92,110 @@ The pipeline:
   }
 }
 ```
+
+## Orthophoto Aerial Imagery
+
+Real aerial imagery from Swisstopo SWISSIMAGE is layered onto the terrain as
+Terrain3D color maps, replacing the default auto-shader textures.
+
+### Near Terrain Orthophotos
+
+The near terrain (Terrain3D regions) displays 1m/pixel orthophoto tiles
+covering all of Switzerland.
+
+```bash
+# Generate orthophoto tiles for all terrain tiles (WMS-based, ~4 tiles/s)
+python scripts/generate_orthophoto_tiles.py \
+    --terrain-manifest scenery/terrain/manifest.json \
+    --tile-dir scenery/orthophoto
+
+# Generate tiles for a specific area only
+python scripts/generate_orthophoto_tiles.py \
+    --center-e 2682880 --center-n 1283072 --size 20000 \
+    --tile-dir scenery/orthophoto
+```
+
+| Parameter | Value |
+|-----------|-------|
+| Source | Swisstopo WMS (`ch.swisstopo.swissimage-product`) |
+| Resolution | 1m per pixel |
+| Tile size | 1024 × 1024 pixels (matching terrain tiles) |
+| Format | JPEG (quality 85) |
+| Coverage | All of Switzerland (~41,474 tiles, ~13 GB) |
+| Resumable | Yes — skips existing tiles on re-run |
+
+The pipeline fetches one WMS request per output tile, orients the image to match
+Terrain3D's coordinate convention (pixel 0,0 = SE corner), detects and skips
+empty tiles (outside Swiss coverage), and writes a `manifest.json`.
+
+**Runtime**: `terrain_streamer.gd` loads orthophoto tiles alongside height data,
+setting Terrain3D's `show_colormap` mode with alpha=128 (roughness-neutral).
+Color maps are preserved across floating-origin rebases.
+
+### Alternative: STAC-Based Pipeline
+
+For smaller areas or higher resolution (0.1m source), use the STAC-based script:
+
+```bash
+# Download 0.1m source tiles and resample to 1m output
+python scripts/process_swissimage_orthophoto.py \
+    --center-e 2682880 --center-n 1283072 --size 5000 \
+    --source-resolution 0.1 --tile-dir scenery/orthophoto_hires
+```
+
+## Distant Terrain (Low-Detail Horizon)
+
+### Problem
+
+Terrain3D has a hard limit of 32×32 regions. At 1024m per region, this allows a maximum of ~32km × 32km. At flight altitudes (4000+ ft), the terrain edge is clearly visible, especially beyond the `load_radius`.
+
+### Solution: Two-Pronged Approach
+
+1. **Increased load_radius** (8 → 12): Terrain3D now loads 25×25 tiles (~25km²), increasing the high-detail coverage.
+
+2. **Distant terrain mesh skirt**: A separate low-resolution MeshInstance3D covers **all of Switzerland** (350km × 229km) at 128m per vertex. This sits 2m below the Terrain3D surface to avoid z-fighting and provides a visible horizon out to 150+ km.
+
+### Data Pipeline
+
+```bash
+# Generate the low-res heightmap from all 42,400 tiles (default: 128m/px)
+python scripts/generate_distant_terrain.py --resolution 128
+
+# Replace the elevation-band color map with real WMS aerial imagery
+python scripts/generate_distant_orthophoto.py
+```
+
+This produces three files in `scenery/terrain/`:
+
+| File | Description |
+|------|-------------|
+| `distant_terrain.raw` | Float32 heightmap, 2736×1792 pixels at 128m/px (18.7 MB) |
+| `distant_terrain_color.png` | WMS orthophoto aerial imagery (5.8 MB) |
+| `distant_terrain_meta.json` | Grid dimensions, Swiss coordinate bounds, resolution |
+
+The heightmap generator fills NaN holes (areas without source tiles) using
+iterative neighbor-averaging, ensuring a gap-free mesh.
+
+### Runtime Components
+
+- **distant_terrain.gd**: Loads the pre-processed data, generates ArrayMesh chunks (max 250×250 vertices each to stay within Godot's 65536 vertex limit), applies shader material. Supports floating origin rebasing.
+- **shaders/distant_terrain.gdshader**: Unshaded spatial shader with near-clip discard (6km), fade-in (6–8km), linear distance fog (80–250km), and exponential atmospheric haze.
+
+### Rendering
+
+| Parameter | Value |
+|-----------|-------|
+| Resolution | 128m per vertex |
+| Coverage | 350 km × 229 km (all Switzerland) |
+| Height offset | -2m (below Terrain3D to avoid z-fighting) |
+| Near clip | 6 km (hidden behind Terrain3D) |
+| Near fade | 6–8 km (smooth transition) |
+| Fog start | 80 km |
+| Fog end | 250 km |
+| Shadows | Disabled (performance) |
+| Chunk size | 250×250 vertices |
+
+Empty chunks (outside Swiss borders) are skipped automatically. The mesh follows the floating origin via `rebase_center()`, called from `node_3d.gd` during origin shifts.
 
 ## Building System
 
@@ -376,3 +480,13 @@ Control surfaces are individual `MeshInstance3D` nodes within the aircraft hiera
 | `src/jsbgodot.cpp` / `src/jsbgodot.h` | JSBSim ↔ Godot C++ binding |
 | `scripts/process_swisstopo_terrain.py` | Terrain processing pipeline |
 | `scripts/convert_buildings_to_gltf.py` | Building GDB → GLB converter |
+| `provpilot/distant_terrain.gd` | Low-res distant terrain mesh loader |
+| `provpilot/shaders/distant_terrain.gdshader` | Distant terrain fog/haze shader |
+| `scripts/generate_distant_terrain.py` | Distant terrain heightmap preprocessor |
+| `scripts/generate_distant_orthophoto.py` | Distant terrain WMS color map generator |
+| `scripts/generate_orthophoto_tiles.py` | Full-Switzerland WMS orthophoto tiler |
+| `scripts/process_swissimage_orthophoto.py` | STAC-based orthophoto pipeline (small areas) |
+| `scenery/terrain/distant_terrain.raw` | Low-res float32 heightmap (128m/px) |
+| `scenery/terrain/distant_terrain_color.png` | Distant terrain aerial imagery (WMS) |
+| `scenery/terrain/distant_terrain_meta.json` | Distant terrain metadata |
+| `scenery/orthophoto/` | Near-terrain orthophoto JPEG tiles + manifest |
