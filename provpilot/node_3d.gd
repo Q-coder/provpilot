@@ -113,6 +113,7 @@ var _pre_slew_airspeed_kts: float = 0.0  # saved airspeed for slew mode restore
 # Loading / Welcome / Settings screens
 var _loading_screen: CanvasLayer = null
 var _loading_done: bool = false
+var _fly_loading: bool = false   # True while loading after user clicks Fly!
 var _welcome_screen: CanvasLayer = null
 var _settings_screen: CanvasLayer = null
 
@@ -471,6 +472,33 @@ const TERRAIN_INIT_DELAY_FRAMES: int = 60  # Wait 60 frames (~1 sec) before per-
 # Offset to convert Godot Y coordinates to JSBSim ASL elevation
 # Set during initialization, used for per-frame terrain updates
 var jsbsim_elevation_offset: float = 0.0  # 0 when terrain imported with offset 0
+
+func _process_rebase_cooldown() -> void:
+	## Handle post-teleport position pinning and JSBSim release.
+	## Extracted so it can run both in normal flight and during fly-loading.
+	var ac_guard = get_node_or_null("AC")
+	if ac_guard and terrain_initialized and _rebase_cooldown > 0:
+		ac_guard.global_position = _teleport_pin_pos
+		_rebase_cooldown -= 1
+		if _rebase_cooldown == 0:
+			# Terrain should be loaded by now — update height at pin position
+			if is_instance_valid(terrain3d_node):
+				var td = terrain3d_node.get("data")
+				if td and td.has_method("get_height"):
+					var h = td.get_height(Vector3(_teleport_pin_pos.x, 0, _teleport_pin_pos.z))
+					if not is_nan(h) and h > 0.1:
+						_teleport_pin_pos.y = h + 2.1  # terrain + gear clearance
+						ac_guard.global_position = _teleport_pin_pos
+						print("Teleport: updated terrain height to %.1fm" % h)
+			# Re-initialize JSBSim at the final pinned position and release
+			if jsb_node:
+				if jsb_node.has_method("reinitialize_from_godot_position"):
+					jsb_node.reinitialize_from_godot_position(ac_guard.global_position, ac_guard.rotation.y)
+				_update_terrain_elevation()
+				if jsb_node.has_method("set_slew_mode"):
+					jsb_node.set_slew_mode(false)
+			print("Teleport cooldown expired – JSBSim released at ", ac_guard.global_position)
+
 func _update_terrain_elevation() -> void:
 	# Skip if not yet initialized (initialization happens in _ready via _initialize_jsbsim_on_terrain)
 	if not terrain_initialized:
@@ -527,7 +555,14 @@ func _process(delta: float) -> void:
 
 	# While loading screen is active, update progress and wait for completion
 	if not _loading_done:
-		_update_loading_progress()
+		_update_loading_progress(false)  # initial startup loading
+		return
+
+	# Post-Fly loading: terrain/buildings/roads/water settling at destination
+	if _fly_loading:
+		# Process rebase cooldown while loading screen is shown
+		_process_rebase_cooldown()
+		_update_loading_progress(true)  # fly-to-destination loading
 		return
 
 	# Skip all flight logic while welcome or settings overlay is visible
@@ -543,32 +578,7 @@ func _process(delta: float) -> void:
 			return
 	
 	# --- Post-teleport position guard ---
-	# During cooldown: JSBSim stays in slew mode (no physics), and we pin
-	# the AC to the teleport target.  When cooldown expires we reinitialize
-	# JSBSim at the pinned position and release.
-	var ac_guard = get_node_or_null("AC")
-	if ac_guard and terrain_initialized and _rebase_cooldown > 0:
-		# Pin aircraft to teleport target position (override any drift)
-		ac_guard.global_position = _teleport_pin_pos
-		_rebase_cooldown -= 1
-		if _rebase_cooldown == 0:
-			# Terrain should be loaded by now — update height at pin position
-			if is_instance_valid(terrain3d_node):
-				var td = terrain3d_node.get("data")
-				if td and td.has_method("get_height"):
-					var h = td.get_height(Vector3(_teleport_pin_pos.x, 0, _teleport_pin_pos.z))
-					if not is_nan(h) and h > 0.1:
-						_teleport_pin_pos.y = h + 2.1  # terrain + gear clearance
-						ac_guard.global_position = _teleport_pin_pos
-						print("Teleport: updated terrain height to %.1fm" % h)
-			# Re-initialize JSBSim at the final pinned position and release
-			if jsb_node:
-				if jsb_node.has_method("reinitialize_from_godot_position"):
-					jsb_node.reinitialize_from_godot_position(ac_guard.global_position, ac_guard.rotation.y)
-				_update_terrain_elevation()
-				if jsb_node.has_method("set_slew_mode"):
-					jsb_node.set_slew_mode(false)
-			print("Teleport cooldown expired – JSBSim released at ", ac_guard.global_position)
+	_process_rebase_cooldown()
 	
 	# Toggle slew mode with Shift+Y
 	if Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_Y):
@@ -1284,47 +1294,102 @@ func _create_loading_screen() -> void:
 	_loading_screen.show_loading()
 
 
-func _update_loading_progress() -> void:
-	## Monitor progressive loaders and update the loading bar.
-	## Once everything is loaded, transition to the welcome screen.
+func _count_loader_pending(node_name: String) -> int:
+	## Return the number of pending loads for a loader node (building/road/water).
+	var loader = get_node_or_null(node_name)
+	if loader and "_pending_loads" in loader:
+		var count: int = loader._pending_loads.size()
+		if "_loading_tiles" in loader:
+			count += loader._loading_tiles.size()
+		return count
+	return 0
+
+
+func _update_loading_progress(is_fly_loading: bool) -> void:
+	## Monitor all progressive loaders and update the loading bar.
+	## When is_fly_loading is false (startup), also waits for distant terrain.
+	## When is_fly_loading is true (after Fly!), also waits for the rebase
+	## cooldown to expire and all scenery loaders to settle.
 	var streamer = get_node_or_null("TerrainStreamer")
 	var distant = get_node_or_null("DistantTerrain")
 
-	# Count pending work
+	# ── Terrain tiles ────────────────────────────────────────────────
 	var terrain_pending := 0
-	var terrain_total := 1  # avoid div-by-zero
+	var terrain_total := 1
 	if streamer and "_pending_loads" in streamer:
 		terrain_pending = streamer._pending_loads.size()
 		terrain_total = max(1, streamer._loaded_tiles.size() + terrain_pending)
 
+	# ── Distant terrain chunks (only relevant at startup) ────────────
 	var chunk_pending := 0
 	var chunk_total := 1
-	if distant and "_pending_chunks" in distant:
+	if not is_fly_loading and distant and "_pending_chunks" in distant:
 		chunk_pending = distant._pending_chunks.size()
-		# Total includes already-created chunks (children minus non-mesh nodes)
 		chunk_total = max(1, distant.get_child_count() + chunk_pending)
 
-	# Weighted progress: terrain streaming 60%, distant terrain mesh 40%
-	var p_terrain := 1.0 - (float(terrain_pending) / terrain_total)
-	var p_chunks := 1.0 - (float(chunk_pending) / chunk_total)
-	var progress := p_terrain * 0.6 + p_chunks * 0.4
+	# ── Scenery loaders (buildings, roads, water) ────────────────────
+	var bld_pending := _count_loader_pending("BuildingLoader")
+	var road_pending := _count_loader_pending("RoadLoader")
+	var water_pending := _count_loader_pending("WaterLoader")
+	var scenery_pending := bld_pending + road_pending + water_pending
 
-	# Update loading screen
+	# ── Rebase cooldown (only after fly) ─────────────────────────────
+	var cooldown_pending := _rebase_cooldown if is_fly_loading else 0
+
+	# ── Compute weighted progress ────────────────────────────────────
+	var progress: float
+	if is_fly_loading:
+		# After Fly!: terrain 40%, cooldown 20%, scenery 40%
+		var p_terrain := 1.0 - (float(terrain_pending) / terrain_total)
+		var p_cooldown := 1.0 - (float(cooldown_pending) / max(1, REBASE_COOLDOWN_FRAMES))
+		var scenery_total := max(1, scenery_pending + 1)  # +1 avoids instant 100%
+		var p_scenery := 1.0 - (float(scenery_pending) / scenery_total)
+		progress = p_terrain * 0.4 + p_cooldown * 0.2 + p_scenery * 0.4
+	else:
+		# Startup: terrain 40%, distant chunks 30%, scenery 30%
+		var p_terrain := 1.0 - (float(terrain_pending) / terrain_total)
+		var p_chunks := 1.0 - (float(chunk_pending) / chunk_total)
+		var scenery_total := max(1, scenery_pending + 1)
+		var p_scenery := 1.0 - (float(scenery_pending) / scenery_total)
+		progress = p_terrain * 0.4 + p_chunks * 0.3 + p_scenery * 0.3
+
+	# ── Update loading screen ────────────────────────────────────────
 	if _loading_screen:
 		_loading_screen.set_progress(progress)
 		if terrain_pending > 0:
 			_loading_screen.set_status("Loading terrain... %d tiles remaining" % terrain_pending)
 		elif chunk_pending > 0:
 			_loading_screen.set_status("Building distant terrain... %d chunks remaining" % chunk_pending)
+		elif scenery_pending > 0:
+			var parts: Array[String] = []
+			if bld_pending > 0:
+				parts.append("%d buildings" % bld_pending)
+			if road_pending > 0:
+				parts.append("%d roads" % road_pending)
+			if water_pending > 0:
+				parts.append("%d water" % water_pending)
+			_loading_screen.set_status("Loading scenery... %s remaining" % ", ".join(parts))
+		elif cooldown_pending > 0:
+			_loading_screen.set_status("Stabilizing aircraft...")
 		else:
 			_loading_screen.set_status("Ready")
 
-	# Check if loading is complete
-	if terrain_pending == 0 and chunk_pending == 0:
+	# ── Check completion ─────────────────────────────────────────────
+	var all_done := terrain_pending == 0 and chunk_pending == 0 and scenery_pending == 0 and cooldown_pending == 0
+	if not all_done:
+		return
+
+	if is_fly_loading:
+		# Post-Fly loading complete — dismiss and start flying
+		_fly_loading = false
+		if _loading_screen:
+			_loading_screen.hide_loading()
+		print("Fly loading complete — simulation active")
+	else:
+		# Startup loading complete — show welcome screen
 		_loading_done = true
 		if _loading_screen:
 			_loading_screen.hide_loading()
-		# Now create and show welcome / settings screens
 		_create_welcome_screen()
 		_create_settings_screen()
 		print("Loading complete — showing welcome screen")
@@ -1364,6 +1429,14 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 	print("=== WELCOME: Flight requested ===")
 	print("  Aircraft: %s" % aircraft_id)
 	print("  Target: E=%.0f N=%.0f Heading=%.0f°" % [swiss_e, swiss_n, heading_deg])
+
+	# Show loading screen while destination loads
+	_fly_loading = true
+	if _loading_screen:
+		_loading_screen.set_progress(0.0)
+		_loading_screen.set_status("Teleporting...")
+		_loading_screen.show_loading()
+
 	_on_teleport_requested(swiss_e, swiss_n, heading_deg)
 
 
