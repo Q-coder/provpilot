@@ -110,13 +110,19 @@ var _position_dialog: Window = null
 var _position_key_held: bool = false
 var _pre_slew_airspeed_kts: float = 0.0  # saved airspeed for slew mode restore
 
-# Welcome / Settings screens
+# Loading / Welcome / Settings screens
+var _loading_screen: CanvasLayer = null
+var _loading_done: bool = false
 var _welcome_screen: CanvasLayer = null
 var _settings_screen: CanvasLayer = null
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	print("Node3D _ready() starting...")
+
+	# Show a lightweight loading screen immediately, before any heavy work.
+	_create_loading_screen()
+
 	# Get JSBGodot node after we're in the scene tree
 	jsb_node = $AC/JSBGodot
 	print("JSBGodot node: ", jsb_node)
@@ -252,9 +258,8 @@ func _ready() -> void:
 	print_node_tree($AC, 0)
 	print("=== End Hierarchy ===")
 
-	# ── Welcome & Settings screens ─────────────────────────────────────
-	_create_welcome_screen()
-	_create_settings_screen()
+	# Welcome & Settings screens are created later, once loading finishes.
+	# See _update_loading_progress() called from _process().
 
 	print("Node3D _ready() complete!")
 
@@ -519,6 +524,11 @@ func _process(delta: float) -> void:
 	# Do deferred terrain initialization if pending (needs physics world ready)
 	if _pending_terrain_init:
 		_do_deferred_terrain_init()
+
+	# While loading screen is active, update progress and wait for completion
+	if not _loading_done:
+		_update_loading_progress()
+		return
 
 	# Skip all flight logic while welcome or settings overlay is visible
 	if _welcome_screen and _welcome_screen.visible:
@@ -1262,6 +1272,62 @@ func format_swiss_coord(value: float) -> String:
 		result = str_val[i] + result
 		count += 1
 	return result
+
+
+# ── Loading Screen ─────────────────────────────────────────────────────────
+
+func _create_loading_screen() -> void:
+	var script = load("res://loading_screen.gd")
+	_loading_screen = CanvasLayer.new()
+	_loading_screen.set_script(script)
+	add_child(_loading_screen)
+	_loading_screen.show_loading()
+
+
+func _update_loading_progress() -> void:
+	## Monitor progressive loaders and update the loading bar.
+	## Once everything is loaded, transition to the welcome screen.
+	var streamer = get_node_or_null("TerrainStreamer")
+	var distant = get_node_or_null("DistantTerrain")
+
+	# Count pending work
+	var terrain_pending := 0
+	var terrain_total := 1  # avoid div-by-zero
+	if streamer and "_pending_loads" in streamer:
+		terrain_pending = streamer._pending_loads.size()
+		terrain_total = max(1, streamer._loaded_tiles.size() + terrain_pending)
+
+	var chunk_pending := 0
+	var chunk_total := 1
+	if distant and "_pending_chunks" in distant:
+		chunk_pending = distant._pending_chunks.size()
+		# Total includes already-created chunks (children minus non-mesh nodes)
+		chunk_total = max(1, distant.get_child_count() + chunk_pending)
+
+	# Weighted progress: terrain streaming 60%, distant terrain mesh 40%
+	var p_terrain := 1.0 - (float(terrain_pending) / terrain_total)
+	var p_chunks := 1.0 - (float(chunk_pending) / chunk_total)
+	var progress := p_terrain * 0.6 + p_chunks * 0.4
+
+	# Update loading screen
+	if _loading_screen:
+		_loading_screen.set_progress(progress)
+		if terrain_pending > 0:
+			_loading_screen.set_status("Loading terrain... %d tiles remaining" % terrain_pending)
+		elif chunk_pending > 0:
+			_loading_screen.set_status("Building distant terrain... %d chunks remaining" % chunk_pending)
+		else:
+			_loading_screen.set_status("Ready")
+
+	# Check if loading is complete
+	if terrain_pending == 0 and chunk_pending == 0:
+		_loading_done = true
+		if _loading_screen:
+			_loading_screen.hide_loading()
+		# Now create and show welcome / settings screens
+		_create_welcome_screen()
+		_create_settings_screen()
+		print("Loading complete — showing welcome screen")
 
 
 # ── Welcome / Settings Screens ─────────────────────────────────────────────
