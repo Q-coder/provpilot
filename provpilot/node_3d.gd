@@ -1341,16 +1341,16 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 	if is_fly_loading:
 		# After Fly!: terrain 40%, cooldown 20%, scenery 40%
 		var p_terrain := 1.0 - (float(terrain_pending) / terrain_total)
-		var p_cooldown := 1.0 - (float(cooldown_pending) / max(1, REBASE_COOLDOWN_FRAMES))
-		var scenery_total := max(1, scenery_pending + 1)  # +1 avoids instant 100%
-		var p_scenery := 1.0 - (float(scenery_pending) / scenery_total)
+		var p_cooldown := 1.0 - (float(cooldown_pending) / float(maxi(1, REBASE_COOLDOWN_FRAMES)))
+		var scenery_total := maxi(1, scenery_pending + 1)  # +1 avoids instant 100%
+		var p_scenery := 1.0 - (float(scenery_pending) / float(scenery_total))
 		progress = p_terrain * 0.4 + p_cooldown * 0.2 + p_scenery * 0.4
 	else:
 		# Startup: terrain 40%, distant chunks 30%, scenery 30%
 		var p_terrain := 1.0 - (float(terrain_pending) / terrain_total)
 		var p_chunks := 1.0 - (float(chunk_pending) / chunk_total)
-		var scenery_total := max(1, scenery_pending + 1)
-		var p_scenery := 1.0 - (float(scenery_pending) / scenery_total)
+		var scenery_total := maxi(1, scenery_pending + 1)
+		var p_scenery := 1.0 - (float(scenery_pending) / float(scenery_total))
 		progress = p_terrain * 0.4 + p_chunks * 0.3 + p_scenery * 0.3
 
 	# ── Update loading screen ────────────────────────────────────────
