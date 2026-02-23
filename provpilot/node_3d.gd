@@ -110,6 +110,10 @@ var _position_dialog: Window = null
 var _position_key_held: bool = false
 var _pre_slew_airspeed_kts: float = 0.0  # saved airspeed for slew mode restore
 
+# Welcome / Settings screens
+var _welcome_screen: CanvasLayer = null
+var _settings_screen: CanvasLayer = null
+
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	print("Node3D _ready() starting...")
@@ -247,7 +251,11 @@ func _ready() -> void:
 	print("=== Aircraft Node Hierarchy ===")
 	print_node_tree($AC, 0)
 	print("=== End Hierarchy ===")
-	
+
+	# ── Welcome & Settings screens ─────────────────────────────────────
+	_create_welcome_screen()
+	_create_settings_screen()
+
 	print("Node3D _ready() complete!")
 
 
@@ -511,6 +519,18 @@ func _process(delta: float) -> void:
 	# Do deferred terrain initialization if pending (needs physics world ready)
 	if _pending_terrain_init:
 		_do_deferred_terrain_init()
+
+	# Skip all flight logic while welcome or settings overlay is visible
+	if _welcome_screen and _welcome_screen.visible:
+		return
+	if _settings_screen and _settings_screen.visible:
+		return
+
+	# Escape key: return to welcome screen
+	if Input.is_key_pressed(KEY_ESCAPE):
+		if _welcome_screen:
+			_welcome_screen.show_welcome()
+			return
 	
 	# --- Post-teleport position guard ---
 	# During cooldown: JSBSim stays in slew mode (no physics), and we pin
@@ -1242,6 +1262,58 @@ func format_swiss_coord(value: float) -> String:
 		result = str_val[i] + result
 		count += 1
 	return result
+
+
+# ── Welcome / Settings Screens ─────────────────────────────────────────────
+
+func _create_welcome_screen() -> void:
+	var script = load("res://welcome_screen.gd")
+	_welcome_screen = CanvasLayer.new()
+	_welcome_screen.set_script(script)
+	add_child(_welcome_screen)
+	_welcome_screen.flight_requested.connect(_on_welcome_flight_requested)
+	_welcome_screen.settings_requested.connect(_on_welcome_settings_requested)
+
+	# Populate airports from POILoader
+	var poi_loader = get_node_or_null("POILoader")
+	if poi_loader and poi_loader.airports.size() > 0:
+		_welcome_screen.populate_airports(poi_loader.airports)
+	else:
+		# POILoader may still be loading — try again next frame
+		_welcome_screen.call_deferred("populate_airports_from_loader", poi_loader)
+
+	_welcome_screen.show_welcome()
+
+
+func _create_settings_screen() -> void:
+	var script = load("res://settings_screen.gd")
+	_settings_screen = CanvasLayer.new()
+	_settings_screen.set_script(script)
+	add_child(_settings_screen)
+	_settings_screen.closed.connect(_on_settings_closed)
+
+
+## Handle Fly! from welcome screen — teleport to the selected airport
+func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: float, heading_deg: float) -> void:
+	print("=== WELCOME: Flight requested ===")
+	print("  Aircraft: %s" % aircraft_id)
+	print("  Target: E=%.0f N=%.0f Heading=%.0f°" % [swiss_e, swiss_n, heading_deg])
+	_on_teleport_requested(swiss_e, swiss_n, heading_deg)
+
+
+func _on_welcome_settings_requested() -> void:
+	if _welcome_screen:
+		_welcome_screen.visible = false
+	if _settings_screen:
+		_settings_screen.show_settings()
+
+
+func _on_settings_closed() -> void:
+	if _settings_screen:
+		_settings_screen.hide_settings()
+	if _welcome_screen:
+		_welcome_screen.visible = true
+		_welcome_screen.show_welcome()
 
 
 # ── Position / Teleport ────────────────────────────────────────────────────
