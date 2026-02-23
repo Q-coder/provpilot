@@ -796,21 +796,23 @@ void JSBGodot::_ready()
         }
     }
 
-    // Compute JSBSim root directory — works in both editor and exported app
+    // Compute JSBSim root directory — works in both editor and exported app.
+    // Use OS.has_feature("editor") instead of checking the exe path for
+    // ".app/Contents/MacOS/" because the Godot editor itself lives inside
+    // a .app bundle and would match the exported-app pattern.
     std::string jsbsim_root;
-    String exe_path = OS::get_singleton()->get_executable_path();
-    if (exe_path.find(".app/Contents/MacOS/") >= 0) {
-        // Exported macOS app: data lives alongside the .app bundle
-        // .../App.app/Contents/MacOS/App → 4× get_base_dir() → parent of .app
+    if (OS::get_singleton()->has_feature("editor")) {
+        // Editor: jsbsim/ is a sibling directory at the repo root level
+        jsbsim_root = "../jsbsim";
+        UtilityFunctions::print("JSBSim root (editor): ../jsbsim");
+    } else {
+        // Exported app: data lives alongside the .app bundle
+        String exe_path = OS::get_singleton()->get_executable_path();
         String dir = exe_path.get_base_dir().get_base_dir()
                              .get_base_dir().get_base_dir();
         String jsbsim_dir = dir.path_join("jsbsim");
         jsbsim_root = jsbsim_dir.utf8().get_data();
         UtilityFunctions::print("JSBSim root (exported): ", jsbsim_dir);
-    } else {
-        // Editor: jsbsim/ is a sibling directory at the repo root level
-        jsbsim_root = "../jsbsim";
-        UtilityFunctions::print("JSBSim root (editor): ../jsbsim");
     }
     FDMExec->SetRootDir(SGPath(jsbsim_root));
     FDMExec->SetAircraftPath(SGPath(jsbsim_root + "/aircraft"));
