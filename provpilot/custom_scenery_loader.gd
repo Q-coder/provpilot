@@ -89,8 +89,13 @@ func get_package(id: String) -> Dictionary:
 static func _resolve_scenery_path(path: String) -> String:
 	if path.begins_with("/") or path.begins_with("res://") or path.begins_with("user://"):
 		return path
-	var project_dir = ProjectSettings.globalize_path("res://")
-	if project_dir.ends_with("/"):
-		project_dir = project_dir.left(project_dir.length() - 1)
-	var workspace_root = project_dir.get_base_dir()
-	return workspace_root.path_join(path)
+	var base_dir: String
+	if OS.has_feature("editor"):
+		var project_dir = ProjectSettings.globalize_path("res://")
+		if project_dir.ends_with("/"):
+			project_dir = project_dir.left(project_dir.length() - 1)
+		base_dir = project_dir.get_base_dir()
+	else:
+		var exe = OS.get_executable_path()
+		base_dir = exe.get_base_dir().get_base_dir().get_base_dir().get_base_dir()
+	return base_dir.path_join(path)

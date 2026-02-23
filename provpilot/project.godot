@@ -24,6 +24,10 @@ window/size/viewport_height=2160
 
 enabled=PackedStringArray("res://addons/terrain_3d/plugin.cfg")
 
+[rendering]
+
+textures/vram_compression/import_etc2_astc=true
+
 [input]
 
 flip_camera={

@@ -697,14 +697,18 @@ func _unload_tile(tile_key: String) -> void:
 static func _resolve_scenery_path(path: String) -> String:
 	if path.begins_with("/") or path.begins_with("res://") or path.begins_with("user://"):
 		return path
-	# OS.get_executable_path() is the Godot editor binary — not useful.
-	# ProjectSettings.globalize_path("res://") gives the project dir.
-	var project_dir = ProjectSettings.globalize_path("res://")  # e.g. /Users/.../provpilot/
-	# Strip trailing slash so get_base_dir() returns the actual parent directory.
-	if project_dir.ends_with("/"):
-		project_dir = project_dir.left(project_dir.length() - 1)
-	# Workspace root is one level up from the Godot project directory.
-	var workspace_root = project_dir.get_base_dir()
-	var resolved = workspace_root.path_join(path)
+	var base_dir: String
+	if OS.has_feature("editor"):
+		# In editor: workspace root is one level above the Godot project directory.
+		var project_dir = ProjectSettings.globalize_path("res://")
+		if project_dir.ends_with("/"):
+			project_dir = project_dir.left(project_dir.length() - 1)
+		base_dir = project_dir.get_base_dir()
+	else:
+		# Exported app: data lives alongside the .app bundle.
+		# macOS: .../App.app/Contents/MacOS/App → 4× get_base_dir() → parent of .app
+		var exe = OS.get_executable_path()
+		base_dir = exe.get_base_dir().get_base_dir().get_base_dir().get_base_dir()
+	var resolved = base_dir.path_join(path)
 	print("TerrainStreamer: Resolved '%s' → '%s'" % [path, resolved])
 	return resolved

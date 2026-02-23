@@ -23,6 +23,7 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 - **Multiple Camera Views**:
   - Cockpit camera with pilot head look (hat switch / D-pad / arrow keys)
   - External orbit camera with full rotation and zoom
+  - Chase camera with smooth follow behind aircraft
 - **Gamepad & Keyboard**: Full joystick/gamepad control with trigger-based throttle
 - **Animated Control Surfaces**: Ailerons, elevators, rudder, flaps, propeller with blur disc, nose gear steering
 - **Elevator Trim**: Fine-tune pitch with Y/X buttons
@@ -51,9 +52,9 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 ### Camera Controls
 | Control | Gamepad | Keyboard |
 |---------|---------|----------|
-| Switch Camera | Select / Back | C |
+| Switch Camera (Cockpit/Orbit/Chase) | Select / Back | C |
 | Head Look (Cockpit) | D-pad | Arrow Keys |
-| Orbit Camera (External) | D-pad | Arrow Keys |
+| Orbit/Chase Camera Adjust | D-pad | Arrow Keys |
 | Zoom In | L1 (Left Shoulder) | Page Up |
 | Zoom Out | R1 (Right Shoulder) | Page Down |
 
@@ -95,11 +96,11 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 
 3. Build the GDExtension:
    ```bash
-   # macOS ARM64
+   # macOS ARM64 (debug)
    scons arch=arm64
 
-   # macOS x86_64
-   scons arch=x86_64
+   # macOS ARM64 (release, for distribution)
+   scons target=template_release arch=arm64
 
    # Linux
    scons
@@ -135,7 +136,10 @@ provpilot/
 │   ├── water_loader.gd         # River & lake loader
 │   ├── runway_loader.gd        # Procedural runway renderer
 │   ├── poi_loader.gd           # Airport/POI database loader
+│   ├── distant_terrain.gd      # Low-res distant terrain renderer
+│   ├── custom_scenery_loader.gd # Custom scenery package loader
 │   ├── position_dialog.gd      # Airport search & teleport UI
+│   ├── export_presets.cfg      # macOS export preset
 │   ├── node_3d.tscn            # Main scene
 │   ├── C172p.tscn              # Aircraft scene
 │   ├── environment.tscn        # Sky/environment
@@ -158,14 +162,52 @@ provpilot/
 │   ├── generate_water.py            # Water body GeoPackage → GLB
 │   ├── generate_airports.py         # Airport extraction from swissTLM3D
 │   ├── build_airports_json.py       # Build airports.json from verified data
-│   └── fetch_osm_runways.py         # Fetch runway data from OSM Overpass
+│   ├── fetch_osm_runways.py         # Fetch runway data from OSM Overpass
+│   ├── generate_orthophoto_tiles.py  # Orthophoto tile pipeline
+│   ├── generate_distant_terrain.py   # Distant terrain low-res mesh
+│   └── build_macos.sh               # macOS build, sign & assemble script
 ├── docs/                        # Additional documentation
 │   ├── SCENERY_ARCHITECTURE.md  # Scenery data architecture & formats
-│   └── TERRAIN_SETUP.md        # Terrain & collision architecture
+│   ├── TERRAIN_SETUP.md        # Terrain & collision architecture
+│   └── WINDOWS_SETUP.md        # Windows build setup guide
 ├── jsbsim/                      # JSBSim flight dynamics (submodule)
 ├── godot-cpp/                   # Godot C++ bindings (submodule)
 └── SConstruct                   # Build configuration
 ```
+
+## macOS Distribution
+
+ProvPilot can be exported as a standalone macOS application. The distribution uses a folder-based layout (like X-Plane) where the `.app` bundle, scenery data, and JSBSim data live as siblings:
+
+```
+ProvPilot/
+  ProvPilot.app/     # Signed Godot export (~6GB)
+  scenery/            # Terrain, orthophoto, buildings, roads, water, POI
+  jsbsim/             # Aircraft, engine, and systems data
+```
+
+### Quick Build
+
+```bash
+./scripts/build_macos.sh
+```
+
+This script builds the GDExtension, exports the Godot project, signs with Developer ID, and assembles the distribution folder.
+
+### Manual Steps
+
+1. Build the release GDExtension: `scons target=template_release arch=arm64`
+2. Export from Godot: uses the `macOS` preset in `provpilot/export_presets.cfg`
+3. Code-sign with Developer ID (inside-out: frameworks → dylibs → app)
+4. Place `scenery/` and `jsbsim/` alongside the `.app` in a folder
+
+The app auto-detects whether it's running in the editor or as an exported bundle and resolves data paths accordingly.
+
+### Requirements
+
+- Godot 4.6+ export templates installed
+- Apple Developer ID Application certificate for code signing
+- ~190GB disk space for full scenery (terrain: 166GB, orthophoto: 13GB, buildings: 3.8GB)
 
 ## Terrain System
 

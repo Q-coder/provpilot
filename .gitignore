@@ -78,3 +78,5 @@ provpilot/Assets/buildings/
 # provpilot/buildings_data/swissbuildings3d_3_0_*_1091-*
 # provpilot/buildings_data/swissbuildings3d_3_0_*_1092-*
 # provpilot/Assets/buildings_schaffhausen/
+build/
+.venv/

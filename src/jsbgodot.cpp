@@ -10,6 +10,7 @@
 #include <godot_cpp/core/memory.hpp>             // For Godot logging
 #include <godot_cpp/classes/scene_tree.hpp>      // Include SceneTree header
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/variant/utility_functions.hpp> // For UtilityFunctions::print
 #ifndef _WIN32
@@ -795,13 +796,26 @@ void JSBGodot::_ready()
         }
     }
 
-    // Set JSBSim root directories - relative to project root
-    // When running from Godot editor, CWD is the project folder (provpilot/)
-    // jsbsim/ is a sibling directory at the repo root level
-    FDMExec->SetRootDir(SGPath("../jsbsim"));
-    FDMExec->SetAircraftPath(SGPath("../jsbsim/aircraft"));
-    FDMExec->SetEnginePath(SGPath("../jsbsim/engine"));
-    FDMExec->SetSystemsPath(SGPath("../jsbsim/systems"));
+    // Compute JSBSim root directory — works in both editor and exported app
+    std::string jsbsim_root;
+    String exe_path = OS::get_singleton()->get_executable_path();
+    if (exe_path.find(".app/Contents/MacOS/") >= 0) {
+        // Exported macOS app: data lives alongside the .app bundle
+        // .../App.app/Contents/MacOS/App → 4× get_base_dir() → parent of .app
+        String dir = exe_path.get_base_dir().get_base_dir()
+                             .get_base_dir().get_base_dir();
+        String jsbsim_dir = dir.path_join("jsbsim");
+        jsbsim_root = jsbsim_dir.utf8().get_data();
+        UtilityFunctions::print("JSBSim root (exported): ", jsbsim_dir);
+    } else {
+        // Editor: jsbsim/ is a sibling directory at the repo root level
+        jsbsim_root = "../jsbsim";
+        UtilityFunctions::print("JSBSim root (editor): ../jsbsim");
+    }
+    FDMExec->SetRootDir(SGPath(jsbsim_root));
+    FDMExec->SetAircraftPath(SGPath(jsbsim_root + "/aircraft"));
+    FDMExec->SetEnginePath(SGPath(jsbsim_root + "/engine"));
+    FDMExec->SetSystemsPath(SGPath(jsbsim_root + "/systems"));
     UtilityFunctions::print("JSBSim directories set.");
 
     // Load a known good aircraft model
