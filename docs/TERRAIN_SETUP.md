@@ -422,6 +422,7 @@ Control surfaces are individual `MeshInstance3D` nodes within the aircraft hiera
 | `HEAD_PITCH_MAX` | 60° | Max pilot head look up/down |
 | `ORBIT_DISTANCE_MIN` | 1.5m | Closest external camera zoom |
 | `ORBIT_DISTANCE_MAX` | 50.0m | Furthest external camera zoom |
+| `REBASE_COOLDOWN_FRAMES` | 120 | Frames to pin AC after teleport (~2s) |
 | `RUDDER_MAX_ANGLE` | 16° | Rudder deflection limit |
 | `AILERON_MAX_ANGLE` | 20° | Aileron deflection limit |
 | `ELEVATOR_MAX_ANGLE` | 25° | Elevator deflection limit |
@@ -442,6 +443,36 @@ Control surfaces are individual `MeshInstance3D` nodes within the aircraft hiera
 | `load_budget_per_update` | 4 | Max tiles loaded per cycle |
 | `terrain_center_e` | 2,682,880 | Must be multiple of 1024 |
 | `terrain_center_n` | 1,283,072 | Must be multiple of 1024 |
+
+## Camera Modes
+
+Press **C** to cycle through three camera modes:
+
+| Mode | Description | Controls |
+|------|-------------|----------|
+| **Cockpit** | First-person pilot view | Hat switch / arrows: head look |
+| **Orbit** | External spot camera, world-aligned | Hat / arrows: orbit; PgUp/PgDn: zoom |
+| **Chase** | Follows behind aircraft, turns with heading | Up/Down: height; PgUp/PgDn: distance |
+
+Chase camera defaults: 8m behind, 3m above, smooth follow factor 5.0.
+
+## Teleport System
+
+Open the teleport dialog with **Shift+P**, select an airport, and click Teleport.
+
+### Safety mechanism
+
+After teleport, JSBSim needs time to stabilize at the new lat/lon. The teleport
+uses a **cooldown** sequence:
+
+1. JSBSim enters slew mode (physics paused)
+2. Aircraft is pinned at the target position for ~2 seconds
+3. Terrain streams in during this window
+4. On cooldown expiry: terrain height is re-queried, JSBSim is reinitialized
+   at the final position, and physics resumes
+
+This prevents the crash-to-editor caused by JSBSim outputting garbage positions
+on the first frames after `reinitialize_from_godot_position()`.
 
 ## Troubleshooting
 

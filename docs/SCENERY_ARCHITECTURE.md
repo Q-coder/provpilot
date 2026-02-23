@@ -327,7 +327,7 @@ For development, this can point to a local directory. For distribution, `user://
 | `poi_loader.gd` | ✅ Done | Loads `scenery/poi/airports.json` at startup |
 | `runway_loader.gd` | ✅ Done | Procedural terrain-following runway meshes from airport data |
 | `position_dialog.gd` | ✅ Done | Airport search/filter/teleport UI |
-| `distant_terrain.gd` | ✅ Done | Low-res mesh horizon (256m/vertex) from pre-generated heightmap |
+| `distant_terrain.gd` | ✅ Done | Low-res mesh horizon (128m/vertex) from pre-generated heightmap |
 | Custom scenery loader | Planned | Scans `custom/*/package.json`, loads GLBs by proximity |
 
 ### Performance: Progressive Loading & Floating-Origin Rebase
@@ -345,7 +345,7 @@ All scenery loading is designed to avoid blocking the main thread:
 - Floating-origin rebase shifts all loaded instances by the offset vector — no reload needed.
 
 **Distant terrain** (`distant_terrain.gd`):
-- Pre-generated 256m-resolution heightmap covers all of Switzerland.
+- Pre-generated 128m-resolution heightmap covers all of Switzerland.
 - Mesh chunks are generated **incrementally** at 2 chunks per frame during startup, avoiding a multi-second freeze.
 - Near-clip shader fades out where Terrain3D begins, preventing z-fighting.
 

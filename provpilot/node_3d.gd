@@ -24,6 +24,10 @@ const HEAD_YAW_MAX: float = 120.0   # Max look left/right
 const HEAD_PITCH_MAX: float = 60.0  # Max look up/down
 const HEAD_LOOK_SPEED: float = 90.0 # Degrees per second
 
+# Camera mode enum
+enum CameraMode { COCKPIT, ORBIT, CHASE }
+var camera_mode: int = CameraMode.COCKPIT
+
 # Spot camera orbit angles (in degrees) - for external camera
 var orbit_yaw: float = 135.0    # Horizontal angle around aircraft (start behind-left)
 var orbit_pitch: float = 15.0   # Vertical angle (elevation)
@@ -34,6 +38,11 @@ const ORBIT_SPEED: float = 90.0        # Degrees per second
 const ORBIT_ZOOM_SPEED: float = 10.0   # Units per second
 const ORBIT_DISTANCE_MIN: float = 1.5  # Closest zoom (scaled for 0.1x model)
 const ORBIT_DISTANCE_MAX: float = 50.0 # Furthest zoom
+
+# Chase camera parameters
+var chase_distance: float = 8.0    # Distance behind aircraft
+var chase_height: float = 3.0     # Height above aircraft
+var chase_smooth: float = 5.0     # Smoothing factor (higher = faster follow)
 
 # Control surface nodes
 var rudder_node: Node3D
@@ -87,6 +96,14 @@ var slew_speed: float = 400.0  # Base speed in m/s
 var slew_fast_multiplier: float = 5.0  # Speed multiplier when holding boost
 var slew_vertical_speed: float = 60.0  # Vertical movement speed
 var _slew_key_held: bool = false  # Prevent key repeat
+
+# Teleport cooldown: pin the aircraft to the teleport target and skip
+# origin rebase until JSBSim has stabilized.  C++ _physics_process sets
+# the AC position directly from JSBSim output, which can be garbage on
+# the first frames after reinitialize; we override it in _process.
+var _rebase_cooldown: int = 0
+const REBASE_COOLDOWN_FRAMES: int = 120  # ~2 seconds at 60 fps
+var _teleport_pin_pos: Vector3 = Vector3.ZERO  # Position to hold AC at during cooldown
 
 # Position dialog (Shift+P)
 var _position_dialog: Window = null
@@ -495,6 +512,34 @@ func _process(delta: float) -> void:
 	if _pending_terrain_init:
 		_do_deferred_terrain_init()
 	
+	# --- Post-teleport position guard ---
+	# During cooldown: JSBSim stays in slew mode (no physics), and we pin
+	# the AC to the teleport target.  When cooldown expires we reinitialize
+	# JSBSim at the pinned position and release.
+	var ac_guard = get_node_or_null("AC")
+	if ac_guard and terrain_initialized and _rebase_cooldown > 0:
+		# Pin aircraft to teleport target position (override any drift)
+		ac_guard.global_position = _teleport_pin_pos
+		_rebase_cooldown -= 1
+		if _rebase_cooldown == 0:
+			# Terrain should be loaded by now — update height at pin position
+			if is_instance_valid(terrain3d_node):
+				var td = terrain3d_node.get("data")
+				if td and td.has_method("get_height"):
+					var h = td.get_height(Vector3(_teleport_pin_pos.x, 0, _teleport_pin_pos.z))
+					if not is_nan(h) and h > 0.1:
+						_teleport_pin_pos.y = h + 2.1  # terrain + gear clearance
+						ac_guard.global_position = _teleport_pin_pos
+						print("Teleport: updated terrain height to %.1fm" % h)
+			# Re-initialize JSBSim at the final pinned position and release
+			if jsb_node:
+				if jsb_node.has_method("reinitialize_from_godot_position"):
+					jsb_node.reinitialize_from_godot_position(ac_guard.global_position, ac_guard.rotation.y)
+				_update_terrain_elevation()
+				if jsb_node.has_method("set_slew_mode"):
+					jsb_node.set_slew_mode(false)
+			print("Teleport cooldown expired – JSBSim released at ", ac_guard.global_position)
+	
 	# Toggle slew mode with Shift+Y
 	if Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_Y):
 		if not _slew_key_held:
@@ -517,10 +562,13 @@ func _process(delta: float) -> void:
 		# Allow camera controls in slew mode, but skip other processing
 		if Input.is_action_just_pressed("flip_camera"):
 			flip_camera()
-		if active_camera == camera1:
-			handle_head_look(delta)
-		else:
-			handle_orbit_camera(delta)
+		match camera_mode:
+			CameraMode.COCKPIT:
+				handle_head_look(delta)
+			CameraMode.ORBIT:
+				handle_orbit_camera(delta)
+			CameraMode.CHASE:
+				handle_chase_camera(delta)
 		# Floating origin: rebase if aircraft is too far from Godot origin
 		_check_origin_rebase()
 		return  # Skip flight controls and HUD updates in slew mode
@@ -528,11 +576,14 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("flip_camera"):
 		flip_camera()
 	
-	# Handle hat switch / D-pad for pilot head look or orbit camera
-	if active_camera == camera1:
-		handle_head_look(delta)
-	else:
-		handle_orbit_camera(delta)
+	# Handle hat switch / D-pad for pilot head look, orbit, or chase camera
+	match camera_mode:
+		CameraMode.COCKPIT:
+			handle_head_look(delta)
+		CameraMode.ORBIT:
+			handle_orbit_camera(delta)
+		CameraMode.CHASE:
+			handle_chase_camera(delta)
 	
 	# Animate control surfaces
 	animate_control_surfaces()
@@ -700,16 +751,21 @@ func handle_slew_mode(delta: float) -> void:
 	$Control/Label8.text = "Heading: %.0f°" % heading_deg
 
 
-# Function to toggle between the two cameras in the AC node
+# Function to cycle between camera modes: Cockpit → Orbit → Chase → Cockpit
 func flip_camera():
-	var ac_node = $AC
-	if active_camera == camera1:
-		active_camera = camera2
-	else:
-		active_camera = camera1
-		# Reset head position when switching back to cockpit view
-		head_yaw = 0.0
-		head_pitch = 0.0
+	match camera_mode:
+		CameraMode.COCKPIT:
+			camera_mode = CameraMode.ORBIT
+			active_camera = camera2
+		CameraMode.ORBIT:
+			camera_mode = CameraMode.CHASE
+			active_camera = camera2
+		CameraMode.CHASE:
+			camera_mode = CameraMode.COCKPIT
+			active_camera = camera1
+			# Reset head position when switching back to cockpit view
+			head_yaw = 0.0
+			head_pitch = 0.0
 
 	# Set the current camera
 	camera1.current = (active_camera == camera1)
@@ -843,7 +899,58 @@ func handle_orbit_camera(delta: float) -> void:
 	camera2.global_position = aircraft_global_pos + world_offset
 	
 	# Make camera look at the aircraft center in world space
-	camera2.look_at(aircraft_global_pos, Vector3.UP)
+	# Guard against degenerate case (zero offset → same position)
+	if world_offset.length_squared() > 0.01:
+		camera2.look_at(aircraft_global_pos, Vector3.UP)
+
+# Chase camera: follows behind the aircraft, rotating with its heading
+func handle_chase_camera(delta: float) -> void:
+	var ac_node = $AC
+	var aircraft_pos = ac_node.global_position
+	
+	# Get aircraft's forward direction projected onto horizontal plane
+	var forward = ac_node.global_transform.basis.z
+	forward.y = 0
+	if forward.length_squared() > 0.001:
+		forward = forward.normalized()
+	else:
+		forward = Vector3(0, 0, -1)  # Default to north if degenerate
+	
+	# Handle zoom - same controls as orbit camera
+	var zoom_in = 0.0
+	var zoom_out = 0.0
+	if Input.is_joy_button_pressed(0, JOY_BUTTON_LEFT_SHOULDER):
+		zoom_in = 1.0
+	if Input.is_joy_button_pressed(0, JOY_BUTTON_RIGHT_SHOULDER):
+		zoom_out = 1.0
+	if Input.is_key_pressed(KEY_PAGEUP):
+		zoom_in = 1.0
+	if Input.is_key_pressed(KEY_PAGEDOWN):
+		zoom_out = 1.0
+	chase_distance -= zoom_in * ORBIT_ZOOM_SPEED * delta
+	chase_distance += zoom_out * ORBIT_ZOOM_SPEED * delta
+	chase_distance = clamp(chase_distance, ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX)
+	
+	# Handle height adjust with D-pad up/down or arrow keys
+	var height_delta = 0.0
+	if Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_UP) or Input.is_key_pressed(KEY_UP):
+		height_delta = 1.0
+	elif Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_DOWN) or Input.is_key_pressed(KEY_DOWN):
+		height_delta = -1.0
+	chase_height += height_delta * ORBIT_ZOOM_SPEED * delta
+	chase_height = clamp(chase_height, 0.5, 20.0)
+	
+	# Target position: behind and above the aircraft
+	var target_pos = aircraft_pos - forward * chase_distance + Vector3(0, chase_height, 0)
+	
+	# Smooth follow using lerp
+	var t = clamp(chase_smooth * delta, 0.0, 1.0)
+	camera2.global_position = camera2.global_position.lerp(target_pos, t)
+	
+	# Look at aircraft
+	var to_target = aircraft_pos - camera2.global_position
+	if to_target.length_squared() > 0.01:
+		camera2.look_at(aircraft_pos, Vector3.UP)
 
 # Helper to print node tree
 func print_node_tree(node: Node, depth: int) -> void:
@@ -1000,11 +1107,17 @@ func animate_control_surfaces() -> void:
 func _check_origin_rebase() -> void:
 	if not terrain_initialized or not jsb_node:
 		return
+	# Skip rebase during teleport cooldown (position is pinned in _process)
+	if _rebase_cooldown > 0:
+		return
 	var ac_node = get_node_or_null("AC")
 	if not ac_node:
 		return
 	
 	var pos = ac_node.global_position
+	# Sanity check: reject absurd positions (JSBSim not yet stabilized)
+	if absf(pos.x) > 1e7 or absf(pos.y) > 1e7 or absf(pos.z) > 1e7:
+		return
 	if absf(pos.x) > ORIGIN_REBASE_THRESHOLD or absf(pos.z) > ORIGIN_REBASE_THRESHOLD:
 		_perform_origin_rebase()
 
@@ -1259,15 +1372,20 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	print("  New Godot pos: ", ac_node.global_position)
 	print("  New center: E=%d N=%d" % [int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N)])
 
-	# 10. Reinitialize JSBSim at the new position and resume
+	# 10. Reinitialize JSBSim at the new position but keep slew mode ON.
+	#     JSBSim stays paused during cooldown; we reinit again when terrain
+	#     has loaded and the cooldown expires (in _process).
 	if jsb_node.has_method("reinitialize_from_godot_position"):
 		jsb_node.reinitialize_from_godot_position(ac_node.global_position, ac_node.rotation.y)
 	_update_terrain_elevation()
 
-	# 11. Exit slew mode so normal flight resumes
-	if jsb_node.has_method("set_slew_mode"):
-		jsb_node.set_slew_mode(false)
+	# 11. Keep JSBSim in slew mode — physics stays paused until cooldown expires.
+	#     GDScript slew_mode is false so the slew movement UI is not shown.
 	slew_mode = false
 	$Control/Label8.text = ""
+
+	# Arm cooldown: pin AC at this position while JSBSim stabilizes
+	_teleport_pin_pos = ac_node.global_position
+	_rebase_cooldown = REBASE_COOLDOWN_FRAMES
 
 	print("=== TELEPORT COMPLETE ===")
