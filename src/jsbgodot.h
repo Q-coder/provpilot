@@ -33,6 +33,9 @@ namespace godot
         double altitude_ft = 0.0;
         double heading_deg = 0.0;
         float flaps = 0.0f; // Flaps input (0.0 to 1.0)
+        float input_mixture = 1.0f; // Mixture input (0.0 = cutoff, 1.0 = full rich)
+        int input_magnetos = 3; // Magneto switch: 0=OFF, 1=R, 2=L, 3=BOTH, 4=START
+        int init_starter_frames = 0; // Grace period: keep starter engaged after init
         // Existing control input variables...
         float input_brake = 0.0f; // Brake input (0.0 to 1.0)
 
@@ -82,6 +85,10 @@ namespace godot
         // Getter for brake input (if needed)
         float get_input_brake() const;
 
+        // Mixture control (0.0 = cutoff, 1.0 = full rich)
+        void set_input_mixture(float value);
+        float get_input_mixture() const;
+
         // Setter for flaps input
         void increase_flaps();
         void decrease_flaps();
@@ -89,6 +96,13 @@ namespace godot
 
         // Propeller RPM from JSBSim
         double get_propeller_rpm() const;
+
+        // Engine running state (true if engine is running)
+        bool get_engine_running() const;
+
+        // Magneto switch (0=OFF, 1=R, 2=L, 3=BOTH, 4=START)
+        void set_input_magnetos(int value);
+        int get_input_magnetos() const;
 
         // Set terrain elevation for ground collision (meters)
         void set_terrain_elevation(double elevation_m);

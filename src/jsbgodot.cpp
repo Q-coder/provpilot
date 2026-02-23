@@ -52,10 +52,15 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_heading"), &JSBGodot::get_heading);
     ClassDB::bind_method(D_METHOD("set_input_brake", "value"), &JSBGodot::set_input_brake);
     ClassDB::bind_method(D_METHOD("get_input_brake"), &JSBGodot::get_input_brake);
+    ClassDB::bind_method(D_METHOD("set_input_mixture", "value"), &JSBGodot::set_input_mixture);
+    ClassDB::bind_method(D_METHOD("get_input_mixture"), &JSBGodot::get_input_mixture);
     ClassDB::bind_method(D_METHOD("get_input_aileron"), &JSBGodot::get_input_aileron);
     ClassDB::bind_method(D_METHOD("get_input_elevator"), &JSBGodot::get_input_elevator);
     ClassDB::bind_method(D_METHOD("get_flaps"), &JSBGodot::get_flaps);
     ClassDB::bind_method(D_METHOD("get_propeller_rpm"), &JSBGodot::get_propeller_rpm);
+    ClassDB::bind_method(D_METHOD("get_engine_running"), &JSBGodot::get_engine_running);
+    ClassDB::bind_method(D_METHOD("set_input_magnetos", "value"), &JSBGodot::set_input_magnetos);
+    ClassDB::bind_method(D_METHOD("get_input_magnetos"), &JSBGodot::get_input_magnetos);
     ClassDB::bind_method(D_METHOD("set_terrain_elevation", "elevation_m"), &JSBGodot::set_terrain_elevation);
     ClassDB::bind_method(D_METHOD("initialize_at_terrain", "terrain_elevation_m", "godot_pos", "heading_deg"), &JSBGodot::initialize_at_terrain);
     ClassDB::bind_method(D_METHOD("is_initialized"), &JSBGodot::is_initialized);
@@ -79,6 +84,7 @@ void JSBGodot::_bind_methods()
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "altitude_ft", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT), "", "get_altitude_ft");
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "heading", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT), "", "get_heading");
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "input_brake"), "set_input_brake", "get_input_brake");
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "input_mixture"), "set_input_mixture", "get_input_mixture");
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "propeller_rpm", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT), "", "get_propeller_rpm");
 }
 
@@ -268,6 +274,24 @@ double JSBGodot::get_propeller_rpm() const
     return 0.0;
 }
 
+bool JSBGodot::get_engine_running() const
+{
+    if (FDMExec) {
+        return FDMExec->GetPropertyValue("propulsion/engine[0]/set-running") > 0.5;
+    }
+    return false;
+}
+
+void JSBGodot::set_input_magnetos(int value)
+{
+    input_magnetos = value < 0 ? 0 : (value > 4 ? 4 : value);
+}
+
+int JSBGodot::get_input_magnetos() const
+{
+    return input_magnetos;
+}
+
 void JSBGodot::set_terrain_elevation(double elevation_m)
 {
     // Set the terrain elevation in JSBSim (convert meters to feet)
@@ -345,17 +369,15 @@ void JSBGodot::initialize_at_terrain(double terrain_elevation_m, Vector3 godot_p
     // Apply initial conditions
     FDMExec->RunIC();
     
-    // Start the engine
-    FDMExec->SetPropertyValue("propulsion/engine[0]/set-running", 1);
+    // Properly initialize engine: propulsion/set-running with value=engine_index
+    // calls InitRunning(0) which sets RPM, mixture, magnetos, and Running=true
+    // Note: propulsion/engine[0]/set-running only sets the Running flag without RPM init!
+    FDMExec->SetPropertyValue("propulsion/set-running", 0);
     // Release brakes
     FDMExec->SetPropertyValue("fcs/brake-cmd-norm", 0.0);
     FDMExec->SetPropertyValue("fcs/parking-brake-cmd-norm", 0.0);
-    // Set mixture to full rich
-    FDMExec->SetPropertyValue("fcs/mixture-cmd-norm", 1.0);
-    // Set magnetos to both
-    FDMExec->SetPropertyValue("propulsion/magneto_cmd", 3);
-    // Start the engine
-    FDMExec->SetPropertyValue("propulsion/starter_cmd", 1.0);
+    // Override mixture to current user setting (InitRunning sets it to PressureRatio*1.3)
+    FDMExec->SetPropertyValue("fcs/mixture-cmd-norm", input_mixture);
     
     jsbsim_initialized = true;
     
@@ -438,10 +460,9 @@ void JSBGodot::reinitialize_from_godot_position(Vector3 godot_pos, double headin
     // Apply initial conditions
     FDMExec->RunIC();
     
-    // Ensure engine is running
-    FDMExec->SetPropertyValue("propulsion/engine[0]/set-running", 1);
-    FDMExec->SetPropertyValue("fcs/mixture-cmd-norm", 1.0);
-    FDMExec->SetPropertyValue("propulsion/magneto_cmd", 3);
+    // Properly initialize engine (sets RPM, mixture, magnetos, Running=true)
+    FDMExec->SetPropertyValue("propulsion/set-running", 0);
+    FDMExec->SetPropertyValue("fcs/mixture-cmd-norm", input_mixture);
     
     UtilityFunctions::print("JSBSim reinitialized from Godot position successfully!");
 }
@@ -489,10 +510,9 @@ void JSBGodot::reinitialize_from_godot_position_with_speed(Vector3 godot_pos, do
     
     FDMExec->RunIC();
     
-    // Ensure engine is running
-    FDMExec->SetPropertyValue("propulsion/engine[0]/set-running", 1);
-    FDMExec->SetPropertyValue("fcs/mixture-cmd-norm", 1.0);
-    FDMExec->SetPropertyValue("propulsion/magneto_cmd", 3);
+    // Properly initialize engine (sets RPM, mixture, magnetos, Running=true)
+    FDMExec->SetPropertyValue("propulsion/set-running", 0);
+    FDMExec->SetPropertyValue("fcs/mixture-cmd-norm", input_mixture);
     
     UtilityFunctions::print("JSBSim reinitialized with speed successfully!");
 }
@@ -516,6 +536,16 @@ void JSBGodot::set_input_brake(float value)
 float JSBGodot::get_input_brake() const
 {
     return input_brake;
+}
+
+void JSBGodot::set_input_mixture(float value)
+{
+    input_mixture = CLAMP(value, 0.0f, 1.0f);
+}
+
+float JSBGodot::get_input_mixture() const
+{
+    return input_mixture;
 }
 
 double JSBGodot::get_airspeed_knots() const
@@ -904,6 +934,24 @@ void JSBGodot::copy_inputs_to_JSBSim()
 
     // Set flaps command
     FDMExec->SetPropertyValue("fcs/flap-cmd-norm", flaps);
+
+    // Set mixture command
+    FDMExec->SetPropertyValue("fcs/mixture-cmd-norm", input_mixture);
+
+    // Set magneto and starter commands from switch position
+    // Switch: 0=OFF, 1=R, 2=L, 3=BOTH, 4=START
+    // JSBSim magneto_cmd: 0=off, 1=left, 2=right, 3=both
+    static const int magneto_map[] = {0, 2, 1, 3, 3};
+    FDMExec->SetPropertyValue("propulsion/magneto_cmd", magneto_map[input_magnetos]);
+    // Keep starter engaged during init grace period or when user selects START
+    if (init_starter_frames > 0) {
+        FDMExec->SetPropertyValue("propulsion/starter_cmd", 1.0);
+        init_starter_frames--;
+    } else {
+        FDMExec->SetPropertyValue("propulsion/starter_cmd", input_magnetos == 4 ? 1.0 : 0.0);
+    }
+
+
 }
 
 Vector3 lat_lon_alt_to_cartesian(float latitude, float longitude, float altitude)

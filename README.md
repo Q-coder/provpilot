@@ -25,7 +25,9 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
   - External orbit camera with full rotation and zoom
   - Chase camera with smooth follow behind aircraft
 - **Gamepad & Keyboard**: Full joystick/gamepad control with trigger-based throttle
+- **Interactive Cockpit Controls**: Clickable mixture lever, throttle lever, and magneto/ignition switch with mouse drag and keyboard shortcuts
 - **Animated Control Surfaces**: Ailerons, elevators, rudder, flaps, propeller with blur disc, nose gear steering
+- **Propeller Visual Decay**: Propeller visually spins down when engine is off (ignores JSBSim windmilling)
 - **Elevator Trim**: Fine-tune pitch with Y/X buttons
 - **Slew Mode**: Reposition aircraft freely, then resume flight (Shift+Y)
 - **Floating Origin**: Automatic coordinate rebasing for precision across all of Switzerland
@@ -46,6 +48,12 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 | Brakes | A Button | B |
 | Trim Up | Y Button | — |
 | Trim Down | X Button | — |
+| Mixture Richer | — | M |
+| Mixture Leaner | — | Shift+M |
+| Throttle Increase | — | T |
+| Throttle Decrease | — | Shift+T |
+| Magneto Clockwise | — | I |
+| Magneto Counter-CW | — | Shift+I |
 | Slew Mode | — | Shift+Y |
 | Position Dialog | — | Shift+P |
 
@@ -250,11 +258,46 @@ The aircraft model supports animated control surfaces driven by JSBSim physics:
 
 | Surface | Range | Notes |
 |---------|-------|-------|
-| Propeller | 0–2700 RPM | Blur disc above 900 RPM, blades hidden above 1200 RPM |
+| Propeller | 0–2700 RPM | Blur disc above 900 RPM, blades hidden above 1200 RPM; visual spin-down on engine off |
 | Ailerons | ±20° | Opposite deflection for roll |
 | Elevators | ±25° | Both move together |
 | Rudder | ±16° | With linked nose gear steering (±30°) |
 | Flaps | 0°–30° | Standard C172 positions |
+| Mixture Lever | 0–100% | Mouse drag (up=rich) or M/Shift+M keys; cutoff kills engine |
+| Throttle Lever | 0–100% | Mouse drag (up=more) or T/Shift+T keys |
+| Magneto Switch | OFF/R/L/BOTH/START | Mouse drag (right=CW) or I/Shift+I keys; 5-position rotary |
+
+## Engine Management
+
+The Cessna 172 engine simulation includes realistic magneto/ignition, mixture, and starter controls.
+
+### Magneto Switch Positions
+
+| Position | Effect |
+|----------|--------|
+| **OFF** | No ignition — engine will not run |
+| **R** | Right magneto only |
+| **L** | Left magneto only |
+| **BOTH** | Both magnetos — normal operation |
+| **START** | Engages starter motor (spring-loaded, returns to BOTH on release) |
+
+### Engine Startup Procedure
+
+1. Set **Mixture** to full rich (M key or drag lever up)
+2. Set **Magneto** switch to **BOTH** (I key)
+3. Advance to **START** (I key again) — hold until engine catches
+4. Release I key — switch springs back to BOTH
+
+### Engine Shutdown
+
+- Pull **Mixture** to cutoff (Shift+M repeatedly, or drag lever down)
+- The propeller will visually spin down and stop
+
+### Mouse Interaction
+
+All cockpit levers and the magneto switch are clickable in cockpit camera mode:
+- **Mixture/Throttle levers**: Click and drag vertically (up = increase)
+- **Magneto switch**: Click and drag horizontally (right = clockwise toward START)
 
 ## Aircraft Models
 
