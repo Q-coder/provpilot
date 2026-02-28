@@ -14,23 +14,31 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 
 - **Realistic Flight Dynamics**: Full 6-DOF simulation powered by JSBSim (Cessna 172 Skyhawk)
 - **Real-World Terrain**: SwissTopo swissALTI3D elevation data at 1m resolution
+- **Orthophoto Aerial Imagery**: Real SWISSIMAGE photography overlaid on terrain at 1m/pixel
 - **Terrain Streaming**: Dynamic tile-based loading — fly over unlimited terrain without loading screens
-- **3D Buildings**: SwissTopo swissBUILDINGS3D models loaded dynamically by proximity
+- **3D Buildings**: SwissTopo swissBUILDINGS3D models loaded dynamically by proximity (manifest-driven)
 - **Roads & Railroads**: swissTLM3D road and railway network rendered as coloured ribbons
 - **Water Bodies**: Rivers, lakes, and streams from swissTLM3D
+- **Custom Scenery**: Hand-crafted scenery packages with GLB models, loaded by proximity from `scenery/custom/`
+- **MSFS Scenery Import**: Convert Microsoft Flight Simulator 2020 scenery packages (BGL→GLB)
 - **47 Swiss Airports**: OSM-verified runway geometry with procedural terrain-following runway rendering
 - **Airport Teleport**: Search, filter by type, select runway — teleport anywhere in Switzerland (Shift+P)
+- **Welcome Screen**: Startup UI with aircraft selection, airport picker with search/filter, and runway selector
+- **Settings Screen**: Configurable graphics, sound, realism, and data path settings (persisted to disk)
+- **Loading Screen**: Progress overlay with weighted loading tracking during startup and teleport
 - **Multiple Camera Views**:
   - Cockpit camera with pilot head look (hat switch / D-pad / arrow keys)
   - External orbit camera with full rotation and zoom
   - Chase camera with smooth follow behind aircraft
 - **Gamepad & Keyboard**: Full joystick/gamepad control with trigger-based throttle
-- **Interactive Cockpit Controls**: Clickable mixture lever, throttle lever, and magneto/ignition switch with mouse drag and keyboard shortcuts
+- **Interactive Cockpit Controls**: Mouse-drag mixture lever, throttle lever, flap lever, and magneto/ignition switch with visual feedback and keyboard shortcuts
+- **Engine Sound**: RPM-mapped engine audio with pitch and volume tied to propeller speed
 - **Animated Control Surfaces**: Ailerons, elevators, rudder, flaps, propeller with blur disc, nose gear steering
 - **Propeller Visual Decay**: Propeller visually spins down when engine is off (ignores JSBSim windmilling)
 - **Elevator Trim**: Fine-tune pitch with Y/X buttons
-- **Slew Mode**: Reposition aircraft freely, then resume flight (Shift+Y)
+- **Slew Mode**: Reposition aircraft freely with airspeed preservation, then resume flight (Shift+Y)
 - **Floating Origin**: Automatic coordinate rebasing for precision across all of Switzerland
+- **Deferred Scenery Loading**: Terrain and scenery load only after the user clicks Fly — instant startup
 - **HUD**: Airspeed, altitude, vertical speed, heading, throttle, Swiss/WGS84 coordinates
 
 ## Controls
@@ -55,7 +63,9 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 | Magneto Clockwise | — | I |
 | Magneto Counter-CW | — | Shift+I |
 | Slew Mode | — | Shift+Y |
+| Flap Lever Drag | — | Mouse drag (cockpit) |
 | Position Dialog | — | Shift+P |
+| Return to Welcome | — | Escape |
 
 ### Camera Controls
 | Control | Gamepad | Keyboard |
@@ -138,42 +148,57 @@ provpilot/
 │   └── register_types.cpp/.h   # GDExtension registration
 ├── provpilot/                   # Godot project
 │   ├── node_3d.gd              # Main scene script (controls, HUD, cameras)
-│   ├── terrain_streamer.gd     # Dynamic terrain tile loader
-│   ├── building_loader.gd      # Dynamic building GLB loader
+│   ├── terrain_streamer.gd     # Dynamic terrain tile loader (+ orthophoto)
+│   ├── building_loader.gd      # Manifest-driven building GLB loader
 │   ├── road_loader.gd          # Road & railroad network loader
 │   ├── water_loader.gd         # River & lake loader
 │   ├── runway_loader.gd        # Procedural runway renderer
 │   ├── poi_loader.gd           # Airport/POI database loader
 │   ├── distant_terrain.gd      # Low-res distant terrain renderer
-│   ├── custom_scenery_loader.gd # Custom scenery package loader
-│   ├── position_dialog.gd      # Airport search & teleport UI
+│   ├── custom_scenery_loader.gd # Custom scenery package discovery
+│   ├── object_loader.gd        # Custom scenery object placement loader
+│   ├── welcome_screen.gd       # Startup aircraft & airport selection UI
+│   ├── settings_screen.gd      # Settings UI (graphics, sound, realism, paths)
+│   ├── loading_screen.gd       # Progress overlay during loading
+│   ├── position_dialog.gd      # In-flight airport search & teleport UI
 │   ├── export_presets.cfg      # macOS export preset
 │   ├── node_3d.tscn            # Main scene
 │   ├── C172p.tscn              # Aircraft scene
 │   ├── environment.tscn        # Sky/environment
 │   ├── bin/                    # GDExtension binaries
 │   ├── Assets/                 # 3D models (Cessna, symlinks to scenery)
+│   ├── sounds/                 # Audio files (engine sound)
 │   ├── addons/terrain_3d/      # Terrain3D plugin
 │   ├── shaders/                # Custom shaders
 │   └── project.godot
 ├── scenery/                     # Scenery data (large files gitignored)
 │   ├── terrain/                # Elevation heightmaps (.raw)
+│   ├── orthophoto/             # Aerial imagery JPEG tiles (1m/pixel)
+│   ├── orthophoto_hires/       # High-res orthophoto tiles (optional)
 │   ├── buildings/              # 3D building models (.glb)
 │   ├── roads/                  # Road & railroad meshes (.glb)
 │   ├── water/                  # River & lake meshes (.glb)
 │   ├── poi/                    # Airport database (airports.json)
 │   └── custom/                 # Hand-crafted scenery packages
 ├── scripts/                     # Tooling
-│   ├── process_swisstopo_terrain.py  # Terrain pipeline (download → tiles)
-│   ├── convert_buildings_to_gltf.py  # Building GDB → GLB converter
+│   ├── scenery_pipeline.py          # Unified terrain + buildings pipeline
+│   ├── process_swisstopo_terrain.py # Terrain-only pipeline (download → tiles)
+│   ├── convert_buildings_to_gltf.py # Building GDB → GLB converter
+│   ├── generate_building_manifest.py # Generate buildings manifest.json
 │   ├── generate_roads.py            # Road/railroad GeoPackage → GLB
 │   ├── generate_water.py            # Water body GeoPackage → GLB
 │   ├── generate_airports.py         # Airport extraction from swissTLM3D
 │   ├── build_airports_json.py       # Build airports.json from verified data
+│   ├── build_manual_runways.py      # Generate manual runway overrides from OSM
+│   ├── patch_airports.py            # Patch airports.json with corrected runways
 │   ├── fetch_osm_runways.py         # Fetch runway data from OSM Overpass
-│   ├── generate_orthophoto_tiles.py  # Orthophoto tile pipeline
-│   ├── generate_distant_terrain.py   # Distant terrain low-res mesh
-│   └── build_macos.sh               # macOS build, sign & assemble script
+│   ├── generate_orthophoto_tiles.py # Orthophoto tile pipeline (WMS)
+│   ├── process_swissimage_orthophoto.py # STAC-based orthophoto (small areas)
+│   ├── generate_distant_terrain.py  # Distant terrain low-res mesh
+│   ├── generate_distant_orthophoto.py # Distant terrain WMS color map
+│   ├── convert_msfs_scenery.py      # MSFS 2020 scenery → GLB converter
+│   ├── build_macos.sh               # macOS build, sign & assemble script
+│   └── setup_windows.ps1            # Windows directory junction setup
 ├── docs/                        # Additional documentation
 │   ├── SCENERY_ARCHITECTURE.md  # Scenery data architecture & formats
 │   ├── TERRAIN_SETUP.md        # Terrain & collision architecture
@@ -215,7 +240,8 @@ The app auto-detects whether it's running in the editor or as an exported bundle
 
 - Godot 4.6+ export templates installed
 - Apple Developer ID Application certificate for code signing
-- ~190GB disk space for full scenery (terrain: 166GB, orthophoto: 13GB, buildings: 3.8GB)
+- ~190 GB disk space for full scenery (terrain: 166 GB, orthophoto: 13 GB, buildings: 3.8 GB)
+- Default viewport resolution: 3840×2160 (4K)
 
 ## Terrain System
 
@@ -230,9 +256,33 @@ The terrain center is aligned to the 1024m grid: **E 2,682,880 / N 1,283,072**.
 
 See [docs/TERRAIN_SETUP.md](docs/TERRAIN_SETUP.md) for full details on the terrain pipeline, coordinate systems, and collision architecture.
 
+## Startup Flow
+
+On launch, the simulator follows a deferred loading sequence:
+
+1. **Loading screen** appears immediately (lightweight splash)
+2. Core nodes initialize (Terrain3D, JSBSim binding)
+3. **Welcome screen** appears with aircraft selection, airport picker (search/filter by ICAO or name, type filters), and runway selector
+4. User selects aircraft + departure airport/runway and clicks **Fly!**
+5. **Loading screen** reappears with progress bar — terrain tiles, distant terrain, buildings, roads, water, and orthophotos load progressively
+6. After loading completes, the simulation begins at the selected runway
+
+Press **Escape** during flight to return to the welcome screen.
+
+## Settings
+
+Open the settings screen from the welcome screen's gear icon. Settings persist to `user://settings.cfg`.
+
+| Section | Settings |
+|---------|----------|
+| **Paths** | Scenery directory, JSBSim data directory |
+| **Graphics** | Render distance (2–16 tiles), building distance (1–8 tiles), shadow quality (Off/Low/Medium/High), VSync, fullscreen |
+| **Sound** | Master volume, engine volume, wind volume, UI volume |
+| **Realism** | Auto mixture, auto carb heat, unlimited fuel, crash detection, turbulence (None/Light/Moderate/Severe), wind speed & direction |
+
 ## Building System
 
-3D buildings from SwissTopo swissBUILDINGS3D are converted to GLB format and loaded dynamically based on aircraft proximity. Buildings are colored procedurally with configurable roof (terracotta) and wall (cream) colors.
+3D buildings from SwissTopo swissBUILDINGS3D are converted to GLB format and loaded dynamically based on aircraft proximity. The building loader reads `scenery/buildings/manifest.json` at startup — no hardcoded tile arrays. Buildings use a wall/roof normal-based shader with configurable roof (terracotta) and wall (cream) colors.
 
 ## Road & Railroad System
 
@@ -246,11 +296,27 @@ Rivers, lakes, and streams from SwissTopo swissTLM3D are rendered as blue surfac
 
 47 Swiss airports are included with OSM-verified runway geometry. Runways are rendered procedurally as terrain-following segmented meshes with centerline and threshold markings. Airport types include international airports, regional airports, grass strips, and heliports.
 
-The position dialog (Shift+P) provides:
+The welcome screen provides departure airport selection. During flight, the position dialog (Shift+P) provides:
 - Full-text search by ICAO code or name
 - Type filters (international, regional, grass, heliport)
 - Runway selector with heading, length, and surface info
 - One-click teleport to any runway threshold
+
+## Custom Scenery
+
+Hand-crafted scenery packages live in `scenery/custom/`. Each package contains a `package.json` with metadata and object placements, plus GLB model files. The `custom_scenery_loader.gd` discovers packages at startup; `object_loader.gd` instantiates objects by proximity (15 km load / 20 km unload) with automatic terrain elevation sampling and floating-origin support.
+
+See [docs/SCENERY_ARCHITECTURE.md](docs/SCENERY_ARCHITECTURE.md) for the package.json format.
+
+## MSFS Scenery Import
+
+Microsoft Flight Simulator 2020 scenery packages can be converted to Godot-compatible GLB:
+
+```bash
+python scripts/convert_msfs_scenery.py --input /path/to/msfs/package --output scenery/custom/my_scenery/
+```
+
+The converter extracts glTF from BGL files, converts DDS textures to PNG, and strips MSFS-specific extensions.
 
 ## Control Surface Animation
 
@@ -265,6 +331,7 @@ The aircraft model supports animated control surfaces driven by JSBSim physics:
 | Flaps | 0°–30° | Standard C172 positions |
 | Mixture Lever | 0–100% | Mouse drag (up=rich) or M/Shift+M keys; cutoff kills engine |
 | Throttle Lever | 0–100% | Mouse drag (up=more) or T/Shift+T keys |
+| Flap Lever | 0°/10°/20°/30° | Mouse drag (up=retract) or F/Shift+F keys; 4 discrete notches |
 | Magneto Switch | OFF/R/L/BOTH/START | Mouse drag (right=CW) or I/Shift+I keys; 5-position rotary |
 
 ## Engine Management
@@ -312,10 +379,13 @@ All cockpit levers and the magneto switch are clickable in cockpit camera mode:
 5. Update node paths in `node_3d.gd`
 6. Modify `jsbgodot.cpp` if needed for aircraft-specific features
 
+## Engine Sound
+
+The engine audio system uses an `AudioStreamPlayer` with RPM-mapped pitch (0.7–1.6) and volume (−12 to +3 dB). Sound fades out below 50 RPM and respects the user's engine volume setting from the settings screen.
+
 ## Known Issues
 
 - First-run terrain tile generation requires internet access (SwissTopo STAC API)
-- Building alignment depends on matching terrain center coordinates
 - Debug output is verbose (can be reduced by commenting out print statements)
 
 ## License

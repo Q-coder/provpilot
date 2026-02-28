@@ -107,6 +107,14 @@ scenery/                              # Root (configurable via project settings)
       "path": "poi/",
       "format": "json"
     },
+    "orthophoto": {
+      "path": "orthophoto/",
+      "tile_size_m": 1024,
+      "resolution_m": 1.0,
+      "format": "jpeg_rgb",
+      "pixels_per_tile": 1024,
+      "source": "SWISSIMAGE 10cm (ch.swisstopo.swissimage-dop10)"
+    },
     "custom": {
       "path": "custom/",
       "format": "package"
@@ -151,8 +159,8 @@ Same format as the current `terrain_tiles/manifest.json` — already well-struct
 {
   "format": "glb",
   "source": "swissBUILDINGS3D",
-  "origin_e": 2682880,
-  "origin_n": 1283072,
+  "conversion_origin_e": 2682880,
+  "conversion_origin_n": 1283072,
   "tiles": {
     "1031-14": {
       "file": "1031-14.glb",
@@ -167,7 +175,13 @@ Same format as the current `terrain_tiles/manifest.json` — already well-struct
 }
 ```
 
-The building loader reads this manifest at startup instead of using hardcoded tile arrays — centers are computed dynamically relative to the current `TERRAIN_CENTER_E/N`.
+The `conversion_origin_e/n` fields record the Swiss LV95 origin used when converting buildings to GLB. The runtime building loader uses these to compute correct Godot-space positions without hardcoded offsets. The loader reads this manifest at startup — no hardcoded tile arrays or region selection.
+
+Generate the manifest from existing GLB files:
+
+```bash
+python scripts/generate_building_manifest.py
+```
 
 ### Road Manifest (`scenery/roads/manifest.json`)
 
@@ -320,15 +334,19 @@ For development, this can point to a local directory. For distribution, `user://
 
 | Component | Status | Description |
 |-----------|--------|-------------|
-| `terrain_streamer.gd` | ✅ Done | Reads `scenery/terrain/manifest.json`, streams 1024m tiles |
-| `building_loader.gd` | ✅ Done | Reads `scenery/buildings/manifest.json`, proximity loading |
+| `terrain_streamer.gd` | ✅ Done | Reads `scenery/terrain/manifest.json`, streams 1024m tiles + orthophoto |
+| `building_loader.gd` | ✅ Done | Reads `scenery/buildings/manifest.json`, manifest-driven proximity loading |
 | `road_loader.gd` | ✅ Done | Reads `scenery/roads/manifest.json`, proximity loading |
 | `water_loader.gd` | ✅ Done | Reads `scenery/water/manifest.json`, proximity loading |
 | `poi_loader.gd` | ✅ Done | Loads `scenery/poi/airports.json` at startup |
 | `runway_loader.gd` | ✅ Done | Procedural terrain-following runway meshes from airport data |
-| `position_dialog.gd` | ✅ Done | Airport search/filter/teleport UI |
+| `position_dialog.gd` | ✅ Done | In-flight airport search/filter/teleport UI |
+| `welcome_screen.gd` | ✅ Done | Startup aircraft & airport selection UI |
+| `settings_screen.gd` | ✅ Done | Settings UI (graphics, sound, realism, paths) |
+| `loading_screen.gd` | ✅ Done | Progress overlay during loading |
 | `distant_terrain.gd` | ✅ Done | Low-res mesh horizon (128m/vertex) from pre-generated heightmap |
-| Custom scenery loader | Planned | Scans `custom/*/package.json`, loads GLBs by proximity |
+| `custom_scenery_loader.gd` | ✅ Done | Scans `custom/*/package.json`, discovers packages by type |
+| `object_loader.gd` | ✅ Done | Loads custom scenery objects by proximity (15 km / 20 km) |
 
 ### Performance: Progressive Loading & Floating-Origin Rebase
 
@@ -368,7 +386,34 @@ After migration:
 
 ## Processing Pipeline
 
-### Terrain
+### Unified Pipeline (Recommended)
+
+The `scenery_pipeline.py` script processes both terrain and buildings in a single command with chunk-based processing to limit disk usage:
+
+```bash
+# Process terrain + buildings for a region
+python scripts/scenery_pipeline.py \
+    --center-e 2682880 --center-n 1283072 --radius 20000 \
+    --output scenery/
+
+# Terrain only
+python scripts/scenery_pipeline.py --terrain-only \
+    --center-e 2682880 --center-n 1283072 --radius 20000
+
+# Buildings only
+python scripts/scenery_pipeline.py --buildings-only \
+    --center-e 2682880 --center-n 1283072 --radius 20000
+
+# Dry run (list what would be downloaded)
+python scripts/scenery_pipeline.py --dry-run \
+    --center-e 2682880 --center-n 1283072 --radius 20000
+```
+
+The unified pipeline is incremental (skips existing tiles) and supports `--clean-cache` to delete intermediate files.
+
+### Individual Pipelines
+
+#### Terrain
 
 ```bash
 # Generate tiles for all of Switzerland
@@ -378,7 +423,7 @@ python scripts/process_swisstopo_terrain.py \
     --source-resolution 2  # Use 2m source (37 GB download vs 577 GB)
 ```
 
-### Buildings
+#### Buildings
 
 ```bash
 # Convert buildings for all of Switzerland
@@ -415,7 +460,25 @@ python scripts/build_airports_json.py
 python scripts/generate_airports.py \
     --gpkg /path/to/swissTLM3D.gpkg \
     --output scenery/poi/airports.json
+
+# Generate manual runway overrides from OSM data
+python scripts/build_manual_runways.py
+
+# Patch airports.json with corrected runways and length caps
+python scripts/patch_airports.py
 ```
+
+### MSFS Scenery Conversion
+
+Microsoft Flight Simulator 2020 scenery packages can be converted to Godot-compatible GLB:
+
+```bash
+python scripts/convert_msfs_scenery.py \
+    --input /path/to/msfs/package \
+    --output scenery/custom/my_scenery/
+```
+
+The converter extracts glTF from BGL binary files, converts DDS textures to PNG, and strips 20+ MSFS-specific glTF extensions (ASOBO_*, MSFT_texture_dds). Output is clean GLB with embedded textures, ready for use as custom scenery packages.
 
 ## Migration Plan
 

@@ -212,9 +212,15 @@ python scripts/convert_buildings_to_gltf.py \
 
 The `--origin-e` and `--origin-n` **must match** the terrain center.
 
+After conversion, generate the manifest:
+
+```bash
+python scripts/generate_building_manifest.py
+```
+
 ### BuildingLoader (building_loader.gd)
 
-The `BuildingLoader` script dynamically loads building GLB files based on aircraft proximity:
+The `BuildingLoader` is fully **manifest-driven** — it reads `scenery/buildings/manifest.json` at startup. No hardcoded tile arrays, no region selection, no offset constants.
 
 | Setting | Value |
 |---------|-------|
@@ -223,22 +229,88 @@ The `BuildingLoader` script dynamically loads building GLB files based on aircra
 | **Max Loads/Frame** | 1 |
 | **Roof Color** | Terracotta (0.72, 0.38, 0.28) |
 | **Wall Color** | Cream (0.92, 0.87, 0.75) |
+| **Material** | Wall/roof normal-based shader (smoothstep on world_normal.y) |
 
-Multiple tile sets are defined for different regions:
-- `BUILDING_TILES_SCHAFFHAUSEN`: Schaffhausen/Schmerlat area (tile 1031-*)
-- `BUILDING_TILES_ZURICH`: Zurich Airport area (tiles 1071-*, 1072-*, 1091-*, 1092-*)
+The manifest records `conversion_origin_e/n` so the loader can compute correct Godot-space positions without hardcoded offsets. Building tiles use `ResourceLoader.load_threaded_request()` for async GLB loading.
 
-Select the active region via the `terrain_area` export variable.
+Floating-origin support: `shift_all_buildings(offset)` shifts all loaded instances and accumulates a `_origin_offset` for newly loaded tiles.
 
-### Building Origin Offset
+### Building Manifest Format
 
-If buildings were converted with a different origin than the terrain center, a constant offset is applied:
+See [SCENERY_ARCHITECTURE.md](SCENERY_ARCHITECTURE.md#building-manifest-scenerybuildings-manifestjson) for the manifest JSON schema.
 
-```gdscript
-# Schmerlat buildings were converted with origin E 2681968, N 1282869
-# Terrain center is now E 2682880, N 1283072
-const BUILDING_ORIGIN_OFFSET: Vector3 = Vector3(912, 0, -203)
-```
+## Custom Scenery & Object Loading
+
+Custom scenery packages in `scenery/custom/` are managed by two components:
+
+### custom_scenery_loader.gd
+
+Discovery layer that scans `scenery/custom/*/package.json` files at startup. Packages are indexed by type (`"buildings"`, `"terrain_overlay"`, `"objects"`) and queryable via `get_packages_by_type(type)` and `get_package(id)`.
+
+### object_loader.gd
+
+Loads custom scenery objects (type `"objects"`) from discovered packages:
+
+| Setting | Value |
+|---------|-------|
+| **Load Distance** | 15,000m |
+| **Unload Distance** | 20,000m |
+| **Check Interval** | 60 physics frames |
+
+Per-object properties from `package.json`:
+- `model`: GLB filename
+- `position_e`, `position_n`: Swiss LV95 placement
+- `heading_deg`: Rotation in degrees
+- `scale`, `scale_x/y/z`: Uniform or per-axis scaling
+- `offset_x/y/z`: Position offsets (for fine-tuning)
+- `sub_dir`: Subdirectory for the GLB file
+- `elevation_m`: Fallback elevation (used if Terrain3D unavailable)
+
+Objects sample terrain elevation automatically from Terrain3D. Floating origin is supported via `shift_all_objects(offset)`.
+
+## Engine Sound System
+
+The engine audio uses an `AudioStreamPlayer` with RPM-mapped output:
+
+| Parameter | Value |
+|-----------|-------|
+| Sound file | `res://sounds/c172_engine_inflight.ogg` |
+| Pitch range | 0.7 (idle) – 1.6 (full RPM) |
+| Volume range | −12 dB (idle) to +3 dB (full RPM) |
+| Fade threshold | Below 50 RPM, volume fades to silence |
+| Volume setting | Respects `engine_volume` from settings screen |
+
+## User Interface Screens
+
+### Welcome Screen (`welcome_screen.gd`)
+
+Startup screen with three-column layout:
+1. **Aircraft selection** — currently Cessna 172P Skyhawk
+2. **Airport picker** — search by ICAO/name, filter by type (International/Regional/Grass/Heliport)
+3. **Airport details** — ICAO, name, type, elevation, area, runway list with direction selection
+
+Emits `flight_requested(aircraft_id, swiss_e, swiss_n, heading_deg)` when the user clicks Fly!
+
+Press Enter to start flight. Input is blocked while the welcome screen is visible.
+
+### Settings Screen (`settings_screen.gd`)
+
+Full settings UI with four sections: Paths, Graphics, Sound, Realism. Settings persist to `user://settings.cfg` via `ConfigFile`.
+
+Open from the welcome screen’s gear icon. Save/Cancel/Restore Defaults buttons. Escape to close.
+
+### Loading Screen (`loading_screen.gd`)
+
+Lightweight overlay (layer 200) with progress bar and status text. Shown during:
+- Initial startup (core node initialization)
+- Post-Fly loading (terrain, scenery, distant terrain)
+- Teleport loading (terrain streaming at new location)
+
+Blocks all input while visible.
+
+### Position Dialog (`position_dialog.gd`)
+
+In-flight teleport UI opened with Shift+P. Search, filter, select runway, and teleport.
 
 ## Coordinate Systems
 
@@ -389,7 +461,7 @@ Godot uses 32-bit floats for positions, causing visible jitter beyond ~10 km fro
 
 - **JSBSim is unaffected**: it uses double-precision lat/lon internally and never loses precision.
 - **Terrain3D `top_level = true`**: Terrain3D positions regions absolutely in world space, so regions are cleared and reloaded rather than shifted.
-- **Building `_origin_offset`**: Because building tile centers are hardcoded constants, a cumulative offset vector is maintained in `BuildingLoader` and applied to (a) distance checks for load/unload decisions, and (b) position of newly instantiated tile scenes.
+- **Building `_origin_offset`**: The `conversion_origin_e/n` from the manifest eliminates hardcoded offsets. A cumulative shift vector is maintained and applied to distance checks and newly instantiated tiles.
 - **Consistent shift**: The Godot-space shift derived from the terrain center change is applied to **both** the C++ lat/lon reference and the scene objects, eliminating any mismatch between the two coordinate systems.
 - **1024 m grid snap**: The new terrain center is snapped to multiples of 1024 to maintain tile-to-region alignment. After snap, the aircraft is at most ~512 m from Godot origin — well within the 5000 m threshold.
 
@@ -503,14 +575,34 @@ on the first frames after `reinitialize_from_godot_position()`.
 | File | Purpose |
 |------|---------|
 | `provpilot/node_3d.gd` | Main scene script |
-| `provpilot/terrain_streamer.gd` | Terrain streaming |
-| `provpilot/building_loader.gd` | Building loading |
+| `provpilot/terrain_streamer.gd` | Terrain streaming (+ orthophoto) |
+| `provpilot/building_loader.gd` | Manifest-driven building loading |
+| `provpilot/road_loader.gd` | Road & railroad loading |
+| `provpilot/water_loader.gd` | River & lake loading |
+| `provpilot/runway_loader.gd` | Procedural runway rendering |
+| `provpilot/poi_loader.gd` | Airport/POI database loading |
+| `provpilot/custom_scenery_loader.gd` | Custom scenery package discovery |
+| `provpilot/object_loader.gd` | Custom scenery object placement |
+| `provpilot/welcome_screen.gd` | Startup aircraft & airport selection |
+| `provpilot/settings_screen.gd` | Settings UI (persisted to user://settings.cfg) |
+| `provpilot/loading_screen.gd` | Progress overlay during loading |
+| `provpilot/position_dialog.gd` | In-flight airport teleport dialog |
+| `provpilot/distant_terrain.gd` | Low-res distant terrain mesh loader |
 | `provpilot/terrain_tiles/` | Generated terrain tiles + manifest |
 | `provpilot/Assets/` | 3D models (aircraft, buildings) |
+| `provpilot/sounds/` | Audio files (engine sound) |
 | `provpilot/Terra3DData/` | Terrain3D region cache |
 | `src/jsbgodot.cpp` / `src/jsbgodot.h` | JSBSim ↔ Godot C++ binding |
 | `scripts/process_swisstopo_terrain.py` | Terrain processing pipeline |
 | `scripts/convert_buildings_to_gltf.py` | Building GDB → GLB converter |
+| `scripts/generate_building_manifest.py` | Building manifest generator |
+| `scripts/generate_roads.py` | Road/railroad GeoPackage → GLB |
+| `scripts/generate_water.py` | Water body GeoPackage → GLB |
+| `scripts/build_airports_json.py` | Airport database builder |
+| `scripts/build_manual_runways.py` | Manual runway overrides from OSM |
+| `scripts/patch_airports.py` | Patch airports.json with corrected runways |
+| `scripts/scenery_pipeline.py` | Unified terrain + buildings pipeline |
+| `scripts/convert_msfs_scenery.py` | MSFS 2020 scenery → GLB converter |
 | `provpilot/distant_terrain.gd` | Low-res distant terrain mesh loader |
 | `provpilot/shaders/distant_terrain.gdshader` | Distant terrain fog/haze shader |
 | `scripts/generate_distant_terrain.py` | Distant terrain heightmap preprocessor |
@@ -521,3 +613,4 @@ on the first frames after `reinitialize_from_godot_position()`.
 | `scenery/terrain/distant_terrain_color.png` | Distant terrain aerial imagery (WMS) |
 | `scenery/terrain/distant_terrain_meta.json` | Distant terrain metadata |
 | `scenery/orthophoto/` | Near-terrain orthophoto JPEG tiles + manifest |
+| `scenery/orthophoto_hires/` | High-res orthophoto tiles (optional) |
