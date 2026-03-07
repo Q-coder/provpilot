@@ -7,4 +7,4 @@
 [submodule "godot"]
 	path = godot
 	url = git@gitlab.md80.ch:gery/godot.git
-	branch = 4.6-stable
+	branch = 4.6-macdev
