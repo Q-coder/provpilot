@@ -77,18 +77,27 @@ The `4.6-macdev` branch contains macOS-specific optimizations to the Godot 4.6 e
 |--------|--------|
 | Residency sets (macOS 15+) | GPU resources are pre-committed to a `MTLResidencySet` on creation, reducing page faults during terrain tile streaming. Gracefully skipped on macOS 14. |
 
+### Terrain Streaming (`provpilot/terrain_streamer.gd`)
+
+| Change | Detail |
+|--------|--------|
+| Zero-copy region recycling | On floating-origin rebase, existing Terrain3DRegion objects are reused in-place via `set_location()` + `add_region()` — no `Image.duplicate()`, no `Terrain3DRegion.new()`, no `sanitize_maps()`. Eliminates ~2.2 GB of memory copies per rebase (289 tiles × 8 MB height+color). |
+| Ghost-safe tile loading | Removed `has_region()` / `remove_regionl()` guard from `_load_tile()` to prevent ghost entries in Terrain3D's internal `_regions` dict from accidentally removing active regions after a rebase. `add_region()` safely overwrites. |
+
 ### What Was Tested and Reverted
 
-- **Untracked hazard mode for GPU-only textures** was tested but reverted — Godot's frame graph does not fully manage all texture read-after-write dependencies, causing rendering artifacts (flickering in sky, render passes).
+- **Untracked hazard mode for GPU-only textures** — Godot's frame graph does not fully manage all texture read-after-write dependencies, causing flickering artifacts.
+- **Incremental rebase (batched `update_maps()`)** — Each `update_maps()` call rebuilds ALL texture arrays regardless of batch size, so batching multiplied cost instead of amortizing it, and left large untextured areas during fill-in.
 
 ## Performance Impact
 
 Compared to stock Godot 4.6 on M4 Max:
 
 - **Initialization:** Buildings and scenery load visibly faster (no pop-in)
-- **Terrain re-base:** Stutter duration reduced significantly
+- **Terrain re-base:** No perceptible pause — zero-copy region recycling eliminates the ~800ms stall from Image.duplicate() × 289 + sanitize_maps() × 289. Only new border tiles (~25 per 1024m shift) require disk I/O.
 - **Shader compilation:** Faster due to direct Metal path (no SPIRV→MoltenVK→Metal translation)
 - **Steady-state rendering:** Improved frame pacing from ThinLTO and FMA
+- **Known limitation:** Minor micro-stutters remain during `update_maps()` — this rebuilds GPU texture arrays for all 289 regions on the main thread. Godot's single-threaded rendering submission prevents async texture uploads.
 
 ## Terrain3D Compatibility
 
@@ -96,7 +105,7 @@ Terrain3D is a GDExtension that uses Godot's RenderingDevice abstraction — it 
 
 - Heightmap tile streaming
 - Texture splatting and LOD
-- Region load/unload
+- Region load/unload with zero-copy rebase recycling
 - Distant terrain mesh
 
 ## Profiling

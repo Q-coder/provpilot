@@ -269,11 +269,13 @@ func get_max_loadable() -> int:
 	return mini(side * side, 1024)
 
 
-## Floating origin: update center coordinates and reload terrain.
-## Uses in-memory region recycling: extracts heightmaps from existing
-## Terrain3D regions, clears, and re-adds them at new grid positions —
-## avoiding disk I/O for all tiles that remain in range.  Only genuinely
-## new border tiles (typically ~25 per 1024m shift) need file reads.
+## Floating origin: update center coordinates and relocate terrain regions.
+## Reuses existing Terrain3DRegion objects in-place — no Image.duplicate(),
+## no Terrain3DRegion.new(), no sanitize_maps().  GDScript references keep
+## each region (and its Images) alive through the remove → set_location →
+## add_region cycle.  After rebase, ghost entries remain in Terrain3D's
+## internal _regions dict at old locations; these are harmless because
+## _load_tile() never calls has_region/remove_regionl (add_region overwrites).
 ## new_center_e and new_center_n MUST be multiples of tile_size (1024).
 func rebase_center(new_center_e: int, new_center_n: int) -> void:
 	if new_center_e % _tile_size != 0 or new_center_n % _tile_size != 0:
@@ -284,27 +286,22 @@ func rebase_center(new_center_e: int, new_center_n: int) -> void:
 	print("TerrainStreamer: Rebasing center E=%d -> %d, N=%d -> %d"
 		  % [terrain_center_e, new_center_e, terrain_center_n, new_center_n])
 
-	# ── 1. Extract heightmaps and color maps from all currently loaded
-	#        regions.  Duplicate() each Image so the data survives
-	#        _clear_all_regions() removing the owning Terrain3DRegion. ──
-	var saved_tiles: Dictionary = {}   # tile_key -> Image (heightmap)
-	var saved_colors: Dictionary = {}  # tile_key -> Image (color map)
+	# ── 1. Collect references to all currently loaded regions.
+	#        Holding a ref keeps the Terrain3DRegion (and its Image maps)
+	#        alive after removal — no Image.duplicate() needed. ────────
+	var tile_regions: Dictionary = {}   # tile_key -> Terrain3DRegion
 	for key in _loaded_tiles:
 		var rloc: Vector2i = _loaded_tiles[key]
 		var region = _terrain_data.get_region(rloc)
 		if region:
-			var hmap = region.get_height_map()
-			if hmap:
-				saved_tiles[key] = hmap.duplicate()
-			var cmap = region.get_color_map()
-			if cmap:
-				saved_colors[key] = cmap.duplicate()
+			tile_regions[key] = region
 
-	var saved_count := saved_tiles.size()
-
-	# ── 2. Clear all regions (Terrain3D requires this because region
-	#        grid positions are changing) ───────────────────────────────
-	_clear_all_regions()
+	# ── 2. Remove all regions from Terrain3D's active list.
+	#        Marks each deleted & removes from _region_locations;
+	#        our local refs keep the objects alive. ─────────────────────
+	for key in tile_regions:
+		_terrain_data.remove_region(tile_regions[key], false)
+	_loaded_tiles.clear()
 	_pending_loads.clear()
 
 	# ── 3. Update center coordinates ──────────────────────────────────
@@ -313,10 +310,10 @@ func rebase_center(new_center_e: int, new_center_n: int) -> void:
 	_center_ei = terrain_center_e / _tile_size
 	_center_ni = terrain_center_n / _tile_size
 
-	# ── 4. Re-add saved tiles at their new region positions ───────────
-	# No file I/O — each region is rebuilt from the cached Image.
+	# ── 4. Re-add existing regions at their new grid positions. ───────
+	#        No file I/O, no Image copies, no new allocations.
 	var recycled := 0
-	for key in saved_tiles:
+	for key in tile_regions:
 		var tile_info = _manifest["tiles"].get(key)
 		if not tile_info:
 			continue
@@ -326,20 +323,8 @@ func rebase_center(new_center_e: int, new_center_n: int) -> void:
 		if not _is_valid_region(new_rloc):
 			continue   # tile shifted out of the 32×32 grid — drop it
 
-		var region = Terrain3DRegion.new()
+		var region = tile_regions[key]
 		region.set_location(new_rloc)
-		region.set_region_size(_tile_size)
-		region.set_vertex_spacing(1.0)
-		region.set_height_map(saved_tiles[key])
-		# Restore orthophoto color map if it was saved
-		if saved_colors.has(key):
-			region.set_color_map(saved_colors[key])
-		elif not _ortho_manifest.is_empty():
-			# Fall back to loading from disk
-			var ortho_img := _load_ortho_tile(key)
-			if ortho_img:
-				region.set_color_map(ortho_img)
-		region.sanitize_maps()
 		var err = _terrain_data.add_region(region, false)
 		if err == OK:
 			_loaded_tiles[key] = new_rloc
@@ -357,7 +342,7 @@ func rebase_center(new_center_e: int, new_center_n: int) -> void:
 			var ni = center_tile.y + dni
 			var key = "%d_%d" % [ei * _tile_size, ni * _tile_size]
 			if _loaded_tiles.has(key):
-				continue   # already recycled from memory
+				continue   # already recycled in-place
 			if _manifest["tiles"].has(key):
 				var rloc = _tile_to_region(ei, ni)
 				if _is_valid_region(rloc):
@@ -381,7 +366,7 @@ func rebase_center(new_center_e: int, new_center_n: int) -> void:
 	_pending_loads = queued
 	_rebase_in_progress = not _pending_loads.is_empty()
 
-	print("TerrainStreamer: Rebase — %d recycled in-memory, %d new immediate, %d queued"
+	print("TerrainStreamer: Rebase — %d recycled in-place, %d new immediate, %d queued"
 		  % [recycled, immediate_new, queued.size()])
 
 
@@ -643,9 +628,12 @@ func _load_tile(tile_key: String) -> bool:
 	if not _is_valid_region(rloc):
 		return false
 
-	# Remove existing region at this location (if any)
-	if _terrain_data.has_region(rloc):
-		_terrain_data.remove_regionl(rloc, false)
+	# NOTE: No has_region/remove_regionl guard here.  After a floating-origin
+	# rebase, Terrain3D's internal _regions dict may contain ghost entries at
+	# old locations pointing to regions whose _location was mutated.  Querying
+	# has_region(rloc) could hit such a ghost and remove_regionl would then
+	# remove the ACTIVE region (via its mutated location), causing gaps.
+	# add_region() safely overwrites any existing entry at a location.
 
 	# Create a Terrain3DRegion manually with proper setup.
 	# This mirrors what import_images() does internally (terrain_3d_data.cpp).
