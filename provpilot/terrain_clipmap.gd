@@ -73,6 +73,10 @@ var _manifest_1m: Dictionary = {}            # Full-resolution 1 m manifest
 var _tile_directory_1m: String = ""           # Path to 1 m tile directory
 var _seam_height_texture: ImageTexture       # Ring 0 seam heightmap from 1 m data
 
+# Phase 5 — Clipmap Streamer (toroidal texture streaming)
+var _streamer  # ClipmapStreamer instance (RefCounted)
+var _streamer_active: bool = false
+
 # ── Lifecycle ───────────────────────────────────────────────────────────
 
 func _ready() -> void:
@@ -115,9 +119,33 @@ func _ready() -> void:
 		var half_ext: float = float(TEX_SIZE) / 2.0 * cfg["pixel_res"]
 		_ring_half_extents.append(half_ext)
 
-	# Pass 1: Build all ring textures, meshes, and base materials
+	# Phase 5: Initialize the ClipmapStreamer for toroidal texture updates.
+	var ClipmapStreamerScript = load("res://clipmap_streamer.gd")
+	_streamer = ClipmapStreamerScript.new()
+	_streamer.initialize(
+		scenery_path, _manifests, _manifest_1m, _tile_directory_1m,
+		TEX_SIZE, _ring_config, _ring_half_extents,
+		_terrain_center_e, _terrain_center_n
+	)
+
+	# Build all ring textures via streamer (full initial build).
+	var built = _streamer.build_all()
+	var built_height_textures: Array = built[0]
+	var built_ortho_textures: Array = built[1]
+	var built_seam_tex = built[2]
+
+	# Pass 1: Build ring meshes and materials using streamer-built textures.
 	for i in range(_ring_config.size()):
-		_build_ring(i)
+		_build_ring_with_textures(i, built_height_textures[i], built_ortho_textures[i])
+
+	# Phase 4: Set seam texture on Ring 0.
+	if built_seam_tex and _ring_materials.size() > 0:
+		_seam_height_texture = built_seam_tex
+		var mat0 = _ring_materials[0]
+		mat0.set_shader_parameter("seam_heightmap", _seam_height_texture)
+		mat0.set_shader_parameter("has_seam", true)
+
+	_streamer_active = true
 
 	# Pass 2: Link coarse textures for geomorphing.
 	# Ring N's coarse data = Ring N+1's actual textures with a UV transform.
@@ -153,8 +181,26 @@ func _ready() -> void:
 			i, ir, he, _ring_config[i]["mip_level"]])
 
 
-func _process(_delta: float) -> void:
-	pass
+func _process(delta: float) -> void:
+	if not _initialized or not _streamer_active:
+		return
+
+	# Compute camera's Swiss LV95 position from Godot camera position.
+	var cam := get_viewport().get_camera_3d()
+	if not cam:
+		return
+	var cam_pos := cam.global_position
+	var cam_swiss_e := _terrain_center_e - cam_pos.x
+	var cam_swiss_n := _terrain_center_n + cam_pos.z
+
+	# Let the streamer process incremental strip updates.
+	var updated = _streamer.process_frame(delta, cam_swiss_e, cam_swiss_n)
+
+	if updated:
+		# Update toroidal UV offsets in each ring's shader material.
+		for i in range(_ring_materials.size()):
+			var uv_off = _streamer.get_uv_offset(i)
+			_ring_materials[i].set_shader_parameter("toroidal_offset", uv_off)
 
 
 ## Update terrain center when floating origin rebases.
@@ -174,9 +220,30 @@ func rebase_center(new_center_e: float, new_center_n: float) -> void:
 		mesh_node.position.x += delta_e
 		mesh_node.position.z -= delta_n
 
+	# Phase 5: Delegate texture updates to the streamer.
+	if _streamer_active:
+		var full_rebuild = _streamer.rebase(new_center_e, new_center_n)
+		if full_rebuild:
+			# Streamer rebuilt everything — re-link coarse textures and reset meshes.
+			_relink_coarse_textures()
+			# Update seam texture.
+			var seam_tex = _streamer.get_seam_height_texture()
+			if seam_tex and _ring_materials.size() > 0:
+				_seam_height_texture = seam_tex
+				_ring_materials[0].set_shader_parameter("seam_heightmap", seam_tex)
+			for mesh_node in _ring_mesh_nodes:
+				mesh_node.position = Vector3.ZERO
+			print("TerrainClipmap: rebase — full rebuild via streamer")
+		# Update toroidal UV offsets.
+		for i in range(_ring_materials.size()):
+			var uv_off = _streamer.get_uv_offset(i)
+			_ring_materials[i].set_shader_parameter("toroidal_offset", uv_off)
+		return
+
+	# Fallback (streamer not active): legacy full-rebuild path.
 	var shift := sqrt(delta_e * delta_e + delta_n * delta_n)
 	if shift > 1024.0:
-		print("TerrainClipmap: rebase (%.0f m) — rebuilding textures" % shift)
+		print("TerrainClipmap: rebase (%.0f m) — rebuilding textures (legacy)" % shift)
 		_rebuild_all_textures()
 		for mesh_node in _ring_mesh_nodes:
 			mesh_node.position = Vector3.ZERO
@@ -247,6 +314,74 @@ func _build_ring(ring_idx: int) -> void:
 
 	_ring_mesh_nodes.append(mesh_inst)
 	_ring_materials.append(mat)
+
+
+## Build a ring using pre-built textures from ClipmapStreamer (Phase 5).
+func _build_ring_with_textures(ring_idx: int, height_tex: ImageTexture,
+		ortho_tex: ImageTexture) -> void:
+	var cfg = _ring_config[ring_idx]
+	var half_ext: float = _ring_half_extents[ring_idx]
+	var inner_r: float = cfg["inner_radius"]
+	var mesh_divs: int = cfg["mesh_divs"]
+
+	# 1. Create the flat annulus mesh.
+	var mesh = _generate_ring_mesh(half_ext, inner_r, mesh_divs)
+
+	# 2. Store textures.
+	_ring_height_textures.append(height_tex)
+	_ring_ortho_textures.append(ortho_tex)
+
+	# 3. Create material.
+	var mat = ShaderMaterial.new()
+	mat.shader = _shader
+	mat.set_shader_parameter("heightmap", height_tex)
+	if ortho_tex:
+		mat.set_shader_parameter("color_texture", ortho_tex)
+
+	var sp = _ring_shader_params[ring_idx]
+	mat.set_shader_parameter("inner_radius", sp["inner_radius"])
+	mat.set_shader_parameter("outer_radius", sp["outer_radius"])
+	mat.set_shader_parameter("morph_start", sp["morph_start"])
+	mat.set_shader_parameter("has_coarse", false)
+
+	# Atmosphere (shared).
+	mat.set_shader_parameter("fog_start", 80000.0)
+	mat.set_shader_parameter("fog_end", 250000.0)
+	mat.set_shader_parameter("fog_color", Color(0.75, 0.8, 0.88))
+	mat.set_shader_parameter("haze_color", Color(0.7, 0.75, 0.85))
+	mat.set_shader_parameter("haze_density", 0.000004)
+	mat.set_shader_parameter("brightness", 1.1)
+
+	# Phase 4: Seam blending params for Ring 0 (texture set separately).
+	if ring_idx == 0 and not _manifest_1m.is_empty():
+		mat.set_shader_parameter("seam_blend_start", SEAM_BLEND_START)
+		mat.set_shader_parameter("seam_blend_end", SEAM_BLEND_END)
+		mat.set_shader_parameter("seam_depth_bias", SEAM_DEPTH_BIAS)
+		mat.set_shader_parameter("inner_fade_end", SEAM_FADE_END)
+
+	# Phase 5: Toroidal UV offset (initially zero).
+	mat.set_shader_parameter("toroidal_offset", Vector2.ZERO)
+
+	# 4. Create MeshInstance3D.
+	var mesh_inst = MeshInstance3D.new()
+	mesh_inst.mesh = mesh
+	mesh_inst.material_override = mat
+	mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mesh_inst)
+
+	_ring_mesh_nodes.append(mesh_inst)
+	_ring_materials.append(mat)
+
+
+## Re-link coarse textures for geomorphing after a streamer full rebuild.
+func _relink_coarse_textures() -> void:
+	for i in range(_ring_config.size() - 1):
+		var mat = _ring_materials[i]
+		var next_htex = _ring_height_textures[i + 1]
+		var next_otex = _ring_ortho_textures[i + 1]
+		mat.set_shader_parameter("coarse_heightmap", next_htex)
+		if next_otex:
+			mat.set_shader_parameter("coarse_color_texture", next_otex)
 
 
 func _update_ring_textures(ring_idx: int) -> void:

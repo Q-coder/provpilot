@@ -14,13 +14,13 @@ render_mode unshaded, cull_back, skip_vertex_transform, fog_disabled, depth_draw
 // ── Uniforms ───────────────────────────────────────────────────────────
 
 // Fine textures (this ring's own mip level)
-uniform sampler2D heightmap : filter_linear, repeat_disable;
-uniform sampler2D color_texture : source_color, filter_linear, repeat_disable;
+uniform sampler2D heightmap : filter_linear, repeat_enable;
+uniform sampler2D color_texture : source_color, filter_linear, repeat_enable;
 
 // Coarse textures (the next-outer ring's ACTUAL textures, shared directly).
 // UV transform maps this ring's UV space into the coarse texture's UV space.
-uniform sampler2D coarse_heightmap : filter_linear, repeat_disable;
-uniform sampler2D coarse_color_texture : source_color, filter_linear, repeat_disable;
+uniform sampler2D coarse_heightmap : filter_linear, repeat_enable;
+uniform sampler2D coarse_color_texture : source_color, filter_linear, repeat_enable;
 uniform bool has_coarse = false;
 uniform float coarse_uv_scale : hint_range(0.0, 1.0) = 0.25;
 uniform float coarse_uv_offset : hint_range(0.0, 1.0) = 0.375;
@@ -57,6 +57,12 @@ uniform float seam_blend_end   : hint_range(0.0, 20000.0) = 10500.0;
 uniform float seam_depth_bias  : hint_range(0.0, 20.0) = 5.0;
 uniform float inner_fade_end   : hint_range(0.0, 20000.0) = 9000.0;
 
+// Phase 5 — Toroidal texture offset for streaming.
+// When the camera moves, the texture is scrolled by blitting only newly-
+// exposed strips.  The offset tells the shader where the "seam" is so
+// it can unwrap UVs via fract(uv + toroidal_offset).
+uniform vec2 toroidal_offset = vec2(0.0, 0.0);
+
 // ── Varyings ───────────────────────────────────────────────────────────
 
 varying float v_distance;
@@ -69,19 +75,21 @@ void vertex() {
 	vec4 world_pos = MODEL_MATRIX * vec4(VERTEX, 1.0);
 	v_uv = UV;
 
+	// Phase 5: Apply toroidal wrap to UV for texture sampling.
+	vec2 wrapped_uv = fract(UV + toroidal_offset);
+
 	// Sample fine height (mip2 data for Ring 0)
-	float fine_h = textureLod(heightmap, UV, 0.0).r;
+	float fine_h = textureLod(heightmap, wrapped_uv, 0.0).r;
 
 	// Phase 4: Near the inner boundary, blend toward seam heightmap
 	// (built from the same 1 m tiles Terrain3D uses).
+	// Seam texture is NOT toroidal — it uses raw UV.
 	if (has_seam) {
-		// Need distance BEFORE height displacement
 		vec2 pre_delta = world_pos.xz - CAMERA_POSITION_WORLD.xz;
 		float pre_dist = length(pre_delta);
 
 		if (pre_dist < seam_blend_end) {
 			float seam_h = textureLod(seam_heightmap, UV, 0.0).r;
-			// 0 at seam_blend_start → 1 at seam_blend_end
 			float seam_t = smoothstep(seam_blend_start, seam_blend_end, pre_dist);
 			fine_h = mix(seam_h, fine_h, seam_t);
 		}
@@ -99,7 +107,7 @@ void vertex() {
 	// Blend height when geomorphing
 	float final_h = fine_h;
 	if (v_morph > 0.0) {
-		vec2 coarse_uv = UV * coarse_uv_scale + coarse_uv_offset;
+		vec2 coarse_uv = wrapped_uv * coarse_uv_scale + coarse_uv_offset;
 		float coarse_h = textureLod(coarse_heightmap, coarse_uv, 0.0).r;
 		final_h = mix(fine_h, coarse_h, v_morph);
 	}
@@ -123,20 +131,23 @@ void fragment() {
 		discard;
 	}
 
+	// Phase 5: Apply toroidal wrap in fragment shader.
+	vec2 frag_uv = fract(v_uv + toroidal_offset);
+
 	// Orthophoto color — cross-fade fine → coarse to match height geomorphing
-	vec3 terrain_color = texture(color_texture, v_uv).rgb;
+	vec3 terrain_color = texture(color_texture, frag_uv).rgb;
 	if (v_morph > 0.0) {
-		vec2 coarse_uv = v_uv * coarse_uv_scale + coarse_uv_offset;
+		vec2 coarse_uv = frag_uv * coarse_uv_scale + coarse_uv_offset;
 		vec3 coarse_color = texture(coarse_color_texture, coarse_uv).rgb;
 		terrain_color = mix(terrain_color, coarse_color, v_morph);
 	}
 
 	// Compute approximate normal from heightmap via central differences
 	vec2 texel = vec2(1.0) / vec2(textureSize(heightmap, 0));
-	float hL = textureLod(heightmap, v_uv + vec2(-texel.x, 0.0), 0.0).r;
-	float hR = textureLod(heightmap, v_uv + vec2( texel.x, 0.0), 0.0).r;
-	float hD = textureLod(heightmap, v_uv + vec2(0.0, -texel.y), 0.0).r;
-	float hU = textureLod(heightmap, v_uv + vec2(0.0,  texel.y), 0.0).r;
+	float hL = textureLod(heightmap, frag_uv + vec2(-texel.x, 0.0), 0.0).r;
+	float hR = textureLod(heightmap, frag_uv + vec2( texel.x, 0.0), 0.0).r;
+	float hD = textureLod(heightmap, frag_uv + vec2(0.0, -texel.y), 0.0).r;
+	float hU = textureLod(heightmap, frag_uv + vec2(0.0,  texel.y), 0.0).r;
 	// texel_world_size depends on how many metres each texel covers;
 	// we approximate using the distance between samples (2 texels).
 	// For a 2048-texel texture covering 2*half_extent, each texel is pixel_res metres.

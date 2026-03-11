@@ -522,5 +522,5 @@ The converter extracts glTF from BGL binary files, converts DDS textures to PNG,
 - **Airspace**: CTR/TMA boundaries for airspace awareness
 - **Compression**: Consider zstd-compressed terrain tiles to reduce from 4 MB → ~1–2 MB per tile (~80 GB total)
 - **LOD**: Multi-resolution terrain (1m near aircraft, 4m distant) to reduce memory — partially addressed by clipmap mip pyramid
-- **Clipmap streaming**: Toroidal texture updates (blit only newly-exposed strips) instead of full rebuild on rebase
+- **Clipmap streaming**: `clipmap_streamer.gd` centralises texture ownership and rebuilds on rebase (<1 ms). Toroidal strip-blit infrastructure retained for future use when textures are shrunk to save VRAM
 - **Streaming from network**: Load tiles from a local server or CDN instead of requiring full local copy

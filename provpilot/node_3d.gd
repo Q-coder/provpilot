@@ -119,6 +119,10 @@ var _fly_loading: bool = false   # True while loading after user clicks Fly!
 var _welcome_screen: CanvasLayer = null
 var _settings_screen: CanvasLayer = null
 
+# Deferred scenery loading: skip all heavy loading at startup, load on first Fly!
+var _first_flight: bool = true
+var _first_flight_target: Dictionary = {}  # {swiss_e, swiss_n, heading_deg}
+
 # ── Interactive cockpit mixture lever ──────────────────────────────────────
 var mixture_lever_node: Node3D           # The lever mesh node
 var mixture_lever_body: StaticBody3D     # Runtime physics body for raycasting
@@ -162,9 +166,76 @@ const MAGNETO_BASE_POSITION: float = 6.5   # Model default orientation (between 
 # Angle offsets relative to base: OFF=-45, R=-15, L=+15, BOTH=+45, START=+75
 const MAGNETO_ANGLE_OFFSET: float = -95.0  # Angle of pos 0 (OFF) relative to base
 
+# ── Interactive cockpit flap lever ─────────────────────────────────────────
+var flap_lever_node: Node3D              # The lever mesh node
+var flap_lever_body: StaticBody3D        # Runtime physics body for raycasting
+var flap_lever_base_transform: Transform3D  # Original transform at flaps=0 (UP)
+var flap_position: int = 0               # 0=UP, 1=10°, 2=20°, 3=30°
+var _flap_dragging: bool = false
+var _flap_drag_start_y: float = 0.0      # Screen Y at drag start
+var _flap_drag_start_pos: int = 0        # Position at drag start
+var _flap_key_held: bool = false
+var _flap_last_printed_pos: int = -1     # Dedup prints
+const FLAP_LEVER_COLLISION_LAYER: int = 128  # Separate physics layer
+const FLAP_LEVER_TRAVEL: float = -0.01    # Total lever travel along Y per notch
+const FLAP_POSITIONS: Array = [0.0, 0.333, 0.667, 1.0]  # JSBSim flap-cmd-norm values
+const FLAP_NAMES: Array = ["UP", "10°", "20°", "30°"]
+
+# ── Engine sound ───────────────────────────────────────────────────────────
+var _engine_audio: AudioStreamPlayer = null
+const ENGINE_SOUND_PATH := "res://sounds/c172_engine_inflight.ogg"
+# RPM-to-pitch mapping: idle (~700 RPM) → 0.7, max (2700 RPM) → 1.6
+const ENGINE_PITCH_MIN: float = 0.7
+const ENGINE_PITCH_MAX: float = 1.6
+# RPM-to-volume mapping (before user volume slider): idle → -12 dB, max → +3 dB
+const ENGINE_VOL_DB_MIN: float = -12.0
+const ENGINE_VOL_DB_MAX: float = 3.0
+# Below this RPM the engine sound fades out completely
+const ENGINE_SOUND_FADE_RPM: float = 50.0
+
+# FPS counter
+var _fps_label: Label = null
+var _fps_visible: bool = false
+var _fps_key_held: bool = false
+var _rebase_label: Label = null
+
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	print("Node3D _ready() starting...")
+
+	# Create FPS counter label (top-right corner)
+	var fps_layer := CanvasLayer.new()
+	fps_layer.layer = 100
+	add_child(fps_layer)
+	_fps_label = Label.new()
+	_fps_label.text = "FPS: 0"
+	_fps_label.add_theme_font_size_override("font_size", 18)
+	_fps_label.add_theme_color_override("font_color", Color.WHITE)
+	_fps_label.add_theme_color_override("font_shadow_color", Color.BLACK)
+	_fps_label.add_theme_constant_override("shadow_offset_x", 1)
+	_fps_label.add_theme_constant_override("shadow_offset_y", 1)
+	_fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_fps_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_fps_label.offset_left = -120
+	_fps_label.offset_right = -10
+	_fps_label.offset_top = 10
+	_fps_label.visible = false
+	fps_layer.add_child(_fps_label)
+
+	_rebase_label = Label.new()
+	_rebase_label.text = "REBASE"
+	_rebase_label.add_theme_font_size_override("font_size", 18)
+	_rebase_label.add_theme_color_override("font_color", Color.YELLOW)
+	_rebase_label.add_theme_color_override("font_shadow_color", Color.BLACK)
+	_rebase_label.add_theme_constant_override("shadow_offset_x", 1)
+	_rebase_label.add_theme_constant_override("shadow_offset_y", 1)
+	_rebase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_rebase_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_rebase_label.offset_left = -120
+	_rebase_label.offset_right = -10
+	_rebase_label.offset_top = 30
+	_rebase_label.visible = false
+	fps_layer.add_child(_rebase_label)
 
 	# Show a lightweight loading screen immediately, before any heavy work.
 	_create_loading_screen()
@@ -310,43 +381,115 @@ func _ready() -> void:
 		else:
 			print("WARNING: Magneto switch node not found (tried Dynamic_Switch_003_Magnetos_Switch and Dynamic_Switch_003)")
 	
+		# Flap lever
+		flap_lever_node = c172_root.find_child("Dynamic_Switch_007_Flaps_Leveler", true, false)
+		if not flap_lever_node:
+			flap_lever_node = c172_root.find_child("Dynamic_Switch_007", true, false)
+		if flap_lever_node:
+			print("Flap lever node found: ", flap_lever_node.name)
+			flap_lever_base_transform = flap_lever_node.transform
+			_setup_flap_lever_collision()
+			# Sync lever position to current JSBSim flap state
+			if jsb_node:
+				var cur_flaps := float(jsb_node.get_flaps())
+				flap_position = _flaps_norm_to_position(cur_flaps)
+			_apply_flap_position()
+		else:
+			print("WARNING: Flap lever node not found (tried Dynamic_Switch_007_Flaps_Leveler and Dynamic_Switch_007)")
+	
 	# Get Terrain3D node for ground height queries
 	terrain3d_node = get_node_or_null("Terrain3D")
 	if terrain3d_node:
 		print("Terrain3D node found: ", terrain3d_node)
-		
-		# Load terrain via streamer (replaces static data_directory loading)
-		var streamer = get_node_or_null("TerrainStreamer")
-		if streamer:
-			print("TerrainStreamer found — loading initial terrain...")
-			var start_pos = $AC.global_position if has_node("AC") else Vector3.ZERO
-			var loaded = streamer.initial_load(start_pos)
-			print("TerrainStreamer: %d regions loaded" % loaded)
-		else:
-			print("No TerrainStreamer — using static Terrain3D data")
-		
-		var tdata = terrain3d_node.get("data")
-		if tdata:
-			print("Terrain3D data: ", tdata)
-			if tdata.has_method("get_region_count"):
-				print("  region_count: ", tdata.get_region_count())
-			
-			# Initialize JSBSim with correct terrain elevation
-			_initialize_jsbsim_on_terrain(tdata)
-		else:
-			print("Terrain3D data is null")
 	else:
 		print("WARNING: Terrain3D node not found - ground collision may not work correctly!")
-	
+
+	# ── Deferred scenery loading: skip all heavy work at startup ──────
+	# Terrain, buildings, roads, water, runways, and distant terrain are
+	# loaded only after the user clicks Fly! in the welcome screen.
+	# This makes the welcome screen appear almost instantly.
+
+	# Disable scenery loaders so their _process() does not auto-load tiles
+	for loader_name in ["BuildingLoader", "RoadLoader", "WaterLoader", "RunwayLoader", "ObjectLoader"]:
+		var loader = get_node_or_null(loader_name)
+		if loader and "enabled" in loader:
+			loader.enabled = false
+
+	# Disable DistantTerrain chunk generation (heightmap is already loaded
+	# in its own _ready, but mesh generation happens in _process)
+	var distant = get_node_or_null("DistantTerrain")
+	if distant:
+		distant.set_process(false)
+
+	# Disable TerrainClipmap processing until flight starts
+	var clipmap = get_node_or_null("TerrainClipmap")
+	if clipmap:
+		clipmap.set_process(false)
+
 	# Print the aircraft model hierarchy to find control surfaces
 	print("=== Aircraft Node Hierarchy ===")
 	print_node_tree($AC, 0)
 	print("=== End Hierarchy ===")
 
-	# Welcome & Settings screens are created later, once loading finishes.
-	# See _update_loading_progress() called from _process().
+	# Skip the loading screen — show welcome screen directly.
+	_loading_done = true
+	if _loading_screen:
+		_loading_screen.hide_loading()
+	_create_welcome_screen()
+	_create_settings_screen()
 
-	print("Node3D _ready() complete!")
+	# ── Engine sound ──────────────────────────────────────────────────
+	_setup_engine_sound()
+
+	print("Node3D _ready() complete — welcome screen shown (scenery deferred)")
+
+
+# ── Engine Sound Setup ─────────────────────────────────────────────────────
+func _setup_engine_sound() -> void:
+	var stream = load(ENGINE_SOUND_PATH)
+	if stream == null:
+		print("WARNING: Engine sound not found at %s" % ENGINE_SOUND_PATH)
+		return
+	# Enable looping for whichever format we loaded
+	if stream is AudioStreamOggVorbis:
+		stream.loop = true
+	elif stream is AudioStreamMP3:
+		stream.loop = true
+	_engine_audio = AudioStreamPlayer.new()
+	_engine_audio.stream = stream
+	_engine_audio.bus = "Master"
+	_engine_audio.volume_db = -80.0  # Start silent
+	add_child(_engine_audio)
+	_engine_audio.play()
+	print("Engine sound loaded and playing (looped)")
+
+
+func _update_engine_sound() -> void:
+	if _engine_audio == null:
+		return
+
+	# Use visual_rpm which already handles engine-off decay
+	var rpm = visual_rpm
+
+	# Fade to silence below threshold
+	if rpm < ENGINE_SOUND_FADE_RPM:
+		_engine_audio.volume_db = -80.0
+		return
+
+	# Normalise RPM to 0-1 range (idle ~700 = 0.26, max 2700 = 1.0)
+	var rpm_norm = clampf(rpm / PROPELLER_MAX_RPM, 0.0, 1.0)
+
+	# Pitch: linear interpolation
+	_engine_audio.pitch_scale = lerpf(ENGINE_PITCH_MIN, ENGINE_PITCH_MAX, rpm_norm)
+
+	# Volume: linear interpolation in dB, then apply user engine_volume setting
+	var base_db = lerpf(ENGINE_VOL_DB_MIN, ENGINE_VOL_DB_MAX, rpm_norm)
+	var user_vol_pct: float = 70.0  # default
+	if _settings_screen and "settings" in _settings_screen:
+		user_vol_pct = float(_settings_screen.settings.get("engine_volume", 70))
+	# Convert 0-100% to dB offset: 0% → -80 dB (silent), 100% → 0 dB (no attenuation)
+	var user_db_offset = lerpf(-80.0, 0.0, user_vol_pct / 100.0)
+	_engine_audio.volume_db = base_db + user_db_offset
 
 
 # Create the propeller blur disc mesh
@@ -425,10 +568,15 @@ func _do_deferred_terrain_init() -> void:
 		print("Cannot initialize JSBSim on terrain - missing AC or JSBGodot node")
 		return
 	
-	# Move aircraft to initial start position (Schmerlat Airfield)
-	ac_node.global_position.x = 980.8
-	ac_node.global_position.z = -227.1
-	ac_node.rotation.y = -deg_to_rad(250.0)  # Visual heading 250° (WSW)
+	# Use stored target position (set by _do_first_flight)
+	var target_x: float = _first_flight_target.get("godot_x", 980.8)
+	var target_z: float = _first_flight_target.get("godot_z", -227.1)
+	var target_heading: float = _first_flight_target.get("heading_deg", 250.0)
+	
+	# Move aircraft to target position
+	ac_node.global_position.x = target_x
+	ac_node.global_position.z = target_z
+	ac_node.rotation.y = -deg_to_rad(target_heading)
 	
 	# DEBUG: Check terrain heights at multiple points
 	var start_pos = Vector3(ac_node.global_position.x, 0, ac_node.global_position.z)
@@ -503,10 +651,9 @@ func _do_deferred_terrain_init() -> void:
 	jsb_node.set_godot_terrain_y_offset(WHEEL_GROUND_CLEARANCE)
 	
 	# Initialize JSBSim with terrain height, start position, and heading
-	var start_heading_deg = 250.0  # WSW (Schmerlat runway)
 	var start_godot_pos = ac_node.global_position
-	jsb_node.initialize_at_terrain(jsbsim_terrain_elevation, start_godot_pos, start_heading_deg)
-	print("=== JSBSim initialized at Godot pos: ", start_godot_pos, " heading: ", start_heading_deg, "° ===")
+	jsb_node.initialize_at_terrain(jsbsim_terrain_elevation, start_godot_pos, target_heading)
+	print("=== JSBSim initialized at Godot pos: ", start_godot_pos, " heading: ", target_heading, "° ===")
 	
 	terrain_initialized = true
 	print("=== JSBSim terrain initialization complete ===")
@@ -661,6 +808,22 @@ func _process(delta: float) -> void:
 			_welcome_screen.show_welcome()
 			return
 	
+	# Update FPS label
+	if _fps_label and _fps_visible:
+		_fps_label.text = "FPS: %d" % Engine.get_frames_per_second()
+
+	# Toggle FPS display with Ctrl+Shift+F
+	if Input.is_key_pressed(KEY_CTRL) and Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_F):
+		if not _fps_key_held:
+			_fps_key_held = true
+			_fps_visible = !_fps_visible
+			if _fps_label:
+				_fps_label.visible = _fps_visible
+			if _rebase_label and not _fps_visible:
+				_rebase_label.visible = false
+	else:
+		_fps_key_held = false
+
 	# --- Post-teleport position guard ---
 	_process_rebase_cooldown()
 	
@@ -717,6 +880,9 @@ func _process(delta: float) -> void:
 	
 	# Magneto switch keyboard control: I = clockwise, Shift+I = counterclockwise
 	_handle_magneto_keys()
+	
+	# Flap lever keyboard control: F = flaps down, Shift+F = flaps up
+	_handle_flap_keys()
 	
 	# Animate control surfaces
 	animate_control_surfaces()
@@ -1195,6 +1361,9 @@ func animate_control_surfaces() -> void:
 			# No blur disc available - always show real propeller
 			propeller_node.visible = true
 	
+	# Update engine sound pitch and volume from RPM
+	_update_engine_sound()
+	
 	# Animate ailerons - they move opposite to each other for roll control
 	var aileron_input = jsb_node.get_input_aileron()  # -1 to 1
 	# Debug aileron input
@@ -1257,6 +1426,21 @@ func animate_control_surfaces() -> void:
 		magneto_switch_node.transform = magneto_switch_base_transform
 		var angle_offset := float(magneto_position - MAGNETO_BASE_POSITION) * MAGNETO_STEP_ANGLE
 		magneto_switch_node.rotate_object_local(Vector3.FORWARD, deg_to_rad(angle_offset))
+	
+	# Animate flap lever position (slides along Y axis)
+	# Base transform = Blender default (flaps UP). Lever moves down (-Y) for more flaps.
+	# Sync flap_position from the commanded value so gamepad changes move the lever.
+	if flap_lever_node and not _flap_dragging:
+		if jsb_node:
+			var cmd_pos := _flaps_norm_to_position(jsb_node.get_flap_cmd())
+			if cmd_pos != flap_position:
+				flap_position = cmd_pos
+				if flap_position != _flap_last_printed_pos:
+					_flap_last_printed_pos = flap_position
+					print("Flaps: %s" % FLAP_NAMES[flap_position])
+		flap_lever_node.transform = flap_lever_base_transform
+		var y_offset := -float(flap_position) * FLAP_LEVER_TRAVEL
+		flap_lever_node.translate_object_local(Vector3(0, y_offset, 0))
 
 
 # ── Floating Origin ────────────────────────────────────────────────────────
@@ -1307,6 +1491,9 @@ func _perform_origin_rebase() -> void:
 	if shift == Vector3.ZERO:
 		return
 	
+	if _rebase_label and _fps_visible:
+		_rebase_label.visible = true
+
 	print("=== FLOATING ORIGIN REBASE ===")
 	print("  AC before: ", ac_node.global_position)
 	print("  Center E: %d -> %d" % [int(old_center_e), int(TERRAIN_CENTER_E)])
@@ -1348,11 +1535,24 @@ func _perform_origin_rebase() -> void:
 	if runway_loader and runway_loader.has_method("shift_all_runways"):
 		runway_loader.shift_all_runways(shift)
 
-	# 11. Rebase distant terrain mesh.
-	var distant_terrain = get_node_or_null("DistantTerrain")
-	if distant_terrain and distant_terrain.has_method("rebase_center"):
-		distant_terrain.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
+	# 10b. Shift all custom scenery object instances.
+	var object_loader = get_node_or_null("ObjectLoader")
+	if object_loader and object_loader.has_method("shift_all_objects"):
+		object_loader.shift_all_objects(shift)
+
+	# 11. Rebase distant terrain mesh (disabled — clipmap replaces it).
+	#var distant_terrain = get_node_or_null("DistantTerrain")
+	#if distant_terrain and distant_terrain.has_method("rebase_center"):
+	#	distant_terrain.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
+
+	# 12. Rebase clipmap terrain rings.
+	var terrain_clipmap = get_node_or_null("TerrainClipmap")
+	if terrain_clipmap and terrain_clipmap.has_method("rebase_center"):
+		terrain_clipmap.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
 	
+	if _rebase_label:
+		_rebase_label.visible = false
+
 	print("=== REBASE COMPLETE ===")
 
 
@@ -1552,10 +1752,97 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 	_fly_loading = true
 	if _loading_screen:
 		_loading_screen.set_progress(0.0)
-		_loading_screen.set_status("Teleporting...")
+		_loading_screen.set_status("Loading terrain...")
 		_loading_screen.show_loading()
 
-	_on_teleport_requested(swiss_e, swiss_n, heading_deg)
+	if _first_flight:
+		_do_first_flight(swiss_e, swiss_n, heading_deg)
+		_first_flight = false
+	else:
+		_on_teleport_requested(swiss_e, swiss_n, heading_deg)
+
+
+## First flight: load terrain, initialize JSBSim, enable scenery loaders.
+## Called instead of _on_teleport_requested on the very first Fly! click.
+func _do_first_flight(swiss_e: float, swiss_n: float, heading_deg: float) -> void:
+	print("=== FIRST FLIGHT: Loading scenery for E=%.0f N=%.0f ===" % [swiss_e, swiss_n])
+
+	var ac_node = get_node_or_null("AC")
+	if not ac_node:
+		push_error("_do_first_flight: missing AC node")
+		return
+
+	# 1. Set terrain center aligned to 1024m grid around target
+	TERRAIN_CENTER_E = roundf(swiss_e / 1024.0) * 1024.0
+	TERRAIN_CENTER_N = roundf(swiss_n / 1024.0) * 1024.0
+	print("  Terrain center: E=%d N=%d" % [int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N)])
+
+	# Update TerrainStreamer center coordinates (including internal tile indices)
+	var streamer = get_node_or_null("TerrainStreamer")
+	if streamer:
+		streamer.terrain_center_e = int(TERRAIN_CENTER_E)
+		streamer.terrain_center_n = int(TERRAIN_CENTER_N)
+		# Update internal tile indices derived from center
+		if "_tile_size" in streamer and streamer._tile_size > 0:
+			streamer._center_ei = streamer.terrain_center_e / streamer._tile_size
+			streamer._center_ni = streamer.terrain_center_n / streamer._tile_size
+
+	# 2. Compute Godot position for the target
+	var godot_x = TERRAIN_CENTER_E - swiss_e
+	var godot_z = swiss_n - TERRAIN_CENTER_N
+
+	# 3. Position aircraft at target (Y will be corrected after terrain loads)
+	ac_node.global_position = Vector3(godot_x, 500.0, godot_z)
+	ac_node.rotation.y = -deg_to_rad(heading_deg)
+
+	# Store target for deferred JSBSim init (uses these in _do_deferred_terrain_init)
+	_first_flight_target = {
+		"godot_x": godot_x,
+		"godot_z": godot_z,
+		"heading_deg": heading_deg
+	}
+
+	# 4. Load terrain tiles around the target position
+	if streamer:
+		print("  Loading initial terrain...")
+		var loaded = streamer.initial_load(ac_node.global_position)
+		print("  TerrainStreamer: %d regions loaded" % loaded)
+
+	# 5. Queue deferred JSBSim initialization (needs terrain data + physics frame)
+	if terrain3d_node:
+		var tdata = terrain3d_node.get("data")
+		if tdata:
+			_initialize_jsbsim_on_terrain(tdata)
+
+	# 6. Enable scenery loaders
+	for loader_name in ["BuildingLoader", "RoadLoader", "WaterLoader", "RunwayLoader", "ObjectLoader"]:
+		var loader = get_node_or_null(loader_name)
+		if loader and "enabled" in loader:
+			loader.enabled = true
+			print("  Enabled %s" % loader_name)
+
+	# 7. Enable DistantTerrain and rebase its center
+	# DistantTerrain is disabled while TerrainClipmap is active
+	#var distant = get_node_or_null("DistantTerrain")
+	#if distant:
+	#	if distant.has_method("rebase_center"):
+	#		distant.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
+	#	distant.set_process(true)
+	#	print("  Enabled DistantTerrain")
+
+	# 7b. Enable TerrainClipmap and rebase
+	var clipmap = get_node_or_null("TerrainClipmap")
+	if clipmap:
+		if clipmap.has_method("rebase_center"):
+			clipmap.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
+		clipmap.set_process(true)
+		print("  Enabled TerrainClipmap")
+
+	# 8. Set teleport pin so aircraft stays in place until terrain settles
+	_teleport_pin_pos = ac_node.global_position
+	_rebase_cooldown = REBASE_COOLDOWN_FRAMES
+
+	print("=== FIRST FLIGHT: scenery loading initiated ===")
 
 
 func _on_welcome_settings_requested() -> void:
@@ -1655,9 +1942,12 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 		var runway_loader = get_node_or_null("RunwayLoader")
 		if runway_loader and runway_loader.has_method("shift_all_runways"):
 			runway_loader.shift_all_runways(shift)
-		var distant_terrain = get_node_or_null("DistantTerrain")
-		if distant_terrain and distant_terrain.has_method("rebase_center"):
-			distant_terrain.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
+		#var distant_terrain = get_node_or_null("DistantTerrain")
+		#if distant_terrain and distant_terrain.has_method("rebase_center"):
+		#	distant_terrain.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
+		var terrain_clipmap = get_node_or_null("TerrainClipmap")
+		if terrain_clipmap and terrain_clipmap.has_method("rebase_center"):
+			terrain_clipmap.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
 
 	# 7. Compute new Godot position from Swiss coords
 	var new_godot_x = TERRAIN_CENTER_E - swiss_e
@@ -1925,6 +2215,11 @@ func _unhandled_input(event: InputEvent) -> void:
 					_magneto_drag_start_x = mb.position.x
 					_magneto_drag_start_pos = magneto_position
 					get_viewport().set_input_as_handled()
+				elif flap_lever_node and _raycast_hits_body(mb.position, flap_lever_body, FLAP_LEVER_COLLISION_LAYER):
+					_flap_dragging = true
+					_flap_drag_start_y = mb.position.y
+					_flap_drag_start_pos = flap_position
+					get_viewport().set_input_as_handled()
 			else:
 				if _mixture_dragging:
 					_mixture_dragging = false
@@ -1939,6 +2234,9 @@ func _unhandled_input(event: InputEvent) -> void:
 						magneto_position = 3
 						_apply_magneto_position()
 						print("Magneto: BOTH")
+					get_viewport().set_input_as_handled()
+				if _flap_dragging:
+					_flap_dragging = false
 					get_viewport().set_input_as_handled()
 	
 	elif event is InputEventMouseMotion:
@@ -1966,6 +2264,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			if new_pos != magneto_position:
 				magneto_position = new_pos
 				_apply_magneto_position()
+			get_viewport().set_input_as_handled()
+		elif _flap_dragging:
+			# Drag down = more flaps, up = less flaps (vertical, like a pull-down lever)
+			var delta_y := mm.position.y - _flap_drag_start_y
+			var steps := int(delta_y / 40.0)  # 40px per notch
+			var new_pos := clampi(_flap_drag_start_pos + steps, 0, 3)
+			if new_pos != flap_position:
+				flap_position = new_pos
+				_apply_flap_position()
+			# Update lever visual immediately during drag
+			flap_lever_node.transform = flap_lever_base_transform
+			flap_lever_node.translate_object_local(Vector3(0, -float(flap_position) * FLAP_LEVER_TRAVEL, 0))
 			get_viewport().set_input_as_handled()
 
 
@@ -2068,3 +2378,68 @@ func _apply_magneto_position() -> void:
 	# Send to JSBSim
 	if jsb_node and jsb_node.has_method("set_input_magnetos"):
 		jsb_node.set_input_magnetos(magneto_position)
+
+
+## Create collision body on the flap lever for mouse picking.
+func _setup_flap_lever_collision() -> void:
+	flap_lever_body = StaticBody3D.new()
+	flap_lever_body.collision_layer = FLAP_LEVER_COLLISION_LAYER
+	flap_lever_body.collision_mask = 0
+	
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(0.02, 0.04, 0.02)  # Taller along Y for lever travel
+	shape.shape = box
+	
+	flap_lever_body.add_child(shape)
+	flap_lever_node.add_child(flap_lever_body)
+
+
+## Handle F / Shift+F keyboard input for flap lever control.
+func _handle_flap_keys() -> void:
+	if not Input.is_key_pressed(KEY_F):
+		_flap_key_held = false
+		return
+	
+	if _flap_key_held:
+		return
+	_flap_key_held = true
+	
+	var old_pos := flap_position
+	if Input.is_key_pressed(KEY_SHIFT):
+		flap_position = maxi(flap_position - 1, 0)  # Shift+F = flaps up
+	else:
+		flap_position = mini(flap_position + 1, 3)  # F = flaps down
+	
+	if flap_position != old_pos:
+		_apply_flap_position()
+
+
+## Convert JSBSim flap-pos-norm (0.0-1.0) to lever position index (0-3).
+func _flaps_norm_to_position(norm: float) -> int:
+	if norm < 0.167:
+		return 0
+	elif norm < 0.5:
+		return 1
+	elif norm < 0.833:
+		return 2
+	else:
+		return 3
+
+
+## Apply current flap position: update visual + send to JSBSim.
+func _apply_flap_position() -> void:
+	# Print only on actual change
+	if flap_position != _flap_last_printed_pos:
+		_flap_last_printed_pos = flap_position
+		print("Flaps: %s" % FLAP_NAMES[flap_position])
+	
+	# Update lever visual
+	if flap_lever_node:
+		flap_lever_node.transform = flap_lever_base_transform
+		var y_offset := -float(flap_position) * FLAP_LEVER_TRAVEL
+		flap_lever_node.translate_object_local(Vector3(0, y_offset, 0))
+	
+	# Send to JSBSim
+	if jsb_node and jsb_node.has_method("set_flaps"):
+		jsb_node.set_flaps(FLAP_POSITIONS[flap_position])

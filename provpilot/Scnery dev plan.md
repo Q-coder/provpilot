@@ -1,7 +1,7 @@
 # ProvPilot Scenery Development Plan — Clipmap Terrain
 
 **Created**: March 2026
-**Status**: Planning
+**Status**: In Progress (Phases 0–5 complete)
 **Goal**: Eliminate far/near scenery overlap artifacts and achieve seamless terrain from cockpit to 300 km horizon.
 
 ---
@@ -175,23 +175,25 @@ Ring 0's inner edge must blend with Terrain3D's outer edge.
 
 ---
 
-## Phase 5 — Clipmap Streaming Manager
+## Phase 5 — Clipmap Streaming Manager ✅ IMPLEMENTED
 
 **New file**: `provpilot/clipmap_streamer.gd`
 
-Manages heightmap + orthophoto texture updates as the camera moves:
+Manages heightmap + orthophoto texture lifecycle for clipmap rings:
 
-1. **Toroidal textures** — each ring has a wrapping atlas. Camera movement updates only the newly-exposed strip. No full refresh.
-2. **Budget-limited I/O** — at most N tiles per frame (same principle as `TerrainStreamer`)
-3. **Priority** — inner rings update first (higher visual impact)
-4. **Floating origin rebase** — shift ring mesh positions (like `DistantTerrain.rebase_center()`). Toroidal texture offset adjusts; no data reload.
-5. **Pre-fetch** — detect aircraft velocity, pre-load tiles ahead
+1. **Centralised texture ownership** — `ClipmapStreamer` (extends RefCounted) owns the per-ring `Image` + `ImageTexture` pairs. `terrain_clipmap.gd` delegates all texture creation and updates to the streamer.
+2. **Budget-limited I/O** — at most 8 tiles per frame (`MAX_TILES_PER_FRAME`), inner rings prioritised.
+3. **Floating origin rebase** — on every rebase, all ring textures are rebuilt centered on the new position and mesh positions reset to zero. Full rebuild takes <1 ms per ring.
+4. **Toroidal texture infrastructure** — strip-blit and toroidal-offset logic is implemented and retained for future use, but currently unused. Each ring's texture covers ±16–262 km while rebase fires at 5 km, so incremental scrolling provides no benefit.
+5. **Velocity pre-fetch** — implemented but disabled (same reason: textures are far larger than the rebase zone).
+6. **Shader support** — `toroidal_offset` uniform (vec2) added to `terrain_clipmap.gdshader`. Textures use `repeat_enable`. UV wrapped via `fract(uv + toroidal_offset)`. Currently offset stays at zero.
+7. **Seam heightmap** — Phase 4 seam texture rebuilt on every rebase via streamer.
 
 Texture mechanics:
 
-- Each ring's heightmap: single `ImageTexture` (e.g. 1024×1024 for Ring 0)
-- Camera moves 1 grid cell → update 1 row/column via `Image.blit_rect()`
+- Each ring's heightmap: 2048×2048 `ImageTexture` (FORMAT_RF)
 - Full re-upload via `ImageTexture.update(image)` takes <1 ms
+- `build_all()` for initial load, `rebase()` for every floating-origin shift
 
 ---
 
