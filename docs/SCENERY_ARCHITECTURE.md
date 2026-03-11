@@ -46,8 +46,16 @@ scenery/                              # Root (configurable via project settings)
 ├── terrain/                          # Elevation heightmaps
 │   ├── manifest.json                 # Tile index (tile key → file + metadata)
 │   ├── tile_2682880_1283072.raw      # 1024×1024 float32, little-endian
-│   ├── tile_2683904_1283072.raw
-│   └── ...                           # ~42,000 files for full CH
+│   ├── ...                           # ~42,000 files for full CH
+│   ├── mip2/                         # 16 m/px downsampled tiles (Ring 0)
+│   │   ├── manifest.json
+│   │   └── *.raw
+│   ├── mip3/                         # 64 m/px downsampled tiles (Ring 1)
+│   │   ├── manifest.json
+│   │   └── *.raw
+│   └── mip4/                         # 256 m/px downsampled tiles (Ring 2)
+│       ├── manifest.json
+│       └── *.raw
 │
 ├── buildings/                        # 3D building models
 │   ├── manifest.json                 # Tile index with centers + bounding boxes
@@ -344,7 +352,8 @@ For development, this can point to a local directory. For distribution, `user://
 | `welcome_screen.gd` | ✅ Done | Startup aircraft & airport selection UI |
 | `settings_screen.gd` | ✅ Done | Settings UI (graphics, sound, realism, paths) |
 | `loading_screen.gd` | ✅ Done | Progress overlay during loading |
-| `distant_terrain.gd` | ✅ Done | Low-res mesh horizon (128m/vertex) from pre-generated heightmap |
+| `distant_terrain.gd` | ⚠️ Deprecated | Low-res mesh horizon (256m/vertex) — replaced by clipmap |
+| `terrain_clipmap.gd` | ✅ Done | 3-ring geomorphing clipmap (7 km – 300 km), seam-blended with Terrain3D |
 | `custom_scenery_loader.gd` | ✅ Done | Scans `custom/*/package.json`, discovers packages by type |
 | `object_loader.gd` | ✅ Done | Loads custom scenery objects by proximity (15 km / 20 km) |
 
@@ -362,10 +371,20 @@ All scenery loading is designed to avoid blocking the main thread:
 - Proximity checks run every `_process()` frame but are lightweight (distance calculations only).
 - Floating-origin rebase shifts all loaded instances by the offset vector — no reload needed.
 
-**Distant terrain** (`distant_terrain.gd`):
-- Pre-generated 128m-resolution heightmap covers all of Switzerland.
-- Mesh chunks are generated **incrementally** at 2 chunks per frame during startup, avoiding a multi-second freeze.
-- Near-clip shader fades out where Terrain3D begins, preventing z-fighting.
+**Distant terrain** (`distant_terrain.gd`) — **DEPRECATED**:
+- Replaced by the clipmap terrain system (see below).
+- Pre-generated 256m-resolution heightmap covering all of Switzerland.
+- Kept as fallback; processing disabled at startup.
+
+**Clipmap terrain** (`terrain_clipmap.gd`):
+- 3 concentric ring meshes beyond Terrain3D's ~8.5 km edge:
+  - Ring 0: 7–16.4 km, mip2 (16 m/px), 2048×2048 heightmap
+  - Ring 1: 16.4–65.5 km, mip3 (64 m/px), 2048×2048 heightmap
+  - Ring 2: 65.5–262 km, mip4 (256 m/px), 2048×2048 heightmap
+- Shader-based geomorphing: each ring's outer vertices blend toward the next-outer ring's heightmap, eliminating LOD popping.
+- **Terrain3D ↔ Ring 0 seam blending**: Ring 0 carries an extra heightmap built from the same 1 m tiles Terrain3D uses (Lanczos downsample → 16 m/px). In a 2 km transition band (8.5–10.5 km) the shader blends seam heights toward mip2 data. A depth bias (up to 5 m at the inner edge) ensures Terrain3D wins the depth test in the overlap zone. Fragment colour fades to atmospheric haze at the inner boundary so the seam is invisible.
+- Heightmap textures are rebuilt on floating-origin rebase (>1024 m shift).
+- Mip tile pyramids are pre-generated offline by `scripts/generate_terrain_mipmap.py`.
 
 **Runway loader** (`runway_loader.gd`):
 - Procedural mesh generation is fast (SurfaceTool); no threaded loading needed.
@@ -502,5 +521,6 @@ The converter extracts glTF from BGL binary files, converts DDS textures to PNG,
 - **Navaids**: VOR, NDB, waypoints from Swiss AIP for instrument navigation
 - **Airspace**: CTR/TMA boundaries for airspace awareness
 - **Compression**: Consider zstd-compressed terrain tiles to reduce from 4 MB → ~1–2 MB per tile (~80 GB total)
-- **LOD**: Multi-resolution terrain (1m near aircraft, 4m distant) to reduce memory
+- **LOD**: Multi-resolution terrain (1m near aircraft, 4m distant) to reduce memory — partially addressed by clipmap mip pyramid
+- **Clipmap streaming**: Toroidal texture updates (blit only newly-exposed strips) instead of full rebuild on rebase
 - **Streaming from network**: Load tiles from a local server or CDN instead of requiring full local copy
