@@ -215,7 +215,7 @@ Texture mechanics:
 - Fine-tune geomorph transition widths
 - Adjust ring boundaries and resolutions based on visual testing
 - Profile GPU cost; if Ring 0 (16m) is too dense, try 32m
-- Test edge cases: high altitude, low altitude, fast flight, rebase during banking
+- ~~Test edge cases: high altitude, low altitude, fast flight, rebase during banking~~ ✅ Ghost region bug found and fixed (clean-slate rebase replaces region recycling)
 - Optional: render-distance slider in settings
 
 ---

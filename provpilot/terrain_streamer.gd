@@ -76,10 +76,10 @@ var _rebase_in_progress: bool = false
 ## Budget: tiles loaded per frame during progressive (rebase / initial) loading.
 ## Higher = faster terrain fill but bigger per-frame cost.  4 tiles ≈ 16 MB I/O
 ## ≈ 8 ms on a typical SSD — acceptable for one frame of elevated load.
-const REBASE_TILES_PER_FRAME: int = 4
+const REBASE_TILES_PER_FRAME: int = 8
 
 ## Tiles loaded synchronously during a floating-origin rebase (ground collision).
-const IMMEDIATE_TILES_REBASE: int = 9      # ~3×3 ring
+const IMMEDIATE_TILES_REBASE: int = 25     # ~5×5 ring
 
 ## Tiles loaded synchronously during initial startup load.
 const IMMEDIATE_TILES_INITIAL: int = 9     # ~3×3 ring
@@ -161,8 +161,10 @@ func _physics_process(_delta: float) -> void:
 				tiles_changed.emit(loaded, 0, _loaded_tiles.size())
 		else:
 			_rebase_in_progress = false
+			_purge_ghost_regions("progressive_done")
 			print("TerrainStreamer: Progressive loading complete — %d regions active"
 				  % _loaded_tiles.size())
+			verify_tiles("progressive_done")
 		return
 
 	_frame_counter += 1
@@ -236,6 +238,7 @@ func initial_load(godot_position: Vector3) -> int:
 
 	print("TerrainStreamer: Initial load — %d tiles immediate, %d queued for progressive load"
 		  % [count, queued.size()])
+	verify_tiles("initial_load")
 	terrain_ready.emit()
 	return count
 
@@ -269,13 +272,60 @@ func get_max_loadable() -> int:
 	return mini(side * side, 1024)
 
 
-## Floating origin: update center coordinates and relocate terrain regions.
-## Reuses existing Terrain3DRegion objects in-place — no Image.duplicate(),
-## no Terrain3DRegion.new(), no sanitize_maps().  GDScript references keep
-## each region (and its Images) alive through the remove → set_location →
-## add_region cycle.  After rebase, ghost entries remain in Terrain3D's
-## internal _regions dict at old locations; these are harmless because
-## _load_tile() never calls has_region/remove_regionl (add_region overwrites).
+## Diagnostic: verify that every loaded tile's region location is consistent
+## with its Swiss tile key. Returns the number of mismatched tiles.
+func verify_tiles(label: String = "") -> int:
+	var mismatches := 0
+	var prefix := "VERIFY[%s]" % label if label else "VERIFY"
+	print("%s: center_e=%d center_n=%d center_ei=%d center_ni=%d  loaded=%d"
+		  % [prefix, terrain_center_e, terrain_center_n, _center_ei, _center_ni,
+			 _loaded_tiles.size()])
+	for key in _loaded_tiles:
+		var rloc: Vector2i = _loaded_tiles[key]
+		# Parse tile key to get Swiss coords
+		var parts = key.split("_")
+		var swiss_e = int(parts[0])
+		var swiss_n = int(parts[1])
+		var ei = swiss_e / _tile_size
+		var ni = swiss_n / _tile_size
+		# Expected rloc from _tile_to_region
+		var expected = _tile_to_region(ei, ni)
+		# Compute where T3D actually places this region in Godot world space
+		var world_x_min = rloc.x * _tile_size
+		var world_z_min = rloc.y * _tile_size
+		# The tile should cover Swiss E from ei*1024 to (ei+1)*1024
+		# In Godot: X = center_e - Swiss_E, so:
+		#   west edge (min Swiss_E): X = center_e - ei*1024
+		#   east edge (max Swiss_E): X = center_e - (ei+1)*1024
+		# T3D places region at [rloc.x*1024, (rloc.x+1)*1024) in X
+		# So rloc.x*1024 should = center_e - (ei+1)*1024
+		var expected_world_x = terrain_center_e - (ei + 1) * _tile_size
+		var expected_world_z = (ni * _tile_size) - terrain_center_n
+		if rloc != expected or world_x_min != expected_world_x or world_z_min != expected_world_z:
+			mismatches += 1
+			print("  MISMATCH tile %s: rloc=%s expected=%s  worldX=%d expected=%d  worldZ=%d expected=%d"
+				  % [key, str(rloc), str(expected), world_x_min, expected_world_x,
+					 world_z_min, expected_world_z])
+	if mismatches == 0:
+		print("%s: All %d tiles OK" % [prefix, _loaded_tiles.size()])
+	else:
+		print("%s: *** %d / %d tiles MISMATCHED ***" % [prefix, mismatches, _loaded_tiles.size()])
+	# Also check: does T3D actually have regions at these locations?
+	var t3d_regions = _terrain_data.get_regions_active()
+	var t3d_count = t3d_regions.size() if t3d_regions else 0
+	if t3d_count != _loaded_tiles.size():
+		print("%s: WARNING — T3D has %d active regions but we track %d tiles"
+			  % [prefix, t3d_count, _loaded_tiles.size()])
+	return mismatches
+
+
+## Floating origin: update center coordinates and reload terrain regions.
+## Clears ALL Terrain3D regions and reloads tiles from disk at updated grid
+## positions.  Previous approach tried to recycle Terrain3DRegion objects
+## in-place after remove_region → set_location → add_region, but Terrain3D's
+## C++ side invalidates region internals once removed, producing ghost
+## geometry at stale grid positions.  Clean-slate reload is simpler, correct,
+## and fast on SSD (~0.5 s for the immediate batch, rest loads progressively).
 ## new_center_e and new_center_n MUST be multiples of tile_size (1024).
 func rebase_center(new_center_e: int, new_center_n: int) -> void:
 	if new_center_e % _tile_size != 0 or new_center_n % _tile_size != 0:
@@ -286,88 +336,56 @@ func rebase_center(new_center_e: int, new_center_n: int) -> void:
 	print("TerrainStreamer: Rebasing center E=%d -> %d, N=%d -> %d"
 		  % [terrain_center_e, new_center_e, terrain_center_n, new_center_n])
 
-	# ── 1. Collect references to all currently loaded regions.
-	#        Holding a ref keeps the Terrain3DRegion (and its Image maps)
-	#        alive after removal — no Image.duplicate() needed. ────────
-	var tile_regions: Dictionary = {}   # tile_key -> Terrain3DRegion
-	for key in _loaded_tiles:
-		var rloc: Vector2i = _loaded_tiles[key]
-		var region = _terrain_data.get_region(rloc)
-		if region:
-			tile_regions[key] = region
+	# ── 1. Clear ALL regions from Terrain3D ───────────────────────────
+	_clear_all_regions()
 
-	# ── 2. Remove all regions from Terrain3D's active list.
-	#        Marks each deleted & removes from _region_locations;
-	#        our local refs keep the objects alive. ─────────────────────
-	for key in tile_regions:
-		_terrain_data.remove_region(tile_regions[key], false)
-	_loaded_tiles.clear()
-	_pending_loads.clear()
-
-	# ── 3. Update center coordinates ──────────────────────────────────
+	# ── 2. Update center coordinates ──────────────────────────────────
 	terrain_center_e = new_center_e
 	terrain_center_n = new_center_n
 	_center_ei = terrain_center_e / _tile_size
 	_center_ni = terrain_center_n / _tile_size
 
-	# ── 4. Re-add existing regions at their new grid positions. ───────
-	#        No file I/O, no Image copies, no new allocations.
-	var recycled := 0
-	for key in tile_regions:
-		var tile_info = _manifest["tiles"].get(key)
-		if not tile_info:
-			continue
-		var ei = int(tile_info["tile_ei"])
-		var ni = int(tile_info["tile_ni"])
-		var new_rloc = _tile_to_region(ei, ni)
-		if not _is_valid_region(new_rloc):
-			continue   # tile shifted out of the 32×32 grid — drop it
+	# ── 3. Ensure region_size is set (may be cleared after full removal)
+	_terrain_data.change_region_size(_tile_size)
 
-		var region = tile_regions[key]
-		region.set_location(new_rloc)
-		var err = _terrain_data.add_region(region, false)
-		if err == OK:
-			_loaded_tiles[key] = new_rloc
-			recycled += 1
-
-	# ── 5. Find NEW border tiles that weren't loaded before ───────────
+	# ── 4. Collect all valid tiles within load_radius, sorted by distance
 	var pos = _get_aircraft_position()
 	var swiss = godot_to_swiss(pos)
 	var center_tile = _swiss_to_tile_index(swiss.x, swiss.y)
-	var new_tile_entries: Array = []
+	var tile_entries: Array = []
 
 	for dei in range(-load_radius, load_radius + 1):
 		for dni in range(-load_radius, load_radius + 1):
 			var ei = center_tile.x + dei
 			var ni = center_tile.y + dni
 			var key = "%d_%d" % [ei * _tile_size, ni * _tile_size]
-			if _loaded_tiles.has(key):
-				continue   # already recycled in-place
 			if _manifest["tiles"].has(key):
 				var rloc = _tile_to_region(ei, ni)
 				if _is_valid_region(rloc):
-					new_tile_entries.append({"key": key, "dist": absi(dei) + absi(dni)})
+					tile_entries.append({"key": key, "dist": absi(dei) + absi(dni)})
 
-	# Sort new tiles nearest-first
-	new_tile_entries.sort_custom(func(a, b): return a["dist"] < b["dist"])
+	tile_entries.sort_custom(func(a, b): return a["dist"] < b["dist"])
 
-	# Load a small immediate set of new tiles (ground under aircraft)
-	var immediate_new := 0
+	# ── 5. Load a small immediate batch (ground under aircraft) ───────
+	var count := 0
 	var queued: Array[String] = []
-	for entry in new_tile_entries:
-		if immediate_new < IMMEDIATE_TILES_REBASE:
+	for entry in tile_entries:
+		if count < IMMEDIATE_TILES_REBASE:
 			if _load_tile(entry["key"]):
-				immediate_new += 1
+				count += 1
 		else:
 			queued.append(entry["key"])
 
-	# ── 6. Commit and queue remainder ─────────────────────────────────
-	_terrain_data.update_maps()
+	if count > 0:
+		_terrain_data.update_maps()
+
+	# ── 6. Queue remainder for progressive loading ────────────────────
 	_pending_loads = queued
 	_rebase_in_progress = not _pending_loads.is_empty()
 
-	print("TerrainStreamer: Rebase — %d recycled in-place, %d new immediate, %d queued"
-		  % [recycled, immediate_new, queued.size()])
+	print("TerrainStreamer: Rebase — %d immediate, %d queued (center_ei=%d center_ni=%d)"
+		  % [count, queued.size(), _center_ei, _center_ni])
+	verify_tiles("post_rebase")
 
 
 # ── Internal: Manifest ──────────────────────────────────────────────────
@@ -496,6 +514,27 @@ func _clear_all_regions() -> void:
 		_terrain_data.remove_region(region, false)
 	_terrain_data.update_maps()
 	_loaded_tiles.clear()
+	_pending_loads.clear()
+
+
+func _purge_ghost_regions(label: String = "") -> void:
+	## Remove Terrain3D active regions that we don't track in _loaded_tiles.
+	## These "ghost" regions accumulate because add_region(region, false)
+	## doesn't always cleanly overwrite Terrain3D's internal _regions dict.
+	var tracked_locs := {}
+	for key in _loaded_tiles:
+		tracked_locs[_loaded_tiles[key]] = true
+
+	var ghosts_removed := 0
+	for region in _terrain_data.get_regions_active():
+		var loc: Vector2i = region.get_location()
+		if not tracked_locs.has(loc):
+			_terrain_data.remove_region(region, false)
+			ghosts_removed += 1
+
+	if ghosts_removed > 0:
+		_terrain_data.update_maps()
+		print("TerrainStreamer[%s]: Purged %d ghost regions" % [label, ghosts_removed])
 
 
 func _get_aircraft_position() -> Vector3:
@@ -628,12 +667,9 @@ func _load_tile(tile_key: String) -> bool:
 	if not _is_valid_region(rloc):
 		return false
 
-	# NOTE: No has_region/remove_regionl guard here.  After a floating-origin
-	# rebase, Terrain3D's internal _regions dict may contain ghost entries at
-	# old locations pointing to regions whose _location was mutated.  Querying
-	# has_region(rloc) could hit such a ghost and remove_regionl would then
-	# remove the ACTIVE region (via its mutated location), causing gaps.
-	# add_region() safely overwrites any existing entry at a location.
+	# NOTE: We don't guard with has_region/remove_regionl before adding.
+	# Ghost regions are purged separately via _purge_ghost_regions() after
+	# progressive loading completes and after rebase.
 
 	# Create a Terrain3DRegion manually with proper setup.
 	# This mirrors what import_images() does internally (terrain_3d_data.cpp).

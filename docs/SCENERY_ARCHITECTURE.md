@@ -363,7 +363,8 @@ All scenery loading is designed to avoid blocking the main thread:
 
 **Terrain streaming** (`terrain_streamer.gd`):
 - **Initial load**: Loads 25 tiles immediately (5×5 ring under the aircraft for ground collision), then queues remaining ~600 tiles for progressive loading at 8 tiles/frame.
-- **Floating-origin rebase**: Uses **in-memory region recycling** — extracts heightmap Images from existing Terrain3D regions before clearing, then re-adds them at new grid positions without disk I/O. Only genuinely new border tiles (~25 per 1024m shift) require file reads, loaded progressively.
+- **Floating-origin rebase**: Uses **clean-slate reload** — removes all Terrain3D regions, updates the coordinate center, then reloads all tiles from disk at their new grid positions. 25 tiles are loaded immediately (5×5 ring for ground collision), the rest load progressively at 8 tiles/frame. An earlier region-recycling approach (mutating locations in-place) was abandoned because Terrain3D's C++ internals invalidate region data after removal, producing ghost geometry.
+- A `_purge_ghost_regions()` safety net runs after progressive loading completes, removing any Terrain3D active regions not tracked by the streamer.
 - Normal streaming loads/unloads tiles at the boundary every 30 physics frames with a budget of 4 tiles per cycle.
 
 **Building / Road / Water loaders**:
