@@ -198,6 +198,7 @@ var _fps_label: Label = null
 var _fps_visible: bool = false
 var _fps_key_held: bool = false
 var _rebase_label: Label = null
+var _rebase_label_frames: int = 0
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
@@ -231,7 +232,7 @@ func _ready() -> void:
 	_rebase_label.add_theme_constant_override("shadow_offset_y", 1)
 	_rebase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_rebase_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_rebase_label.offset_left = -120
+	_rebase_label.offset_left = -180
 	_rebase_label.offset_right = -10
 	_rebase_label.offset_top = 30
 	_rebase_label.visible = false
@@ -405,7 +406,7 @@ func _ready() -> void:
 		print("WARNING: Terrain3D node not found - ground collision may not work correctly!")
 
 	# ── Deferred scenery loading: skip all heavy work at startup ──────
-	# Terrain, buildings, roads, water, runways, and distant terrain are
+	# Terrain, buildings, roads, water, runways, and clipmap terrain are
 	# loaded only after the user clicks Fly! in the welcome screen.
 	# This makes the welcome screen appear almost instantly.
 
@@ -414,12 +415,6 @@ func _ready() -> void:
 		var loader = get_node_or_null(loader_name)
 		if loader and "enabled" in loader:
 			loader.enabled = false
-
-	# Disable DistantTerrain chunk generation (heightmap is already loaded
-	# in its own _ready, but mesh generation happens in _process)
-	var distant = get_node_or_null("DistantTerrain")
-	if distant:
-		distant.set_process(false)
 
 	# Disable TerrainClipmap processing until flight starts
 	var clipmap = get_node_or_null("TerrainClipmap")
@@ -821,11 +816,18 @@ func _process(delta: float) -> void:
 				_fps_label.visible = _fps_visible
 			if _rebase_label and not _fps_visible:
 				_rebase_label.visible = false
+				_rebase_label_frames = 0
 	else:
 		_fps_key_held = false
 
 	# --- Post-teleport position guard ---
 	_process_rebase_cooldown()
+	
+	# Countdown rebase label visibility
+	if _rebase_label_frames > 0:
+		_rebase_label_frames -= 1
+		if _rebase_label_frames == 0 and _rebase_label:
+			_rebase_label.visible = false
 	
 	# Toggle slew mode with Shift+Y
 	if Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_Y):
@@ -1491,8 +1493,7 @@ func _perform_origin_rebase() -> void:
 	if shift == Vector3.ZERO:
 		return
 	
-	if _rebase_label and _fps_visible:
-		_rebase_label.visible = true
+	var rebase_start_usec := Time.get_ticks_usec()
 
 	print("=== FLOATING ORIGIN REBASE ===")
 	print("  AC before: ", ac_node.global_position)
@@ -1540,20 +1541,18 @@ func _perform_origin_rebase() -> void:
 	if object_loader and object_loader.has_method("shift_all_objects"):
 		object_loader.shift_all_objects(shift)
 
-	# 11. Rebase distant terrain mesh (disabled — clipmap replaces it).
-	#var distant_terrain = get_node_or_null("DistantTerrain")
-	#if distant_terrain and distant_terrain.has_method("rebase_center"):
-	#	distant_terrain.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
-
-	# 12. Rebase clipmap terrain rings.
+	# 11. Rebase clipmap terrain rings.
 	var terrain_clipmap = get_node_or_null("TerrainClipmap")
 	if terrain_clipmap and terrain_clipmap.has_method("rebase_center"):
 		terrain_clipmap.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
 	
-	if _rebase_label:
-		_rebase_label.visible = false
+	var rebase_ms := (Time.get_ticks_usec() - rebase_start_usec) / 1000.0
+	if _rebase_label and _fps_visible:
+		_rebase_label.text = "REBASE  %.0f ms" % rebase_ms
+		_rebase_label.visible = true
+		_rebase_label_frames = 500
 
-	print("=== REBASE COMPLETE ===")
+	print("=== REBASE COMPLETE (%.1f ms) ===" % rebase_ms)
 
 
 # Convert Swiss LV95 coordinates to WGS84 latitude/longitude
@@ -1625,11 +1624,7 @@ func _count_loader_pending(node_name: String) -> int:
 
 func _update_loading_progress(is_fly_loading: bool) -> void:
 	## Monitor all progressive loaders and update the loading bar.
-	## When is_fly_loading is false (startup), also waits for distant terrain.
-	## When is_fly_loading is true (after Fly!), also waits for the rebase
-	## cooldown to expire and all scenery loaders to settle.
 	var streamer = get_node_or_null("TerrainStreamer")
-	var distant = get_node_or_null("DistantTerrain")
 
 	# ── Terrain tiles ────────────────────────────────────────────────
 	var terrain_pending := 0
@@ -1637,13 +1632,6 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 	if streamer and "_pending_loads" in streamer:
 		terrain_pending = streamer._pending_loads.size()
 		terrain_total = max(1, streamer._loaded_tiles.size() + terrain_pending)
-
-	# ── Distant terrain chunks (only relevant at startup) ────────────
-	var chunk_pending := 0
-	var chunk_total := 1
-	if not is_fly_loading and distant and "_pending_chunks" in distant:
-		chunk_pending = distant._pending_chunks.size()
-		chunk_total = max(1, distant.get_child_count() + chunk_pending)
 
 	# ── Scenery loaders (buildings, roads, water) ────────────────────
 	var bld_pending := _count_loader_pending("BuildingLoader")
@@ -1664,20 +1652,17 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 		var p_scenery := 1.0 - (float(scenery_pending) / float(scenery_total))
 		progress = p_terrain * 0.4 + p_cooldown * 0.2 + p_scenery * 0.4
 	else:
-		# Startup: terrain 40%, distant chunks 30%, scenery 30%
+		# Startup: terrain 60%, scenery 40%
 		var p_terrain := 1.0 - (float(terrain_pending) / terrain_total)
-		var p_chunks := 1.0 - (float(chunk_pending) / chunk_total)
 		var scenery_total := maxi(1, scenery_pending + 1)
 		var p_scenery := 1.0 - (float(scenery_pending) / float(scenery_total))
-		progress = p_terrain * 0.4 + p_chunks * 0.3 + p_scenery * 0.3
+		progress = p_terrain * 0.6 + p_scenery * 0.4
 
 	# ── Update loading screen ────────────────────────────────────────
 	if _loading_screen:
 		_loading_screen.set_progress(progress)
 		if terrain_pending > 0:
 			_loading_screen.set_status("Loading terrain... %d tiles remaining" % terrain_pending)
-		elif chunk_pending > 0:
-			_loading_screen.set_status("Building distant terrain... %d chunks remaining" % chunk_pending)
 		elif scenery_pending > 0:
 			var parts: Array[String] = []
 			if bld_pending > 0:
@@ -1693,7 +1678,7 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 			_loading_screen.set_status("Ready")
 
 	# ── Check completion ─────────────────────────────────────────────
-	var all_done := terrain_pending == 0 and chunk_pending == 0 and scenery_pending == 0 and cooldown_pending == 0
+	var all_done := terrain_pending == 0 and scenery_pending == 0 and cooldown_pending == 0
 	if not all_done:
 		return
 
@@ -1821,16 +1806,7 @@ func _do_first_flight(swiss_e: float, swiss_n: float, heading_deg: float) -> voi
 			loader.enabled = true
 			print("  Enabled %s" % loader_name)
 
-	# 7. Enable DistantTerrain and rebase its center
-	# DistantTerrain is disabled while TerrainClipmap is active
-	#var distant = get_node_or_null("DistantTerrain")
-	#if distant:
-	#	if distant.has_method("rebase_center"):
-	#		distant.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
-	#	distant.set_process(true)
-	#	print("  Enabled DistantTerrain")
-
-	# 7b. Enable TerrainClipmap and rebase
+	# 7. Enable TerrainClipmap and rebase
 	var clipmap = get_node_or_null("TerrainClipmap")
 	if clipmap:
 		if clipmap.has_method("rebase_center"):
@@ -1942,9 +1918,6 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 		var runway_loader = get_node_or_null("RunwayLoader")
 		if runway_loader and runway_loader.has_method("shift_all_runways"):
 			runway_loader.shift_all_runways(shift)
-		#var distant_terrain = get_node_or_null("DistantTerrain")
-		#if distant_terrain and distant_terrain.has_method("rebase_center"):
-		#	distant_terrain.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
 		var terrain_clipmap = get_node_or_null("TerrainClipmap")
 		if terrain_clipmap and terrain_clipmap.has_method("rebase_center"):
 			terrain_clipmap.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)

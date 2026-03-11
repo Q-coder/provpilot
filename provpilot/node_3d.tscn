@@ -11,7 +11,8 @@
 [ext_resource type="Script" uid="uid://ugt8ng7xoq48" path="res://road_loader.gd" id="10_rdldr"]
 [ext_resource type="Script" uid="uid://dt0vt6fod13j0" path="res://water_loader.gd" id="11_wtrld"]
 [ext_resource type="Script" uid="uid://2rdyd4gbir03" path="res://runway_loader.gd" id="12_rwyldr"]
-[ext_resource type="Script" uid="uid://dvinwwhfgiyua" path="res://distant_terrain.gd" id="13_dstrn"]
+[ext_resource type="Script" uid="uid://xsvphlg27138" path="res://object_loader.gd" id="14_objld"]
+[ext_resource type="Script" uid="uid://d1sbyuwuhia6k" path="res://terrain_clipmap.gd" id="15_clpmp"]
 
 [sub_resource type="Gradient" id="Gradient_wc5p8"]
 offsets = PackedFloat32Array(0.2, 1)
@@ -185,7 +186,7 @@ offset_left = 1713.0
 offset_top = 85.0
 offset_right = 2051.2
 offset_bottom = 151.4
-scale = Vector2(5, 5)
+scale = Vector2(2, 2)
 
 [node name="Terrain3D" type="Terrain3D" parent="." unique_id=962717072]
 material = SubResource("Terrain3DMaterial_6iypd")
@@ -215,6 +216,10 @@ script = ExtResource("11_wtrld")
 top_level = true
 script = ExtResource("12_rwyldr")
 
-[node name="DistantTerrain" type="Node3D" parent="." unique_id=53086857]
+[node name="ObjectLoader" type="Node3D" parent="." unique_id=260280045]
 top_level = true
-script = ExtResource("13_dstrn")
+script = ExtResource("14_objld")
+
+[node name="TerrainClipmap" type="Node3D" parent="." unique_id=348389553]
+top_level = true
+script = ExtResource("15_clpmp")

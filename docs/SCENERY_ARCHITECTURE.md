@@ -352,8 +352,8 @@ For development, this can point to a local directory. For distribution, `user://
 | `welcome_screen.gd` | ✅ Done | Startup aircraft & airport selection UI |
 | `settings_screen.gd` | ✅ Done | Settings UI (graphics, sound, realism, paths) |
 | `loading_screen.gd` | ✅ Done | Progress overlay during loading |
-| `distant_terrain.gd` | ⚠️ Deprecated | Low-res mesh horizon (256m/vertex) — replaced by clipmap |
 | `terrain_clipmap.gd` | ✅ Done | 3-ring geomorphing clipmap (7 km – 300 km), seam-blended with Terrain3D |
+| `clipmap_streamer.gd` | ✅ Done | Centralised texture streaming for clipmap rings (RefCounted) |
 | `custom_scenery_loader.gd` | ✅ Done | Scans `custom/*/package.json`, discovers packages by type |
 | `object_loader.gd` | ✅ Done | Loads custom scenery objects by proximity (15 km / 20 km) |
 
@@ -371,12 +371,7 @@ All scenery loading is designed to avoid blocking the main thread:
 - Proximity checks run every `_process()` frame but are lightweight (distance calculations only).
 - Floating-origin rebase shifts all loaded instances by the offset vector — no reload needed.
 
-**Distant terrain** (`distant_terrain.gd`) — **DEPRECATED**:
-- Replaced by the clipmap terrain system (see below).
-- Pre-generated 256m-resolution heightmap covering all of Switzerland.
-- Kept as fallback; processing disabled at startup.
-
-**Clipmap terrain** (`terrain_clipmap.gd`):
+**Clipmap terrain** (`terrain_clipmap.gd` + `clipmap_streamer.gd`):
 - 3 concentric ring meshes beyond Terrain3D's ~8.5 km edge:
   - Ring 0: 7–16.4 km, mip2 (16 m/px), 2048×2048 heightmap
   - Ring 1: 16.4–65.5 km, mip3 (64 m/px), 2048×2048 heightmap

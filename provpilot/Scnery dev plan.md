@@ -1,7 +1,7 @@
 # ProvPilot Scenery Development Plan — Clipmap Terrain
 
 **Created**: March 2026
-**Status**: In Progress (Phases 0–5 complete)
+**Status**: In Progress (Phases 0–6 complete)
 **Goal**: Eliminate far/near scenery overlap artifacts and achieve seamless terrain from cockpit to 300 km horizon.
 
 ---
@@ -197,13 +197,16 @@ Texture mechanics:
 
 ---
 
-## Phase 6 — Integration & DistantTerrain Removal
+## Phase 6 — Integration & DistantTerrain Removal ✅ IMPLEMENTED
 
-1. Remove `distant_terrain.gd` and `shaders/distant_terrain.gdshader`
-2. Replace `DistantTerrain` node in `node_3d.tscn` with `TerrainClipmap` node
-3. Update `_perform_origin_rebase()` in `node_3d.gd` to call `clipmap.rebase_center()`
-4. Verify orthophoto rendering across all rings
-5. Tune atmospheric parameters (haze, fog)
+1. ~~Remove `distant_terrain.gd` and `shaders/distant_terrain.gdshader`~~ ✅ Deleted
+2. ~~Replace `DistantTerrain` node in `node_3d.tscn` with `TerrainClipmap` node~~ ✅ Removed from scene; TerrainClipmap is sole distant terrain
+3. ~~Update `_perform_origin_rebase()` in `node_3d.gd` to call `clipmap.rebase_center()`~~ ✅ Already done in Phase 5; dead DistantTerrain references cleaned up
+4. ~~Verify orthophoto rendering across all rings~~ ✅ Confirmed in flight testing
+5. ~~Tune atmospheric parameters (haze, fog)~~ ✅ Clipmap shader handles fog/haze natively
+
+**Removed files**: `distant_terrain.gd`, `distant_terrain.gd.uid`, `shaders/distant_terrain.gdshader`, `shaders/distant_terrain.gdshader.uid`
+**Cleaned up**: Loading progress no longer tracks DistantTerrain chunks; startup progress reweighted to terrain 60% + scenery 40%.
 
 ---
 
