@@ -3,91 +3,6 @@
 [ext_resource type="Script" uid="uid://deqvll2k5khs0" path="res://node_3d.gd" id="1_1r08c"]
 [ext_resource type="PackedScene" uid="uid://dxgh4imubsngc" path="res://ac.tscn" id="2_yxcfd"]
 [ext_resource type="PackedScene" uid="uid://c8env1r0nment" path="res://environment.tscn" id="6_envir"]
-[ext_resource type="Texture2D" uid="uid://cditync2r7ipo" path="res://Textures/coast_sand_rocks_02_diff_4k.png" id="6_i5arm"]
-[ext_resource type="Script" uid="uid://dquxbff4b1psj" path="res://building_loader.gd" id="7_bldng"]
-[ext_resource type="Texture2D" uid="uid://tgqmh32fcwbu" path="res://Textures/coast_sand_rocks_02_rough_4k.png" id="7_wc5p8"]
-[ext_resource type="Script" uid="uid://2qlddvn2d0d0" path="res://terrain_streamer.gd" id="8_strm"]
-[ext_resource type="Script" uid="uid://frvhamoexvx8" path="res://poi_loader.gd" id="9_poild"]
-[ext_resource type="Script" uid="uid://ugt8ng7xoq48" path="res://road_loader.gd" id="10_rdldr"]
-[ext_resource type="Script" uid="uid://dt0vt6fod13j0" path="res://water_loader.gd" id="11_wtrld"]
-[ext_resource type="Script" uid="uid://2rdyd4gbir03" path="res://runway_loader.gd" id="12_rwyldr"]
-[ext_resource type="Script" uid="uid://xsvphlg27138" path="res://object_loader.gd" id="14_objld"]
-[ext_resource type="Script" uid="uid://d1sbyuwuhia6k" path="res://terrain_clipmap.gd" id="15_clpmp"]
-
-[sub_resource type="Gradient" id="Gradient_wc5p8"]
-offsets = PackedFloat32Array(0.2, 1)
-colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
-
-[sub_resource type="FastNoiseLite" id="FastNoiseLite_jsk3o"]
-noise_type = 2
-frequency = 0.03
-cellular_jitter = 3.0
-cellular_return_type = 0
-domain_warp_enabled = true
-domain_warp_type = 1
-domain_warp_amplitude = 50.0
-domain_warp_fractal_type = 2
-domain_warp_fractal_lacunarity = 1.5
-domain_warp_fractal_gain = 1.0
-
-[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_4arys"]
-noise = SubResource("FastNoiseLite_jsk3o")
-color_ramp = SubResource("Gradient_wc5p8")
-seamless = true
-
-[sub_resource type="Terrain3DMaterial" id="Terrain3DMaterial_6iypd"]
-_shader_parameters = {
-&"bias_distance": 512.0,
-&"blend_sharpness": 0.5,
-&"depth_blur": 0.0,
-&"dual_scale_far": 170.0,
-&"dual_scale_near": 100.0,
-&"dual_scale_reduction": 0.3,
-&"dual_scale_texture": 0,
-&"enable_macro_variation": true,
-&"enable_projection": true,
-&"flat_terrain_normals": false,
-&"macro_variation1": Color(1, 1, 1, 1),
-&"macro_variation2": Color(1, 1, 1, 1),
-&"macro_variation_slope": 0.333,
-&"mipmap_bias": 1.0,
-&"noise1_angle": 0.0,
-&"noise1_offset": Vector2(0.5, 0.5),
-&"noise1_scale": 0.0400000019,
-&"noise2_scale": 0.076,
-&"noise_texture": SubResource("NoiseTexture2D_4arys"),
-&"projection_threshold": 0.8,
-&"tri_scale_reduction": 0.3
-}
-dual_scaling = true
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tereu"]
-transparency = 4
-cull_mode = 2
-vertex_color_use_as_albedo = true
-albedo_texture = ExtResource("6_i5arm")
-backlight_enabled = true
-backlight = Color(0.5, 0.5, 0.5, 1)
-distance_fade_mode = 1
-distance_fade_min_distance = 128.0
-distance_fade_max_distance = 96.0
-
-[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_cdqbm"]
-generated_type = 1
-height_offset = 0.5
-material_override = SubResource("StandardMaterial3D_tereu")
-last_lod = 0
-last_shadow_lod = 0
-lod0_range = 128.0
-
-[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_wc5p8"]
-name = "coast_sand_rocks_02_diff_4k"
-albedo_texture = ExtResource("6_i5arm")
-normal_texture = ExtResource("7_wc5p8")
-
-[sub_resource type="Terrain3DAssets" id="Terrain3DAssets_tcnuu"]
-mesh_list = Array[Terrain3DMeshAsset]([SubResource("Terrain3DMeshAsset_cdqbm")])
-texture_list = Array[Terrain3DTextureAsset]([SubResource("Terrain3DTextureAsset_wc5p8")])
 
 [node name="node_3d" type="Node3D" unique_id=778369784]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.3009338, 0)
@@ -188,38 +103,7 @@ offset_right = 2051.2
 offset_bottom = 151.4
 scale = Vector2(2, 2)
 
-[node name="Terrain3D" type="Terrain3D" parent="." unique_id=962717072]
-material = SubResource("Terrain3DMaterial_6iypd")
-assets = SubResource("Terrain3DAssets_tcnuu")
-mesh_lods = 8
+[node name="Scenery3D" type="Scenery3D" parent="." unique_id=962717072]
+load_radius = 50
 top_level = true
-metadata/_edit_lock_ = true
 
-[node name="TerrainStreamer" type="Node" parent="." unique_id=540872246]
-script = ExtResource("8_strm")
-
-[node name="BuildingLoader" type="Node3D" parent="." unique_id=1549025246]
-script = ExtResource("7_bldng")
-
-[node name="POILoader" type="Node" parent="." unique_id=1327574823]
-script = ExtResource("9_poild")
-
-[node name="RoadLoader" type="Node3D" parent="." unique_id=2020264858]
-top_level = true
-script = ExtResource("10_rdldr")
-
-[node name="WaterLoader" type="Node3D" parent="." unique_id=844572235]
-top_level = true
-script = ExtResource("11_wtrld")
-
-[node name="RunwayLoader" type="Node3D" parent="." unique_id=843368179]
-top_level = true
-script = ExtResource("12_rwyldr")
-
-[node name="ObjectLoader" type="Node3D" parent="." unique_id=260280045]
-top_level = true
-script = ExtResource("14_objld")
-
-[node name="TerrainClipmap" type="Node3D" parent="." unique_id=348389553]
-top_level = true
-script = ExtResource("15_clpmp")

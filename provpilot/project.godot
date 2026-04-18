@@ -12,17 +12,13 @@ config_version=5
 
 config/name="ProVPilot"
 run/main_scene="res://node_3d.tscn"
-config/features=PackedStringArray("4.6", "Forward Plus")
+config/features=PackedStringArray("4.6", "Double Precision", "Forward Plus")
 config/icon="res://icon.svg"
 
 [display]
 
 window/size/viewport_width=3840
 window/size/viewport_height=2160
-
-[editor_plugins]
-
-enabled=PackedStringArray("res://addons/terrain_3d/plugin.cfg")
 
 [input]
 
@@ -35,3 +31,13 @@ flip_camera={
 [rendering]
 
 textures/vram_compression/import_etc2_astc=true
+
+[scenery3d]
+
+data_path="/Users/gery/provpilot/scenery/Switzerland/terrain"
+data_paths=PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/terrain", "/Users/gery/provpilot/scenery/Germany/Baden-Wuertemberg/terrain")
+buildings_path="/Users/gery/provpilot/scenery/Switzerland/buildings"
+road_paths=PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/roads")
+orthophoto_path="/Users/gery/provpilot/scenery/Switzerland/orthophoto"
+origin_east=2682880.0
+origin_north=1283072.0

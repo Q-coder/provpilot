@@ -338,66 +338,33 @@ The scenery root path is set via Godot project settings or an export variable:
 
 For development, this can point to a local directory. For distribution, `user://scenery` maps to the platform-specific user data directory.
 
-### Loader Changes
+### Runtime Components
 
-| Component | Status | Description |
-|-----------|--------|-------------|
-| `terrain_streamer.gd` | ✅ Done | Reads `scenery/terrain/manifest.json`, streams 1024m tiles + orthophoto |
-| `building_loader.gd` | ✅ Done | Reads `scenery/buildings/manifest.json`, manifest-driven proximity loading |
-| `road_loader.gd` | ✅ Done | Reads `scenery/roads/manifest.json`, proximity loading |
-| `water_loader.gd` | ✅ Done | Reads `scenery/water/manifest.json`, proximity loading |
-| `poi_loader.gd` | ✅ Done | Loads `scenery/poi/airports.json` at startup |
-| `runway_loader.gd` | ✅ Done | Procedural terrain-following runway meshes from airport data |
-| `position_dialog.gd` | ✅ Done | In-flight airport search/filter/teleport UI |
-| `welcome_screen.gd` | ✅ Done | Startup aircraft & airport selection UI |
-| `settings_screen.gd` | ✅ Done | Settings UI (graphics, sound, realism, paths) |
-| `loading_screen.gd` | ✅ Done | Progress overlay during loading |
-| `terrain_clipmap.gd` | ✅ Done | 3-ring geomorphing clipmap (7 km – 300 km), seam-blended with Terrain3D |
-| `clipmap_streamer.gd` | ✅ Done | Centralised texture streaming for clipmap rings (RefCounted) |
-| `custom_scenery_loader.gd` | ✅ Done | Scans `custom/*/package.json`, discovers packages by type |
-| `object_loader.gd` | ✅ Done | Loads custom scenery objects by proximity (15 km / 20 km) |
+All runtime streaming is handled by the [Scenery3D](../provpilot/addons/scenery3d/README.md)
+GDExtension. The Godot project contains only glue scripts.
 
-### Performance: Progressive Loading & Floating-Origin Rebase
+| Component | Role |
+|-----------|------|
+| `Scenery3D` (GDExtension node) | Single node in `node_3d.tscn`; owns terrain, building, road, water, and orthophoto streaming |
+| `node_3d.gd` | Main scene script; wires input, HUD, cameras; calls `Scenery3D.get_elevation(x, z)` for JSBSim terrain height |
+| `welcome_screen.gd` | Startup aircraft & airport selection UI (currently seeds one hardcoded LSPF entry) |
+| `settings_screen.gd` | Settings UI (graphics, sound, realism, paths) |
+| `loading_screen.gd` | Progress overlay that polls `Scenery3D.is_ready()` |
+| `custom_scenery_loader.gd` | Scans `custom/*/package.json`, discovers packages by type |
+| `object_loader.gd` | Loads custom scenery objects by proximity, samples elevation via Scenery3D |
 
-All scenery loading is designed to avoid blocking the main thread:
+### Performance
 
-**Terrain streaming** (`terrain_streamer.gd`):
-- **Initial load**: Loads 25 tiles immediately (5×5 ring under the aircraft for ground collision), then queues remaining ~600 tiles for progressive loading at 8 tiles/frame.
-- **Floating-origin rebase**: Uses **clean-slate reload** — removes all Terrain3D regions, updates the coordinate center, then reloads all tiles from disk at their new grid positions. 25 tiles are loaded immediately (5×5 ring for ground collision), the rest load progressively at 8 tiles/frame. An earlier region-recycling approach (mutating locations in-place) was abandoned because Terrain3D's C++ internals invalidate region data after removal, producing ghost geometry.
-- A `_purge_ghost_regions()` safety net runs after progressive loading completes, removing any Terrain3D active regions not tracked by the streamer.
-- Normal streaming loads/unloads tiles at the boundary every 30 physics frames with a budget of 4 tiles per cycle.
+All heavy I/O and meshing happens inside the Scenery3D extension on a
+background thread pool (4 workers). The main thread only runs budgeted mesh
+generation (200K vertices/frame cap) and proximity checks for custom objects.
 
-**Building / Road / Water loaders**:
-- Use `ResourceLoader.load_threaded_request()` for async GLB loading (1–2 tiles per frame budget).
-- Proximity checks run every `_process()` frame but are lightweight (distance calculations only).
-- Floating-origin rebase shifts all loaded instances by the offset vector — no reload needed.
+Because the project runs on `precision=double` Godot, **no floating-origin
+rebasing is needed** — world coordinates stay numerically stable across all of
+Switzerland, so there is no rebase stall or reload step.
 
-**Clipmap terrain** (`terrain_clipmap.gd` + `clipmap_streamer.gd`):
-- 3 concentric ring meshes beyond Terrain3D's ~8.5 km edge:
-  - Ring 0: 7–16.4 km, mip2 (16 m/px), 2048×2048 heightmap
-  - Ring 1: 16.4–65.5 km, mip3 (64 m/px), 2048×2048 heightmap
-  - Ring 2: 65.5–262 km, mip4 (256 m/px), 2048×2048 heightmap
-- Shader-based geomorphing: each ring's outer vertices blend toward the next-outer ring's heightmap, eliminating LOD popping.
-- **Terrain3D ↔ Ring 0 seam blending**: Ring 0 carries an extra heightmap built from the same 1 m tiles Terrain3D uses (Lanczos downsample → 16 m/px). In a 2 km transition band (8.5–10.5 km) the shader blends seam heights toward mip2 data. A depth bias (up to 5 m at the inner edge) ensures Terrain3D wins the depth test in the overlap zone. Fragment colour fades to atmospheric haze at the inner boundary so the seam is invisible.
-- Heightmap textures are rebuilt on floating-origin rebase (>1024 m shift).
-- Mip tile pyramids are pre-generated offline by `scripts/generate_terrain_mipmap.py`.
-
-**Runway loader** (`runway_loader.gd`):
-- Procedural mesh generation is fast (SurfaceTool); no threaded loading needed.
-- Load/unload by proximity (25 km / 30 km).
-
-### Building Loader Simplification
-
-The current `building_loader.gd` has:
-- Hardcoded `BUILDING_TILES_ZURICH` and `BUILDING_TILES_SCHAFFHAUSEN` arrays
-- A `BUILDING_ORIGIN_OFFSET` constant for coordinate mismatch
-- A `TerrainArea` enum to switch regions manually
-
-After migration:
-- Reads `buildings/manifest.json` at startup
-- Centers are in absolute Swiss LV95 → converted to Godot coords using current `TERRAIN_CENTER_E/N`
-- No hardcoded arrays, no offset constants, no area enum
-- All buildings are origin-agnostic (manifest stores absolute Swiss coords)
+LOD details (close/mid/far/horizon rings plus 8×8 far chunks out to 200 km)
+are documented in `addons/scenery3d/README.md`.
 
 ## Processing Pipeline
 
@@ -495,20 +462,14 @@ python scripts/convert_msfs_scenery.py \
 
 The converter extracts glTF from BGL binary files, converts DDS textures to PNG, and strips 20+ MSFS-specific glTF extensions (ASOBO_*, MSFT_texture_dds). Output is clean GLB with embedded textures, ready for use as custom scenery packages.
 
-## Migration Plan
+## Migration History
 
-| Step | Description | Files Changed |
-|------|-------------|---------------|
-| 1 | Create `scenery/` directory structure with manifests | New files |
-| 2 | Move `provpilot/terrain_tiles/` → `scenery/terrain/` | File move |
-| 3 | Move `provpilot/Assets/buildings_*/` → `scenery/buildings/` | File move |
-| 4 | Add `scenery_path` config to `node_3d.gd` | `node_3d.gd` |
-| 5 | Update `terrain_streamer.gd` to use `scenery_path` | `terrain_streamer.gd` |
-| 6 | Rewrite `building_loader.gd` to read manifest instead of hardcoded arrays | `building_loader.gd` |
-| 7 | Add POI loader (airports, navaids) | New script |
-| 8 | Add custom scenery loader | New script |
-| 9 | Update processing scripts for full-CH and regional modes | `scripts/*.py` |
-| 10 | Build regional packs and test redistribution | Scripts + docs |
+The runtime was migrated from a Terrain3D + per-loader architecture
+(`terrain_streamer.gd`, `building_loader.gd`, `road_loader.gd`, `water_loader.gd`,
+`runway_loader.gd`, `poi_loader.gd`, `terrain_clipmap.gd`, `clipmap_streamer.gd`,
+`position_dialog.gd`) to a single Scenery3D GDExtension in April 2026. The
+on-disk data layout above was preserved; only the consumer changed. The old
+GDScript loaders have been removed from the project.
 
 ## Future Considerations
 

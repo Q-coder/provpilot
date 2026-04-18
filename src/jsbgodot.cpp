@@ -56,7 +56,11 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_input_mixture"), &JSBGodot::get_input_mixture);
     ClassDB::bind_method(D_METHOD("get_input_aileron"), &JSBGodot::get_input_aileron);
     ClassDB::bind_method(D_METHOD("get_input_elevator"), &JSBGodot::get_input_elevator);
+    ClassDB::bind_method(D_METHOD("increase_flaps"), &JSBGodot::increase_flaps);
+    ClassDB::bind_method(D_METHOD("decrease_flaps"), &JSBGodot::decrease_flaps);
+    ClassDB::bind_method(D_METHOD("set_flaps", "value"), &JSBGodot::set_flaps);
     ClassDB::bind_method(D_METHOD("get_flaps"), &JSBGodot::get_flaps);
+    ClassDB::bind_method(D_METHOD("get_flap_cmd"), &JSBGodot::get_flap_cmd);
     ClassDB::bind_method(D_METHOD("get_propeller_rpm"), &JSBGodot::get_propeller_rpm);
     ClassDB::bind_method(D_METHOD("get_engine_running"), &JSBGodot::get_engine_running);
     ClassDB::bind_method(D_METHOD("set_input_magnetos", "value"), &JSBGodot::set_input_magnetos);
@@ -256,12 +260,32 @@ void JSBGodot::decrease_flaps()
     // Already at min, do nothing
 }
 
+void JSBGodot::set_flaps(float value)
+{
+    // Snap to nearest valid notch: 0, 0.333, 0.667, 1.0
+    if (value < 0.167f) {
+        flaps = 0.0f;
+    } else if (value < 0.5f) {
+        flaps = 0.333f;
+    } else if (value < 0.833f) {
+        flaps = 0.667f;
+    } else {
+        flaps = 1.0f;
+    }
+}
+
 float JSBGodot::get_flaps() const
 {
-    // Return actual flap position from JSBSim (not command) for visual animation
+    // Return actual flap position from JSBSim (not command) for wing animation
     if (FDMExec) {
         return FDMExec->GetPropertyValue("fcs/flap-pos-norm");
     }
+    return flaps;
+}
+
+float JSBGodot::get_flap_cmd() const
+{
+    // Return commanded flap position (instant, for lever indicator)
     return flaps;
 }
 

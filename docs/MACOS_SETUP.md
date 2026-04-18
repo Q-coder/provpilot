@@ -1,7 +1,8 @@
 # macOS Development Setup (Apple Silicon — M4 Max Optimized)
 
-Guide for building and running ProvPilot on macOS with a Metal-only Godot engine
-optimized for Apple M4 Max. Based on the `4.6-macdev` branch of the Godot fork.
+Guide for building and running ProvPilot on macOS with a Metal-only
+double-precision Godot engine optimized for Apple M4 Max. Based on the
+`4.6-macdev` branch of the Godot fork.
 
 ## Prerequisites
 
@@ -36,25 +37,37 @@ optimized for Apple M4 Max. Based on the `4.6-macdev` branch of the Godot fork.
    cd ../..
    ```
 
-4. **Build Godot (Metal-only, M4 Max optimized):**
+4. **Build Godot (Metal-only, double precision, M4 Max optimized):**
    ```bash
    source .venv/bin/activate
    cd godot
-   scons platform=macos arch=arm64 target=editor \
+   scons platform=macos arch=arm64 target=editor precision=double \
      vulkan=no opengl3=no metal=yes \
      debug_symbols=yes \
      -j$(sysctl -n hw.ncpu)
    ```
 
-5. **Build the ProvPilot GDExtension:**
+5. **Regenerate godot-cpp bindings for double precision** (first build only):
    ```bash
-   cd ..
-   scons platform=macos arch=arm64 target=template_debug -j$(sysctl -n hw.ncpu)
+   cd godot-cpp/gdextension
+   ../../godot/bin/godot.macos.editor.double.arm64 --headless \
+     --dump-extension-api extension_api.json
+   cd ../..
    ```
 
-6. **Run the editor:**
+6. **Build the ProvPilot GDExtension** (must match engine precision):
    ```bash
-   godot/bin/godot.macos.editor.arm64 --editor --path provpilot
+   scons platform=macos arch=arm64 precision=double -j$(sysctl -n hw.ncpu)
+   ```
+
+   The Scenery3D GDExtension dylib is already checked in under
+   `provpilot/bin/libscenery3d.macos.template_debug.double.arm64.dylib`;
+   rebuild it from the submodule at `provpilot/addons/scenery3d/` only if
+   you change the extension source.
+
+7. **Run the editor:**
+   ```bash
+   godot/bin/godot.macos.editor.double.arm64 --editor --path provpilot
    ```
 
 ## What's Different: 4.6-macdev Branch
@@ -77,36 +90,28 @@ The `4.6-macdev` branch contains macOS-specific optimizations to the Godot 4.6 e
 |--------|--------|
 | Residency sets (macOS 15+) | GPU resources are pre-committed to a `MTLResidencySet` on creation, reducing page faults during terrain tile streaming. Gracefully skipped on macOS 14. |
 
-### Terrain Streaming (`provpilot/terrain_streamer.gd`)
+### Double Precision
 
 | Change | Detail |
 |--------|--------|
-| Zero-copy region recycling | On floating-origin rebase, existing Terrain3DRegion objects are reused in-place via `set_location()` + `add_region()` — no `Image.duplicate()`, no `Terrain3DRegion.new()`, no `sanitize_maps()`. Eliminates ~2.2 GB of memory copies per rebase (289 tiles × 8 MB height+color). |
-| Ghost-safe tile loading | Removed `has_region()` / `remove_regionl()` guard from `_load_tile()` to prevent ghost entries in Terrain3D's internal `_regions` dict from accidentally removing active regions after a rebase. `add_region()` safely overwrites. |
+| `precision=double` builds | Real_t is 64-bit everywhere (Transform3D origin, Node3D position, physics). Eliminates floating-origin jitter across Switzerland-scale worlds. |
+| Mandatory for all GDExtensions | Scenery3D, ProvPilot, and any other extension loaded by the editor must also be built `precision=double` — mixing single and double precision dylibs crashes the editor at GDExtension verification. |
 
-### What Was Tested and Reverted
+### Scenery3D Integration
 
-- **Untracked hazard mode for GPU-only textures** — Godot's frame graph does not fully manage all texture read-after-write dependencies, causing flickering artifacts.
-- **Incremental rebase (batched `update_maps()`)** — Each `update_maps()` call rebuilds ALL texture arrays regardless of batch size, so batching multiplied cost instead of amortizing it, and left large untextured areas during fill-in.
+| Change | Detail |
+|--------|--------|
+| Single node, no rebase | `provpilot/node_3d.tscn` uses one `Scenery3D` node. All tile lifecycle, LOD, and elevation queries happen on C++ background threads. |
+| No floating origin | `ORIGIN_REBASE_THRESHOLD` and the rebase call sites in `node_3d.gd` were removed — double-precision world coordinates stay stable. |
 
 ## Performance Impact
 
 Compared to stock Godot 4.6 on M4 Max:
 
 - **Initialization:** Buildings and scenery load visibly faster (no pop-in)
-- **Terrain re-base:** No perceptible pause — zero-copy region recycling eliminates the ~800ms stall from Image.duplicate() × 289 + sanitize_maps() × 289. Only new border tiles (~25 per 1024m shift) require disk I/O.
 - **Shader compilation:** Faster due to direct Metal path (no SPIRV→MoltenVK→Metal translation)
 - **Steady-state rendering:** Improved frame pacing from ThinLTO and FMA
-- **Known limitation:** Minor micro-stutters remain during `update_maps()` — this rebuilds GPU texture arrays for all 289 regions on the main thread. Godot's single-threaded rendering submission prevents async texture uploads.
-
-## Terrain3D Compatibility
-
-Terrain3D is a GDExtension that uses Godot's RenderingDevice abstraction — it does not depend on Vulkan or any specific backend. All terrain features work unchanged:
-
-- Heightmap tile streaming
-- Texture splatting and LOD
-- Region load/unload with zero-copy rebase recycling
-- Distant terrain mesh
+- **Terrain streaming:** All I/O happens on Scenery3D's 4-thread worker pool; the main thread only does budgeted mesh generation (200K vertex/frame cap).
 
 ## Profiling
 
@@ -121,7 +126,7 @@ Use **Instruments** (from Xcode) with the **Game Performance** or **Metal System
 ```bash
 source .venv/bin/activate
 cd godot
-scons platform=macos arch=arm64 target=template_release \
+scons platform=macos arch=arm64 target=template_release precision=double \
   vulkan=no opengl3=no metal=yes \
   -j$(sysctl -n hw.ncpu)
 ```

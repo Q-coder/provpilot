@@ -66,7 +66,9 @@ def generate_distant_heightmap(
     Generate a low-resolution heightmap from all terrain tiles.
 
     Each output pixel represents a resolution x resolution meter area.
-    Height values are the average of the high-res source data.
+    Height values are the MEDIAN of the high-res source data.  Median
+    preserves flat surfaces (lakes, valley floors) that would otherwise be
+    raised by np.mean when the cell straddles a lake-mountain boundary.
     Missing tiles get height = 0 (sea level / below terrain).
     """
     print(f"Loading manifest from {terrain_dir}...")
@@ -137,7 +139,7 @@ def generate_distant_heightmap(
 
                 block = tile_data[src_r0:src_r1, src_c0:src_c1]
                 if block.size > 0:
-                    avg_h = np.mean(block)
+                    avg_h = np.median(block)
                     # Map to output position
                     # Row in output: south-to-north, same as tile row direction
                     out_r = out_row_start + dr

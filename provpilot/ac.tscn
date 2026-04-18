@@ -1,9 +1,9 @@
-[gd_scene load_steps=2 format=3 uid="uid://dxgh4imubsngc"]
+[gd_scene format=3 uid="uid://dxgh4imubsngc"]
 
 [ext_resource type="PackedScene" uid="uid://fg5qsd8aq40k" path="res://C172p.tscn" id="1_cykhh"]
 
 [node name="AC" type="Node3D" unique_id=754408209]
-transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0.030987, 0)
+transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0, 0.030987, 0)
 
 [node name="JSBGodot" type="JSBGodot" parent="." unique_id=878366559]
 transform = Transform3D(1, 0, 0, 0, 0.999999, 0, 0, 0, 0.999999, 0, 0, 0)

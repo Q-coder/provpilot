@@ -139,8 +139,53 @@ ROAD_TILE_SIZE = 4096
 # Height offset above terrain to avoid z-fighting (meters)
 Z_OFFSET = 0.0
 
+# ── Stripe Configuration ────────────────────────────────────────────────
+
+STRIPE_HALF_WIDTH = 0.12   # 24 cm total stripe width
+STRIPE_Z_BUMP = 0.05       # 5 cm above road surface to avoid z-fighting
+STRIPE_COLOR = (1.0, 1.0, 1.0)  # White
+RAIL_HALF_WIDTH = 0.06     # 12 cm per rail
+RAIL_GAUGE_HALF = 0.72     # ~1.44 m gauge (standard = 1.435 m)
+RAIL_COLOR = (0.7, 0.7, 0.72)   # Silver/steel
+
 
 # ── Mesh Generation ─────────────────────────────────────────────────────
+
+def offset_linestring(coords, offset):
+    """
+    Offset a linestring perpendicular by `offset` meters.
+    Positive = left (in the direction of travel).
+    """
+    n = len(coords)
+    if n < 2:
+        return coords
+
+    pts = np.array(coords, dtype=np.float64)
+    result = np.zeros_like(pts)
+
+    for i in range(n):
+        if i == 0:
+            dx = pts[1, 0] - pts[0, 0]
+            dy = pts[1, 1] - pts[0, 1]
+        elif i == n - 1:
+            dx = pts[-1, 0] - pts[-2, 0]
+            dy = pts[-1, 1] - pts[-2, 1]
+        else:
+            dx = pts[i + 1, 0] - pts[i - 1, 0]
+            dy = pts[i + 1, 1] - pts[i - 1, 1]
+
+        length = math.sqrt(dx * dx + dy * dy)
+        if length < 0.001:
+            result[i] = pts[i]
+        else:
+            px = -dy / length * offset
+            py = dx / length * offset
+            result[i, 0] = pts[i, 0] + px
+            result[i, 1] = pts[i, 1] + py
+            result[i, 2] = pts[i, 2] if pts.shape[1] > 2 else 0
+
+    return [tuple(r) for r in result]
+
 
 def linestring_to_ribbon(coords, half_width, z_offset=Z_OFFSET):
     """
@@ -589,6 +634,61 @@ def generate_tile_glb(features, tile_key, origin_e, origin_n, output_dir):
         
         vertex_offset += len(verts)
         segment_count += 1
+        
+        # ── White stripes for roads ──
+        stripe_ribbons = []
+        
+        if mat_class == "motorway":
+            # Edge stripes on both sides + center median line
+            edge_off = half_width - STRIPE_HALF_WIDTH
+            stripe_ribbons.append(offset_linestring(coords, edge_off))
+            stripe_ribbons.append(offset_linestring(coords, -edge_off))
+            stripe_ribbons.append(coords)  # center line
+        elif mat_class == "main":
+            # Edge stripes on both sides
+            edge_off = half_width - STRIPE_HALF_WIDTH
+            stripe_ribbons.append(offset_linestring(coords, edge_off))
+            stripe_ribbons.append(offset_linestring(coords, -edge_off))
+        elif mat_class == "secondary":
+            # Single edge stripe on each side
+            edge_off = half_width - STRIPE_HALF_WIDTH
+            stripe_ribbons.append(offset_linestring(coords, edge_off))
+            stripe_ribbons.append(offset_linestring(coords, -edge_off))
+        
+        for stripe_coords in stripe_ribbons:
+            s_verts, s_tris = linestring_to_ribbon(
+                stripe_coords, STRIPE_HALF_WIDTH,
+                z_offset=Z_OFFSET + STRIPE_Z_BUMP)
+            if len(s_verts) == 0:
+                continue
+            s_tris = s_tris + vertex_offset
+            all_vertices.append(s_verts)
+            all_triangles.append(s_tris)
+            s_colors = np.full((len(s_verts), 4), 255, dtype=np.uint8)
+            all_colors.append(s_colors)
+            vertex_offset += len(s_verts)
+            segment_count += 1
+        
+        # ── Rail lines for railways ──
+        if mat_class == "railway":
+            rail_rgb = RAIL_COLOR
+            for sign in (+1, -1):
+                rail_coords = offset_linestring(coords, sign * RAIL_GAUGE_HALF)
+                r_verts, r_tris = linestring_to_ribbon(
+                    rail_coords, RAIL_HALF_WIDTH,
+                    z_offset=Z_OFFSET + STRIPE_Z_BUMP)
+                if len(r_verts) == 0:
+                    continue
+                r_tris = r_tris + vertex_offset
+                all_vertices.append(r_verts)
+                all_triangles.append(r_tris)
+                r_colors = np.full((len(r_verts), 4), 255, dtype=np.uint8)
+                r_colors[:, 0] = int(rail_rgb[0] * 255)
+                r_colors[:, 1] = int(rail_rgb[1] * 255)
+                r_colors[:, 2] = int(rail_rgb[2] * 255)
+                all_colors.append(r_colors)
+                vertex_offset += len(r_verts)
+                segment_count += 1
     
     if segment_count == 0:
         return None

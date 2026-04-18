@@ -7,9 +7,6 @@ extends Node3D
 var TERRAIN_CENTER_E: float = 2682880.0  # Swiss Easting at Godot X=0
 var TERRAIN_CENTER_N: float = 1283072.0  # Swiss Northing at Godot Z=0
 
-# Floating origin: rebase when aircraft moves more than this distance from (0,0)
-const ORIGIN_REBASE_THRESHOLD: float = 5000.0  # meters
-
 # Assuming your JSBGodot node is a child of the current node
 var jsb_node: Node
 var active_camera: Camera3D
@@ -42,6 +39,7 @@ const ORBIT_DISTANCE_MAX: float = 50.0 # Furthest zoom
 # Chase camera parameters
 var chase_distance: float = 8.0    # Distance behind aircraft
 var chase_height: float = 3.0     # Height above aircraft
+var chase_yaw: float = 0.0        # Yaw offset relative to aircraft heading (degrees)
 var chase_smooth: float = 5.0     # Smoothing factor (higher = faster follow)
 
 # Control surface nodes
@@ -89,8 +87,8 @@ var front_wheel_node: Node3D
 var front_wheel_base_transform: Transform3D
 const FRONT_WHEEL_MAX_ANGLE: float = 30.0  # Max steering angle
 
-# Terrain3D reference for ground height queries
-var terrain3d_node: Node
+# Scenery3D reference for ground height queries
+var scenery3d_node: Node
 
 # Slew mode - free movement without physics
 var slew_mode: bool = false
@@ -99,10 +97,10 @@ var slew_fast_multiplier: float = 5.0  # Speed multiplier when holding boost
 var slew_vertical_speed: float = 60.0  # Vertical movement speed
 var _slew_key_held: bool = false  # Prevent key repeat
 
-# Teleport cooldown: pin the aircraft to the teleport target and skip
-# origin rebase until JSBSim has stabilized.  C++ _physics_process sets
-# the AC position directly from JSBSim output, which can be garbage on
-# the first frames after reinitialize; we override it in _process.
+# Teleport cooldown: pin the aircraft to the teleport target until JSBSim
+# has stabilised.  C++ _physics_process sets the AC position directly from
+# JSBSim output, which can be garbage on the first frames after reinitialize;
+# we override it in _process.
 var _rebase_cooldown: int = 0
 const REBASE_COOLDOWN_FRAMES: int = 120  # ~2 seconds at 60 fps
 var _teleport_pin_pos: Vector3 = Vector3.ZERO  # Position to hold AC at during cooldown
@@ -197,8 +195,6 @@ const ENGINE_SOUND_FADE_RPM: float = 50.0
 var _fps_label: Label = null
 var _fps_visible: bool = false
 var _fps_key_held: bool = false
-var _rebase_label: Label = null
-var _rebase_label_frames: int = 0
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
@@ -222,21 +218,6 @@ func _ready() -> void:
 	_fps_label.offset_top = 10
 	_fps_label.visible = false
 	fps_layer.add_child(_fps_label)
-
-	_rebase_label = Label.new()
-	_rebase_label.text = "REBASE"
-	_rebase_label.add_theme_font_size_override("font_size", 18)
-	_rebase_label.add_theme_color_override("font_color", Color.YELLOW)
-	_rebase_label.add_theme_color_override("font_shadow_color", Color.BLACK)
-	_rebase_label.add_theme_constant_override("shadow_offset_x", 1)
-	_rebase_label.add_theme_constant_override("shadow_offset_y", 1)
-	_rebase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_rebase_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_rebase_label.offset_left = -180
-	_rebase_label.offset_right = -10
-	_rebase_label.offset_top = 30
-	_rebase_label.visible = false
-	fps_layer.add_child(_rebase_label)
 
 	# Show a lightweight loading screen immediately, before any heavy work.
 	_create_loading_screen()
@@ -398,28 +379,12 @@ func _ready() -> void:
 		else:
 			print("WARNING: Flap lever node not found (tried Dynamic_Switch_007_Flaps_Leveler and Dynamic_Switch_007)")
 	
-	# Get Terrain3D node for ground height queries
-	terrain3d_node = get_node_or_null("Terrain3D")
-	if terrain3d_node:
-		print("Terrain3D node found: ", terrain3d_node)
+	# Get Scenery3D node for ground height queries
+	scenery3d_node = get_node_or_null("Scenery3D")
+	if scenery3d_node:
+		print("Scenery3D node found: ", scenery3d_node)
 	else:
-		print("WARNING: Terrain3D node not found - ground collision may not work correctly!")
-
-	# ── Deferred scenery loading: skip all heavy work at startup ──────
-	# Terrain, buildings, roads, water, runways, and clipmap terrain are
-	# loaded only after the user clicks Fly! in the welcome screen.
-	# This makes the welcome screen appear almost instantly.
-
-	# Disable scenery loaders so their _process() does not auto-load tiles
-	for loader_name in ["BuildingLoader", "RoadLoader", "WaterLoader", "RunwayLoader", "ObjectLoader"]:
-		var loader = get_node_or_null(loader_name)
-		if loader and "enabled" in loader:
-			loader.enabled = false
-
-	# Disable TerrainClipmap processing until flight starts
-	var clipmap = get_node_or_null("TerrainClipmap")
-	if clipmap:
-		clipmap.set_process(false)
+		print("WARNING: Scenery3D node not found - ground collision may not work correctly!")
 
 	# Print the aircraft model hierarchy to find control surfaces
 	print("=== Aircraft Node Hierarchy ===")
@@ -536,157 +501,76 @@ func _create_propeller_blur_disc() -> void:
 
 
 
-# Deferred terrain initialization - waits for first physics frame for raycast to work
+# Deferred terrain initialization - waits for first physics frame
 var _pending_terrain_init: bool = false
-var _terrain_data_for_init = null
 
 # Initialize JSBSim with correct terrain elevation at startup
 # This must be called BEFORE JSBSim runs its physics, setting terrain during IC
-func _initialize_jsbsim_on_terrain(terrain_data) -> void:
+func _initialize_jsbsim_on_terrain() -> void:
 	# Store for deferred initialization in first physics frame
 	_pending_terrain_init = true
-	_terrain_data_for_init = terrain_data
 	print("=== Terrain initialization queued for first physics frame ===")
 
 
-# Called from _physics_process on first frame to do actual terrain positioning
+## Query terrain elevation at a world XZ position via Scenery3D.
+## Returns 0.0 when Scenery3D is unavailable or has no data at the location.
+func _terrain_elevation_at(x: float, z: float) -> float:
+	if not is_instance_valid(scenery3d_node):
+		return 0.0
+	if not scenery3d_node.has_method("get_elevation"):
+		return 0.0
+	var h: float = scenery3d_node.get_elevation(x, z)
+	if is_nan(h):
+		return 0.0
+	return h
+
+
+# Called from _process on first frame to do actual terrain positioning
 func _do_deferred_terrain_init() -> void:
-	if not _pending_terrain_init or _terrain_data_for_init == null:
+	if not _pending_terrain_init:
 		return
 	_pending_terrain_init = false
-	
-	var terrain_data = _terrain_data_for_init
-	_terrain_data_for_init = null
-	
+
 	var ac_node = get_node_or_null("AC")
 	if not ac_node or not jsb_node:
 		print("Cannot initialize JSBSim on terrain - missing AC or JSBGodot node")
 		return
-	
+
 	# Use stored target position (set by _do_first_flight)
 	var target_x: float = _first_flight_target.get("godot_x", 980.8)
 	var target_z: float = _first_flight_target.get("godot_z", -227.1)
 	var target_heading: float = _first_flight_target.get("heading_deg", 250.0)
-	
+
 	# Move aircraft to target position
 	ac_node.global_position.x = target_x
 	ac_node.global_position.z = target_z
 	ac_node.rotation.y = -deg_to_rad(target_heading)
-	
-	# DEBUG: Check terrain heights at multiple points
+
 	var start_pos = Vector3(ac_node.global_position.x, 0, ac_node.global_position.z)
-	print("=== TERRAIN HEIGHT DEBUG ===")
-	for offset in [Vector3(0, 0, 0), Vector3(100, 0, 100), Vector3(-100, 0, -100), Vector3(500, 0, 500)]:
-		var test_pos = start_pos + offset
-		var h = terrain_data.get_height(test_pos)
-		print("  get_height(", test_pos.x, ", ", test_pos.z, ") = ", h, "m = ", h * 3.28084, " ft")
-	
-	# Get terrain height from API
-	var api_height = terrain_data.get_height(start_pos)
-	print("=== Terrain3D API get_height(", start_pos.x, ", ", start_pos.z, ") = ", api_height, "m ===")
-	
-	# Try Terrain3D's get_intersection() method (raymarching, no physics needed)
-	var visual_terrain_height: float = api_height
-	var terrain3d = terrain3d_node  # The actual Terrain3D node
-	
-	if terrain3d and terrain3d.has_method("get_intersection"):
-		var ray_origin = Vector3(start_pos.x, 2000, start_pos.z)
-		var ray_dir = Vector3(0, -1, 0)  # Straight down
-		var intersection = terrain3d.get_intersection(ray_origin, ray_dir)
-		if intersection != Vector3.INF and not is_nan(intersection.y):
-			visual_terrain_height = intersection.y
-			print("=== Terrain3D get_intersection hit at Y: ", visual_terrain_height, "m ===")
-		else:
-			print("=== Terrain3D get_intersection returned no hit ===")
-	else:
-		print("=== Terrain3D get_intersection not available ===")
-	
-	# Fallback to physics raycast
-	if visual_terrain_height == api_height:
-		var space_state = get_world_3d().direct_space_state
-		var ray_origin = Vector3(start_pos.x, 2000, start_pos.z)  # Start high above
-		var ray_end = Vector3(start_pos.x, -500, start_pos.z)     # Go below expected terrain
-		var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
-		query.collide_with_areas = false
-		query.collide_with_bodies = true
-		
-		var result = space_state.intersect_ray(query)
-		
-		if result:
-			visual_terrain_height = result.position.y
-			print("=== Physics raycast hit at Y: ", visual_terrain_height, "m ===")
-		else:
-			print("=== Physics raycast FAILED - using API height: ", visual_terrain_height, "m ===")
-	
-	# WORKAROUND: Previously we had issues with terrain visual mesh offset
-	# Now handled by godot_terrain_y_offset in JSBGodot C++ code
-	# The collision/API height is the correct reference point
-	
-	# Position aircraft on the visual terrain (Godot Y coordinate)
-	# Note: JSBSim will take over position control after initialization
+	var api_height: float = _terrain_elevation_at(start_pos.x, start_pos.z)
+	print("=== Scenery3D get_elevation(%.1f, %.1f) = %.1f m ===" % [start_pos.x, start_pos.z, api_height])
+
+	# Position aircraft on the terrain (Godot Y coordinate)
+	# JSBSim will take over position control after initialization.
 	var gear_height = 2.0
-	var new_y = visual_terrain_height + gear_height
-	
-	print("=== Initial aircraft position at Godot Y: ", new_y, "m (terrain: ", visual_terrain_height, "m) ===")
-	
+	var new_y = api_height + gear_height
+	print("=== Initial aircraft position at Godot Y: %.1f m (terrain: %.1f m) ===" % [new_y, api_height])
 	ac_node.global_position.y = new_y
-	
-	# For JSBSim, we need the REAL terrain elevation (for altimeter, physics, etc.)
-	# The offset converts Godot Y to JSBSim ASL elevation
-	# For terrain imported with offset 0: Godot Y already equals real ASL elevation
-	jsbsim_elevation_offset = 0.0  # No offset needed when terrain imported with offset 0
+
+	# For JSBSim we need real ASL elevation — Scenery3D Y is already ASL.
+	jsbsim_elevation_offset = 0.0
 	var jsbsim_terrain_elevation = api_height + jsbsim_elevation_offset
-	print("=== JSBSim terrain elevation: ", jsbsim_terrain_elevation, "m (", jsbsim_terrain_elevation * 3.28084, " ft) ===")
-	print("=== JSBSim elevation offset: ", jsbsim_elevation_offset, "m (Godot Y + offset = JSBSim ASL) ===")
-	
-	# Small vertical offset to lift aircraft visual model so wheels don't clip into terrain
-	# This is added to altitude_m in C++ to get final Godot Y position
-	const WHEEL_GROUND_CLEARANCE: float = 0.1  # Meters - adjust if wheels clip or float
-	print("=== Setting wheel clearance offset: ", WHEEL_GROUND_CLEARANCE, "m ===")
+
+	# Small vertical offset so the visual model's wheels don't clip terrain.
+	const WHEEL_GROUND_CLEARANCE: float = 0.1
 	jsb_node.set_godot_terrain_y_offset(WHEEL_GROUND_CLEARANCE)
-	
-	# Initialize JSBSim with terrain height, start position, and heading
+
 	var start_godot_pos = ac_node.global_position
 	jsb_node.initialize_at_terrain(jsbsim_terrain_elevation, start_godot_pos, target_heading)
 	print("=== JSBSim initialized at Godot pos: ", start_godot_pos, " heading: ", target_heading, "° ===")
-	
+
 	terrain_initialized = true
 	print("=== JSBSim terrain initialization complete ===")
-
-
-# Position aircraft on terrain at startup
-func _position_aircraft_on_terrain(terrain_data) -> void:
-	var ac_node = get_node_or_null("AC")
-	if not ac_node:
-		return
-	
-	# Get current aircraft position
-	var ac_position = ac_node.global_position
-	
-	# Query terrain height at aircraft position
-	if not terrain_data.has_method("get_height"):
-		print("Terrain3DData does not have get_height method - cannot position aircraft")
-		return
-	
-	var terrain_height = terrain_data.get_height(ac_position)
-	
-	# Check for NAN (position outside defined regions)
-	if is_nan(terrain_height):
-		print("Aircraft position is outside terrain regions - keeping original position")
-		return
-	
-	# Position aircraft on terrain (add small offset for gear height)
-	var gear_height = 1.5  # Approximate landing gear height in meters
-	var new_y = terrain_height + gear_height
-	
-	print("Positioning aircraft on terrain:")
-	print("  Terrain height: ", terrain_height, "m")
-	print("  Aircraft old Y: ", ac_position.y, "m")
-	print("  Aircraft new Y: ", new_y, "m (terrain + ", gear_height, "m gear)")
-	
-	ac_node.global_position.y = new_y
-	# Note: Don't call set_terrain_elevation here - JSBSim may not be ready
-	# The per-frame _update_terrain_elevation will handle it once simulation starts
 
 
 # Update terrain elevation for JSBSim ground collision (per-frame, after init)
@@ -697,25 +581,21 @@ var terrain_init_frame_count: int = 0
 const TERRAIN_INIT_DELAY_FRAMES: int = 60  # Wait 60 frames (~1 sec) before per-frame updates
 # Offset to convert Godot Y coordinates to JSBSim ASL elevation
 # Set during initialization, used for per-frame terrain updates
-var jsbsim_elevation_offset: float = 0.0  # 0 when terrain imported with offset 0
+var jsbsim_elevation_offset: float = 0.0
 
 func _process_rebase_cooldown() -> void:
 	## Handle post-teleport position pinning and JSBSim release.
-	## Extracted so it can run both in normal flight and during fly-loading.
 	var ac_guard = get_node_or_null("AC")
 	if ac_guard and terrain_initialized and _rebase_cooldown > 0:
 		ac_guard.global_position = _teleport_pin_pos
 		_rebase_cooldown -= 1
 		if _rebase_cooldown == 0:
 			# Terrain should be loaded by now — update height at pin position
-			if is_instance_valid(terrain3d_node):
-				var td = terrain3d_node.get("data")
-				if td and td.has_method("get_height"):
-					var h = td.get_height(Vector3(_teleport_pin_pos.x, 0, _teleport_pin_pos.z))
-					if not is_nan(h) and h > 0.1:
-						_teleport_pin_pos.y = h + 2.1  # terrain + gear clearance
-						ac_guard.global_position = _teleport_pin_pos
-						print("Teleport: updated terrain height to %.1fm" % h)
+			var h: float = _terrain_elevation_at(_teleport_pin_pos.x, _teleport_pin_pos.z)
+			if h > 0.1:
+				_teleport_pin_pos.y = h + 2.1  # terrain + gear clearance
+				ac_guard.global_position = _teleport_pin_pos
+				print("Teleport: updated terrain height to %.1fm" % h)
 			# Re-initialize JSBSim at the final pinned position and release
 			if jsb_node:
 				if jsb_node.has_method("reinitialize_from_godot_position"):
@@ -726,49 +606,30 @@ func _process_rebase_cooldown() -> void:
 			print("Teleport cooldown expired – JSBSim released at ", ac_guard.global_position)
 
 func _update_terrain_elevation() -> void:
-	# Skip if not yet initialized (initialization happens in _ready via _initialize_jsbsim_on_terrain)
+	# Skip if not yet initialized
 	if not terrain_initialized:
 		return
-	
+
 	# Skip first N frames to let JSBSim stabilize
 	terrain_init_frame_count += 1
 	if terrain_init_frame_count < TERRAIN_INIT_DELAY_FRAMES:
 		return
-	
+
 	if not jsb_node:
 		return
-	if not is_instance_valid(terrain3d_node):
+	if not is_instance_valid(scenery3d_node):
 		return
-	
-	# Get aircraft position in world space
+
 	var ac_node = get_node_or_null("AC")
 	if not ac_node:
 		return
-	
+
 	var ac_position = ac_node.global_position
-	
-	# Query terrain height at aircraft position
-	# Terrain3D API: terrain3d.data.get_height(global_position)
-	var terrain_data = terrain3d_node.get("data")
-	if not is_instance_valid(terrain_data):
-		return
-	
-	if not terrain_data.has_method("get_height"):
-		if not terrain_debug_printed:
-			print("Terrain3DData does not have get_height method!")
-			terrain_debug_printed = true
-		return
-	
-	var terrain_height_godot = terrain_data.get_height(ac_position)
-	
-	# Check for NAN (position outside defined regions)
-	if is_nan(terrain_height_godot):
-		terrain_height_godot = 0.0  # Default to sea level if outside terrain
-	
+	var terrain_height_godot: float = _terrain_elevation_at(ac_position.x, ac_position.z)
+
 	# Convert Godot Y coordinate to JSBSim ASL elevation
-	# JSBSim expects real-world ASL, so we add the offset
 	var terrain_elevation_jsbsim = terrain_height_godot + jsbsim_elevation_offset
-	
+
 	# Set terrain elevation in JSBSim (in meters - the method converts to feet)
 	jsb_node.set_terrain_elevation(terrain_elevation_jsbsim)
 
@@ -814,20 +675,11 @@ func _process(delta: float) -> void:
 			_fps_visible = !_fps_visible
 			if _fps_label:
 				_fps_label.visible = _fps_visible
-			if _rebase_label and not _fps_visible:
-				_rebase_label.visible = false
-				_rebase_label_frames = 0
 	else:
 		_fps_key_held = false
 
 	# --- Post-teleport position guard ---
 	_process_rebase_cooldown()
-	
-	# Countdown rebase label visibility
-	if _rebase_label_frames > 0:
-		_rebase_label_frames -= 1
-		if _rebase_label_frames == 0 and _rebase_label:
-			_rebase_label.visible = false
 	
 	# Toggle slew mode with Shift+Y
 	if Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_Y):
@@ -858,8 +710,6 @@ func _process(delta: float) -> void:
 				handle_orbit_camera(delta)
 			CameraMode.CHASE:
 				handle_chase_camera(delta)
-		# Floating origin: rebase if aircraft is too far from Godot origin
-		_check_origin_rebase()
 		return  # Skip flight controls and HUD updates in slew mode
 	
 	if Input.is_action_just_pressed("flip_camera"):
@@ -892,9 +742,6 @@ func _process(delta: float) -> void:
 	# Update terrain elevation for JSBSim ground collision
 	_update_terrain_elevation()
 	
-	# Floating origin: rebase if aircraft is too far from Godot origin
-	_check_origin_rebase()
-		
 	if jsb_node:
 		var airspeed = jsb_node.get_airspeed_knots()
 		var altitude_ft = jsb_node.get_altitude_ft()
@@ -1033,13 +880,7 @@ func handle_slew_mode(delta: float) -> void:
 	var swiss_n = TERRAIN_CENTER_N + godot_pos.z
 	
 	# Query terrain height at current position
-	var terrain_height = 0.0
-	if terrain3d_node:
-		var terrain_data = terrain3d_node.get("data")
-		if terrain_data and terrain_data.has_method("get_height"):
-			terrain_height = terrain_data.get_height(godot_pos)
-			if is_nan(terrain_height):
-				terrain_height = 0.0
+	var terrain_height := _terrain_elevation_at(godot_pos.x, godot_pos.z)
 	
 	var heading_deg = fmod(rad_to_deg(-ac_node.rotation.y) + 360.0, 360.0)
 	$Control/Label.text = "=== SLEW MODE ==="
@@ -1241,8 +1082,23 @@ func handle_chase_camera(delta: float) -> void:
 	chase_height += height_delta * ORBIT_ZOOM_SPEED * delta
 	chase_height = clamp(chase_height, 0.5, 20.0)
 	
+	# Handle yaw offset with D-pad left/right or arrow keys
+	var yaw_delta = 0.0
+	if Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_LEFT) or Input.is_key_pressed(KEY_LEFT):
+		yaw_delta = -1.0
+	elif Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_RIGHT) or Input.is_key_pressed(KEY_RIGHT):
+		yaw_delta = 1.0
+	chase_yaw += yaw_delta * ORBIT_SPEED * delta
+	if chase_yaw > 360.0:
+		chase_yaw -= 360.0
+	elif chase_yaw < 0.0:
+		chase_yaw += 360.0
+	
+	# Rotate the "behind" direction by chase_yaw around the vertical axis
+	var rotated_forward = forward.rotated(Vector3.UP, deg_to_rad(chase_yaw))
+	
 	# Target position: behind and above the aircraft
-	var target_pos = aircraft_pos - forward * chase_distance + Vector3(0, chase_height, 0)
+	var target_pos = aircraft_pos - rotated_forward * chase_distance + Vector3(0, chase_height, 0)
 	
 	# Smooth follow using lerp
 	var t = clamp(chase_smooth * delta, 0.0, 1.0)
@@ -1445,116 +1301,6 @@ func animate_control_surfaces() -> void:
 		flap_lever_node.translate_object_local(Vector3(0, y_offset, 0))
 
 
-# ── Floating Origin ────────────────────────────────────────────────────────
-
-## Check if origin rebase is needed (called every frame during normal flight).
-func _check_origin_rebase() -> void:
-	if not terrain_initialized or not jsb_node:
-		return
-	# Skip rebase during teleport cooldown (position is pinned in _process)
-	if _rebase_cooldown > 0:
-		return
-	var ac_node = get_node_or_null("AC")
-	if not ac_node:
-		return
-	
-	var pos = ac_node.global_position
-	# Sanity check: reject absurd positions (JSBSim not yet stabilized)
-	if absf(pos.x) > 1e7 or absf(pos.y) > 1e7 or absf(pos.z) > 1e7:
-		return
-	if absf(pos.x) > ORIGIN_REBASE_THRESHOLD or absf(pos.z) > ORIGIN_REBASE_THRESHOLD:
-		_perform_origin_rebase()
-
-
-## Perform a floating-origin rebase: shift everything so the aircraft is near (0,Y,0).
-func _perform_origin_rebase() -> void:
-	var ac_node = get_node_or_null("AC")
-	if not ac_node or not jsb_node:
-		return
-	
-	# 1. Compute the aircraft's invariant Swiss coordinates.
-	var swiss_e = TERRAIN_CENTER_E - ac_node.global_position.x
-	var swiss_n = TERRAIN_CENTER_N + ac_node.global_position.z
-	
-	# 2. Snap new terrain center to 1024m grid (required for tile alignment).
-	var old_center_e = TERRAIN_CENTER_E
-	var old_center_n = TERRAIN_CENTER_N
-	TERRAIN_CENTER_E = roundf(swiss_e / 1024.0) * 1024.0
-	TERRAIN_CENTER_N = roundf(swiss_n / 1024.0) * 1024.0
-	
-	# 3. Derive the Godot-space shift from the center change.
-	#    Godot X = CENTER_E - Swiss_E  →  delta_x = new_E - old_E
-	#    Godot Z = Swiss_N - CENTER_N  →  delta_z = -(new_N - old_N)
-	var shift := Vector3(
-		TERRAIN_CENTER_E - old_center_e,
-		0.0,
-		-(TERRAIN_CENTER_N - old_center_n)
-	)
-	if shift == Vector3.ZERO:
-		return
-	
-	var rebase_start_usec := Time.get_ticks_usec()
-
-	print("=== FLOATING ORIGIN REBASE ===")
-	print("  AC before: ", ac_node.global_position)
-	print("  Center E: %d -> %d" % [int(old_center_e), int(TERRAIN_CENTER_E)])
-	print("  Center N: %d -> %d" % [int(old_center_n), int(TERRAIN_CENTER_N)])
-	print("  Godot shift: ", shift)
-	
-	# 4. Shift C++ lat/lon reference by the SAME amount so both coordinate
-	#    systems stay in sync (no misalignment from grid snap).
-	jsb_node.adjust_origin(shift)
-	
-	# 5. Shift the aircraft node immediately.
-	#    On the next frame copy_outputs_from_JSBSim will produce the same
-	#    shifted value, so there is no visual jump.
-	ac_node.global_position += shift
-	print("  AC after: ", ac_node.global_position)
-	
-	# 6. Reload terrain at the new center.
-	var streamer = get_node_or_null("TerrainStreamer")
-	if streamer and streamer.has_method("rebase_center"):
-		streamer.rebase_center(int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N))
-	
-	# 7. Shift all building instances.
-	var building_loader = get_node_or_null("BuildingLoader")
-	if building_loader and building_loader.has_method("shift_all_buildings"):
-		building_loader.shift_all_buildings(shift)
-	
-	# 8. Shift all road instances.
-	var road_loader = get_node_or_null("RoadLoader")
-	if road_loader and road_loader.has_method("shift_all_roads"):
-		road_loader.shift_all_roads(shift)
-	
-	# 9. Shift all water instances.
-	var water_loader = get_node_or_null("WaterLoader")
-	if water_loader and water_loader.has_method("shift_all_water"):
-		water_loader.shift_all_water(shift)
-	
-	# 10. Shift all runway instances.
-	var runway_loader = get_node_or_null("RunwayLoader")
-	if runway_loader and runway_loader.has_method("shift_all_runways"):
-		runway_loader.shift_all_runways(shift)
-
-	# 10b. Shift all custom scenery object instances.
-	var object_loader = get_node_or_null("ObjectLoader")
-	if object_loader and object_loader.has_method("shift_all_objects"):
-		object_loader.shift_all_objects(shift)
-
-	# 11. Rebase clipmap terrain rings.
-	var terrain_clipmap = get_node_or_null("TerrainClipmap")
-	if terrain_clipmap and terrain_clipmap.has_method("rebase_center"):
-		terrain_clipmap.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
-	
-	var rebase_ms := (Time.get_ticks_usec() - rebase_start_usec) / 1000.0
-	if _rebase_label and _fps_visible:
-		_rebase_label.text = "REBASE  %.0f ms" % rebase_ms
-		_rebase_label.visible = true
-		_rebase_label_frames = 500
-
-	print("=== REBASE COMPLETE (%.1f ms) ===" % rebase_ms)
-
-
 # Convert Swiss LV95 coordinates to WGS84 latitude/longitude
 # Based on the approximate formulas from swisstopo
 # Returns Vector2(latitude, longitude) in degrees
@@ -1611,74 +1357,35 @@ func _create_loading_screen() -> void:
 	_loading_screen.show_loading()
 
 
-func _count_loader_pending(node_name: String) -> int:
-	## Return the number of pending loads for a loader node (building/road/water).
-	var loader = get_node_or_null(node_name)
-	if loader and "_pending_loads" in loader:
-		var count: int = loader._pending_loads.size()
-		if "_loading_tiles" in loader:
-			count += loader._loading_tiles.size()
-		return count
-	return 0
-
-
 func _update_loading_progress(is_fly_loading: bool) -> void:
-	## Monitor all progressive loaders and update the loading bar.
-	var streamer = get_node_or_null("TerrainStreamer")
+	## Monitor Scenery3D load state and update the loading bar.
+	var scenery_ready := false
+	if is_instance_valid(scenery3d_node):
+		if scenery3d_node.has_method("is_ready"):
+			scenery_ready = bool(scenery3d_node.is_ready())
+		else:
+			scenery_ready = true
 
-	# ── Terrain tiles ────────────────────────────────────────────────
-	var terrain_pending := 0
-	var terrain_total := 1
-	if streamer and "_pending_loads" in streamer:
-		terrain_pending = streamer._pending_loads.size()
-		terrain_total = max(1, streamer._loaded_tiles.size() + terrain_pending)
-
-	# ── Scenery loaders (buildings, roads, water) ────────────────────
-	var bld_pending := _count_loader_pending("BuildingLoader")
-	var road_pending := _count_loader_pending("RoadLoader")
-	var water_pending := _count_loader_pending("WaterLoader")
-	var scenery_pending := bld_pending + road_pending + water_pending
-
-	# ── Rebase cooldown (only after fly) ─────────────────────────────
 	var cooldown_pending := _rebase_cooldown if is_fly_loading else 0
+	var p_scenery := 1.0 if scenery_ready else 0.0
+	var p_cooldown := 1.0 - (float(cooldown_pending) / float(maxi(1, REBASE_COOLDOWN_FRAMES)))
 
-	# ── Compute weighted progress ────────────────────────────────────
 	var progress: float
 	if is_fly_loading:
-		# After Fly!: terrain 40%, cooldown 20%, scenery 40%
-		var p_terrain := 1.0 - (float(terrain_pending) / terrain_total)
-		var p_cooldown := 1.0 - (float(cooldown_pending) / float(maxi(1, REBASE_COOLDOWN_FRAMES)))
-		var scenery_total := maxi(1, scenery_pending + 1)  # +1 avoids instant 100%
-		var p_scenery := 1.0 - (float(scenery_pending) / float(scenery_total))
-		progress = p_terrain * 0.4 + p_cooldown * 0.2 + p_scenery * 0.4
+		progress = p_scenery * 0.7 + p_cooldown * 0.3
 	else:
-		# Startup: terrain 60%, scenery 40%
-		var p_terrain := 1.0 - (float(terrain_pending) / terrain_total)
-		var scenery_total := maxi(1, scenery_pending + 1)
-		var p_scenery := 1.0 - (float(scenery_pending) / float(scenery_total))
-		progress = p_terrain * 0.6 + p_scenery * 0.4
+		progress = p_scenery
 
-	# ── Update loading screen ────────────────────────────────────────
 	if _loading_screen:
 		_loading_screen.set_progress(progress)
-		if terrain_pending > 0:
-			_loading_screen.set_status("Loading terrain... %d tiles remaining" % terrain_pending)
-		elif scenery_pending > 0:
-			var parts: Array[String] = []
-			if bld_pending > 0:
-				parts.append("%d buildings" % bld_pending)
-			if road_pending > 0:
-				parts.append("%d roads" % road_pending)
-			if water_pending > 0:
-				parts.append("%d water" % water_pending)
-			_loading_screen.set_status("Loading scenery... %s remaining" % ", ".join(parts))
+		if not scenery_ready:
+			_loading_screen.set_status("Loading scenery...")
 		elif cooldown_pending > 0:
 			_loading_screen.set_status("Stabilizing aircraft...")
 		else:
 			_loading_screen.set_status("Ready")
 
-	# ── Check completion ─────────────────────────────────────────────
-	var all_done := terrain_pending == 0 and scenery_pending == 0 and cooldown_pending == 0
+	var all_done := scenery_ready and cooldown_pending == 0
 	if not all_done:
 		return
 
@@ -1708,13 +1415,28 @@ func _create_welcome_screen() -> void:
 	_welcome_screen.flight_requested.connect(_on_welcome_flight_requested)
 	_welcome_screen.settings_requested.connect(_on_welcome_settings_requested)
 
-	# Populate airports from POILoader
-	var poi_loader = get_node_or_null("POILoader")
-	if poi_loader and poi_loader.airports.size() > 0:
-		_welcome_screen.populate_airports(poi_loader.airports)
-	else:
-		# POILoader may still be loading — try again next frame
-		_welcome_screen.call_deferred("populate_airports_from_loader", poi_loader)
+	# Provide a default airport list (Scenery3D no longer ships POI data).
+	var default_airports: Array[Dictionary] = [
+		{
+			"icao": "LSPF",
+			"name": "Schaffhausen",
+			"type": "small_airport",
+			"center_e": 2688980.0,
+			"center_n": 1283152.0,
+			"elevation_m": 464,
+			"runways": [
+				{
+					"designator": "07/25",
+					"heading_deg": 70,
+					"length_m": 600,
+					"surface": "grass",
+					"threshold_07": {"e": 2688680.0, "n": 1283100.0},
+					"threshold_25": {"e": 2689280.0, "n": 1283204.0},
+				},
+			],
+		},
+	]
+	_welcome_screen.populate_airports(default_airports)
 
 	_welcome_screen.show_welcome()
 
@@ -1763,14 +1485,7 @@ func _do_first_flight(swiss_e: float, swiss_n: float, heading_deg: float) -> voi
 	print("  Terrain center: E=%d N=%d" % [int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N)])
 
 	# Update TerrainStreamer center coordinates (including internal tile indices)
-	var streamer = get_node_or_null("TerrainStreamer")
-	if streamer:
-		streamer.terrain_center_e = int(TERRAIN_CENTER_E)
-		streamer.terrain_center_n = int(TERRAIN_CENTER_N)
-		# Update internal tile indices derived from center
-		if "_tile_size" in streamer and streamer._tile_size > 0:
-			streamer._center_ei = streamer.terrain_center_e / streamer._tile_size
-			streamer._center_ni = streamer.terrain_center_n / streamer._tile_size
+	# (no-op: Scenery3D tracks its own tile grid internally)
 
 	# 2. Compute Godot position for the target
 	var godot_x = TERRAIN_CENTER_E - swiss_e
@@ -1787,34 +1502,14 @@ func _do_first_flight(swiss_e: float, swiss_n: float, heading_deg: float) -> voi
 		"heading_deg": heading_deg
 	}
 
-	# 4. Load terrain tiles around the target position
-	if streamer:
-		print("  Loading initial terrain...")
-		var loaded = streamer.initial_load(ac_node.global_position)
-		print("  TerrainStreamer: %d regions loaded" % loaded)
+	# 4. Scenery3D streams tiles automatically around load_radius.
 
-	# 5. Queue deferred JSBSim initialization (needs terrain data + physics frame)
-	if terrain3d_node:
-		var tdata = terrain3d_node.get("data")
-		if tdata:
-			_initialize_jsbsim_on_terrain(tdata)
+	# 5. Queue deferred JSBSim initialization (runs in next process frame).
+	_initialize_jsbsim_on_terrain()
 
-	# 6. Enable scenery loaders
-	for loader_name in ["BuildingLoader", "RoadLoader", "WaterLoader", "RunwayLoader", "ObjectLoader"]:
-		var loader = get_node_or_null(loader_name)
-		if loader and "enabled" in loader:
-			loader.enabled = true
-			print("  Enabled %s" % loader_name)
+	# 6. Nothing else to enable — Scenery3D handles buildings/roads/water natively.
 
-	# 7. Enable TerrainClipmap and rebase
-	var clipmap = get_node_or_null("TerrainClipmap")
-	if clipmap:
-		if clipmap.has_method("rebase_center"):
-			clipmap.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
-		clipmap.set_process(true)
-		print("  Enabled TerrainClipmap")
-
-	# 8. Set teleport pin so aircraft stays in place until terrain settles
+	# 7. Set teleport pin so aircraft stays in place until terrain settles
 	_teleport_pin_pos = ac_node.global_position
 	_rebase_cooldown = REBASE_COOLDOWN_FRAMES
 
@@ -1838,34 +1533,10 @@ func _on_settings_closed() -> void:
 
 # ── Position / Teleport ────────────────────────────────────────────────────
 
-## Show the position dialog (Shift+P)
+## Show the position dialog (Shift+P) — disabled, position dialog script was
+## removed. Welcome screen handles airport selection instead.
 func _show_position_dialog() -> void:
-	# Create dialog on first use
-	if _position_dialog == null:
-		var dialog_script = load("res://position_dialog.gd")
-		_position_dialog = Window.new()
-		_position_dialog.set_script(dialog_script)
-		add_child(_position_dialog)
-		_position_dialog.teleport_requested.connect(_on_teleport_requested)
-
-	# Populate airports from POILoader
-	var poi_loader = get_node_or_null("POILoader")
-	if poi_loader and poi_loader.airports.size() > 0:
-		_position_dialog.populate_airports(poi_loader.airports)
-
-	# Show current position
-	var ac_node = get_node_or_null("AC")
-	if ac_node:
-		var pos = ac_node.global_position
-		var swiss_e = TERRAIN_CENTER_E - pos.x
-		var swiss_n = TERRAIN_CENTER_N + pos.z
-		var heading_deg = rad_to_deg(ac_node.rotation.y)
-		# Normalize heading to 0-360
-		if heading_deg < 0:
-			heading_deg += 360.0
-		_position_dialog.set_current_position(swiss_e, swiss_n, heading_deg)
-
-	_position_dialog.popup_centered()
+	print("Position dialog is not available; use the Welcome screen (restart) to change airport.")
 
 
 ## Handle teleport request from the dialog
@@ -1899,28 +1570,8 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	if shift != Vector3.ZERO:
 		jsb_node.adjust_origin(shift)
 
-	# 5. Reload terrain around new center
-	var streamer = get_node_or_null("TerrainStreamer")
-	if streamer and streamer.has_method("rebase_center"):
-		streamer.rebase_center(int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N))
-
-	# 6. Shift existing building instances
-	if shift != Vector3.ZERO:
-		var building_loader = get_node_or_null("BuildingLoader")
-		if building_loader and building_loader.has_method("shift_all_buildings"):
-			building_loader.shift_all_buildings(shift)
-		var road_loader = get_node_or_null("RoadLoader")
-		if road_loader and road_loader.has_method("shift_all_roads"):
-			road_loader.shift_all_roads(shift)
-		var water_loader = get_node_or_null("WaterLoader")
-		if water_loader and water_loader.has_method("shift_all_water"):
-			water_loader.shift_all_water(shift)
-		var runway_loader = get_node_or_null("RunwayLoader")
-		if runway_loader and runway_loader.has_method("shift_all_runways"):
-			runway_loader.shift_all_runways(shift)
-		var terrain_clipmap = get_node_or_null("TerrainClipmap")
-		if terrain_clipmap and terrain_clipmap.has_method("rebase_center"):
-			terrain_clipmap.rebase_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
+	# 5. Scenery3D picks up the new center via its own update loop;
+	#    no manual loader shifts are required.
 
 	# 7. Compute new Godot position from Swiss coords
 	var new_godot_x = TERRAIN_CENTER_E - swiss_e
@@ -1929,29 +1580,26 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	# 8. Get terrain height at new position — sample a grid around the
 	#    threshold and use the maximum, matching the runway mesh approach.
 	var terrain_height := 0.0
-	if is_instance_valid(terrain3d_node):
-		var terrain_data = terrain3d_node.get("data")
-		if terrain_data and terrain_data.has_method("get_height"):
-			var max_h := -1e9
-			var heading_rad := deg_to_rad(heading_deg)
-			# Sample centre + 4 offsets along/across runway (±25 m each way)
-			var offsets: Array = [
-				Vector3(0, 0, 0),
-				Vector3(-sin(heading_rad) * 25.0, 0, cos(heading_rad) * 25.0),
-				Vector3(sin(heading_rad) * 25.0, 0, -cos(heading_rad) * 25.0),
-				Vector3(cos(heading_rad) * 15.0, 0, sin(heading_rad) * 15.0),
-				Vector3(-cos(heading_rad) * 15.0, 0, -sin(heading_rad) * 15.0),
-			]
-			for off in offsets:
-				var probe := Vector3(new_godot_x + off.x, 0.0, new_godot_z + off.z)
-				var h = terrain_data.get_height(probe)
-				if not is_nan(h) and h > max_h:
-					max_h = h
-			if max_h > -1e8:
-				terrain_height = max_h
-				print("  Terrain height at target (max of 5 samples): %.1fm" % terrain_height)
-			else:
-				print("  WARNING: No terrain data at target — using 0m")
+	if is_instance_valid(scenery3d_node):
+		var max_h := -1e9
+		var heading_rad := deg_to_rad(heading_deg)
+		# Sample centre + 4 offsets along/across runway (±25 m each way)
+		var offsets: Array = [
+			Vector3(0, 0, 0),
+			Vector3(-sin(heading_rad) * 25.0, 0, cos(heading_rad) * 25.0),
+			Vector3(sin(heading_rad) * 25.0, 0, -cos(heading_rad) * 25.0),
+			Vector3(cos(heading_rad) * 15.0, 0, sin(heading_rad) * 15.0),
+			Vector3(-cos(heading_rad) * 15.0, 0, -sin(heading_rad) * 15.0),
+		]
+		for off in offsets:
+			var h := _terrain_elevation_at(new_godot_x + off.x, new_godot_z + off.z)
+			if h > max_h:
+				max_h = h
+		if max_h > -1e8:
+			terrain_height = max_h
+			print("  Terrain height at target (max of 5 samples): %.1fm" % terrain_height)
+		else:
+			print("  WARNING: No terrain data at target — using 0m")
 
 	# 9. Place aircraft on runway surface with gear clearance
 	# Runway surface sits y_offset (0.1 m) above raw terrain;

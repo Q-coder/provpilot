@@ -40,20 +40,29 @@ Guide for building and running ProvPilot on Windows (tested on Windows 11, MSVC 
    nmake
    ```
 
-4. **Build the GDExtension DLL:**
+4. **Build Godot (double precision)** and the ProvPilot GDExtension:
    ```powershell
-   cd <repo-root>
-   scons arch=x86_64
+   cd godot
+   scons platform=windows arch=x86_64 target=editor precision=double
+   cd ..\godot-cpp\gdextension
+   ..\..\godot\bin\godot.windows.editor.double.x86_64.exe --headless ^
+     --dump-extension-api extension_api.json
+   cd ..\..
+   scons arch=x86_64 precision=double
    ```
 
-5. **Install Terrain3D plugin** — download Windows DLLs from
-   [Terrain3D releases](https://github.com/TxturaDesign/Terrain3D/releases) (v1.0.1)
-   and place them in `provpilot/addons/terrain_3d/bin/`:
-   - `libterrain.windows.debug.x86_64.dll`
-   - `libterrain.windows.release.x86_64.dll`
+   All GDExtensions (ProvPilot, Scenery3D) must match the engine's
+   `precision=double` or the editor will crash at GDExtension verification.
 
-6. **Open Godot** — first launch will reimport ~7,500 GLB files (buildings, roads, water).
-   This is a one-time process and takes several minutes.
+5. **Scenery3D** — a Windows double-precision build of the Scenery3D
+   extension DLL must live at
+   `provpilot/bin/libscenery3d.windows.template_debug.double.x86_64.dll`.
+   Build it from the submodule at `provpilot/addons/scenery3d/` or copy
+   a pre-built DLL from a teammate.
+
+6. **Open Godot** — first launch will import textures, audio, and other
+   assets. Scenery (terrain, buildings, roads, water) streams at runtime
+   through Scenery3D and does **not** go through Godot's import pipeline.
 
 ## Cross-Platform Notes
 
@@ -87,8 +96,10 @@ The SConstruct automatically handles Windows-specific settings:
 
 ### Performance Tuning
 
-The following parameters were tuned for Windows (also benefit macOS):
-- **Terrain streamer**: `load_radius=8`, `REBASE_TILES_PER_FRAME=4`, `IMMEDIATE_TILES_INITIAL=9`
-- **Building/Road/Water loaders**: tile distance checks throttled to every 30 frames
-- **JSBSim**: debug output suppressed with `SetDebugLevel(0)`
-- **C++ printf**: per-frame debug prints removed from `copy_outputs_from_JSBSim()`
+Scenery3D handles terrain, building, road, and water streaming on its own
+background thread pool (4 workers by default) with budgeted mesh generation
+on the main thread. Tune visible radius via the `[scenery3d]` section of
+`project.godot` (`load_radius`, `far_radius`, `detail_radius`).
+
+JSBSim debug output is suppressed with `SetDebugLevel(0)`; per-frame C++
+printfs were removed from `copy_outputs_from_JSBSim()`.

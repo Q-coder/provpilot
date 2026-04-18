@@ -13,19 +13,20 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 ## Features
 
 - **Realistic Flight Dynamics**: Full 6-DOF simulation powered by JSBSim (Cessna 172 Skyhawk)
-- **Real-World Terrain**: SwissTopo swissALTI3D elevation data at 1m resolution
-- **Orthophoto Aerial Imagery**: Real SWISSIMAGE photography overlaid on terrain at 1m/pixel
-- **Terrain Streaming**: Dynamic tile-based loading — fly over unlimited terrain without loading screens
-- **3D Buildings**: SwissTopo swissBUILDINGS3D models loaded dynamically by proximity (manifest-driven)
-- **Roads & Railroads**: swissTLM3D road and railway network rendered as coloured ribbons
-- **Water Bodies**: Rivers, lakes, and streams from swissTLM3D
+- **Scenery3D World Streaming**: A single C++ GDExtension (`Scenery3D`) streams terrain, buildings, roads, water, and orthophotos on background threads with distance-based LOD
+- **Real-World Terrain**: SwissTopo swissALTI3D elevation data at 1m resolution, streamed as 1024×1024 m float32 tiles
+- **Orthophoto Aerial Imagery**: Real SWISSIMAGE photography mapped per tile with mip pyramid for far-LOD
+- **3D Buildings**: SwissTopo swissBUILDINGS3D models with per-building detail meshes and merged far-LOD handoff
+- **Roads & Railroads**: swissTLM3D road and railway network rendered as coloured ribbons with white lane markings
+- **Water Bodies**: Rivers, lakes, and streams from swissTLM3D (vertex-coloured ribbon meshes)
+- **Far Terrain Chunks**: 200 km+ visibility via 8×8 tile composite meshes for Alpine panoramas
+- **Double-Precision Godot**: Custom `4.6-macdev` fork with `precision=double` — no floating-origin rebasing needed
 - **Custom Scenery**: Hand-crafted scenery packages with GLB models, loaded by proximity from `scenery/custom/`
 - **MSFS Scenery Import**: Convert Microsoft Flight Simulator 2020 scenery packages (BGL→GLB)
-- **47 Swiss Airports**: OSM-verified runway geometry with procedural terrain-following runway rendering
-- **Airport Teleport**: Search, filter by type, select runway — teleport anywhere in Switzerland (Shift+P)
-- **Welcome Screen**: Startup UI with aircraft selection, airport picker with search/filter, and runway selector
+- **47 Swiss Airports**: OSM-verified runway geometry (teleport via welcome screen)
+- **Welcome Screen**: Startup UI with aircraft selection and airport/runway picker
 - **Settings Screen**: Configurable graphics, sound, realism, and data path settings (persisted to disk)
-- **Loading Screen**: Progress overlay with weighted loading tracking during startup and teleport
+- **Loading Screen**: Progress overlay polling `Scenery3D.is_ready()`
 - **Multiple Camera Views**:
   - Cockpit camera with pilot head look (hat switch / D-pad / arrow keys)
   - External orbit camera with full rotation and zoom
@@ -37,8 +38,7 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 - **Propeller Visual Decay**: Propeller visually spins down when engine is off (ignores JSBSim windmilling)
 - **Elevator Trim**: Fine-tune pitch with Y/X buttons
 - **Slew Mode**: Reposition aircraft freely with airspeed preservation, then resume flight (Shift+Y)
-- **Floating Origin**: Automatic coordinate rebasing for precision across all of Switzerland
-- **Deferred Scenery Loading**: Terrain and scenery load only after the user clicks Fly — instant startup
+- **Deferred Scenery Loading**: Scenery3D starts streaming only after the user clicks Fly — instant startup
 - **HUD**: Airspeed, altitude, vertical speed, heading, throttle, Swiss/WGS84 coordinates
 
 ## Controls
@@ -64,7 +64,6 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 | Magneto Counter-CW | — | Shift+I |
 | Slew Mode | — | Shift+Y |
 | Flap Lever Drag | — | Mouse drag (cockpit) |
-| Position Dialog | — | Shift+P |
 | Return to Welcome | — | Escape |
 
 ### Camera Controls
@@ -114,14 +113,14 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 
 3. Build the GDExtension:
    ```bash
-   # macOS ARM64 (debug)
-   scons arch=arm64
+   # macOS ARM64 (debug, double precision)
+   scons arch=arm64 precision=double
 
-   # macOS ARM64 (release, for distribution)
-   scons target=template_release arch=arm64
+   # macOS ARM64 (release)
+   scons arch=arm64 target=template_release precision=double
 
    # Linux
-   scons
+   scons precision=double
    ```
 
 4. Generate terrain tiles (requires Python + rasterio):
@@ -143,33 +142,24 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 
 ```
 provpilot/
-├── src/                         # GDExtension C++ source
-│   ├── jsbgodot.cpp/.h         # JSBSim ↔ Godot integration
-│   └── register_types.cpp/.h   # GDExtension registration
+├── src/                         # GDExtension C++ source (JSBSim binding)
+│   ├── jsbgodot.cpp/.h          # JSBSim ↔ Godot integration
+│   └── register_types.cpp/.h    # GDExtension registration
 ├── provpilot/                   # Godot project
-│   ├── node_3d.gd              # Main scene script (controls, HUD, cameras)
-│   ├── terrain_streamer.gd     # Dynamic terrain tile loader (+ orthophoto)
-│   ├── building_loader.gd      # Manifest-driven building GLB loader
-│   ├── road_loader.gd          # Road & railroad network loader
-│   ├── water_loader.gd         # River & lake loader
-│   ├── runway_loader.gd        # Procedural runway renderer
-│   ├── poi_loader.gd           # Airport/POI database loader
-│   ├── distant_terrain.gd      # Low-res distant terrain renderer
+│   ├── node_3d.gd               # Main scene script (controls, HUD, cameras, Scenery3D glue)
+│   ├── welcome_screen.gd        # Startup aircraft & airport selection UI
+│   ├── settings_screen.gd       # Settings UI (graphics, sound, realism, paths)
+│   ├── loading_screen.gd        # Progress overlay (polls Scenery3D.is_ready)
 │   ├── custom_scenery_loader.gd # Custom scenery package discovery
-│   ├── object_loader.gd        # Custom scenery object placement loader
-│   ├── welcome_screen.gd       # Startup aircraft & airport selection UI
-│   ├── settings_screen.gd      # Settings UI (graphics, sound, realism, paths)
-│   ├── loading_screen.gd       # Progress overlay during loading
-│   ├── position_dialog.gd      # In-flight airport search & teleport UI
-│   ├── export_presets.cfg      # macOS export preset
-│   ├── node_3d.tscn            # Main scene
-│   ├── C172p.tscn              # Aircraft scene
-│   ├── environment.tscn        # Sky/environment
-│   ├── bin/                    # GDExtension binaries
-│   ├── Assets/                 # 3D models (Cessna, symlinks to scenery)
-│   ├── sounds/                 # Audio files (engine sound)
-│   ├── addons/terrain_3d/      # Terrain3D plugin
-│   ├── shaders/                # Custom shaders
+│   ├── object_loader.gd         # Custom scenery object placement
+│   ├── export_presets.cfg       # macOS export preset
+│   ├── node_3d.tscn             # Main scene (single Scenery3D node)
+│   ├── C172p.tscn               # Aircraft scene
+│   ├── environment.tscn         # Sky/environment
+│   ├── addons/scenery3d/        # Scenery3D GDExtension (git submodule)
+│   ├── bin/                     # GDExtension binaries (provpilot + scenery3d)
+│   ├── Assets/                  # 3D models (Cessna, symlinks to scenery)
+│   ├── sounds/                  # Audio files (engine sound)
 │   └── project.godot
 ├── scenery/                     # Scenery data (large files gitignored)
 │   ├── terrain/                # Elevation heightmaps (.raw)
@@ -245,27 +235,36 @@ The app auto-detects whether it's running in the editor or as an exported bundle
 
 ## Terrain System
 
-Terrain is sourced from SwissTopo swissALTI3D (0.5m resolution, resampled to 1m). The terrain streamer dynamically loads 1024×1024m tiles as the aircraft moves, supporting effectively unlimited flight range.
+Terrain is streamed by the [Scenery3D](provpilot/addons/scenery3d/README.md)
+GDExtension. Heightmaps come from SwissTopo swissALTI3D (0.5 m native, resampled
+to 1 m). A single `Scenery3D` node loads 1024×1024 m float32 tiles on a
+background thread pool with distance-based LOD:
 
-- **Tile grid**: Aligned to Swiss LV95 coordinates at 1024m intervals
-- **Load radius**: Configurable (default 8 tiles = 17×17km loaded area)
-- **Hysteresis**: Unload margin prevents rapid load/unload at boundaries
-- **Coordinate system**: Godot X = West, Godot Z = North (custom mapping from Swiss LV95)
+- **Close ring** (≤ 3 tiles): 129×129 vertex meshes with full detail
+- **Mid ring** (≤ 8 tiles): 65×65 vertices
+- **Far ring** (≤ 25 tiles): 17×17 vertices
+- **Horizon ring** (≤ load_radius): 5×5 vertices
+- **Chunks** (beyond load_radius): 8×8 tile composite meshes out to 200 km
 
-The terrain center is aligned to the 1024m grid: **E 2,682,880 / N 1,283,072**.
+The terrain origin is aligned to the 1024 m LV95 grid:
+**E 2,682,880 / N 1,283,072**.
 
-See [docs/TERRAIN_SETUP.md](docs/TERRAIN_SETUP.md) for full details on the terrain pipeline, coordinate systems, and collision architecture.
+Because the Godot fork runs at `precision=double`, no floating-origin rebasing
+is required — world coordinates stay stable across all of Switzerland.
+
+See [docs/TERRAIN_SETUP.md](docs/TERRAIN_SETUP.md) and the Scenery3D README for
+full details on the tile format, elevation API, and LOD pipeline.
 
 ## Startup Flow
 
 On launch, the simulator follows a deferred loading sequence:
 
 1. **Loading screen** appears immediately (lightweight splash)
-2. Core nodes initialize (Terrain3D, JSBSim binding)
-3. **Welcome screen** appears with aircraft selection, airport picker (search/filter by ICAO or name, type filters), and runway selector
-4. User selects aircraft + departure airport/runway and clicks **Fly!**
-5. **Loading screen** reappears with progress bar — terrain tiles, distant terrain, buildings, roads, water, and orthophotos load progressively
-6. After loading completes, the simulation begins at the selected runway
+2. Core nodes initialize (Scenery3D, JSBSim binding)
+3. **Welcome screen** appears with aircraft selection and a starting airport (currently hardcoded to LSPF Schaffhausen)
+4. User selects aircraft and clicks **Fly!**
+5. **Loading screen** reappears and polls `Scenery3D.is_ready()` while tiles, buildings, roads, water, and orthophotos stream in
+6. Once ready, the simulation begins at the selected airport
 
 Press **Escape** during flight to return to the welcome screen.
 
@@ -282,29 +281,23 @@ Open the settings screen from the welcome screen's gear icon. Settings persist t
 
 ## Building System
 
-3D buildings from SwissTopo swissBUILDINGS3D are converted to GLB format and loaded dynamically based on aircraft proximity. The building loader reads `scenery/buildings/manifest.json` at startup — no hardcoded tile arrays. Buildings use a wall/roof normal-based shader with configurable roof (terracotta) and wall (cream) colors.
+3D buildings from SwissTopo swissBUILDINGS3D are converted to GLB format and streamed by Scenery3D's building manager. Each tile GLB contains per-building detail meshes plus a merged far-LOD mesh; Scenery3D swaps between them based on distance without visible pop-in.
 
 ## Road & Railroad System
 
-Roads and railroads from SwissTopo swissTLM3D are rendered as coloured ribbons on the terrain surface, tiled into 4096m grid cells and loaded by proximity. Road types include motorways, primary/secondary roads, residential streets, tracks, paths, and railway lines — each with a distinct colour.
+Roads and railroads from SwissTopo swissTLM3D are rendered as coloured ribbons tiled into LV95 grid cells and loaded by Scenery3D's road manager. Road types include motorways, primary/secondary roads, residential streets, tracks, paths, and railway lines — each with a distinct colour and, for higher-class roads, white lane/edge markings.
 
 ## Water System
 
-Rivers, lakes, and streams from SwissTopo swissTLM3D are rendered as blue surfaces. Lakes are filled polygons; rivers and streams are width-proportional ribbons. Also tiled into 4096m cells with proximity loading.
+Rivers, lakes, and streams from SwissTopo swissTLM3D are rendered as vertex-coloured meshes (rivers darker, streams lighter) streamed by Scenery3D's water manager, offset above the terrain to avoid z-fighting.
 
 ## Airport & Runway System
 
-47 Swiss airports are included with OSM-verified runway geometry. Runways are rendered procedurally as terrain-following segmented meshes with centerline and threshold markings. Airport types include international airports, regional airports, grass strips, and heliports.
-
-The welcome screen provides departure airport selection. During flight, the position dialog (Shift+P) provides:
-- Full-text search by ICAO code or name
-- Type filters (international, regional, grass, heliport)
-- Runway selector with heading, length, and surface info
-- One-click teleport to any runway threshold
+47 Swiss airports are available with OSM-verified runway geometry in `scenery/poi/airports.json`. The welcome screen currently seeds one default airport (LSPF Schaffhausen); the full picker and in-flight teleport UI from the previous loader-based architecture have not yet been ported to Scenery3D.
 
 ## Custom Scenery
 
-Hand-crafted scenery packages live in `scenery/custom/`. Each package contains a `package.json` with metadata and object placements, plus GLB model files. The `custom_scenery_loader.gd` discovers packages at startup; `object_loader.gd` instantiates objects by proximity (15 km load / 20 km unload) with automatic terrain elevation sampling and floating-origin support.
+Hand-crafted scenery packages live in `scenery/custom/`. Each package contains a `package.json` with metadata and object placements, plus GLB model files. `custom_scenery_loader.gd` discovers packages at startup and `object_loader.gd` instantiates objects by proximity with automatic terrain elevation sampling via `Scenery3D.get_elevation()`.
 
 See [docs/SCENERY_ARCHITECTURE.md](docs/SCENERY_ARCHITECTURE.md) for the package.json format.
 
@@ -392,9 +385,9 @@ The engine audio system uses an `AudioStreamPlayer` with RPM-mapped pitch (0.7�
 
 This project combines multiple open-source components:
 - JSBSim: LGPL 2.1
-- Godot Engine: MIT
+- Godot Engine: MIT (custom `4.6-macdev` fork with `precision=double`)
 - godot-cpp: MIT
-- Terrain3D: MIT
+- Scenery3D: MIT (https://gitlab.md80.ch/gery/scenery3d)
 - Aircraft models: Various (see individual model licenses)
 - Terrain data: SwissTopo Open Data (free for commercial & non-commercial use)
 - Road, water, airport data: SwissTopo swissTLM3D (Open Data)

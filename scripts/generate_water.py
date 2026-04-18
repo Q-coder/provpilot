@@ -37,6 +37,9 @@ from pathlib import Path
 import fiona
 import numpy as np
 from tqdm import tqdm
+from shapely.geometry import LineString, Polygon, MultiPolygon
+from shapely.ops import unary_union
+from shapely.strtree import STRtree
 
 try:
     import mapbox_earcut
@@ -134,19 +137,90 @@ def triangulate_polygon_3d(rings):
 
 # ── Stream Ribbon Mesh (reused from road generator) ─────────────────────
 
+def catmull_rom_resample(pts, spacing):
+    """
+    Resample a 3D polyline along a centripetal Catmull-Rom spline at
+    approximately `spacing` metres between output points. The spline passes
+    through every input point, so topology is preserved; intermediate
+    samples round off the corners that otherwise produce zigzag ribbons.
+
+    Args:
+        pts: (N, 3) float array of (E, N, Z) coordinates.
+        spacing: target distance between output samples, in metres.
+
+    Returns:
+        (M, 3) float array of resampled coordinates (M >= N).
+    """
+    n = len(pts)
+    if n < 3 or spacing <= 0.0:
+        return pts
+
+    # Centripetal Catmull-Rom: duplicate endpoints so every real segment
+    # has a control point on either side.
+    p = np.empty((n + 2, 3), dtype=np.float64)
+    p[0] = pts[0] + (pts[0] - pts[1])
+    p[1:-1] = pts
+    p[-1] = pts[-1] + (pts[-1] - pts[-2])
+
+    # Knot spacing t_i uses sqrt of chord length (alpha=0.5 = centripetal),
+    # which avoids the cusps/loops of uniform Catmull-Rom on uneven data.
+    def knot(p0, p1):
+        d = np.linalg.norm(p1 - p0)
+        return math.sqrt(d) if d > 1e-12 else 1e-6
+
+    out = [pts[0]]
+    for i in range(n - 1):
+        p0, p1, p2, p3 = p[i], p[i + 1], p[i + 2], p[i + 3]
+        t0 = 0.0
+        t1 = t0 + knot(p0, p1)
+        t2 = t1 + knot(p1, p2)
+        t3 = t2 + knot(p2, p3)
+
+        # Number of samples on this segment (excluding the starting point,
+        # which was emitted by the previous segment).
+        seg_len = np.linalg.norm(p2 - p1)
+        steps = max(1, int(math.ceil(seg_len / spacing)))
+
+        for s in range(1, steps + 1):
+            u = s / steps
+            t = t1 + (t2 - t1) * u
+            # Barry-Goldman pyramid evaluation.
+            a1 = (t1 - t) / (t1 - t0) * p0 + (t - t0) / (t1 - t0) * p1
+            a2 = (t2 - t) / (t2 - t1) * p1 + (t - t1) / (t2 - t1) * p2
+            a3 = (t3 - t) / (t3 - t2) * p2 + (t - t2) / (t3 - t2) * p3
+            b1 = (t2 - t) / (t2 - t0) * a1 + (t - t0) / (t2 - t0) * a2
+            b2 = (t3 - t) / (t3 - t1) * a2 + (t - t1) / (t3 - t1) * a3
+            c = (t2 - t) / (t2 - t1) * b1 + (t - t1) / (t2 - t1) * b2
+            out.append(c)
+
+    return np.asarray(out, dtype=np.float64)
+
+
 def linestring_to_ribbon(coords, half_width):
     """
     Convert a LineString to a ribbon mesh (two quads per segment).
 
+    The input polyline is first resampled along a centripetal Catmull-Rom
+    spline so that curvy streams render as smooth ribbons instead of the
+    zigzag that results from connecting sparse TLM3D vertices directly.
+
     Returns:
         (vertices, triangles) — vertices Nx3 (E,N,Z), triangles Mx3 indices.
     """
-    n = len(coords)
-    if n < 2:
+    if len(coords) < 2:
         return np.empty((0, 3)), np.empty((0, 3), dtype=np.uint32)
 
-    pts = np.array([(c[0], c[1], c[2] if len(c) >= 3 else 0.0) for c in coords],
+    raw = np.array([(c[0], c[1], c[2] if len(c) >= 3 else 0.0) for c in coords],
                    dtype=np.float64)
+
+    # Target a sample roughly every half-width: dense enough that a quad's
+    # long edge is never much longer than its width, which is what keeps
+    # bends smooth without exploding the triangle count.
+    spacing = max(2.0, half_width)
+    pts = catmull_rom_resample(raw, spacing)
+    n = len(pts)
+    if n < 2:
+        return np.empty((0, 3)), np.empty((0, 3), dtype=np.uint32)
 
     # Direction vectors in E-N plane
     directions = np.diff(pts[:, :2], axis=0)
@@ -673,6 +747,52 @@ def run_water_pipeline(gpkg_path, output_dir, center_e, center_n,
     print("\nStep 1b: Reading stream features...")
     stream_features = read_stream_features(gpkg_path, bbox=bbox)
     print(f"  → {len(stream_features)} stream segments")
+
+    # Step 1c: Drop stream centerlines that fall inside a river polygon.
+    # Otherwise the darker ribbon renders on top of the lighter river surface
+    # and shows up as a dark "median" line down wide rivers.
+    river_polys = []
+    for rings, water_type in poly_features:
+        if water_type != "river_poly":
+            continue
+        try:
+            poly = Polygon(
+                [(c[0], c[1]) for c in rings[0]],
+                [[(c[0], c[1]) for c in ring] for ring in rings[1:]],
+            )
+            if poly.is_valid and not poly.is_empty:
+                river_polys.append(poly)
+        except Exception:
+            continue
+
+    if river_polys and stream_features:
+        tree = STRtree(river_polys)
+        kept = []
+        dropped = 0
+        for coords, half_width, water_type in tqdm(stream_features,
+                                                    desc="Filtering streams"):
+            line = LineString([(c[0], c[1]) for c in coords])
+            # Candidates whose bbox intersects the line's bbox.
+            cand_idx = tree.query(line)
+            if len(cand_idx) == 0:
+                kept.append((coords, half_width, water_type))
+                continue
+            inside_len = 0.0
+            line_len = line.length
+            for i in cand_idx:
+                poly = river_polys[int(i)]
+                if not line.intersects(poly):
+                    continue
+                inside_len += line.intersection(poly).length
+                if inside_len >= 0.5 * line_len:
+                    break
+            if inside_len >= 0.5 * line_len:
+                dropped += 1
+            else:
+                kept.append((coords, half_width, water_type))
+        stream_features = kept
+        print(f"  → dropped {dropped} stream segments inside river polygons, "
+              f"{len(stream_features)} remaining")
 
     total_features = len(poly_features) + len(stream_features)
     print(f"  Total: {total_features} features")

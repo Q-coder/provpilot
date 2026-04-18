@@ -293,6 +293,14 @@ func _build_bottom_bar(parent: VBoxContainer) -> void:
 	settings_btn.pressed.connect(_on_settings_pressed)
 	hbox.add_child(settings_btn)
 
+	# Quit button
+	var quit_btn = Button.new()
+	quit_btn.text = "Quit"
+	quit_btn.custom_minimum_size = Vector2(140, 52)
+	quit_btn.add_theme_font_size_override("font_size", FONT_MD)
+	quit_btn.pressed.connect(_on_quit_pressed)
+	hbox.add_child(quit_btn)
+
 	# Version label
 	var version_label = Label.new()
 	version_label.text = "v1.0.0"
@@ -559,6 +567,10 @@ func _on_fly_pressed() -> void:
 
 func _on_settings_pressed() -> void:
 	settings_requested.emit()
+
+
+func _on_quit_pressed() -> void:
+	get_tree().quit()
 
 
 ## Allow Enter to start flight, Escape does nothing on welcome screen

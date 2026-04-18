@@ -89,10 +89,12 @@ namespace godot
         void set_input_mixture(float value);
         float get_input_mixture() const;
 
-        // Setter for flaps input
+        // Flaps control (4 discrete positions: 0, 0.333, 0.667, 1.0)
         void increase_flaps();
         void decrease_flaps();
-        float get_flaps() const;
+        void set_flaps(float value);  // Direct set (snaps to nearest notch)
+        float get_flaps() const;      // Actual kinematic position (for wing animation)
+        float get_flap_cmd() const;   // Commanded position (for lever indicator)
 
         // Propeller RPM from JSBSim
         double get_propeller_rpm() const;

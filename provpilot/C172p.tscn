@@ -8,10 +8,10 @@ transform = Transform3D(0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1, 0, 0, 0)
 [node name="C172P_1" parent="." unique_id=754369261 instance=ExtResource("1_fica4")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.010913372, -0.11403066, 0.30434108)
 
-[node name="Cessna_Exterior_Body_MAT_0_002_Body_MAT_0" parent="C172P_1/Sketchfab_model/Cessna172_fbx/RootNode/75f3edaeef374a9f89e7b5ef606a0759_fbx/RootNode_001/Cessna-172/Cessna_Exterior/Cessna_Exterior_Body_MAT_0_002" parent_id_path=PackedInt32Array(754369261, 1211349356) index="0" unique_id=1950959375]
+[node name="Cessna_Exterior_Body_MAT_0_002_Body_MAT_0" parent="C172P_1/Sketchfab_model/Cessna172_fbx/RootNode/75f3edaeef374a9f89e7b5ef606a0759_fbx/RootNode_001/Cessna-172/Cessna_Exterior/Cessna_Exterior_Body_MAT_0_002" parent_id_path=PackedInt32Array(754369261, 1797374337) index="0" unique_id=1881779602]
 transform = Transform3D(0.99999994, 0, 0, 0, 1, 0, 0, 0, 1, 0.05476427, 0.010276794, -0.11754608)
 
-[node name="Cessna_Exterior_Body_MAT_0_008_Rudder" parent="C172P_1/Sketchfab_model/Cessna172_fbx/RootNode/75f3edaeef374a9f89e7b5ef606a0759_fbx/RootNode_001/Cessna-172/Cessna_Exterior/Cessna_Exterior_Body_MAT_0_008" parent_id_path=PackedInt32Array(754369261, 1844911851) index="0" unique_id=2101483780]
+[node name="Cessna_Exterior_Body_MAT_0_008_Rudder" parent="C172P_1/Sketchfab_model/Cessna172_fbx/RootNode/75f3edaeef374a9f89e7b5ef606a0759_fbx/RootNode_001/Cessna-172/Cessna_Exterior/Cessna_Exterior_Body_MAT_0_008" parent_id_path=PackedInt32Array(754369261, 1316112062) index="0" unique_id=1631157523]
 transform = Transform3D(0.99874634, 0.00032594585, -0.050052516, 0.021169357, 0.90338975, 0.42829922, 0.045356266, -0.4288218, 0.90225023, 0.996946, -108.948204, 507.332)
 
 [editable path="C172P_1"]

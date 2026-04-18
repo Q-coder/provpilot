@@ -8,3 +8,7 @@
 	path = godot
 	url = git@gitlab.md80.ch:gery/godot.git
 	branch = 4.6-macdev
+[submodule "provpilot/addons/scenery3d"]
+	path = provpilot/addons/scenery3d
+	url = git@gitlab.md80.ch:gery/scenery3d.git
+	branch = main
