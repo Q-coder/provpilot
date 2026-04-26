@@ -31,7 +31,7 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
   - Cockpit camera with pilot head look (hat switch / D-pad / arrow keys)
   - External orbit camera with full rotation and zoom
   - Chase camera with smooth follow behind aircraft
-- **Gamepad & Keyboard**: Full joystick/gamepad control with trigger-based throttle
+- **Gamepad & Keyboard**: Full joystick/gamepad control with trigger-based throttle. Per‑axis bindings, calibration (min/center/max + invert), deadzone and response curve are configured at runtime from Settings → Joystick.
 - **Interactive Cockpit Controls**: Mouse-drag mixture lever, throttle lever, flap lever, and magneto/ignition switch with visual feedback and keyboard shortcuts
 - **Engine Sound**: RPM-mapped engine audio with pitch and volume tied to propeller speed
 - **Animated Control Surfaces**: Ailerons, elevators, rudder, flaps, propeller with blur disc, nose gear steering
@@ -83,6 +83,18 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 | Rotate (Yaw) | Right Stick X | — |
 | Fast Movement | — | Hold Shift |
 | Exit Slew | — | Shift+Y |
+
+> Gamepad axes are calibrated per‑user in **Settings → Joystick**. If your right‑Y is a half‑axis (Logitech Dual Action and similar), bind a different axis to **Slew: Up/Down**, or use the keyboard `Q` / `E` keys for vertical motion. Bindings persist to `user://joystick.cfg`.
+
+### Joystick / Gamepad Configuration
+
+Open the **Settings** screen from the welcome menu and scroll to the **Joystick** section. For every joystick action (slew strafe / forward / yaw / vertical, plus reserved flight & camera bindings):
+
+1. Click **Detect** and move the desired axis (or press the desired button). The axis index is captured automatically — no need to know controller index numbers.
+2. The blue bar shows the **raw** axis value; the green bar shows the **calibrated** result that gameplay code receives.
+3. With the stick at rest, click **Ctr**. Push to one extreme, click **Min** (or **Max**). The captured raw values define the symmetric `[-1, 1]` mapping — half‑axes work fine, just leave one endpoint equal to center.
+4. Tick **Inv** if the direction is reversed. Adjust the deadzone slider so the calibrated bar reads exactly 0 at rest. Pick a response curve (Linear / Squared / Cubed) for analog sensitivity.
+5. **Save** persists everything to `user://joystick.cfg`. **Restore Defaults** falls back to a generic SDL gamepad layout.
 
 ## Building
 

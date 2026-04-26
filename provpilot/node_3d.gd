@@ -164,7 +164,8 @@ var _magneto_key_held: bool = false
 var _magneto_last_printed_pos: int = -1  # Dedup prints
 const MAGNETO_SWITCH_COLLISION_LAYER: int = 64  # Separate physics layer
 const MAGNETO_STEP_ANGLE: float = 30.0     # Degrees per switch position
-const MAGNETO_BASE_POSITION: float = 6.5   # Model default orientation (between R and L)
+const MAGNETO_DEFAULT_POSITION: int = 3    # Switch position the Blender rest pose represents (BOTH)
+const MAGNETO_BASE_POSITION: float = 6.5   # Legacy: model default orientation (between R and L)
 # Angle offsets relative to base: OFF=-45, R=-15, L=+15, BOTH=+45, START=+75
 const MAGNETO_ANGLE_OFFSET: float = -95.0  # Angle of pos 0 (OFF) relative to base
 
@@ -533,8 +534,16 @@ func _initialize_jsbsim_on_terrain() -> void:
 ## inverted vertex normals. The C172P .blend import uses the opposite
 ## handedness from Godot's runtime lighting, so its top surfaces are dark
 ## under a downward-pointing sun without this fix.
+##
+## We only flip exterior surfaces (Cessna_Exterior_*). The interior cockpit
+## meshes — panel, gauges, levers, switches — already ship with correct
+## normals; flipping them backface-culls them when viewed from inside the
+## cabin, making the dashboard appear shifted/transparent. Likewise we skip
+## the Dynamic_Switch_* subtree (re-rigged interactive cockpit controls).
 func _flip_normals_recursive(node: Node) -> void:
-	if node is MeshInstance3D:
+	if node.name.begins_with("Dynamic_Switch_"):
+		return
+	if node is MeshInstance3D and node.name.begins_with("Cessna_Exterior_"):
 		var mi: MeshInstance3D = node
 		var mesh: Mesh = mi.mesh
 		if mesh:
@@ -917,15 +926,13 @@ func handle_slew_mode(delta: float) -> void:
 	# Speed multiplier (hold shift for faster movement)
 	var speed_mult = slew_fast_multiplier if Input.is_key_pressed(KEY_SHIFT) else 1.0
 	
-	# Get gamepad input
-	# Left stick: horizontal movement (forward/back, strafe)
-	var move_x = Input.get_joy_axis(0, JOY_AXIS_LEFT_X)  # Left/Right strafe
-	var move_z = Input.get_joy_axis(0, JOY_AXIS_LEFT_Y)  # Forward/Back
-	
-	# Right stick: rotation and vertical
-	var rotate_y = Input.get_joy_axis(0, JOY_AXIS_RIGHT_X)  # Yaw rotation
-	var move_y = -Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)  # Vertical (inverted)
-	
+	# Gamepad input — calibrated through JoystickConfig (Settings → Joystick).
+	# Each axis returns [-1, 1] with deadzone, invert and curve already applied.
+	var move_x := JoystickConfig.get_axis("slew_strafe")
+	var move_z := JoystickConfig.get_axis("slew_forward")
+	var rotate_y := JoystickConfig.get_axis("slew_yaw")
+	var move_y := JoystickConfig.get_axis("slew_vertical")
+
 	# Also support keyboard for vertical movement
 	if Input.is_key_pressed(KEY_Q) or Input.is_key_pressed(KEY_PAGEUP):
 		move_y = 1.0
@@ -941,16 +948,6 @@ func handle_slew_mode(delta: float) -> void:
 		move_x = -1.0
 	elif Input.is_key_pressed(KEY_D):
 		move_x = 1.0
-	
-	# Apply deadzone
-	if abs(move_x) < 0.1:
-		move_x = 0.0
-	if abs(move_z) < 0.1:
-		move_z = 0.0
-	if abs(rotate_y) < 0.1:
-		rotate_y = 0.0
-	if abs(move_y) < 0.1:
-		move_y = 0.0
 	
 	# Calculate movement in world space based on aircraft heading
 	var current_rotation = ac_node.rotation.y
@@ -987,6 +984,20 @@ func handle_slew_mode(delta: float) -> void:
 	$Control/Label6.text = "Godot: X=%.1f Y=%.1f Z=%.1f" % [godot_pos.x, godot_pos.y, godot_pos.z]
 	$Control/Label7.text = "Swiss E: %s, N: %s" % [format_swiss_coord(swiss_e), format_swiss_coord(swiss_n)]
 	$Control/Label8.text = "Heading: %.0f°" % heading_deg
+
+
+## Read a joystick axis with a deadzone, returning 0 inside the deadzone and
+## a smoothly rescaled value outside so resting drift never produces motion.
+##
+## Deprecated: gameplay code should call JoystickConfig.get_axis(action) so
+## bindings remain user-configurable. Kept as a fallback for spots that have
+## not yet been migrated.
+func _slew_axis(axis: int, deadzone: float) -> float:
+	var v := Input.get_joy_axis(0, axis)
+	if absf(v) < deadzone:
+		return 0.0
+	var sign_v := signf(v)
+	return sign_v * (absf(v) - deadzone) / (1.0 - deadzone)
 
 
 # Function to cycle between camera modes: Cockpit → Orbit → Chase → Cockpit
@@ -1360,7 +1371,8 @@ func animate_control_surfaces() -> void:
 		right_flap_node.rotation_degrees.x = right_flap_base_transform.basis.get_euler().x * (180.0/PI) + flap_angle
 	
 	# Animate mixture lever position (reflects current mixture_value)
-	# Base transform = idle/cutoff (Blender default); push in (-Z) for full rich
+	# Base transform = Blender rest pose for mixture = 0.0 (cutoff, pulled out).
+	# Push lever forward along local -Z as mixture increases (same as throttle).
 	if mixture_lever_node and not _mixture_dragging:
 		mixture_lever_node.transform = mixture_lever_base_transform
 		var travel_offset := -mixture_value * MIXTURE_LEVER_TRAVEL
@@ -1375,10 +1387,10 @@ func animate_control_surfaces() -> void:
 		throttle_lever_node.translate_object_local(Vector3(0, 0, t_offset))
 	
 	# Animate magneto switch rotation (rotates around Z axis)
-	# Base transform = model default. MAGNETO_BASE_POSITION = which switch position the model represents.
+	# Base transform = Blender rest pose for the BOTH position (MAGNETO_DEFAULT_POSITION).
 	if magneto_switch_node and not _magneto_dragging:
 		magneto_switch_node.transform = magneto_switch_base_transform
-		var angle_offset := float(magneto_position - MAGNETO_BASE_POSITION) * MAGNETO_STEP_ANGLE
+		var angle_offset := float(magneto_position - MAGNETO_DEFAULT_POSITION) * MAGNETO_STEP_ANGLE
 		magneto_switch_node.rotate_object_local(Vector3.FORWARD, deg_to_rad(angle_offset))
 	
 	# Animate flap lever position (slides along Y axis)
@@ -2037,10 +2049,9 @@ func _raycast_hits_body(screen_pos: Vector2, body: StaticBody3D, layer: int) -> 
 
 ## Apply the current mixture_value to both the lever animation and JSBSim.
 func _apply_mixture_value() -> void:
-	# Animate lever: slide along local Z axis
-	# Base transform = idle/cutoff (Blender default)
-	# mixture_value 1.0 = full rich = pushed in (-Z from base)
-	# mixture_value 0.0 = cutoff = at base position
+	# The captured base_transform is the Blender rest pose, which represents
+	# mixture = 0.0 (cutoff, lever pulled out). Push the lever forward along
+	# local -Z as the pilot enriches the mixture (same convention as throttle).
 	if mixture_lever_node:
 		mixture_lever_node.transform = mixture_lever_base_transform
 		var travel_offset := -mixture_value * MIXTURE_LEVER_TRAVEL
@@ -2102,10 +2113,11 @@ func _apply_magneto_position() -> void:
 		_magneto_last_printed_pos = magneto_position
 		print("Magneto: %s" % MAGNETO_NAMES[magneto_position])
 	
-	# Update visual rotation
+	# The captured base_transform is the Blender rest pose at the default
+	# startup position (BOTH = 3). Offsets are measured relative to that.
 	if magneto_switch_node:
 		magneto_switch_node.transform = magneto_switch_base_transform
-		var angle_offset := float(magneto_position - MAGNETO_BASE_POSITION) * MAGNETO_STEP_ANGLE
+		var angle_offset := float(magneto_position - MAGNETO_DEFAULT_POSITION) * MAGNETO_STEP_ANGLE
 		magneto_switch_node.rotate_object_local(Vector3.FORWARD, deg_to_rad(angle_offset))
 	
 	# Send to JSBSim

@@ -133,6 +133,8 @@ func _build_ui() -> void:
 	_build_sound_section(content)
 	content.add_child(HSeparator.new())
 	_build_realism_section(content)
+	content.add_child(HSeparator.new())
+	_build_joystick_section(content)
 
 	# ── Bottom buttons ─────────────────────────────────────────────────
 	main_vbox.add_child(HSeparator.new())
@@ -336,6 +338,18 @@ func _build_realism_section(parent: VBoxContainer) -> void:
 	_add_slider_row(parent, "wind_direction_deg", "Wind Direction:", 0, 360, 10, "°")
 
 
+# ── Section: Joystick ──────────────────────────────────────────────────
+
+var _joystick_panel: Node = null
+
+func _build_joystick_section(parent: VBoxContainer) -> void:
+	var panel_script: GDScript = load("res://joystick_settings_panel.gd")
+	var panel = VBoxContainer.new()
+	panel.set_script(panel_script)
+	parent.add_child(panel)
+	_joystick_panel = panel
+
+
 # ── Settings I/O ───────────────────────────────────────────────────────
 
 func _apply_to_ui() -> void:
@@ -438,6 +452,8 @@ func _get_defaults() -> Dictionary:
 
 func _on_save() -> void:
 	_save_settings()
+	if Engine.has_singleton("JoystickConfig") or get_node_or_null("/root/JoystickConfig") != null:
+		get_node("/root/JoystickConfig").save()
 	hide_settings()
 	closed.emit()
 
@@ -446,6 +462,13 @@ func _on_cancel() -> void:
 	# Revert UI to last saved state
 	_load_settings()
 	_apply_to_ui()
+	# Reload joystick bindings from disk so unsaved changes are discarded.
+	var jc := get_node_or_null("/root/JoystickConfig")
+	if jc:
+		jc.reset_to_defaults()
+		jc._load()
+		if _joystick_panel and _joystick_panel.has_method("refresh"):
+			_joystick_panel.refresh()
 	hide_settings()
 	closed.emit()
 
@@ -453,6 +476,11 @@ func _on_cancel() -> void:
 func _on_restore_defaults() -> void:
 	settings = _get_defaults()
 	_apply_to_ui()
+	var jc := get_node_or_null("/root/JoystickConfig")
+	if jc:
+		jc.reset_to_defaults()
+		if _joystick_panel and _joystick_panel.has_method("refresh"):
+			_joystick_panel.refresh()
 
 
 func _input(event: InputEvent) -> void:
