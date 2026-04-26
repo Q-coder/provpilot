@@ -1,9 +1,11 @@
 extends Node3D
 
 # Terrain coordinate system (Swiss LV95)
-# These define the relationship between Godot world coords and Swiss coordinates
-# Terrain origin — aligned to 1024m tile grid for streaming.
-# Updated at runtime by floating-origin rebase.
+# These define the relationship between Godot world coords and Swiss coordinates.
+# MUST match Scenery3D's origin_east / origin_north (read from
+# ProjectSettings in _ready), otherwise the HUD, teleport, and JSBSim will
+# disagree with the tiles that Scenery3D actually places. Scenery3D's origin
+# is fixed at startup, so there is no runtime floating-origin rebase.
 var TERRAIN_CENTER_E: float = 2682880.0  # Swiss Easting at Godot X=0
 var TERRAIN_CENTER_N: float = 1283072.0  # Swiss Northing at Godot Z=0
 
@@ -114,6 +116,8 @@ var _pre_slew_airspeed_kts: float = 0.0  # saved airspeed for slew mode restore
 var _loading_screen: CanvasLayer = null
 var _loading_done: bool = false
 var _fly_loading: bool = false   # True while loading after user clicks Fly!
+var _fly_loading_start_msec: int = 0  # Timestamp when fly loading started (ms)
+const FLY_LOADING_MAX_MSEC: int = 45000  # Hard cap on fly loading screen (45s)
 var _welcome_screen: CanvasLayer = null
 var _settings_screen: CanvasLayer = null
 
@@ -248,6 +252,11 @@ func _ready() -> void:
 	camera1_base_transform = camera1.transform  # Store base transform
 	print("Camera1: ", camera1)
 	print("Camera2: ", camera2)
+
+	# The C172P .blend import bakes normals with the opposite handedness from
+	# Godot's runtime convention, so without this the sun lights the underside
+	# of the wings instead of the top. Flip them in-place once at startup.
+	_flip_normals_recursive(ac_node)
 	
 	# Set Camera1 as the active one initially
 	active_camera.current = true
@@ -386,6 +395,14 @@ func _ready() -> void:
 	else:
 		print("WARNING: Scenery3D node not found - ground collision may not work correctly!")
 
+	# Lock TERRAIN_CENTER to Scenery3D's own origin (from ProjectSettings).
+	# Swiss <-> Godot conversions and tile placement must share the same origin.
+	if ProjectSettings.has_setting("scenery3d/origin_east"):
+		TERRAIN_CENTER_E = float(ProjectSettings.get_setting("scenery3d/origin_east"))
+	if ProjectSettings.has_setting("scenery3d/origin_north"):
+		TERRAIN_CENTER_N = float(ProjectSettings.get_setting("scenery3d/origin_north"))
+	print("TERRAIN_CENTER locked to Scenery3D origin: E=%d N=%d" % [int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N)])
+
 	# Print the aircraft model hierarchy to find control surfaces
 	print("=== Aircraft Node Hierarchy ===")
 	print_node_tree($AC, 0)
@@ -512,16 +529,52 @@ func _initialize_jsbsim_on_terrain() -> void:
 	print("=== Terrain initialization queued for first physics frame ===")
 
 
+## Recursively traverses node and re-bakes any MeshInstance3D meshes with
+## inverted vertex normals. The C172P .blend import uses the opposite
+## handedness from Godot's runtime lighting, so its top surfaces are dark
+## under a downward-pointing sun without this fix.
+func _flip_normals_recursive(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mi: MeshInstance3D = node
+		var mesh: Mesh = mi.mesh
+		if mesh:
+			var new_mesh := ArrayMesh.new()
+			for s in range(mesh.get_surface_count()):
+				var arrays: Array = mesh.surface_get_arrays(s)
+				var normals = arrays[Mesh.ARRAY_NORMAL]
+				if normals != null:
+					var flipped := PackedVector3Array()
+					flipped.resize(normals.size())
+					for i in range(normals.size()):
+						flipped[i] = -normals[i]
+					arrays[Mesh.ARRAY_NORMAL] = flipped
+				new_mesh.add_surface_from_arrays(mesh.surface_get_primitive_type(s), arrays)
+				var mat = mesh.surface_get_material(s)
+				if mat:
+					new_mesh.surface_set_material(s, mat)
+			mi.mesh = new_mesh
+	for child in node.get_children():
+		_flip_normals_recursive(child)
+
+
 ## Query terrain elevation at a world XZ position via Scenery3D.
-## Returns 0.0 when Scenery3D is unavailable or has no data at the location.
+## Returns NAN when Scenery3D has no data at the location (tile not loaded).
+## Callers that need a numeric fallback should check is_nan() explicitly —
+## feeding 0.0 to JSBSim as ground elevation causes catastrophic ground impact
+## spikes when the real tile (hundreds of metres ASL) finally loads.
 func _terrain_elevation_at(x: float, z: float) -> float:
 	if not is_instance_valid(scenery3d_node):
-		return 0.0
+		return NAN
 	if not scenery3d_node.has_method("get_elevation"):
-		return 0.0
+		return NAN
 	var h: float = scenery3d_node.get_elevation(x, z)
-	if is_nan(h):
-		return 0.0
+	# Older builds of the Scenery3D extension returned 0.0 instead of NaN
+	# when a tile was not yet loaded. Swiss LV95 terrain is never below
+	# ~193 m ASL, so treat a returned 0.0 as "no data" defensively. This
+	# prevents JSBSim from being initialised at sea level while we wait
+	# for the real tile to stream in.
+	if h == 0.0 or is_nan(h):
+		return NAN
 	return h
 
 
@@ -536,10 +589,24 @@ func _do_deferred_terrain_init() -> void:
 		print("Cannot initialize JSBSim on terrain - missing AC or JSBGodot node")
 		return
 
-	# Use stored target position (set by _do_first_flight)
-	var target_x: float = _first_flight_target.get("godot_x", 980.8)
-	var target_z: float = _first_flight_target.get("godot_z", -227.1)
-	var target_heading: float = _first_flight_target.get("heading_deg", 250.0)
+	# Use the position/heading already set by _do_first_flight on the AC node.
+	# JSBSim's _physics_process may try to overwrite ac_node.global_position
+	# from its own (default) IC before we get here, so re-apply the target.
+	var target_x: float
+	var target_z: float
+	var target_heading: float
+	if _first_flight_target.has("godot_x"):
+		target_x = _first_flight_target["godot_x"]
+		target_z = _first_flight_target["godot_z"]
+		target_heading = _first_flight_target["heading_deg"]
+	else:
+		push_error("_do_deferred_terrain_init: _first_flight_target empty — using current AC position as fallback")
+		target_x = ac_node.global_position.x
+		target_z = ac_node.global_position.z
+		target_heading = -rad_to_deg(ac_node.rotation.y)
+
+	print("=== _do_deferred_terrain_init target: x=%.1f z=%.1f hdg=%.1f° (dict_keys=%s) ===" % [
+		target_x, target_z, target_heading, str(_first_flight_target.keys())])
 
 	# Move aircraft to target position
 	ac_node.global_position.x = target_x
@@ -548,11 +615,16 @@ func _do_deferred_terrain_init() -> void:
 
 	var start_pos = Vector3(ac_node.global_position.x, 0, ac_node.global_position.z)
 	var api_height: float = _terrain_elevation_at(start_pos.x, start_pos.z)
+	# Tile not yet loaded — retry next frame rather than hand 0.0 to JSBSim.
+	if is_nan(api_height):
+		_pending_terrain_init = true
+		return
 	print("=== Scenery3D get_elevation(%.1f, %.1f) = %.1f m ===" % [start_pos.x, start_pos.z, api_height])
 
 	# Position aircraft on the terrain (Godot Y coordinate)
 	# JSBSim will take over position control after initialization.
-	var gear_height = 2.0
+	# Spawn just a hair above terrain so JSBSim's gear springs barely have to settle.
+	var gear_height = 0.5
 	var new_y = api_height + gear_height
 	print("=== Initial aircraft position at Godot Y: %.1f m (terrain: %.1f m) ===" % [new_y, api_height])
 	ac_node.global_position.y = new_y
@@ -561,8 +633,11 @@ func _do_deferred_terrain_init() -> void:
 	jsbsim_elevation_offset = 0.0
 	var jsbsim_terrain_elevation = api_height + jsbsim_elevation_offset
 
-	# Small vertical offset so the visual model's wheels don't clip terrain.
-	const WHEEL_GROUND_CLEARANCE: float = 0.1
+	# JSBSim reports CG altitude. The C172P CG sits ~1.32 m above the wheel
+	# contact points (CG z=36.5" vs main gear z=-15.5" in c172p.xml). The
+	# visual model's origin is also near CG, so without this compensation the
+	# wheels render ~1.3 m above terrain when JSBSim has them on the ground.
+	const WHEEL_GROUND_CLEARANCE: float = -1.1
 	jsb_node.set_godot_terrain_y_offset(WHEEL_GROUND_CLEARANCE)
 
 	var start_godot_pos = ac_node.global_position
@@ -592,6 +667,10 @@ func _process_rebase_cooldown() -> void:
 		if _rebase_cooldown == 0:
 			# Terrain should be loaded by now — update height at pin position
 			var h: float = _terrain_elevation_at(_teleport_pin_pos.x, _teleport_pin_pos.z)
+			if is_nan(h):
+				# Tile still not loaded — keep pinning and retry next frame.
+				_rebase_cooldown = 1
+				return
 			if h > 0.1:
 				_teleport_pin_pos.y = h + 2.1  # terrain + gear clearance
 				ac_guard.global_position = _teleport_pin_pos
@@ -599,7 +678,8 @@ func _process_rebase_cooldown() -> void:
 			# Re-initialize JSBSim at the final pinned position and release
 			if jsb_node:
 				if jsb_node.has_method("reinitialize_from_godot_position"):
-					jsb_node.reinitialize_from_godot_position(ac_guard.global_position, ac_guard.rotation.y)
+					var h_terr: float = _terrain_elevation_at(ac_guard.global_position.x, ac_guard.global_position.z)
+					jsb_node.reinitialize_from_godot_position(ac_guard.global_position, ac_guard.rotation.y, h_terr)
 				_update_terrain_elevation()
 				if jsb_node.has_method("set_slew_mode"):
 					jsb_node.set_slew_mode(false)
@@ -626,6 +706,13 @@ func _update_terrain_elevation() -> void:
 
 	var ac_position = ac_node.global_position
 	var terrain_height_godot: float = _terrain_elevation_at(ac_position.x, ac_position.z)
+
+	# If the tile under the aircraft hasn't streamed in yet, do NOT push 0.0
+	# to JSBSim — that would make it think the ground is at sea level and
+	# produce a multi-hundred-metre collision spike when the real tile loads.
+	# Leaving the previous elevation in place keeps physics stable.
+	if is_nan(terrain_height_godot):
+		return
 
 	# Convert Godot Y coordinate to JSBSim ASL elevation
 	var terrain_elevation_jsbsim = terrain_height_godot + jsbsim_elevation_offset
@@ -798,15 +885,24 @@ func toggle_slew_mode() -> void:
 		if ac_node and jsb_node:
 			var pos = ac_node.global_position
 			var heading = ac_node.rotation.y
+			# Query terrain under aircraft and lift it above ground if it sank below
+			# the surface during slew. Without this, ic->RunIC() fires gear-collision
+			# forces for the first frame and the aircraft bounces.
+			var terr_h: float = _terrain_elevation_at(pos.x, pos.z)
+			if not is_nan(terr_h):
+				var min_y: float = terr_h + 2.0  # 2 m gear clearance
+				if pos.y < min_y:
+					pos.y = min_y
+					ac_node.global_position = pos
 			print("  Reinitializing JSBSim at Godot position: ", pos)
 			print("  Heading: ", rad_to_deg(heading), " degrees")
 			print("  Restoring airspeed: %.1f kts" % _pre_slew_airspeed_kts)
 			
 			# Reinitialize with preserved airspeed
 			if jsb_node.has_method("reinitialize_from_godot_position_with_speed"):
-				jsb_node.reinitialize_from_godot_position_with_speed(pos, heading, _pre_slew_airspeed_kts)
+				jsb_node.reinitialize_from_godot_position_with_speed(pos, heading, _pre_slew_airspeed_kts, terr_h)
 			elif jsb_node.has_method("reinitialize_from_godot_position"):
-				jsb_node.reinitialize_from_godot_position(pos, heading)
+				jsb_node.reinitialize_from_godot_position(pos, heading, terr_h)
 			
 			# Update terrain elevation at new position
 			_update_terrain_elevation()
@@ -1359,15 +1455,51 @@ func _create_loading_screen() -> void:
 
 func _update_loading_progress(is_fly_loading: bool) -> void:
 	## Monitor Scenery3D load state and update the loading bar.
-	var scenery_ready := false
-	if is_instance_valid(scenery3d_node):
-		if scenery3d_node.has_method("is_ready"):
-			scenery_ready = bool(scenery3d_node.is_ready())
-		else:
+	## Scenery3D doesn't expose a load-progress API, so we sample terrain
+	## elevation at the target position and four ring points; the fraction
+	## of points that have non-NaN elevations approximates how much of the
+	## near terrain ring has actually streamed in. The C++ tile manager now
+	## throttles JPEG decode/upload (ORTHO_DECODES_PER_FRAME=3, CHUNKS_PER_FRAME=1)
+	## so the initial fly-to-airport load can take many seconds — the bar
+	## reflects that progress instead of dismissing immediately.
+	const RING_RADIUS_M := 200.0  # Sample radius around target (≈ tile size)
+	var sample_x := 0.0
+	var sample_z := 0.0
+	if is_fly_loading and _first_flight_target.has("godot_x"):
+		sample_x = float(_first_flight_target["godot_x"])
+		sample_z = float(_first_flight_target["godot_z"])
+	else:
+		var ac_node := get_node_or_null("AC")
+		if ac_node:
+			sample_x = ac_node.global_position.x
+			sample_z = ac_node.global_position.z
+
+	var samples := [
+		Vector2(sample_x, sample_z),
+		Vector2(sample_x + RING_RADIUS_M, sample_z),
+		Vector2(sample_x - RING_RADIUS_M, sample_z),
+		Vector2(sample_x, sample_z + RING_RADIUS_M),
+		Vector2(sample_x, sample_z - RING_RADIUS_M),
+	]
+	var total := samples.size()
+	var loaded := 0
+	if is_instance_valid(scenery3d_node) and scenery3d_node.has_method("get_elevation"):
+		for s in samples:
+			var h: float = scenery3d_node.get_elevation(s.x, s.y)
+			if not is_nan(h) and h != 0.0:
+				loaded += 1
+	var p_scenery := float(loaded) / float(total)
+	var scenery_ready := loaded >= total
+
+	# Hard timeout safety net — if scenery never reports ready (e.g. over
+	# nodata territory), don't trap the user on the loading screen forever.
+	if is_fly_loading and _fly_loading_start_msec > 0:
+		var elapsed := Time.get_ticks_msec() - _fly_loading_start_msec
+		if elapsed > FLY_LOADING_MAX_MSEC and loaded > 0:
 			scenery_ready = true
+			p_scenery = 1.0
 
 	var cooldown_pending := _rebase_cooldown if is_fly_loading else 0
-	var p_scenery := 1.0 if scenery_ready else 0.0
 	var p_cooldown := 1.0 - (float(cooldown_pending) / float(maxi(1, REBASE_COOLDOWN_FRAMES)))
 
 	var progress: float
@@ -1379,7 +1511,7 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 	if _loading_screen:
 		_loading_screen.set_progress(progress)
 		if not scenery_ready:
-			_loading_screen.set_status("Loading scenery...")
+			_loading_screen.set_status("Loading scenery... (%d/%d tiles)" % [loaded, total])
 		elif cooldown_pending > 0:
 			_loading_screen.set_status("Stabilizing aircraft...")
 		else:
@@ -1416,13 +1548,15 @@ func _create_welcome_screen() -> void:
 	_welcome_screen.settings_requested.connect(_on_welcome_settings_requested)
 
 	# Provide a default airport list (Scenery3D no longer ships POI data).
+	# LSPF Schaffhausen-Schmerlat: small grass airfield, runway 07/25, 600 m.
+	# Coordinates verified against visible scenery (≈ 47°41′28″N 8°33′13″E).
 	var default_airports: Array[Dictionary] = [
 		{
 			"icao": "LSPF",
 			"name": "Schaffhausen",
 			"type": "small_airport",
-			"center_e": 2688980.0,
-			"center_n": 1283152.0,
+			"center_e": 2681881.0,
+			"center_n": 1282845.0,
 			"elevation_m": 464,
 			"runways": [
 				{
@@ -1430,8 +1564,10 @@ func _create_welcome_screen() -> void:
 					"heading_deg": 70,
 					"length_m": 600,
 					"surface": "grass",
-					"threshold_07": {"e": 2688680.0, "n": 1283100.0},
-					"threshold_25": {"e": 2689280.0, "n": 1283204.0},
+					# Thresholds derived from centre ±300 m along heading 070°:
+					#   dE = 300·sin70° ≈ 282,  dN = 300·cos70° ≈ 103
+					"threshold_07": {"e": 2681599.0, "n": 1282742.0},
+					"threshold_25": {"e": 2682163.0, "n": 1282948.0},
 				},
 			],
 		},
@@ -1457,6 +1593,7 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 
 	# Show loading screen while destination loads
 	_fly_loading = true
+	_fly_loading_start_msec = Time.get_ticks_msec()
 	if _loading_screen:
 		_loading_screen.set_progress(0.0)
 		_loading_screen.set_status("Loading terrain...")
@@ -1479,15 +1616,9 @@ func _do_first_flight(swiss_e: float, swiss_n: float, heading_deg: float) -> voi
 		push_error("_do_first_flight: missing AC node")
 		return
 
-	# 1. Set terrain center aligned to 1024m grid around target
-	TERRAIN_CENTER_E = roundf(swiss_e / 1024.0) * 1024.0
-	TERRAIN_CENTER_N = roundf(swiss_n / 1024.0) * 1024.0
+	# TERRAIN_CENTER is fixed (matches Scenery3D's origin_east/north from
+	# ProjectSettings). Compute Godot position relative to that origin.
 	print("  Terrain center: E=%d N=%d" % [int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N)])
-
-	# Update TerrainStreamer center coordinates (including internal tile indices)
-	# (no-op: Scenery3D tracks its own tile grid internally)
-
-	# 2. Compute Godot position for the target
 	var godot_x = TERRAIN_CENTER_E - swiss_e
 	var godot_z = swiss_n - TERRAIN_CENTER_N
 
@@ -1553,27 +1684,8 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	if jsb_node.has_method("set_slew_mode"):
 		jsb_node.set_slew_mode(true)
 
-	# 2. Snap new terrain center to 1024m grid around target
-	var old_center_e = TERRAIN_CENTER_E
-	var old_center_n = TERRAIN_CENTER_N
-	TERRAIN_CENTER_E = roundf(swiss_e / 1024.0) * 1024.0
-	TERRAIN_CENTER_N = roundf(swiss_n / 1024.0) * 1024.0
-
-	# 3. Compute Godot-space shift from center change
-	var shift := Vector3(
-		TERRAIN_CENTER_E - old_center_e,
-		0.0,
-		-(TERRAIN_CENTER_N - old_center_n)
-	)
-
-	# 4. Update JSBSim's coordinate reference
-	if shift != Vector3.ZERO:
-		jsb_node.adjust_origin(shift)
-
-	# 5. Scenery3D picks up the new center via its own update loop;
-	#    no manual loader shifts are required.
-
-	# 7. Compute new Godot position from Swiss coords
+	# TERRAIN_CENTER is fixed (matches Scenery3D origin). No rebase — just
+	# compute new Godot position relative to the fixed origin.
 	var new_godot_x = TERRAIN_CENTER_E - swiss_e
 	var new_godot_z = swiss_n - TERRAIN_CENTER_N
 
@@ -1616,7 +1728,7 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	#     JSBSim stays paused during cooldown; we reinit again when terrain
 	#     has loaded and the cooldown expires (in _process).
 	if jsb_node.has_method("reinitialize_from_godot_position"):
-		jsb_node.reinitialize_from_godot_position(ac_node.global_position, ac_node.rotation.y)
+		jsb_node.reinitialize_from_godot_position(ac_node.global_position, ac_node.rotation.y, terrain_height)
 	_update_terrain_elevation()
 
 	# 11. Keep JSBSim in slew mode — physics stays paused until cooldown expires.

@@ -125,11 +125,14 @@ namespace godot
         void set_slew_mode(bool enabled);
         bool get_slew_mode() const;
         
-        // Reinitialize JSBSim from current Godot position (used after slew mode)
-        void reinitialize_from_godot_position(Vector3 godot_pos, double heading_rad);
+        // Reinitialize JSBSim from current Godot position (used after slew mode).
+        // terrain_elevation_m is the ground elevation under the aircraft, in meters ASL.
+        // Pass NaN if unknown — the function will fall back to (altitude - 2 m).
+        void reinitialize_from_godot_position(Vector3 godot_pos, double heading_rad, double terrain_elevation_m);
         
-        // Reinitialize with airspeed preservation (used when exiting slew mode)
-        void reinitialize_from_godot_position_with_speed(Vector3 godot_pos, double heading_rad, double airspeed_kts);
+        // Reinitialize with airspeed preservation (used when exiting slew mode).
+        // terrain_elevation_m is the ground elevation under the aircraft, in meters ASL.
+        void reinitialize_from_godot_position_with_speed(Vector3 godot_pos, double heading_rad, double airspeed_kts, double terrain_elevation_m);
         
         // Floating origin: shift the lat_lon_alt_to_local reference by godot_shift
         // so all Godot positions shift by that amount.  Must match the terrain

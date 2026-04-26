@@ -13,6 +13,7 @@
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/variant/utility_functions.hpp> // For UtilityFunctions::print
+#include <cmath>
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -70,8 +71,8 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("is_initialized"), &JSBGodot::is_initialized);
     ClassDB::bind_method(D_METHOD("set_slew_mode", "enabled"), &JSBGodot::set_slew_mode);
     ClassDB::bind_method(D_METHOD("get_slew_mode"), &JSBGodot::get_slew_mode);
-    ClassDB::bind_method(D_METHOD("reinitialize_from_godot_position", "godot_pos", "heading_rad"), &JSBGodot::reinitialize_from_godot_position);
-    ClassDB::bind_method(D_METHOD("reinitialize_from_godot_position_with_speed", "godot_pos", "heading_rad", "airspeed_kts"), &JSBGodot::reinitialize_from_godot_position_with_speed);
+    ClassDB::bind_method(D_METHOD("reinitialize_from_godot_position", "godot_pos", "heading_rad", "terrain_elevation_m"), &JSBGodot::reinitialize_from_godot_position);
+    ClassDB::bind_method(D_METHOD("reinitialize_from_godot_position_with_speed", "godot_pos", "heading_rad", "airspeed_kts", "terrain_elevation_m"), &JSBGodot::reinitialize_from_godot_position_with_speed);
     ClassDB::bind_method(D_METHOD("adjust_origin", "godot_shift"), &JSBGodot::adjust_origin);
     ClassDB::bind_method(D_METHOD("set_godot_terrain_y_offset", "offset_m"), &JSBGodot::set_godot_terrain_y_offset);
     ClassDB::bind_method(D_METHOD("get_godot_terrain_y_offset"), &JSBGodot::get_godot_terrain_y_offset);
@@ -344,7 +345,10 @@ void JSBGodot::initialize_at_terrain(double terrain_elevation_m, Vector3 godot_p
     lat_lon_alt_to_local(0.0f, 0.0f, 0.0f);
     
     double terrain_ft = terrain_elevation_m * 3.28084;  // meters to feet
-    double gear_height_ft = 4.0;  // Approximate C172 gear height in feet
+    // C172P CG-above-wheels distance from c172p.xml: CG z=36.5", main gear
+    // z=-15.5" → 52" = 4.33 ft. Spawn the aircraft right at its rest height
+    // so the gear springs don't have to oscillate to settle.
+    double gear_height_ft = 4.33;
     double aircraft_altitude_ft = terrain_ft + gear_height_ft;
     
     // Convert Godot XZ position to lat/lon offsets
@@ -424,7 +428,7 @@ bool JSBGodot::get_slew_mode() const
     return slew_mode;
 }
 
-void JSBGodot::reinitialize_from_godot_position(Vector3 godot_pos, double heading_rad)
+void JSBGodot::reinitialize_from_godot_position(Vector3 godot_pos, double heading_rad, double terrain_elevation_m)
 {
     if (!FDMExec)
     {
@@ -436,8 +440,10 @@ void JSBGodot::reinitialize_from_godot_position(Vector3 godot_pos, double headin
     double altitude_m = godot_pos.y;
     double altitude_ft = altitude_m * 3.28084;
     
-    // Query terrain height at current position for terrain elevation
-    double terrain_ft = (altitude_m - 2.0) * 3.28084;  // Assume 2m AGL as default
+    // Use the supplied terrain elevation (queried from Scenery3D in GDScript).
+    // Fall back to (altitude - 2 m) only if caller passed NaN.
+    double terrain_m = std::isnan(terrain_elevation_m) ? (altitude_m - 2.0) : terrain_elevation_m;
+    double terrain_ft = terrain_m * 3.28084;
     
     UtilityFunctions::print("Reinitializing JSBSim from Godot position:");
     UtilityFunctions::print("  Godot pos: X=", godot_pos.x, " Y=", godot_pos.y, " Z=", godot_pos.z);
@@ -491,7 +497,7 @@ void JSBGodot::reinitialize_from_godot_position(Vector3 godot_pos, double headin
     UtilityFunctions::print("JSBSim reinitialized from Godot position successfully!");
 }
 
-void JSBGodot::reinitialize_from_godot_position_with_speed(Vector3 godot_pos, double heading_rad, double airspeed_kts)
+void JSBGodot::reinitialize_from_godot_position_with_speed(Vector3 godot_pos, double heading_rad, double airspeed_kts, double terrain_elevation_m)
 {
     if (!FDMExec)
     {
@@ -501,7 +507,8 @@ void JSBGodot::reinitialize_from_godot_position_with_speed(Vector3 godot_pos, do
     
     double altitude_m = godot_pos.y;
     double altitude_ft = altitude_m * 3.28084;
-    double terrain_ft = (altitude_m - 2.0) * 3.28084;
+    double terrain_m = std::isnan(terrain_elevation_m) ? (altitude_m - 2.0) : terrain_elevation_m;
+    double terrain_ft = terrain_m * 3.28084;
     
     UtilityFunctions::print("Reinitializing JSBSim with speed:");
     UtilityFunctions::print("  Godot pos: X=", godot_pos.x, " Y=", godot_pos.y, " Z=", godot_pos.z);

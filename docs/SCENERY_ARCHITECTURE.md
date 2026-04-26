@@ -349,15 +349,31 @@ GDExtension. The Godot project contains only glue scripts.
 | `node_3d.gd` | Main scene script; wires input, HUD, cameras; calls `Scenery3D.get_elevation(x, z)` for JSBSim terrain height |
 | `welcome_screen.gd` | Startup aircraft & airport selection UI (currently seeds one hardcoded LSPF entry) |
 | `settings_screen.gd` | Settings UI (graphics, sound, realism, paths) |
-| `loading_screen.gd` | Progress overlay that polls `Scenery3D.is_ready()` |
+| `loading_screen.gd` | Progress overlay used both at startup and after a Fly! request; `node_3d.gd::_update_loading_progress()` drives it by sampling `Scenery3D.get_elevation()` on a 5-point ring around the spawn position so the bar reflects how many near-terrain tiles have actually streamed in |
 | `custom_scenery_loader.gd` | Scans `custom/*/package.json`, discovers packages by type |
 | `object_loader.gd` | Loads custom scenery objects by proximity, samples elevation via Scenery3D |
 
 ### Performance
 
 All heavy I/O and meshing happens inside the Scenery3D extension on a
-background thread pool (4 workers). The main thread only runs budgeted mesh
-generation (200K vertices/frame cap) and proximity checks for custom objects.
+background thread pool (4 workers). The main thread runs budgeted work only:
+
+- `VERTEX_BUDGET_PER_FRAME = 200000` — mesh build cost.
+- `ORTHO_DECODES_PER_FRAME = 3` — tile results carrying a JPEG ortho are
+  deferred once the per-frame quota is hit.
+- `CHUNKS_PER_FRAME = 1` — each far chunk decodes up to `chunk_size²` mip3
+  JPEGs and builds a composite texture, so one per frame is plenty.
+
+These caps spread the JPEG decode + texture upload work across many frames so
+the simulation no longer stalls when the camera crosses into a fresh 8×8 far
+chunk. The trade-off is that the very first load after `Fly!` takes several
+seconds — `node_3d.gd` shows this on the loading screen instead of freezing
+silently.
+
+A far chunk is dropped only after every individual tile in its footprint that
+lies within `load_radius` has finished loading (or is marked `no_data`),
+preventing the world-gap that used to appear briefly when the camera moved
+into a new chunk.
 
 Because the project runs on `precision=double` Godot, **no floating-origin
 rebasing is needed** — world coordinates stay numerically stable across all of

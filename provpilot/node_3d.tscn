@@ -5,14 +5,13 @@
 [ext_resource type="PackedScene" uid="uid://c8env1r0nment" path="res://environment.tscn" id="6_envir"]
 
 [node name="node_3d" type="Node3D" unique_id=778369784]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.3009338, 0)
 script = ExtResource("1_1r08c")
 
 [node name="AC" parent="." unique_id=754408209 instance=ExtResource("2_yxcfd")]
 transform = Transform3D(0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1, -1257.9392, 618.0513, -1598.5332)
 
 [node name="Environment" parent="." unique_id=1222445889 instance=ExtResource("6_envir")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 415.02835, 0)
+transform = Transform3D(-0.8124194877878104, -1.9342809112031988e-17, 0.5830733880589918, -0.3520715541081283, 0.797120463207206, -0.4905553872135308, -0.464779729173378, -0.6038203103045885, -0.6475961984239802, -1511.0961433885584, 1452.4076252391255, 1381.873410553254)
 
 [node name="Control" type="Control" parent="." unique_id=1312208183]
 layout_mode = 3
@@ -105,5 +104,12 @@ scale = Vector2(2, 2)
 
 [node name="Scenery3D" type="Scenery3D" parent="." unique_id=962717072]
 load_radius = 50
+origin_east = 2682880.0
+origin_north = 1283072.0
+data_path = "/Users/gery/provpilot/scenery/Switzerland/terrain"
+data_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/terrain", "/Users/gery/provpilot/scenery/Germany/Baden-Wuertemberg/terrain")
+buildings_path = "/Users/gery/provpilot/scenery/Switzerland/buildings"
+water_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/water")
+road_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/roads")
+orthophoto_path = "/Users/gery/provpilot/scenery/Switzerland/orthophoto"
 top_level = true
-

@@ -60,10 +60,24 @@ double-precision Godot engine optimized for Apple M4 Max. Based on the
    scons platform=macos arch=arm64 precision=double -j$(sysctl -n hw.ncpu)
    ```
 
-   The Scenery3D GDExtension dylib is already checked in under
-   `provpilot/bin/libscenery3d.macos.template_debug.double.arm64.dylib`;
-   rebuild it from the submodule at `provpilot/addons/scenery3d/` only if
-   you change the extension source.
+   The Scenery3D GDExtension dylib is **not** committed (it lives in the
+   gitignored `provpilot/bin/`). Build it from the submodule at
+   `provpilot/addons/scenery3d/` after the first checkout and whenever the
+   submodule pointer is bumped or you change the extension source:
+
+   ```bash
+   cd provpilot/addons/scenery3d
+   git submodule update --init --recursive            # first time only
+   # The double-precision extension_api.json must match the engine; copy
+   # it from the top-level godot-cpp checkout the first time and after a
+   # Godot upgrade:
+   cp ../../../godot-cpp/gdextension/extension_api.json \
+      godot-cpp/gdextension/extension_api.json
+   scons platform=macos arch=arm64 precision=double target=template_debug \
+     -j$(sysctl -n hw.ncpu)
+   cp demo/bin/libscenery3d.macos.template_debug.double.arm64.dylib \
+      ../../bin/
+   ```
 
 7. **Run the editor:**
    ```bash
@@ -103,6 +117,8 @@ The `4.6-macdev` branch contains macOS-specific optimizations to the Godot 4.6 e
 |--------|--------|
 | Single node, no rebase | `provpilot/node_3d.tscn` uses one `Scenery3D` node. All tile lifecycle, LOD, and elevation queries happen on C++ background threads. |
 | No floating origin | `ORIGIN_REBASE_THRESHOLD` and the rebase call sites in `node_3d.gd` were removed — double-precision world coordinates stay stable. |
+| Loading screen polls progress | `node_3d.gd::_update_loading_progress()` samples `Scenery3D.get_elevation()` on a 5-point ring around the spawn position; the bar advances as the near-terrain tiles stream in. The C++ tile manager throttles JPEG decode and texture upload to `ORTHO_DECODES_PER_FRAME = 3` and `CHUNKS_PER_FRAME = 1`, so the initial fly-to-airport load can take many seconds — visible to the user instead of stalling silently. |
+| Chunk → tile hand-off | A far-terrain chunk is dropped only after every individual tile inside its footprint that lies within `load_radius` has finished loading (or is marked `no_data`), preventing the world-gap that used to appear when the camera crossed a chunk boundary. |
 
 ## Performance Impact
 
