@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://deqvll2k5khs0" path="res://node_3d.gd" id="1_1r08c"]
 [ext_resource type="PackedScene" uid="uid://dxgh4imubsngc" path="res://ac.tscn" id="2_yxcfd"]
 [ext_resource type="PackedScene" uid="uid://c8env1r0nment" path="res://environment.tscn" id="6_envir"]
+[ext_resource type="Script" uid="uid://bxu56rw1jxovw" path="res://vegetation_setup.gd" id="veg_setup"]
 
 [node name="node_3d" type="Node3D" unique_id=778369784]
 script = ExtResource("1_1r08c")
@@ -112,4 +113,17 @@ buildings_path = "/Users/gery/provpilot/scenery/Switzerland/buildings"
 water_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/water")
 road_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/roads")
 orthophoto_path = "/Users/gery/provpilot/scenery/Switzerland/orthophoto"
+orthophoto_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/orthophoto")
 top_level = true
+
+[node name="Vegetation" type="S3DVegetationManager" parent="." unique_id=147336970]
+vegetation_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/vegetation")
+origin_east = 2682880.0
+origin_north = 1283072.0
+load_radius_m = 1500
+scale_jitter = 0.15
+height_to_mesh_unit = 0.06
+mesh_pitch_deg = 90.0
+density_fraction = 0.5
+script = ExtResource("veg_setup")
+tree_scene_path = "/Users/gery/provpilot/scenery/Switzerland/trees/Tree_lowpoly.glb"

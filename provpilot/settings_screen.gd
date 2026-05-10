@@ -24,10 +24,24 @@ var settings := {
 	# Paths
 	"scenery_path": "scenery",
 	"jsbsim_path": "jsbsim",
+	# Scenery library (FSX-style)
+	# scenery_areas is an Array of Dictionaries:
+	#   {name: String, path: String, enabled: bool, priority: int}
+	# Lower priority number = checked first (1 = highest, like FSX).
+	# Each path is a *region* directory; asset subdirs (terrain/, orthophoto/,
+	# buildings/, water/, roads/, vegetation/) inside it are auto-detected.
+	"scenery_areas": [],
+	# Roots scanned by "Scan for Scenery" button.
+	"scenery_scan_roots": PackedStringArray([
+		"/Users/gery/provpilot/scenery",
+		"/Volumes/Data1/scenery",
+	]),
+	"skip_white_pixels": true,
 	# Graphics
 	"render_distance": 8,      # terrain load radius in tiles
 	"building_distance": 3,    # building load radius in tiles
 	"shadow_quality": 2,       # 0=off, 1=low, 2=medium, 3=high
+	"tree_density": 2,         # 0=off, 1=low(500 m), 2=medium(1500 m), 3=high(3000 m)
 	"vsync": true,
 	"fullscreen": true,
 	# Sound
@@ -127,6 +141,8 @@ func _build_ui() -> void:
 
 	# ── Sections ───────────────────────────────────────────────────────
 	_build_paths_section(content)
+	content.add_child(HSeparator.new())
+	_build_scenery_sources_section(content)
 	content.add_child(HSeparator.new())
 	_build_graphics_section(content)
 	content.add_child(HSeparator.new())
@@ -304,6 +320,393 @@ func _build_paths_section(parent: VBoxContainer) -> void:
 	_add_path_row(parent, "jsbsim_path", "JSBSim Data:", "jsbsim")
 
 
+# ── Section: Scenery Library (FSX-style) ──────────────────────────────────
+
+# Asset subdirs auto-detected inside each scenery area's path.
+const ASSET_SUBDIRS := ["terrain", "orthophoto", "buildings", "water", "roads", "vegetation", "trees", "airports"]
+
+
+func _build_scenery_sources_section(parent: VBoxContainer) -> void:
+	_add_section_header(parent, "Scenery Library")
+
+	var info = Label.new()
+	info.text = "Available scenery areas. Lower priority = checked first (1 = highest). Disabled areas are skipped. Multiple enabled areas with the same asset type act as fallbacks (e.g. BW orthophotos fill SWISSIMAGE white pixels at the CH/DE border)."
+	info.add_theme_font_size_override("font_size", FONT_SM)
+	info.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD
+	parent.add_child(info)
+
+	# Scrollable table of scenery areas
+	var table_scroll := ScrollContainer.new()
+	table_scroll.custom_minimum_size = Vector2(0, 260)
+	table_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	parent.add_child(table_scroll)
+
+	var table := VBoxContainer.new()
+	table.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	table.add_theme_constant_override("separation", 2)
+	table_scroll.add_child(table)
+	_controls["scenery_table"] = table
+
+	# Header row
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	_make_table_label(header, "On", 50)
+	_make_table_label(header, "Pri", 50)
+	_make_table_label(header, "Name", 220)
+	_make_table_label(header, "Assets", 240)
+	_make_table_label(header, "Path", 380)
+	table.add_child(header)
+	table.add_child(HSeparator.new())
+
+	# Action buttons
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 12)
+	parent.add_child(btn_row)
+
+	var scan_btn := Button.new()
+	scan_btn.text = "Scan for Scenery"
+	scan_btn.custom_minimum_size = Vector2(200, 36)
+	scan_btn.add_theme_font_size_override("font_size", FONT_SM)
+	scan_btn.pressed.connect(_on_scan_scenery)
+	btn_row.add_child(scan_btn)
+
+	var add_btn := Button.new()
+	add_btn.text = "Add Area..."
+	add_btn.custom_minimum_size = Vector2(140, 36)
+	add_btn.add_theme_font_size_override("font_size", FONT_SM)
+	add_btn.pressed.connect(_on_add_scenery_area)
+	btn_row.add_child(add_btn)
+
+	var up_btn := Button.new()
+	up_btn.text = "Move Up"
+	up_btn.custom_minimum_size = Vector2(120, 36)
+	up_btn.add_theme_font_size_override("font_size", FONT_SM)
+	up_btn.pressed.connect(_on_move_selected_up)
+	btn_row.add_child(up_btn)
+
+	var down_btn := Button.new()
+	down_btn.text = "Move Down"
+	down_btn.custom_minimum_size = Vector2(120, 36)
+	down_btn.add_theme_font_size_override("font_size", FONT_SM)
+	down_btn.pressed.connect(_on_move_selected_down)
+	btn_row.add_child(down_btn)
+
+	var del_btn := Button.new()
+	del_btn.text = "Remove"
+	del_btn.custom_minimum_size = Vector2(120, 36)
+	del_btn.add_theme_font_size_override("font_size", FONT_SM)
+	del_btn.pressed.connect(_on_remove_selected)
+	btn_row.add_child(del_btn)
+
+	parent.add_child(Control.new())
+	_add_check_row(parent, "skip_white_pixels", "Skip White Pixels:", "Treat pure white (255,255,255) ortho pixels as transparent so lower-priority sources fill in (CH/DE border fix)")
+
+
+func _make_table_label(parent: HBoxContainer, text: String, min_w: int) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.custom_minimum_size.x = min_w
+	l.add_theme_font_size_override("font_size", FONT_SM)
+	l.add_theme_color_override("font_color", LABEL_COLOR)
+	parent.add_child(l)
+	return l
+
+
+# Currently selected row index in the scenery table (-1 = none).
+var _selected_area_idx: int = -1
+
+
+func _refresh_scenery_table() -> void:
+	if not _controls.has("scenery_table"):
+		return
+	var table: VBoxContainer = _controls["scenery_table"]
+	# Remove existing data rows (keep header at index 0 + separator at 1)
+	var children := table.get_children()
+	for i in range(children.size() - 1, 1, -1):
+		children[i].queue_free()
+
+	var areas: Array = settings.get("scenery_areas", [])
+	for i in range(areas.size()):
+		var area: Dictionary = areas[i]
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+
+		# Selection background (highlight if selected)
+		var bg := ColorRect.new()
+		bg.color = SECTION_COLOR if i == _selected_area_idx else Color(0, 0, 0, 0)
+		bg.color.a = 0.25 if i == _selected_area_idx else 0.0
+		bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		row.add_child(bg)
+
+		# Click-to-select
+		var click_btn := Button.new()
+		click_btn.flat = true
+		click_btn.toggle_mode = false
+		click_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		click_btn.mouse_filter = Control.MOUSE_FILTER_PASS
+		var idx_capture := i
+		click_btn.pressed.connect(func() -> void:
+			_selected_area_idx = idx_capture
+			_refresh_scenery_table()
+		)
+		# (we add it last so checkbox/spinbox stay clickable above it)
+
+		# Enabled checkbox
+		var cb := CheckBox.new()
+		cb.button_pressed = bool(area.get("enabled", true))
+		cb.custom_minimum_size = Vector2(50, 28)
+		cb.toggled.connect(func(val: bool) -> void:
+			var arr: Array = settings.get("scenery_areas", [])
+			if idx_capture < arr.size():
+				arr[idx_capture]["enabled"] = val
+				settings["scenery_areas"] = arr
+		)
+		row.add_child(cb)
+
+		# Priority spinbox
+		var pri := SpinBox.new()
+		pri.min_value = 1
+		pri.max_value = 999
+		pri.step = 1
+		pri.value = int(area.get("priority", i + 1))
+		pri.custom_minimum_size = Vector2(50, 28)
+		pri.value_changed.connect(func(val: float) -> void:
+			var arr: Array = settings.get("scenery_areas", [])
+			if idx_capture < arr.size():
+				arr[idx_capture]["priority"] = int(val)
+				settings["scenery_areas"] = arr
+		)
+		row.add_child(pri)
+
+		# Name
+		var name_lbl := Label.new()
+		name_lbl.text = str(area.get("name", "?"))
+		name_lbl.custom_minimum_size.x = 220
+		name_lbl.add_theme_font_size_override("font_size", FONT_SM)
+		row.add_child(name_lbl)
+
+		# Detected assets
+		var assets_lbl := Label.new()
+		assets_lbl.text = ", ".join(_detect_assets(area.get("path", "")))
+		assets_lbl.custom_minimum_size.x = 240
+		assets_lbl.add_theme_font_size_override("font_size", FONT_SM)
+		assets_lbl.add_theme_color_override("font_color", Color(0.55, 0.78, 0.55))
+		row.add_child(assets_lbl)
+
+		# Path (truncated)
+		var path_lbl := Label.new()
+		var p: String = str(area.get("path", ""))
+		path_lbl.text = p
+		path_lbl.tooltip_text = p
+		path_lbl.custom_minimum_size.x = 380
+		path_lbl.add_theme_font_size_override("font_size", FONT_SM)
+		path_lbl.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
+		path_lbl.clip_text = true
+		path_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		path_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(path_lbl)
+
+		# Highlight selected row via stylebox
+		if i == _selected_area_idx:
+			var sel := Button.new()
+			sel.text = "●"
+			sel.flat = true
+			sel.add_theme_color_override("font_color", SECTION_COLOR)
+			sel.custom_minimum_size = Vector2(20, 28)
+			row.add_child(sel)
+
+		# Click-anywhere selector (transparent button overlay on path label)
+		path_lbl.gui_input.connect(func(ev: InputEvent) -> void:
+			if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+				_selected_area_idx = idx_capture
+				_refresh_scenery_table()
+		)
+		name_lbl.gui_input.connect(func(ev: InputEvent) -> void:
+			if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+				_selected_area_idx = idx_capture
+				_refresh_scenery_table()
+		)
+
+		table.add_child(row)
+
+
+func _detect_assets(path: String) -> PackedStringArray:
+	var out := PackedStringArray()
+	if path.is_empty():
+		return out
+	var dir := DirAccess.open(path)
+	if dir == null:
+		return out
+	for sub in ASSET_SUBDIRS:
+		if dir.dir_exists(sub):
+			out.append(sub)
+	return out
+
+
+func _is_scenery_area_dir(path: String) -> bool:
+	return _detect_assets(path).size() > 0
+
+
+func _on_scan_scenery() -> void:
+	var roots: PackedStringArray = settings.get("scenery_scan_roots", PackedStringArray())
+	var found: Array = []
+	for root in roots:
+		_scan_dir_recursive(root, 0, 3, found)
+
+	# Merge with existing entries (preserve enabled/priority for known paths)
+	var existing: Array = settings.get("scenery_areas", []).duplicate()
+	var existing_paths := {}
+	for a in existing:
+		existing_paths[a.get("path", "")] = true
+
+	# Sort newly found paths by asset count DESC so a "complete" region (e.g.
+	# Switzerland with terrain+ortho+buildings+water+roads+vegetation+trees+
+	# airports) gets priority 1, before a partial region (e.g. BW with only
+	# a terrain dir). This is critical because the aircraft's spawn region
+	# must be in the priority-1 path or tile loading silently fails.
+	var new_paths: Array = []
+	for path in found:
+		if existing_paths.has(path):
+			continue
+		new_paths.append({
+			"path": path,
+			"asset_count": _detect_assets(path).size(),
+		})
+	new_paths.sort_custom(func(a, b): return int(a["asset_count"]) > int(b["asset_count"]))
+
+	var added := 0
+	var next_priority := existing.size() + 1
+	for entry in new_paths:
+		var path: String = entry["path"]
+		var nice_name := _name_from_path(path)
+		existing.append({
+			"name": nice_name,
+			"path": path,
+			"enabled": true,
+			"priority": next_priority,
+		})
+		next_priority += 1
+		added += 1
+
+	# Sort by priority for display
+	existing.sort_custom(func(a, b): return int(a.get("priority", 999)) < int(b.get("priority", 999)))
+	settings["scenery_areas"] = existing
+	print("Scenery scan: %d new area(s) added (%d total)" % [added, existing.size()])
+	_refresh_scenery_table()
+
+
+func _scan_dir_recursive(path: String, depth: int, max_depth: int, found: Array) -> void:
+	if depth > max_depth:
+		return
+	var dir := DirAccess.open(path)
+	if dir == null:
+		return
+	# If this dir IS a scenery area, record it and stop descending.
+	if _is_scenery_area_dir(path):
+		found.append(path)
+		return
+	# Otherwise recurse into subdirs.
+	dir.list_dir_begin()
+	var name := dir.get_next()
+	while name != "":
+		if name.begins_with(".") or not dir.current_is_dir():
+			name = dir.get_next()
+			continue
+		_scan_dir_recursive(path.path_join(name), depth + 1, max_depth, found)
+		name = dir.get_next()
+	dir.list_dir_end()
+
+
+func _name_from_path(path: String) -> String:
+	# Use parent + leaf for disambiguation (e.g. "Germany/Baden-Wuertemberg")
+	var leaf := path.get_file()
+	var parent := path.get_base_dir().get_file()
+	if parent.is_empty() or parent == "scenery":
+		return leaf
+	return "%s/%s" % [parent, leaf]
+
+
+func _on_add_scenery_area() -> void:
+	var dialog := FileDialog.new()
+	dialog.file_mode = FileDialog.FILE_MODE_OPEN_DIR
+	dialog.access = FileDialog.ACCESS_FILESYSTEM
+	dialog.use_native_dialog = true
+	dialog.title = "Select Scenery Area Directory"
+	add_child(dialog)
+	dialog.dir_selected.connect(func(path: String) -> void:
+		_add_scenery_area(path)
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(func() -> void: dialog.queue_free())
+	dialog.popup_centered()
+
+
+func _add_scenery_area(path: String) -> void:
+	var areas: Array = settings.get("scenery_areas", []).duplicate()
+	for a in areas:
+		if a.get("path", "") == path:
+			print("Scenery area already in library: %s" % path)
+			return
+	if not _is_scenery_area_dir(path):
+		print("WARNING: %s does not contain any known asset subdirs (%s) — adding anyway" % [path, ", ".join(ASSET_SUBDIRS)])
+	areas.append({
+		"name": _name_from_path(path),
+		"path": path,
+		"enabled": true,
+		"priority": areas.size() + 1,
+	})
+	settings["scenery_areas"] = areas
+	_refresh_scenery_table()
+
+
+func _on_remove_selected() -> void:
+	var areas: Array = settings.get("scenery_areas", []).duplicate()
+	if _selected_area_idx < 0 or _selected_area_idx >= areas.size():
+		return
+	areas.remove_at(_selected_area_idx)
+	settings["scenery_areas"] = areas
+	_selected_area_idx = -1
+	_refresh_scenery_table()
+
+
+func _on_move_selected_up() -> void:
+	_swap_priority(_selected_area_idx, _selected_area_idx - 1)
+
+
+func _on_move_selected_down() -> void:
+	_swap_priority(_selected_area_idx, _selected_area_idx + 1)
+
+
+func _swap_priority(a_idx: int, b_idx: int) -> void:
+	var areas: Array = settings.get("scenery_areas", []).duplicate()
+	if a_idx < 0 or a_idx >= areas.size() or b_idx < 0 or b_idx >= areas.size():
+		return
+	var tmp = areas[a_idx]
+	areas[a_idx] = areas[b_idx]
+	areas[b_idx] = tmp
+	# Renumber priorities to match list order
+	for i in range(areas.size()):
+		areas[i]["priority"] = i + 1
+	settings["scenery_areas"] = areas
+	_selected_area_idx = b_idx
+	_refresh_scenery_table()
+
+
+## Public API: returns ordered list of enabled scenery area paths (priority asc).
+## Used by node_3d.gd to build asset path arrays for Scenery3D.
+func get_enabled_scenery_areas() -> Array:
+	var out: Array = []
+	var areas: Array = settings.get("scenery_areas", [])
+	var sorted := areas.duplicate()
+	sorted.sort_custom(func(a, b): return int(a.get("priority", 999)) < int(b.get("priority", 999)))
+	for a in sorted:
+		if bool(a.get("enabled", true)):
+			out.append(a)
+	return out
+
+
 # ── Section: Graphics ──────────────────────────────────────────────────
 
 func _build_graphics_section(parent: VBoxContainer) -> void:
@@ -311,6 +714,7 @@ func _build_graphics_section(parent: VBoxContainer) -> void:
 	_add_slider_row(parent, "render_distance", "Terrain Distance:", 2, 16, 1, " tiles")
 	_add_slider_row(parent, "building_distance", "Building Distance:", 1, 8, 1, " tiles")
 	_add_option_row(parent, "shadow_quality", "Shadow Quality:", ["Off", "Low", "Medium", "High"])
+	_add_option_row(parent, "tree_density", "Tree Density:", ["Off", "Low", "Medium", "High", "Very High"])
 	_add_check_row(parent, "vsync", "V-Sync:", "Synchronize with display refresh")
 	_add_check_row(parent, "fullscreen", "Fullscreen:", "Run in fullscreen mode")
 
@@ -378,6 +782,10 @@ func _apply_to_ui() -> void:
 			ctrl.button_pressed = bool(val)
 		elif ctrl is OptionButton:
 			ctrl.selected = int(val)
+	
+	# Refresh scenery library table
+	if _controls.has("scenery_table"):
+		_refresh_scenery_table()
 
 
 func _read_from_ui() -> void:
@@ -402,7 +810,9 @@ func _save_settings() -> void:
 		var section = "paths"
 		if key in ["scenery_path", "jsbsim_path"]:
 			section = "paths"
-		elif key in ["render_distance", "building_distance", "shadow_quality", "vsync", "fullscreen"]:
+		elif key in ["scenery_areas", "scenery_scan_roots", "skip_white_pixels"]:
+			section = "scenery"
+		elif key in ["render_distance", "building_distance", "shadow_quality", "tree_density", "vsync", "fullscreen"]:
 			section = "graphics"
 		elif "volume" in key:
 			section = "sound"
@@ -429,9 +839,16 @@ func _get_defaults() -> Dictionary:
 	return {
 		"scenery_path": "scenery",
 		"jsbsim_path": "jsbsim",
+		"scenery_areas": [],
+		"scenery_scan_roots": PackedStringArray([
+			"/Users/gery/provpilot/scenery",
+			"/Volumes/Data1/scenery",
+		]),
+		"skip_white_pixels": true,
 		"render_distance": 8,
 		"building_distance": 3,
 		"shadow_quality": 2,
+		"tree_density": 2,
 		"vsync": true,
 		"fullscreen": true,
 		"master_volume": 80,

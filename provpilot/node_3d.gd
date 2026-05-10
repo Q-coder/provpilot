@@ -91,6 +91,15 @@ const FRONT_WHEEL_MAX_ANGLE: float = 30.0  # Max steering angle
 
 # Scenery3D reference for ground height queries
 var scenery3d_node: Node
+# Vegetation node reference
+var vegetation_node: Node
+
+# Tree density mapping (index = tree_density setting value).
+# Off / Low / Medium / High / Very High
+const TREE_DENSITY_FRACTION := [0.0, 0.25, 0.50, 0.75, 1.0]
+# Fixed render radius (m) when vegetation is enabled. Density controls
+# the number of trees within this radius, not the radius itself.
+const TREE_LOAD_RADIUS_M := 1500
 
 # Slew mode - free movement without physics
 var slew_mode: bool = false
@@ -396,6 +405,13 @@ func _ready() -> void:
 	else:
 		print("WARNING: Scenery3D node not found - ground collision may not work correctly!")
 
+	# Get Vegetation node — density is applied later, after the settings
+	# screen has been constructed (it loads saved settings from disk in its
+	# own _ready, so we can read the user's choice from it).
+	vegetation_node = get_node_or_null("Vegetation")
+	if vegetation_node:
+		print("Vegetation node found: ", vegetation_node)
+
 	# Lock TERRAIN_CENTER to Scenery3D's own origin (from ProjectSettings).
 	# Swiss <-> Godot conversions and tile placement must share the same origin.
 	if ProjectSettings.has_setting("scenery3d/origin_east"):
@@ -415,6 +431,10 @@ func _ready() -> void:
 		_loading_screen.hide_loading()
 	_create_welcome_screen()
 	_create_settings_screen()
+	# Apply saved tree density now that _settings_screen has loaded its config.
+	_apply_tree_density()
+	# Apply scenery sources (orthophoto and terrain paths) from settings
+	_apply_scenery_sources()
 
 	# ── Engine sound ──────────────────────────────────────────────────
 	_setup_engine_sound()
@@ -1579,7 +1599,7 @@ func _create_welcome_screen() -> void:
 					# Thresholds derived from centre ±300 m along heading 070°:
 					#   dE = 300·sin70° ≈ 282,  dN = 300·cos70° ≈ 103
 					"threshold_07": {"e": 2681599.0, "n": 1282742.0},
-					"threshold_25": {"e": 2682163.0, "n": 1282948.0},
+					"threshold_25": {"e": 2681901.0, "n": 1282855.0},
 				},
 			],
 		},
@@ -1669,9 +1689,109 @@ func _on_welcome_settings_requested() -> void:
 func _on_settings_closed() -> void:
 	if _settings_screen:
 		_settings_screen.hide_settings()
+	_apply_tree_density()
+	_apply_scenery_sources()
 	if _welcome_screen:
 		_welcome_screen.visible = true
 		_welcome_screen.show_welcome()
+
+
+func _apply_tree_density() -> void:
+	if not is_instance_valid(vegetation_node):
+		return
+	var density_idx: int = 2  # default medium
+	if _settings_screen and "settings" in _settings_screen:
+		density_idx = int(_settings_screen.settings.get("tree_density", 2))
+	density_idx = clamp(density_idx, 0, TREE_DENSITY_FRACTION.size() - 1)
+	var fraction: float = TREE_DENSITY_FRACTION[density_idx]
+	vegetation_node.density_fraction = fraction
+	vegetation_node.load_radius_m = TREE_LOAD_RADIUS_M
+	vegetation_node.visible = fraction > 0.0
+	print("Tree density: index=%d fraction=%.2f radius=%d m" % [density_idx, fraction, TREE_LOAD_RADIUS_M])
+
+
+## Apply scenery data sources from settings to Scenery3D node.
+## Reads the FSX-style scenery library (settings.scenery_areas), filters to
+## enabled entries sorted by priority, then for each asset subdir that exists
+## inside an area's path, appends to the corresponding Scenery3D paths array.
+##
+## Example: if "Switzerland" (priority 1) and "Germany/Baden-Wuertemberg"
+## (priority 2) are both enabled, and BW only contains an orthophoto subdir,
+## the resulting orthophoto_paths is [CH/orthophoto, BW/orthophoto] — Swiss
+## tiles are tried first, German tiles serve as fallback (combined with
+## skip_white_pixels=true this fixes the CH/DE border).
+func _apply_scenery_sources() -> void:
+	if not is_instance_valid(scenery3d_node):
+		return
+	if not _settings_screen or not _settings_screen.has_method("get_enabled_scenery_areas"):
+		print("Scenery sources: settings screen unavailable, leaving scene defaults")
+		return
+
+	var areas: Array = _settings_screen.get_enabled_scenery_areas()
+	if areas.is_empty():
+		print("Scenery sources: no enabled scenery areas in library")
+		return
+
+	# Build per-asset path arrays from enabled areas (priority order).
+	var terrain_paths := PackedStringArray()
+	var ortho_paths := PackedStringArray()
+	var building_paths := PackedStringArray()
+	var water_paths := PackedStringArray()
+	var road_paths := PackedStringArray()
+	var vegetation_paths := PackedStringArray()
+	for a in areas:
+		var base: String = str(a.get("path", ""))
+		if base.is_empty():
+			continue
+		var t := base.path_join("terrain")
+		if DirAccess.dir_exists_absolute(t): terrain_paths.append(t)
+		var o := base.path_join("orthophoto")
+		if DirAccess.dir_exists_absolute(o): ortho_paths.append(o)
+		var b := base.path_join("buildings")
+		if DirAccess.dir_exists_absolute(b): building_paths.append(b)
+		var w := base.path_join("water")
+		if DirAccess.dir_exists_absolute(w): water_paths.append(w)
+		var r := base.path_join("roads")
+		if DirAccess.dir_exists_absolute(r): road_paths.append(r)
+		var v := base.path_join("vegetation")
+		if DirAccess.dir_exists_absolute(v): vegetation_paths.append(v)
+
+	# Apply to Scenery3D node (only override if we have at least one entry,
+	# so an empty library falls back to scene-defined defaults).
+	# IMPORTANT: do NOT also set the single-path properties (data_path,
+	# orthophoto_path) — their setters in C++ CLEAR the array first, which
+	# would silently drop all but one path.
+	if terrain_paths.size() > 0:
+		scenery3d_node.data_paths = terrain_paths
+	if ortho_paths.size() > 0:
+		scenery3d_node.orthophoto_paths = ortho_paths
+	if building_paths.size() > 0:
+		scenery3d_node.buildings_path = building_paths[0]
+	if water_paths.size() > 0:
+		scenery3d_node.water_paths = water_paths
+	if road_paths.size() > 0:
+		scenery3d_node.road_paths = road_paths
+
+	# Vegetation node uses its own paths
+	if is_instance_valid(vegetation_node) and vegetation_paths.size() > 0:
+		vegetation_node.vegetation_paths = vegetation_paths
+
+	print("Scenery library applied: %d enabled area(s)" % areas.size())
+	print("  terrain_paths    = %s" % [terrain_paths])
+	print("  orthophoto_paths = %s" % [ortho_paths])
+	print("  buildings_path   = %s" % [building_paths])
+	print("  water_paths      = %s" % [water_paths])
+	print("  road_paths       = %s" % [road_paths])
+	print("  vegetation_paths = %s" % [vegetation_paths])
+
+	# White-pixel skip (border fix) — only effective once C++ side ships it.
+	var skip_white: bool = _settings_screen.settings.get("skip_white_pixels", true)
+	if scenery3d_node.has_method("set_skip_white_pixels"):
+		scenery3d_node.set_skip_white_pixels(skip_white)
+		print("  skip_white_pixels = %s" % [skip_white])
+	elif "skip_white_pixels" in scenery3d_node:
+		scenery3d_node.skip_white_pixels = skip_white
+		print("  skip_white_pixels = %s" % [skip_white])
 
 
 # ── Position / Teleport ────────────────────────────────────────────────────
