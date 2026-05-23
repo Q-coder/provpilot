@@ -11,8 +11,11 @@
   header { padding: 14px 22px; background: #1a1d24; border-bottom: 1px solid #2a2f3a; display: flex; align-items: center; gap: 18px; }
   header h1 { font-size: 18px; margin: 0; font-weight: 600; }
   header .sub { color: #8a93a3; font-size: 13px; }
-  header a.dmg { margin-left: auto; background: #2563eb; color: #fff; padding: 8px 14px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600; }
+  .dl-buttons { margin-left: auto; display: flex; gap: 8px; }
+  header a.dmg { background: #2563eb; color: #fff; padding: 8px 14px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600; }
   header a.dmg:hover { background: #1d4ed8; }
+  header a.dmg.win { background: #0e7490; }
+  header a.dmg.win:hover { background: #0c647f; }
   #map { position: absolute; top: 56px; left: 0; right: 0; bottom: 0; }
   .legend { background: rgba(20,22,28,0.92); padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 1.5; color: #d6d8de; }
   .legend i { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: middle; border: 1px solid #444; }
@@ -30,7 +33,10 @@
 <header>
   <h1>ProVPilot</h1>
   <span class="sub">Click a region to download scenery</span>
-  <a class="dmg" id="dmg-link" href="releases/ProvPilot-1.0.1-arm64.dmg">Download macOS App (1.0.1)</a>
+  <div class="dl-buttons">
+    <a class="dmg" id="dmg-link" href="releases/ProvPilot-1.0.1-arm64.dmg">Download macOS (1.0.1)</a>
+    <a class="dmg win" id="win-link" href="releases/ProvPilot-Windows-1.0.1.zip">Download Windows (1.0.1)</a>
+  </div>
 </header>
 <div id="map"></div>
 
@@ -176,10 +182,17 @@ Promise.all([
 //  Pull latest DMG URL from latest.json (so download button always current)
 // ---------------------------------------------------------------------------
 fetch("releases/latest.json").then(r => r.ok ? r.json() : null).then(j => {
-  if (!j || !j.macos_arm64) return;
-  const a = document.getElementById("dmg-link");
-  a.href = "releases/" + j.macos_arm64.url;
-  a.textContent = `Download macOS App (${j.version})`;
+  if (!j) return;
+  if (j.macos_arm64) {
+    const a = document.getElementById("dmg-link");
+    a.href = "releases/" + j.macos_arm64.url;
+    a.textContent = `Download macOS (${j.version})`;
+  }
+  if (j.windows_x86_64) {
+    const w = document.getElementById("win-link");
+    w.href = "releases/" + j.windows_x86_64.url;
+    w.textContent = `Download Windows (${j.version})`;
+  }
 }).catch(() => {});
 </script>
 </body>
