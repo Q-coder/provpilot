@@ -5,6 +5,7 @@
 #include "jsbgodot.h"
 
 using namespace godot;
+using namespace jsbgodot;
 
 void initialize_gojsb_module(ModuleInitializationLevel p_level)
 {

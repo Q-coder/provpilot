@@ -8,7 +8,9 @@
 #include <godot_cpp/classes/input_event_joypad_motion.hpp>
 #include <godot_cpp/classes/input_event_joypad_button.hpp>
 
-namespace godot
+using namespace godot;
+
+namespace jsbgodot
 {
 
     class JSBGodot : public Node3D

@@ -9,6 +9,10 @@ extends CanvasLayer
 
 signal flight_requested(aircraft_id: String, swiss_e: float, swiss_n: float, heading_deg: float)
 signal settings_requested()
+## Emitted by the first-run wizard after the user picks a scenery folder.
+## node_3d.gd connects to this; it imports the folder into the scenery library
+## and re-applies sources to the Scenery3D node.
+signal scenery_setup_requested(path: String)
 
 # ── Constants ──────────────────────────────────────────────────────────
 const FONT_SM := 20
@@ -16,6 +20,11 @@ const FONT_MD := 24
 const FONT_LG := 28
 const FONT_XL := 36
 const FONT_TITLE := 48
+
+# Update-check endpoint. Returns JSON of the form:
+#   { "version": "1.2.3", "macos_arm64": { "url": "...", "sha256": "...", "size": 12345 } }
+const UPDATE_LATEST_URL := "https://www.md80.ch/provpilot/releases/latest.json"
+const UPDATE_BASE_URL := "https://www.md80.ch/provpilot/releases/"
 
 const BG_COLOR := Color(0.08, 0.10, 0.14, 1.0)
 const PANEL_COLOR := Color(0.12, 0.14, 0.18, 1.0)
@@ -36,6 +45,9 @@ var _selected_airport: Dictionary = {}
 
 # UI references
 var _bg: ColorRect
+var _update_label: RichTextLabel
+var _update_request: HTTPRequest
+var _latest_download_url: String = ""
 var _aircraft_list: ItemList
 var _aircraft_desc: Label
 var _search_input: LineEdit
@@ -56,6 +68,9 @@ func _ready() -> void:
 	layer = 100  # On top of everything
 	_build_ui()
 	_populate_aircraft_list()
+	_check_for_updates()
+	# Defer one frame so node_3d.gd has time to connect its signal handler.
+	call_deferred("_maybe_show_first_run_wizard")
 
 
 # ── Public API ─────────────────────────────────────────────────────────
@@ -136,6 +151,17 @@ func _build_ui() -> void:
 	subtitle.add_theme_font_size_override("font_size", FONT_LG)
 	subtitle.add_theme_color_override("font_color", Color(0.6, 0.65, 0.7))
 	title_hbox.add_child(subtitle)
+
+	# Update-available banner (hidden until the version check resolves)
+	_update_label = RichTextLabel.new()
+	_update_label.bbcode_enabled = true
+	_update_label.fit_content = true
+	_update_label.scroll_active = false
+	_update_label.add_theme_font_size_override("normal_font_size", FONT_SM)
+	_update_label.add_theme_color_override("default_color", Color(0.95, 0.8, 0.3))
+	_update_label.visible = false
+	_update_label.meta_clicked.connect(_on_update_meta_clicked)
+	main_vbox.add_child(_update_label)
 
 	# Separator
 	main_vbox.add_child(HSeparator.new())
@@ -587,3 +613,213 @@ func _input(event: InputEvent) -> void:
 func _unhandled_input(_event: InputEvent) -> void:
 	if visible:
 		get_viewport().set_input_as_handled()
+
+
+# ── Update check ──────────────────────────────────────────────────────
+# Fires an HTTP GET against UPDATE_LATEST_URL. On success, compares the
+# remote `version` field with ProjectSettings application/config/version.
+# If newer, shows a clickable banner above the title. Failures are silent.
+
+func _check_for_updates() -> void:
+	if _update_request != null:
+		return
+	_update_request = HTTPRequest.new()
+	add_child(_update_request)
+	_update_request.timeout = 5.0
+	_update_request.request_completed.connect(_on_update_request_completed)
+	var err := _update_request.request(UPDATE_LATEST_URL)
+	if err != OK:
+		_update_request.queue_free()
+		_update_request = null
+
+
+func _on_update_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if _update_request:
+		_update_request.queue_free()
+		_update_request = null
+	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		return
+	var json := JSON.new()
+	if json.parse(body.get_string_from_utf8()) != OK:
+		return
+	var data: Dictionary = json.data if json.data is Dictionary else {}
+	var remote_version: String = String(data.get("version", ""))
+	if remote_version.is_empty():
+		return
+	var current_version: String = String(ProjectSettings.get_setting("application/config/version", "0.0.0"))
+	if not _is_remote_newer(remote_version, current_version):
+		return
+	var macos_arm64: Dictionary = data.get("macos_arm64", {})
+	var rel_url: String = String(macos_arm64.get("url", ""))
+	if rel_url.is_empty():
+		return
+	_latest_download_url = rel_url if rel_url.begins_with("http") else (UPDATE_BASE_URL + rel_url)
+	if _update_label:
+		_update_label.text = "[center]Update available: ProVPilot %s — [url=download]Download[/url][/center]" % remote_version
+		_update_label.visible = true
+
+
+func _is_remote_newer(remote: String, current: String) -> bool:
+	var r := _parse_version(remote)
+	var c := _parse_version(current)
+	for i in range(max(r.size(), c.size())):
+		var rv: int = r[i] if i < r.size() else 0
+		var cv: int = c[i] if i < c.size() else 0
+		if rv > cv:
+			return true
+		if rv < cv:
+			return false
+	return false
+
+
+func _parse_version(v: String) -> Array[int]:
+	var parts: PackedStringArray = v.split(".")
+	var out: Array[int] = []
+	for p in parts:
+		out.append(int(p))
+	return out
+
+
+func _on_update_meta_clicked(_meta: Variant) -> void:
+	if _latest_download_url.is_empty():
+		return
+	OS.shell_open(_latest_download_url)
+
+
+# ── First-run wizard ──────────────────────────────────────────────────
+# Shown once, when InstallRoot reports the user has never configured a scenery
+# location. Emits `scenery_setup_requested` with the chosen folder; node_3d.gd
+# imports the folder into the settings_screen scenery library and re-applies
+# sources to the Scenery3D node so tile loading actually starts.
+
+var _first_run_dialog: AcceptDialog = null
+var _first_run_path_edit: LineEdit = null
+
+func _maybe_show_first_run_wizard() -> void:
+	# Skip if InstallRoot already knows where scenery lives, or the user has
+	# any scenery_areas configured (settings_screen takes precedence). The
+	# latter check is best-effort via parent's _settings_screen reference.
+	if not InstallRoot.is_first_run():
+		return
+	if _has_scenery_areas_configured():
+		return
+	_show_first_run_dialog()
+
+
+func _has_scenery_areas_configured() -> bool:
+	var parent := get_parent()
+	if parent == null or not parent.has_method("get"):
+		return false
+	var s = parent.get("_settings_screen") if "_settings_screen" in parent else null
+	if s == null or not "settings" in s:
+		return false
+	var areas: Array = s.settings.get("scenery_areas", [])
+	return areas.size() > 0
+
+
+func _show_first_run_dialog() -> void:
+	if _first_run_dialog != null and is_instance_valid(_first_run_dialog):
+		_first_run_dialog.popup_centered()
+		return
+	_first_run_dialog = AcceptDialog.new()
+	_first_run_dialog.title = "Welcome to ProVPilot"
+	_first_run_dialog.ok_button_text = "Use This Folder"
+	_first_run_dialog.add_cancel_button("Skip for Now")
+	_first_run_dialog.unresizable = false
+	_first_run_dialog.min_size = Vector2i(700, 280)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+	_first_run_dialog.add_child(vbox)
+
+	var intro := Label.new()
+	intro.text = "ProVPilot needs to know where your scenery library is located.\n\nPick a folder that contains region subfolders such as 'Switzerland/' or 'Baden-Wuertemberg/'. You can change or add more folders later in Settings."
+	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	intro.add_theme_font_size_override("font_size", FONT_MD)
+	intro.custom_minimum_size = Vector2(660, 0)
+	vbox.add_child(intro)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	vbox.add_child(row)
+
+	_first_run_path_edit = LineEdit.new()
+	_first_run_path_edit.placeholder_text = "/path/to/scenery"
+	_first_run_path_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_first_run_path_edit.add_theme_font_size_override("font_size", FONT_MD)
+	_first_run_path_edit.custom_minimum_size.y = 40
+	# Pre-fill with a sensible default — first existing candidate.
+	_first_run_path_edit.text = _first_run_default_path()
+	row.add_child(_first_run_path_edit)
+
+	var browse_btn := Button.new()
+	browse_btn.text = "Browse…"
+	browse_btn.add_theme_font_size_override("font_size", FONT_MD)
+	browse_btn.pressed.connect(_on_first_run_browse_pressed)
+	row.add_child(browse_btn)
+
+	var hint := Label.new()
+	hint.text = "Tip: Place the 'scenery/' folder next to ProVPilot.app for a portable install — the choice is saved to provpilot.cfg in the same folder."
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_font_size_override("font_size", FONT_SM)
+	hint.add_theme_color_override("font_color", Color(0.6, 0.65, 0.7))
+	hint.custom_minimum_size = Vector2(660, 0)
+	vbox.add_child(hint)
+
+	_first_run_dialog.confirmed.connect(_on_first_run_confirmed)
+	_first_run_dialog.canceled.connect(_on_first_run_canceled)
+	add_child(_first_run_dialog)
+	_first_run_dialog.popup_centered()
+
+
+func _first_run_default_path() -> String:
+	for candidate in InstallRoot.get_default_scan_roots():
+		if DirAccess.dir_exists_absolute(candidate):
+			return candidate
+	# Fall back to install_root/scenery even if it doesn't exist yet — the user
+	# can edit before confirming.
+	return InstallRoot.get_install_root().path_join("scenery")
+
+
+func _on_first_run_browse_pressed() -> void:
+	var dlg := FileDialog.new()
+	dlg.file_mode = FileDialog.FILE_MODE_OPEN_DIR
+	dlg.access = FileDialog.ACCESS_FILESYSTEM
+	dlg.use_native_dialog = true
+	dlg.title = "Select Scenery Folder"
+	add_child(dlg)
+	dlg.dir_selected.connect(func(path: String) -> void:
+		if _first_run_path_edit:
+			_first_run_path_edit.text = path
+		dlg.queue_free()
+	)
+	dlg.canceled.connect(func() -> void: dlg.queue_free())
+	dlg.popup_centered_ratio(0.7)
+
+
+func _on_first_run_confirmed() -> void:
+	var path: String = (_first_run_path_edit.text if _first_run_path_edit else "").strip_edges()
+	if path.is_empty():
+		return
+	if not DirAccess.dir_exists_absolute(path):
+		# Show a quick error and bring the dialog back.
+		var err := AcceptDialog.new()
+		err.title = "Folder Not Found"
+		err.dialog_text = "The folder does not exist:\n%s" % path
+		add_child(err)
+		err.confirmed.connect(func() -> void:
+			err.queue_free()
+			_show_first_run_dialog()
+		)
+		err.popup_centered()
+		return
+	# Persist to provpilot.cfg next to the .app
+	InstallRoot.save_scenery_choice(path)
+	# Hand off to node_3d.gd to populate settings_screen + apply sources.
+	scenery_setup_requested.emit(path)
+
+
+func _on_first_run_canceled() -> void:
+	# User chose to skip — they'll get the standard "0/5 tiles" stall but at
+	# least they can reach Settings to configure manually.
+	print("WelcomeScreen: first-run wizard skipped")

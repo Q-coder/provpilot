@@ -11,6 +11,7 @@
 #include <godot_cpp/classes/scene_tree.hpp>      // Include SceneTree header
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/os.hpp>
+#include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/variant/utility_functions.hpp> // For UtilityFunctions::print
 #include <cmath>
@@ -21,6 +22,8 @@
 #include <exception>
 
 using namespace godot;
+using namespace jsbgodot;
+
 
 const float EARTH_RADIUS = 6371000.0; // Radius of Earth in meters
 
@@ -867,13 +870,29 @@ void JSBGodot::_ready()
         jsbsim_root = "../jsbsim";
         UtilityFunctions::print("JSBSim root (editor): ../jsbsim");
     } else {
-        // Exported app: data lives alongside the .app bundle
+        // Exported app: prefer sibling-of-.app (portable install), but if
+        // that does not exist fall back to the copy bundled inside the .app
+        // at Contents/Resources/jsbsim/ so the DMG works out of the box.
         String exe_path = OS::get_singleton()->get_executable_path();
-        String dir = exe_path.get_base_dir().get_base_dir()
-                             .get_base_dir().get_base_dir();
-        String jsbsim_dir = dir.path_join("jsbsim");
-        jsbsim_root = jsbsim_dir.utf8().get_data();
-        UtilityFunctions::print("JSBSim root (exported): ", jsbsim_dir);
+        // exe = .../ProvPilot.app/Contents/MacOS/ProvPilot
+        String contents_dir = exe_path.get_base_dir().get_base_dir();          // .../Contents
+        String app_dir      = contents_dir.get_base_dir();                     // .../ProvPilot.app
+        String parent_dir   = app_dir.get_base_dir();                          // .../
+        String sibling      = parent_dir.path_join("jsbsim");
+        String bundled      = contents_dir.path_join("Resources").path_join("jsbsim");
+        Ref<DirAccess> da   = DirAccess::open(parent_dir);
+        String chosen;
+        if (DirAccess::dir_exists_absolute(sibling)) {
+            chosen = sibling;
+            UtilityFunctions::print("JSBSim root (sibling): ", chosen);
+        } else if (DirAccess::dir_exists_absolute(bundled)) {
+            chosen = bundled;
+            UtilityFunctions::print("JSBSim root (bundled): ", chosen);
+        } else {
+            chosen = sibling; // legacy default; will fail loudly below
+            UtilityFunctions::print("JSBSim root (missing, tried sibling=", sibling, " bundled=", bundled, ")");
+        }
+        jsbsim_root = chosen.utf8().get_data();
     }
     FDMExec->SetRootDir(SGPath(jsbsim_root));
     FDMExec->SetAircraftPath(SGPath(jsbsim_root + "/aircraft"));

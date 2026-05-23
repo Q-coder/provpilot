@@ -11,12 +11,14 @@ config_version=5
 [application]
 
 config/name="ProVPilot"
+config/version="1.0.1"
 run/main_scene="res://node_3d.tscn"
 config/features=PackedStringArray("4.6", "Double Precision", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
 
+InstallRoot="*res://install_root.gd"
 JoystickConfig="*res://joystick_config.gd"
 
 [display]

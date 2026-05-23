@@ -32,10 +32,8 @@ var settings := {
 	# buildings/, water/, roads/, vegetation/) inside it are auto-detected.
 	"scenery_areas": [],
 	# Roots scanned by "Scan for Scenery" button.
-	"scenery_scan_roots": PackedStringArray([
-		"/Users/gery/provpilot/scenery",
-		"/Volumes/Data1/scenery",
-	]),
+	# Populated at runtime from InstallRoot (next to the .app, $HOME, etc.).
+	"scenery_scan_roots": PackedStringArray(),
 	"skip_white_pixels": true,
 	# Graphics
 	"render_distance": 8,      # terrain load radius in tiles
@@ -827,12 +825,39 @@ func _load_settings() -> void:
 	var config = ConfigFile.new()
 	if config.load(CONFIG_PATH) != OK:
 		print("SettingsScreen: No saved settings, using defaults")
-		return
-	for section in config.get_sections():
-		for key in config.get_section_keys(section):
-			if settings.has(key):
-				settings[key] = config.get_value(section, key)
-	print("Settings loaded from %s" % CONFIG_PATH)
+	else:
+		for section in config.get_sections():
+			for key in config.get_section_keys(section):
+				if settings.has(key):
+					settings[key] = config.get_value(section, key)
+		print("Settings loaded from %s" % CONFIG_PATH)
+	# Ensure scan roots are always seeded from InstallRoot — even if a stale
+	# saved config has obsolete dev-machine paths, the user still sees sensible
+	# defaults when they click "Scan for Scenery". The user can append their own.
+	var default_roots: PackedStringArray = InstallRoot.get_default_scan_roots()
+	var saved_roots: PackedStringArray = settings.get("scenery_scan_roots", PackedStringArray())
+	var merged := PackedStringArray()
+	var seen := {}
+	for r in default_roots:
+		if not seen.has(r):
+			seen[r] = true
+			merged.append(r)
+	for r in saved_roots:
+		if not seen.has(r):
+			seen[r] = true
+			merged.append(r)
+	settings["scenery_scan_roots"] = merged
+
+	# Honor a portable provpilot.cfg living next to the .app: if it specifies a
+	# scenery_root and we have no library yet, scan it once and adopt the result.
+	var areas: Array = settings.get("scenery_areas", [])
+	var portable_root: String = InstallRoot.get_scenery_root()
+	if areas.is_empty() and not portable_root.is_empty() and DirAccess.dir_exists_absolute(portable_root):
+		print("SettingsScreen: bootstrapping library from provpilot.cfg scenery_root=%s" % portable_root)
+		if not merged.has(portable_root):
+			merged.append(portable_root)
+			settings["scenery_scan_roots"] = merged
+		_on_scan_scenery()
 
 
 func _get_defaults() -> Dictionary:
@@ -840,10 +865,7 @@ func _get_defaults() -> Dictionary:
 		"scenery_path": "scenery",
 		"jsbsim_path": "jsbsim",
 		"scenery_areas": [],
-		"scenery_scan_roots": PackedStringArray([
-			"/Users/gery/provpilot/scenery",
-			"/Volumes/Data1/scenery",
-		]),
+		"scenery_scan_roots": PackedStringArray(),
 		"skip_white_pixels": true,
 		"render_distance": 8,
 		"building_distance": 3,

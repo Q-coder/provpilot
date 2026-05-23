@@ -1578,6 +1578,7 @@ func _create_welcome_screen() -> void:
 	add_child(_welcome_screen)
 	_welcome_screen.flight_requested.connect(_on_welcome_flight_requested)
 	_welcome_screen.settings_requested.connect(_on_welcome_settings_requested)
+	_welcome_screen.scenery_setup_requested.connect(_on_welcome_scenery_setup_requested)
 
 	# Provide a default airport list (Scenery3D no longer ships POI data).
 	# LSPF Schaffhausen-Schmerlat: small grass airfield, runway 07/25, 600 m.
@@ -1686,6 +1687,29 @@ func _on_welcome_settings_requested() -> void:
 		_settings_screen.show_settings()
 
 
+## First-run wizard handler. The user picked a folder; treat it as a scan root,
+## scan it for regions (Switzerland/, Baden-Wuertemberg/, …) and apply the
+## resulting library to Scenery3D so tile loading starts.
+func _on_welcome_scenery_setup_requested(path: String) -> void:
+	if not is_instance_valid(_settings_screen):
+		push_warning("Welcome scenery setup: settings screen not ready")
+		return
+	# Inject `path` into the scan roots and run the scanner. This mirrors what
+	# the user would do manually in Settings → Scenery → Scan.
+	var roots: PackedStringArray = _settings_screen.settings.get("scenery_scan_roots", PackedStringArray())
+	if not roots.has(path):
+		roots.append(path)
+		_settings_screen.settings["scenery_scan_roots"] = roots
+	if _settings_screen.has_method("_on_scan_scenery"):
+		_settings_screen._on_scan_scenery()
+	# Persist immediately so the next launch skips the wizard.
+	if _settings_screen.has_method("_save_settings"):
+		_settings_screen._save_settings()
+	# Apply newly-found areas to the Scenery3D node.
+	_apply_scenery_sources()
+	print("First-run setup complete: applied scenery library from %s" % path)
+
+
 func _on_settings_closed() -> void:
 	if _settings_screen:
 		_settings_screen.hide_settings()
@@ -1739,34 +1763,48 @@ func _apply_scenery_sources() -> void:
 	var water_paths := PackedStringArray()
 	var road_paths := PackedStringArray()
 	var vegetation_paths := PackedStringArray()
+	# macOS APFS is case-insensitive by default — two areas that differ only
+	# in path case (e.g. ~/provpilot vs ~/ProvPilot) refer to the same data
+	# on disk, so dedup case-insensitively to avoid loading every tile twice.
+	var _seen := {}
+	var _case_insensitive := OS.get_name() == "macOS" or OS.get_name() == "Windows"
+	var _append_unique := func(arr: PackedStringArray, p: String) -> void:
+		var k: String = p.to_lower() if _case_insensitive else p
+		if not _seen.has(k):
+			_seen[k] = true
+			arr.append(p)
 	for a in areas:
 		var base: String = str(a.get("path", ""))
 		if base.is_empty():
 			continue
 		var t := base.path_join("terrain")
-		if DirAccess.dir_exists_absolute(t): terrain_paths.append(t)
+		if DirAccess.dir_exists_absolute(t): _append_unique.call(terrain_paths, t)
 		var o := base.path_join("orthophoto")
-		if DirAccess.dir_exists_absolute(o): ortho_paths.append(o)
+		if DirAccess.dir_exists_absolute(o): _append_unique.call(ortho_paths, o)
 		var b := base.path_join("buildings")
-		if DirAccess.dir_exists_absolute(b): building_paths.append(b)
+		if DirAccess.dir_exists_absolute(b): _append_unique.call(building_paths, b)
 		var w := base.path_join("water")
-		if DirAccess.dir_exists_absolute(w): water_paths.append(w)
+		if DirAccess.dir_exists_absolute(w): _append_unique.call(water_paths, w)
 		var r := base.path_join("roads")
-		if DirAccess.dir_exists_absolute(r): road_paths.append(r)
+		if DirAccess.dir_exists_absolute(r): _append_unique.call(road_paths, r)
 		var v := base.path_join("vegetation")
-		if DirAccess.dir_exists_absolute(v): vegetation_paths.append(v)
+		if DirAccess.dir_exists_absolute(v): _append_unique.call(vegetation_paths, v)
 
 	# Apply to Scenery3D node (only override if we have at least one entry,
 	# so an empty library falls back to scene-defined defaults).
 	# IMPORTANT: do NOT also set the single-path properties (data_path,
 	# orthophoto_path) — their setters in C++ CLEAR the array first, which
-	# would silently drop all but one path.
+	# would silently drop all but one path. buildings_path stays as a legacy
+	# fallback for older Scenery3D builds that do not expose buildings_paths.
 	if terrain_paths.size() > 0:
 		scenery3d_node.data_paths = terrain_paths
 	if ortho_paths.size() > 0:
 		scenery3d_node.orthophoto_paths = ortho_paths
 	if building_paths.size() > 0:
-		scenery3d_node.buildings_path = building_paths[0]
+		if scenery3d_node.has_method("set_buildings_paths"):
+			scenery3d_node.buildings_paths = building_paths
+		else:
+			scenery3d_node.buildings_path = building_paths[0]
 	if water_paths.size() > 0:
 		scenery3d_node.water_paths = water_paths
 	if road_paths.size() > 0:
@@ -1779,7 +1817,7 @@ func _apply_scenery_sources() -> void:
 	print("Scenery library applied: %d enabled area(s)" % areas.size())
 	print("  terrain_paths    = %s" % [terrain_paths])
 	print("  orthophoto_paths = %s" % [ortho_paths])
-	print("  buildings_path   = %s" % [building_paths])
+	print("  buildings_paths  = %s" % [building_paths])
 	print("  water_paths      = %s" % [water_paths])
 	print("  road_paths       = %s" % [road_paths])
 	print("  vegetation_paths = %s" % [vegetation_paths])

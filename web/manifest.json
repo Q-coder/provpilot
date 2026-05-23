@@ -1,0 +1,19 @@
+{
+  "_comment": "ProVPilot scenery bundles. Keys = canton codes (BFS Kanton-Nummer or 2-letter ISO). Status: 'available' | 'soon' | 'planned'. URLs are relative to this manifest.",
+  "bundles": {
+    "ZH": {
+      "name": "Zürich",
+      "status": "soon",
+      "size_mb": null,
+      "url": null,
+      "sha256": null
+    },
+    "SH": {
+      "name": "Schaffhausen",
+      "status": "available",
+      "size_mb": 3124.6,
+      "url": "releases/SH.zip",
+      "sha256": "8d0cc948fe4484edef1e9a4245adfdb78f9951169e14e45bd34075e7161cb47d"
+    }
+  }
+}

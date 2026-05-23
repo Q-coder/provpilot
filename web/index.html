@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ProVPilot &mdash; Scenery Download</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: #0f1115; color: #e6e6e6; }
+  header { padding: 14px 22px; background: #1a1d24; border-bottom: 1px solid #2a2f3a; display: flex; align-items: center; gap: 18px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .sub { color: #8a93a3; font-size: 13px; }
+  header a.dmg { margin-left: auto; background: #2563eb; color: #fff; padding: 8px 14px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600; }
+  header a.dmg:hover { background: #1d4ed8; }
+  #map { position: absolute; top: 56px; left: 0; right: 0; bottom: 0; }
+  .legend { background: rgba(20,22,28,0.92); padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 1.5; color: #d6d8de; }
+  .legend i { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: middle; border: 1px solid #444; }
+  .leaflet-popup-content-wrapper { background: #1a1d24; color: #e6e6e6; border-radius: 6px; }
+  .leaflet-popup-tip { background: #1a1d24; }
+  .leaflet-popup-content { margin: 12px 14px; font-size: 13px; line-height: 1.5; min-width: 220px; }
+  .leaflet-popup-content h3 { margin: 0 0 6px; font-size: 15px; color: #fff; }
+  .leaflet-popup-content .meta { color: #8a93a3; font-size: 12px; }
+  .leaflet-popup-content a.dl { display: inline-block; margin-top: 8px; background: #2563eb; color: #fff; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-weight: 600; }
+  .leaflet-popup-content a.dl.disabled { background: #444; color: #888; pointer-events: none; }
+  .leaflet-popup-content code { background: #0f1115; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ProVPilot</h1>
+  <span class="sub">Click a region to download scenery</span>
+  <a class="dmg" id="dmg-link" href="releases/ProvPilot-1.0.1-arm64.dmg">Download macOS App (1.0.1)</a>
+</header>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+// ---------------------------------------------------------------------------
+//  Config: where to find data
+// ---------------------------------------------------------------------------
+const CANTONS_GEOJSON = "data/cantons.geojson";   // CH canton polygons (WGS84)
+const MANIFEST_URL    = "manifest.json";          // bundle availability + URLs
+
+// ---------------------------------------------------------------------------
+//  Base map: swisstopo WMTS (free, beautiful in CH; falls back automatically
+//  outside CH because the tiles return 204). For wider area we add OSM under.
+// ---------------------------------------------------------------------------
+const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+});
+const swisstopo = L.tileLayer(
+  "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg", {
+    maxZoom: 19,
+    minZoom: 2,
+    attribution: '&copy; <a href="https://www.swisstopo.admin.ch">swisstopo</a>'
+});
+
+const map = L.map("map", {
+  center: [47.3, 8.5],   // approx. Zurich
+  zoom: 8,
+  layers: [osm, swisstopo]
+});
+
+L.control.layers(
+  { "OpenStreetMap": osm },
+  { "swisstopo SWISSIMAGE": swisstopo },
+  { collapsed: true }
+).addTo(map);
+
+// ---------------------------------------------------------------------------
+//  Legend
+// ---------------------------------------------------------------------------
+const legend = L.control({ position: "bottomright" });
+legend.onAdd = () => {
+  const div = L.DomUtil.create("div", "legend");
+  div.innerHTML =
+    '<b>Scenery availability</b><br>' +
+    '<i style="background:#22c55e"></i> Available now<br>' +
+    '<i style="background:#f59e0b"></i> Coming soon<br>' +
+    '<i style="background:#374151"></i> Not yet planned';
+  return div;
+};
+legend.addTo(map);
+
+// ---------------------------------------------------------------------------
+//  Load manifest + GeoJSON in parallel, then render
+// ---------------------------------------------------------------------------
+Promise.all([
+  fetch(MANIFEST_URL).then(r => r.ok ? r.json() : { bundles: {} }),
+  fetch(CANTONS_GEOJSON).then(r => {
+    if (!r.ok) throw new Error("cantons.geojson not found at " + CANTONS_GEOJSON);
+    return r.json();
+  })
+]).then(([manifest, geo]) => {
+
+  // Map canton id -> bundle entry
+  const bundles = manifest.bundles || {};
+
+  function bundleFor(feature) {
+    // swisstopo cantons GeoJSON uses `ak` = 2-letter code, `name` = full name, `id` = BFS number.
+    const p = feature.properties || {};
+    const ak = p.ak ? String(p.ak).toUpperCase() : null;
+    if (ak && bundles[ak]) return bundles[ak];
+    if (p.id != null && bundles[String(p.id)]) return bundles[String(p.id)];
+    return null;
+  }
+
+  function fillFor(bundle) {
+    if (!bundle) return "#374151";
+    if (bundle.status === "available") return "#22c55e";
+    if (bundle.status === "soon")      return "#f59e0b";
+    return "#374151";
+  }
+
+  function label(feature) {
+    const p = feature.properties || {};
+    return p.name || p.label || p.ak || "Region";
+  }
+
+  function popupHtml(bundle, name) {
+    if (!bundle) {
+      return `<h3>${name}</h3><div class="meta">No scenery bundle planned yet.</div>`;
+    }
+    const size = bundle.size_mb ? `${bundle.size_mb.toLocaleString()} MB` : "size unknown";
+    const sha  = bundle.sha256 ? `<div class="meta">sha256 <code>${bundle.sha256.slice(0,16)}…</code></div>` : "";
+    if (bundle.status === "available" && bundle.url) {
+      return `<h3>${name}</h3>
+              <div class="meta">${size}</div>
+              ${sha}
+              <a class="dl" href="${bundle.url}">Download ZIP</a>
+              <div class="meta" style="margin-top:8px">
+                Unzip next to your <code>ProvPilot.app</code> &mdash; the first-run wizard will pick it up.
+              </div>`;
+    }
+    if (bundle.status === "soon") {
+      return `<h3>${name}</h3>
+              <div class="meta">Bundle is being prepared. Check back soon.</div>
+              <a class="dl disabled">Coming soon</a>`;
+    }
+    return `<h3>${name}</h3><div class="meta">No download available yet.</div>`;
+  }
+
+  const layer = L.geoJSON(geo, {
+    style: f => {
+      const b = bundleFor(f);
+      return {
+        color: "#1e293b",
+        weight: 1,
+        fillColor: fillFor(b),
+        fillOpacity: 0.45
+      };
+    },
+    onEachFeature: (feature, l) => {
+      const b = bundleFor(feature);
+      const name = label(feature);
+      l.bindPopup(popupHtml(b, name));
+      l.on("mouseover", () => l.setStyle({ weight: 2, fillOpacity: 0.65 }));
+      l.on("mouseout",  () => l.setStyle({ weight: 1, fillOpacity: 0.45 }));
+    }
+  }).addTo(map);
+
+  map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+
+}).catch(err => {
+  console.error(err);
+  const div = L.DomUtil.create("div", "legend");
+  div.style.color = "#f87171";
+  div.innerHTML = "Failed to load scenery map: " + err.message;
+  document.body.appendChild(div);
+});
+
+// ---------------------------------------------------------------------------
+//  Pull latest DMG URL from latest.json (so download button always current)
+// ---------------------------------------------------------------------------
+fetch("releases/latest.json").then(r => r.ok ? r.json() : null).then(j => {
+  if (!j || !j.macos_arm64) return;
+  const a = document.getElementById("dmg-link");
+  a.href = "releases/" + j.macos_arm64.url;
+  a.textContent = `Download macOS App (${j.version})`;
+}).catch(() => {});
+</script>
+</body>
+</html>
