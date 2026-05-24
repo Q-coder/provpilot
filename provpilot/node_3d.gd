@@ -542,6 +542,7 @@ func _create_propeller_blur_disc() -> void:
 
 # Deferred terrain initialization - waits for first physics frame
 var _pending_terrain_init: bool = false
+var _terrain_init_print_timer: int = 0
 
 # Initialize JSBSim with correct terrain elevation at startup
 # This must be called BEFORE JSBSim runs its physics, setting terrain during IC
@@ -635,8 +636,13 @@ func _do_deferred_terrain_init() -> void:
 		target_z = ac_node.global_position.z
 		target_heading = -rad_to_deg(ac_node.rotation.y)
 
-	print("=== _do_deferred_terrain_init target: x=%.1f z=%.1f hdg=%.1f° (dict_keys=%s) ===" % [
-		target_x, target_z, target_heading, str(_first_flight_target.keys())])
+	# Print the target only once per second while we wait for terrain to
+	# stream in — otherwise this fires 60×/sec and floods the log.
+	_terrain_init_print_timer -= 1
+	if _terrain_init_print_timer <= 0:
+		_terrain_init_print_timer = 60
+		print("=== _do_deferred_terrain_init target: x=%.1f z=%.1f hdg=%.1f° (dict_keys=%s) ===" % [
+			target_x, target_z, target_heading, str(_first_flight_target.keys())])
 
 	# Move aircraft to target position
 	ac_node.global_position.x = target_x
