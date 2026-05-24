@@ -1,19 +1,31 @@
 {
-  "_comment": "ProVPilot scenery bundles. Keys = canton codes (BFS Kanton-Nummer or 2-letter ISO). Status: 'available' | 'soon' | 'planned'. URLs are relative to this manifest.",
+  "_comment": "ProVPilot scenery coverage (display only). The actual download is performed in-app via Settings → Download Scenery against https://www.md80.ch/provpilot/scenery_manifest.json. Status: 'available' | 'soon' | 'planned'.",
   "bundles": {
-    "ZH": {
-      "name": "Zürich",
-      "status": "soon",
-      "size_mb": null,
-      "url": null,
-      "sha256": null
-    },
-    "SH": {
-      "name": "Schaffhausen",
-      "status": "available",
-      "size_mb": 3124.6,
-      "url": "releases/SH.zip",
-      "sha256": "8d0cc948fe4484edef1e9a4245adfdb78f9951169e14e45bd34075e7161cb47d"
-    }
+    "AG": {"name": "Aargau",                "status": "available"},
+    "AI": {"name": "Appenzell Innerrhoden", "status": "available"},
+    "AR": {"name": "Appenzell Ausserrhoden","status": "available"},
+    "BE": {"name": "Bern",                  "status": "available"},
+    "BL": {"name": "Basel-Landschaft",      "status": "available"},
+    "BS": {"name": "Basel-Stadt",           "status": "available"},
+    "FR": {"name": "Fribourg",              "status": "available"},
+    "GE": {"name": "Genève",                "status": "available"},
+    "GL": {"name": "Glarus",                "status": "available"},
+    "GR": {"name": "Graubünden",            "status": "available"},
+    "JU": {"name": "Jura",                  "status": "available"},
+    "LU": {"name": "Luzern",                "status": "available"},
+    "NE": {"name": "Neuchâtel",             "status": "available"},
+    "NW": {"name": "Nidwalden",             "status": "available"},
+    "OW": {"name": "Obwalden",              "status": "available"},
+    "SG": {"name": "St. Gallen",            "status": "available"},
+    "SH": {"name": "Schaffhausen",          "status": "available"},
+    "SO": {"name": "Solothurn",             "status": "available"},
+    "SZ": {"name": "Schwyz",                "status": "available"},
+    "TG": {"name": "Thurgau",               "status": "available"},
+    "TI": {"name": "Ticino",                "status": "available"},
+    "UR": {"name": "Uri",                   "status": "available"},
+    "VD": {"name": "Vaud",                  "status": "available"},
+    "VS": {"name": "Valais",                "status": "available"},
+    "ZG": {"name": "Zug",                   "status": "available"},
+    "ZH": {"name": "Zürich",                "status": "available"}
   }
 }

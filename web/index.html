@@ -2,98 +2,439 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>ProVPilot &mdash; Scenery Download</title>
+<title>ProVPilot &mdash; Swiss VFR Flight Simulator</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="ProVPilot is a free open-source flight simulator with JSBSim flight dynamics, photoreal Swiss & Baden-Württemberg scenery from SwissTopo and LGL-BW, and a faithful Cessna 172 cockpit. macOS and Windows.">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: #0f1115; color: #e6e6e6; }
-  header { padding: 14px 22px; background: #1a1d24; border-bottom: 1px solid #2a2f3a; display: flex; align-items: center; gap: 18px; }
-  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
-  header .sub { color: #8a93a3; font-size: 13px; }
-  .dl-buttons { margin-left: auto; display: flex; gap: 8px; }
-  header a.dmg { background: #2563eb; color: #fff; padding: 8px 14px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600; }
-  header a.dmg:hover { background: #1d4ed8; }
-  header a.dmg.win { background: #0e7490; }
-  header a.dmg.win:hover { background: #0c647f; }
-  #map { position: absolute; top: 56px; left: 0; right: 0; bottom: 0; }
+  :root {
+    --bg: #0f1115;
+    --bg-2: #1a1d24;
+    --bg-3: #232732;
+    --border: #2a2f3a;
+    --fg: #e6e6e6;
+    --fg-dim: #8a93a3;
+    --accent: #2563eb;
+    --accent-2: #0e7490;
+    --ok: #22c55e;
+    --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.55; }
+  a { color: #7dd3fc; }
+  a:hover { color: #bae6fd; }
+  code { background: #0a0c10; padding: 1px 5px; border-radius: 3px; font-size: 0.92em; }
+  pre { background: #0a0c10; padding: 14px 16px; border-radius: 6px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  pre code { background: transparent; padding: 0; }
+  h2 { font-size: 26px; margin: 0 0 18px; color: #fff; letter-spacing: -0.01em; }
+  h3 { font-size: 18px; margin: 22px 0 10px; color: #fff; }
+  p { margin: 0 0 14px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  .section { padding: 56px 0; border-bottom: 1px solid var(--border); }
+  .section:last-child { border-bottom: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 22px; font-size: 14px; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--fg-dim); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  td:first-child { color: #fff; font-weight: 500; }
+  ol, ul { padding-left: 22px; margin: 0 0 14px; }
+  li { margin-bottom: 6px; }
+
+  /* ── Header ──────────────────────────────────────────────────── */
+  header.top {
+    padding: 14px 24px;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+  }
+  header.top h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+  header.top .sub { color: var(--fg-dim); font-size: 13px; }
+  header.top nav { margin-left: auto; display: flex; gap: 18px; }
+  header.top nav a { color: var(--fg-dim); text-decoration: none; font-size: 13px; }
+  header.top nav a:hover { color: var(--fg); }
+  .dl-buttons { display: flex; gap: 8px; }
+  .dl-btn {
+    background: var(--accent);
+    color: #fff;
+    padding: 8px 14px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .dl-btn:hover { background: #1d4ed8; color: #fff; }
+  .dl-btn.win { background: var(--accent-2); }
+  .dl-btn.win:hover { background: #0c647f; }
+
+  /* ── Hero ────────────────────────────────────────────────────── */
+  .hero {
+    padding: 72px 0 56px;
+    background: linear-gradient(180deg, #131722 0%, var(--bg) 100%);
+    border-bottom: 1px solid var(--border);
+  }
+  .hero h2 { font-size: 44px; line-height: 1.15; margin: 0 0 18px; letter-spacing: -0.02em; }
+  .hero .tagline { font-size: 19px; color: var(--fg-dim); max-width: 700px; margin: 0 0 28px; }
+  .hero .ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+  .hero .dl-btn { padding: 12px 22px; font-size: 15px; }
+
+  /* ── Features grid ─────────────────────────────────────────── */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 18px;
+    margin: 20px 0 0;
+  }
+  .card {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 16px; }
+  .card p { margin: 0; color: var(--fg-dim); font-size: 14px; }
+
+  /* ── Install columns ────────────────────────────────────────── */
+  .platforms { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  @media (max-width: 720px) { .platforms { grid-template-columns: 1fr; } }
+  .platform {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 22px 24px;
+  }
+  .platform h3 { margin-top: 0; font-size: 18px; }
+  .platform .badge {
+    display: inline-block;
+    background: var(--bg-3);
+    color: var(--fg-dim);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: 8px;
+  }
+
+  /* ── Map (scenery coverage) ────────────────────────────────── */
+  .map-wrap { position: relative; height: 480px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+  #map { position: absolute; inset: 0; }
   .legend { background: rgba(20,22,28,0.92); padding: 10px 12px; border-radius: 6px; font-size: 12px; line-height: 1.5; color: #d6d8de; }
   .legend i { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: middle; border: 1px solid #444; }
-  .leaflet-popup-content-wrapper { background: #1a1d24; color: #e6e6e6; border-radius: 6px; }
-  .leaflet-popup-tip { background: #1a1d24; }
+  .leaflet-popup-content-wrapper { background: var(--bg-2); color: var(--fg); border-radius: 6px; }
+  .leaflet-popup-tip { background: var(--bg-2); }
   .leaflet-popup-content { margin: 12px 14px; font-size: 13px; line-height: 1.5; min-width: 220px; }
   .leaflet-popup-content h3 { margin: 0 0 6px; font-size: 15px; color: #fff; }
-  .leaflet-popup-content .meta { color: #8a93a3; font-size: 12px; }
-  .leaflet-popup-content a.dl { display: inline-block; margin-top: 8px; background: #2563eb; color: #fff; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-weight: 600; }
-  .leaflet-popup-content a.dl.disabled { background: #444; color: #888; pointer-events: none; }
-  .leaflet-popup-content code { background: #0f1115; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+  .leaflet-popup-content .meta { color: var(--fg-dim); font-size: 12px; }
+
+  footer {
+    background: var(--bg-2);
+    border-top: 1px solid var(--border);
+    padding: 32px 0;
+    color: var(--fg-dim);
+    font-size: 13px;
+    text-align: center;
+  }
+  footer a { color: var(--fg-dim); }
 </style>
 </head>
 <body>
-<header>
+
+<header class="top">
   <h1>ProVPilot</h1>
-  <span class="sub">Click a region to download scenery</span>
+  <span class="sub">Swiss VFR Flight Simulator</span>
+  <nav>
+    <a href="#about">About</a>
+    <a href="#install">Install</a>
+    <a href="#controls">Controls</a>
+    <a href="#scenery">Scenery</a>
+  </nav>
   <div class="dl-buttons">
-    <a class="dmg" id="dmg-link" href="releases/ProvPilot-1.0.1-arm64.dmg">Download macOS (1.0.1)</a>
-    <a class="dmg win" id="win-link" href="releases/ProvPilot-Windows-1.0.1.zip">Download Windows (1.0.1)</a>
+    <a class="dl-btn" id="dmg-link" href="releases/ProvPilot-1.0.4-arm64.dmg">macOS</a>
+    <a class="dl-btn win" id="win-link" href="releases/ProvPilot-Windows-1.0.4.zip">Windows</a>
   </div>
 </header>
-<div id="map"></div>
+
+<!-- ── Hero ─────────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="wrap">
+    <h2>Fly real Switzerland.<br>From 1&nbsp;m of terrain to the rivets on a Cessna.</h2>
+    <p class="tagline">
+      ProVPilot is a free, open-source flight simulator built on
+      <a href="https://jsbsim.sourceforge.net">JSBSim</a> flight dynamics and the
+      <a href="https://godotengine.org">Godot</a> engine, with photoreal Switzerland and
+      Baden-Württemberg scenery sourced directly from <a href="https://www.swisstopo.admin.ch">swisstopo</a>
+      and <a href="https://www.lgl-bw.de">LGL&nbsp;BW</a>. Hop in the Cessna 172, pick an airport, and go.
+    </p>
+    <div class="ctas">
+      <a class="dl-btn" id="dmg-link-hero" href="releases/ProvPilot-1.0.4-arm64.dmg">Download for macOS (Apple Silicon)</a>
+      <a class="dl-btn win" id="win-link-hero" href="releases/ProvPilot-Windows-1.0.4.zip">Download for Windows</a>
+    </div>
+  </div>
+</section>
+
+<!-- ── About ────────────────────────────────────────────────────── -->
+<section class="section" id="about">
+  <div class="wrap">
+    <h2>What is ProVPilot?</h2>
+    <p>
+      A no-friction VFR flight simulator focused on the Alps and Central Europe.
+      The goal: accurate 6-DOF flight physics in a faithful Cessna 172, flown over the
+      <em>actual</em> Swiss landscape &mdash; same terrain elevations, same orthophotos,
+      same buildings, roads, rivers, and airports as the real world &mdash; all streamed
+      at runtime from a custom C++ Godot extension.
+    </p>
+    <p>
+      Originally a Godot 3 demo by <a href="https://github.com/chunky/jsbgodot">chunky/jsbgodot</a>,
+      ProVPilot has been rewritten from the ground up for Godot 4.6 with a custom
+      double-precision engine fork &mdash; no floating-origin tricks, no jitter at
+      coordinate extremes, and a 200&nbsp;km+ visible horizon for Alpine panoramas.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Real-world terrain</h3>
+        <p>swisstopo swissALTI3D elevation at 1&nbsp;m resolution, streamed as 1024&nbsp;&times;&nbsp;1024&nbsp;m float32 tiles with distance-based LOD.</p>
+      </div>
+      <div class="card">
+        <h3>Photoreal orthophoto</h3>
+        <p>SWISSIMAGE aerial photography mapped per tile with a mip pyramid for far-LOD. Mountains look like mountains.</p>
+      </div>
+      <div class="card">
+        <h3>3D buildings</h3>
+        <p>swissBUILDINGS3D models with per-building detail meshes and a merged far-LOD handoff. Cities have skylines.</p>
+      </div>
+      <div class="card">
+        <h3>Roads, rail &amp; water</h3>
+        <p>swissTLM3D road, railway and waterway network rendered as ribbon meshes. Follow the autobahn home.</p>
+      </div>
+      <div class="card">
+        <h3>JSBSim flight dynamics</h3>
+        <p>Full 6-DOF simulation. Faithful Cessna&nbsp;172 model with mixture, magnetos, carb heat, prop pitch and trim.</p>
+      </div>
+      <div class="card">
+        <h3>47 Swiss airports</h3>
+        <p>OSM-verified runway geometry. Welcome screen picker &mdash; pick LSZH, LSGG, LSPF, LSZB and more in one click.</p>
+      </div>
+      <div class="card">
+        <h3>Gamepad &amp; joystick</h3>
+        <p>Plug-and-play SDL gamepad mapping plus per-axis calibration (min/center/max, invert, deadzone, response curve).</p>
+      </div>
+      <div class="card">
+        <h3>Free &amp; open source</h3>
+        <p>MIT licensed. Code on <a href="https://gitlab.md80.ch/gery/provpilot">gitlab.md80.ch</a>. Scenery under the respective free-geodata licenses (swisstopo, LGL-BW, OSM).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Install ──────────────────────────────────────────────────── -->
+<section class="section" id="install">
+  <div class="wrap">
+    <h2>Installation</h2>
+    <p>
+      The app itself is a small download (~150&nbsp;MB). Scenery data is huge
+      (~165&nbsp;GB for full coverage) and is installed separately from inside the app
+      &mdash; pick the regions and quadrants you actually want to fly over.
+    </p>
+
+    <div class="platforms">
+      <!-- ── macOS ─────────────────────────────────────────────── -->
+      <div class="platform">
+        <h3>macOS <span class="badge">Apple Silicon</span></h3>
+        <ol>
+          <li>Download the latest <strong>ProvPilot-x.y.z-arm64.dmg</strong>
+              from the button at the top of this page.</li>
+          <li>Open the DMG and drag <strong>ProvPilot.app</strong> into your
+              <strong>Applications</strong> folder (or anywhere else).</li>
+          <li>The build is signed and notarized, so first launch from Finder works
+              without right-click&nbsp;&rarr;&nbsp;Open.</li>
+          <li>On first launch, open <strong>Settings &rarr; Download Scenery</strong>
+              and grab <em>Switzerland (base)</em> at minimum. The base pack
+              (~44&nbsp;GB) gives you terrain, roads, water and airports &mdash; flyable
+              on its own. Add the four <em>detail</em> quadrants (orthophoto + buildings
+              + trees) for the corners you actually fly in.</li>
+          <li>Pick an airport in the welcome screen and click <strong>Fly!</strong></li>
+        </ol>
+        <p style="color: var(--fg-dim); font-size: 13px;">
+          Requirements: macOS 12+, Apple Silicon (M1 or newer), ~200&nbsp;GB free disk
+          for full Switzerland + Baden-Württemberg scenery.
+        </p>
+      </div>
+
+      <!-- ── Windows ────────────────────────────────────────────── -->
+      <div class="platform">
+        <h3>Windows <span class="badge">x86_64</span></h3>
+        <ol>
+          <li>Download the latest <strong>ProvPilot-Windows-x.y.z.zip</strong>
+              from the button at the top of this page.</li>
+          <li>Right-click the ZIP &rarr; <strong>Properties</strong> &rarr;
+              tick <strong>Unblock</strong> &rarr; OK. Then extract it
+              <em>somewhere you can write to</em> (e.g.
+              <code>C:\Users\&lt;you&gt;\ProvPilot\</code> &mdash;
+              <strong>not</strong> Program&nbsp;Files).</li>
+          <li>The build is <strong>not</strong> signed yet. Windows SmartScreen
+              may show "Windows protected your PC" the first time. Click
+              <strong>More info</strong> &rarr; <strong>Run anyway</strong>.</li>
+          <li>Launch <strong>ProvPilot.exe</strong>.</li>
+          <li>Open <strong>Settings &rarr; Download Scenery</strong> and grab at
+              least <em>Switzerland (base)</em>. Same two-tier model as on macOS.</li>
+          <li>Pick an airport and click <strong>Fly!</strong></li>
+        </ol>
+        <p style="color: var(--fg-dim); font-size: 13px;">
+          Requirements: Windows 10/11 x64, dedicated GPU with Vulkan support
+          recommended, ~200&nbsp;GB free disk for full scenery.
+        </p>
+        <p style="color: var(--fg-dim); font-size: 13px;">
+          Trouble? Logs are written to
+          <code>%APPDATA%\Godot\app_userdata\ProVPilot\logs\godot.log</code> &mdash;
+          send the file with any bug report.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Controls ────────────────────────────────────────────────── -->
+<section class="section" id="controls">
+  <div class="wrap">
+    <h2>Default controls</h2>
+    <p>
+      ProVPilot ships with a standard SDL gamepad mapping (Xbox / DualShock layout)
+      and a full keyboard fallback. Every joystick axis is rebindable and calibratable
+      in <strong>Settings &rarr; Joystick</strong>.
+    </p>
+
+    <h3>Flight</h3>
+    <table>
+      <thead><tr><th>Action</th><th>Gamepad</th><th>Keyboard</th></tr></thead>
+      <tbody>
+        <tr><td>Pitch (elevator)</td><td>Left Stick Y</td><td>W / S</td></tr>
+        <tr><td>Roll (aileron)</td><td>Left Stick X</td><td>A / D</td></tr>
+        <tr><td>Rudder</td><td>Right Stick X</td><td>Q / E</td></tr>
+        <tr><td>Throttle up</td><td>Right Trigger</td><td>Numpad&nbsp;+&nbsp; / &nbsp;T</td></tr>
+        <tr><td>Throttle down</td><td>Left Trigger</td><td>Numpad&nbsp;&minus;&nbsp; / &nbsp;Shift+T</td></tr>
+        <tr><td>Flaps up / down</td><td>D-pad Up / Down</td><td>F / V</td></tr>
+        <tr><td>Brakes</td><td>A Button</td><td>B</td></tr>
+        <tr><td>Trim up / down</td><td>Y / X Button</td><td>&mdash;</td></tr>
+        <tr><td>Mixture richer / leaner</td><td>&mdash;</td><td>M / Shift+M</td></tr>
+        <tr><td>Magnetos clockwise / CCW</td><td>&mdash;</td><td>I / Shift+I</td></tr>
+        <tr><td>Slew mode (reposition)</td><td>&mdash;</td><td>Shift+Y</td></tr>
+        <tr><td>Return to welcome screen</td><td>&mdash;</td><td>Escape</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Camera</h3>
+    <table>
+      <thead><tr><th>Action</th><th>Gamepad</th><th>Keyboard</th></tr></thead>
+      <tbody>
+        <tr><td>Switch view (cockpit / orbit / chase)</td><td>Select / Back</td><td>C</td></tr>
+        <tr><td>Head look (cockpit) / camera adjust</td><td>D-pad</td><td>Arrow Keys</td></tr>
+        <tr><td>Zoom in / out</td><td>L1 / R1 (Shoulders)</td><td>Page&nbsp;Up / Page&nbsp;Down</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Slew (free repositioning)</h3>
+    <table>
+      <thead><tr><th>Action</th><th>Gamepad</th><th>Keyboard</th></tr></thead>
+      <tbody>
+        <tr><td>Move horizontal</td><td>Left Stick</td><td>W / A / S / D</td></tr>
+        <tr><td>Move vertical</td><td>Right Stick Y</td><td>Q / E</td></tr>
+        <tr><td>Rotate (yaw)</td><td>Right Stick X</td><td>&mdash;</td></tr>
+        <tr><td>Fast movement</td><td>&mdash;</td><td>Hold Shift</td></tr>
+        <tr><td>Exit slew</td><td>&mdash;</td><td>Shift+Y</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Cockpit interaction</h3>
+    <p style="color: var(--fg-dim); font-size: 14px;">
+      Switch to the cockpit camera (<code>C</code>) and click-drag the mixture lever,
+      throttle, flap lever or magneto/ignition switch with the mouse. Levers track
+      the pointer with visual feedback.
+    </p>
+
+    <p style="color: var(--fg-dim); font-size: 13px;">
+      Half-axis joysticks (e.g. Logitech Dual Action) work too &mdash; rebind the
+      offending axis in <strong>Settings &rarr; Joystick</strong> or fall back to the
+      keyboard.
+    </p>
+  </div>
+</section>
+
+<!-- ── Scenery coverage ─────────────────────────────────────────── -->
+<section class="section" id="scenery">
+  <div class="wrap">
+    <h2>Scenery coverage</h2>
+    <p>
+      Scenery is split into one <strong>base</strong> pack per region (terrain, roads,
+      water, airports &mdash; flyable on its own) and four <strong>detail</strong>
+      quadrants (NW / NE / SW / SE) containing the heavy assets (orthophoto, buildings,
+      trees). Install only the corners you actually fly in.
+    </p>
+    <p>
+      Use the in-app downloader: <strong>Settings &rarr; Download Scenery</strong>.
+      Packs are sha256-verified and extracted to a folder of your choice.
+    </p>
+    <div class="map-wrap"><div id="map"></div></div>
+    <p style="color: var(--fg-dim); font-size: 13px; margin-top: 14px;">
+      Cantons coloured green have base + detail scenery available today. Coverage
+      currently includes all of Switzerland and Baden-Württemberg. Click any
+      canton for details.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    ProVPilot &copy; 2025&ndash;2026 Gerhard Gubler &middot;
+    MIT licensed &middot;
+    <a href="https://gitlab.md80.ch/gery/provpilot">Source on GitLab</a> &middot;
+    Data: <a href="https://www.swisstopo.admin.ch">swisstopo</a>,
+    <a href="https://www.lgl-bw.de">LGL&nbsp;BW</a>,
+    <a href="https://www.openstreetmap.org/copyright">&copy; OpenStreetMap contributors</a>
+    <br><br>
+    <em>For entertainment and educational use only. Not certified for flight training
+    or real-world navigation.</em>
+  </div>
+</footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
-// ---------------------------------------------------------------------------
-//  Config: where to find data
-// ---------------------------------------------------------------------------
-const CANTONS_GEOJSON = "data/cantons.geojson";   // CH canton polygons (WGS84)
-const MANIFEST_URL    = "manifest.json";          // bundle availability + URLs
+// ── Coverage map ────────────────────────────────────────────────────
+const CANTONS_GEOJSON = "data/cantons.geojson";
+const MANIFEST_URL    = "manifest.json";
 
-// ---------------------------------------------------------------------------
-//  Base map: swisstopo WMTS (free, beautiful in CH; falls back automatically
-//  outside CH because the tiles return 204). For wider area we add OSM under.
-// ---------------------------------------------------------------------------
 const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 });
 const swisstopo = L.tileLayer(
   "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg", {
-    maxZoom: 19,
-    minZoom: 2,
+    maxZoom: 19, minZoom: 2,
     attribution: '&copy; <a href="https://www.swisstopo.admin.ch">swisstopo</a>'
 });
 
-const map = L.map("map", {
-  center: [47.3, 8.5],   // approx. Zurich
-  zoom: 8,
-  layers: [osm]
-});
+const map = L.map("map", { center: [47.3, 8.5], zoom: 7, layers: [osm] });
+L.control.layers({ "OpenStreetMap": osm }, { "swisstopo SWISSIMAGE": swisstopo }, { collapsed: true }).addTo(map);
 
-L.control.layers(
-  { "OpenStreetMap": osm },
-  { "swisstopo SWISSIMAGE": swisstopo },
-  { collapsed: true }
-).addTo(map);
-
-// ---------------------------------------------------------------------------
-//  Legend
-// ---------------------------------------------------------------------------
 const legend = L.control({ position: "bottomright" });
 legend.onAdd = () => {
   const div = L.DomUtil.create("div", "legend");
   div.innerHTML =
     '<b>Scenery availability</b><br>' +
-    '<i style="background:#22c55e"></i> Available now<br>' +
+    '<i style="background:#22c55e"></i> Available (use in-app downloader)<br>' +
     '<i style="background:#f59e0b"></i> Coming soon<br>' +
-    '<i style="background:#374151"></i> Not yet planned';
+    '<i style="background:#374151"></i> Not planned yet';
   return div;
 };
 legend.addTo(map);
 
-// ---------------------------------------------------------------------------
-//  Load manifest + GeoJSON in parallel, then render
-// ---------------------------------------------------------------------------
 Promise.all([
   fetch(MANIFEST_URL).then(r => r.ok ? r.json() : { bundles: {} }),
   fetch(CANTONS_GEOJSON).then(r => {
@@ -101,98 +442,66 @@ Promise.all([
     return r.json();
   })
 ]).then(([manifest, geo]) => {
-
-  // Map canton id -> bundle entry
   const bundles = manifest.bundles || {};
-
-  function bundleFor(feature) {
-    // swisstopo cantons GeoJSON uses `ak` = 2-letter code, `name` = full name, `id` = BFS number.
-    const p = feature.properties || {};
+  const bundleFor = f => {
+    const p = f.properties || {};
     const ak = p.ak ? String(p.ak).toUpperCase() : null;
     if (ak && bundles[ak]) return bundles[ak];
     if (p.id != null && bundles[String(p.id)]) return bundles[String(p.id)];
     return null;
-  }
-
-  function fillFor(bundle) {
-    if (!bundle) return "#374151";
-    if (bundle.status === "available") return "#22c55e";
-    if (bundle.status === "soon")      return "#f59e0b";
+  };
+  const fillFor = b => {
+    if (!b) return "#374151";
+    if (b.status === "available") return "#22c55e";
+    if (b.status === "soon")      return "#f59e0b";
     return "#374151";
-  }
-
-  function label(feature) {
-    const p = feature.properties || {};
-    return p.name || p.label || p.ak || "Region";
-  }
-
-  function popupHtml(bundle, name) {
-    if (!bundle) {
-      return `<h3>${name}</h3><div class="meta">No scenery bundle planned yet.</div>`;
-    }
-    const size = bundle.size_mb ? `${bundle.size_mb.toLocaleString()} MB` : "size unknown";
-    const sha  = bundle.sha256 ? `<div class="meta">sha256 <code>${bundle.sha256.slice(0,16)}…</code></div>` : "";
-    if (bundle.status === "available" && bundle.url) {
-      return `<h3>${name}</h3>
-              <div class="meta">${size}</div>
-              ${sha}
-              <a class="dl" href="${bundle.url}">Download ZIP</a>
-              <div class="meta" style="margin-top:8px">
-                Unzip next to your <code>ProvPilot.app</code> &mdash; the first-run wizard will pick it up.
-              </div>`;
-    }
-    if (bundle.status === "soon") {
-      return `<h3>${name}</h3>
-              <div class="meta">Bundle is being prepared. Check back soon.</div>
-              <a class="dl disabled">Coming soon</a>`;
-    }
-    return `<h3>${name}</h3><div class="meta">No download available yet.</div>`;
-  }
+  };
+  const label = f => (f.properties || {}).name || (f.properties || {}).ak || "Region";
+  const popupHtml = (b, name) => {
+    if (!b)                   return `<h3>${name}</h3><div class="meta">No bundle planned yet.</div>`;
+    if (b.status === "soon")  return `<h3>${name}</h3><div class="meta">Coming soon.</div>`;
+    return `<h3>${name}</h3>
+            <div class="meta">Available &mdash; install from <strong>Settings &rarr; Download Scenery</strong> inside the app.</div>`;
+  };
 
   const layer = L.geoJSON(geo, {
-    style: f => {
-      const b = bundleFor(f);
-      return {
-        color: "#1e293b",
-        weight: 1,
-        fillColor: fillFor(b),
-        fillOpacity: 0.45
-      };
-    },
-    onEachFeature: (feature, l) => {
-      const b = bundleFor(feature);
-      const name = label(feature);
-      l.bindPopup(popupHtml(b, name));
+    style: f => ({ color: "#1e293b", weight: 1, fillColor: fillFor(bundleFor(f)), fillOpacity: 0.45 }),
+    onEachFeature: (f, l) => {
+      l.bindPopup(popupHtml(bundleFor(f), label(f)));
       l.on("mouseover", () => l.setStyle({ weight: 2, fillOpacity: 0.65 }));
       l.on("mouseout",  () => l.setStyle({ weight: 1, fillOpacity: 0.45 }));
     }
   }).addTo(map);
-
   map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+}).catch(err => console.error("Map load failed:", err));
 
-}).catch(err => {
-  console.error(err);
-  const div = L.DomUtil.create("div", "legend");
-  div.style.color = "#f87171";
-  div.innerHTML = "Failed to load scenery map: " + err.message;
-  document.body.appendChild(div);
-});
-
-// ---------------------------------------------------------------------------
-//  Pull latest DMG URL from latest.json (so download button always current)
-// ---------------------------------------------------------------------------
+// ── Wire latest release URLs into all download buttons ────────────
 fetch("releases/latest.json").then(r => r.ok ? r.json() : null).then(j => {
   if (!j) return;
-  if (j.macos_arm64) {
-    const a = document.getElementById("dmg-link");
-    a.href = "releases/" + j.macos_arm64.url;
-    a.textContent = `Download macOS (${j.version})`;
-  }
-  if (j.windows_x86_64) {
-    const w = document.getElementById("win-link");
-    w.href = "releases/" + j.windows_x86_64.url;
-    w.textContent = `Download Windows (${j.version})`;
-  }
+  const setDmg = id => {
+    const a = document.getElementById(id);
+    if (a && j.macos_arm64) {
+      a.href = "releases/" + j.macos_arm64.url;
+      const isHero = id.endsWith("hero");
+      a.textContent = isHero
+        ? `Download for macOS (Apple Silicon) — v${j.version}`
+        : `macOS v${j.version}`;
+    }
+  };
+  const setWin = id => {
+    const a = document.getElementById(id);
+    if (a && j.windows_x86_64) {
+      a.href = "releases/" + j.windows_x86_64.url;
+      const isHero = id.endsWith("hero");
+      a.textContent = isHero
+        ? `Download for Windows — v${j.version}`
+        : `Windows v${j.version}`;
+    }
+  };
+  setDmg("dmg-link");
+  setDmg("dmg-link-hero");
+  setWin("win-link");
+  setWin("win-link-hero");
 }).catch(() => {});
 </script>
 </body>
