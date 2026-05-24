@@ -360,8 +360,16 @@ func _start_install(_region: Dictionary, pack: Dictionary, pack_id: String) -> v
 func _on_progress_tick() -> void:
 	if _job_pack_id == "":
 		return
-	var downloaded := _http.get_downloaded_bytes()
-	var total := _http.get_body_size()
+	# NOTE: HTTPRequest.get_downloaded_bytes() / get_body_size() are int32 in
+	# Godot's HTTPRequest impl and overflow at ~2 GiB (you get a large
+	# negative number). The scenery packs are tens of GB, so read the partial
+	# file size from disk instead — FileAccess.get_length() is int64 — and
+	# use the manifest's pack.size for the total.
+	var downloaded: int = _file_size(_job_zip_path)
+	var total: int = int(_job_pack.get("size", 0))
+	if total <= 0:
+		# Fallback to HTTPRequest's value if the manifest didn't include size.
+		total = _http.get_body_size()
 	if total > 0:
 		_progress.value = clamp(100.0 * float(downloaded) / float(total), 0.0, 100.0)
 		_progress_lbl.text = "%s / %s" % [_fmt_size(downloaded), _fmt_size(total)]
