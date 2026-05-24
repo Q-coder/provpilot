@@ -127,6 +127,7 @@ var _loading_done: bool = false
 var _fly_loading: bool = false   # True while loading after user clicks Fly!
 var _fly_loading_start_msec: int = 0  # Timestamp when fly loading started (ms)
 const FLY_LOADING_MAX_MSEC: int = 45000  # Hard cap on fly loading screen (45s)
+const FLY_LOADING_NODATA_MSEC: int = 10000  # Give up faster when zero tiles load (10s)
 var _welcome_screen: CanvasLayer = null
 var _settings_screen: CanvasLayer = null
 
@@ -898,6 +899,16 @@ func toggle_slew_mode() -> void:
 		if jsb_node:
 			_pre_slew_airspeed_kts = jsb_node.get_airspeed_knots()
 		print("=== SLEW MODE ENABLED ===")
+		# Debug joystick state so axis mapping issues are easy to spot in the log
+		var pads := Input.get_connected_joypads()
+		print("  Connected joypads: %d — indices: %s" % [pads.size(), pads])
+		var active_dev := JoystickConfig.get_active_device()
+		print("  JoystickConfig active device: %d" % active_dev)
+		if active_dev >= 0:
+			for ax in range(8):
+				var v := Input.get_joy_axis(active_dev, ax)
+				if abs(v) > 0.01:
+					print("    axis %d = %.3f (non-zero)" % [ax, v])
 		print("  Saved airspeed: %.1f kts" % _pre_slew_airspeed_kts)
 		print("  Controls:")
 		print("    Left stick / WASD: Move horizontally")
@@ -1050,20 +1061,27 @@ func handle_head_look(delta: float) -> void:
 	# Or use D-pad which maps to JOY_BUTTON_DPAD_*
 	var look_x: float = 0.0
 	var look_y: float = 0.0
-	
-	# Try hat switch axes first (JOY_AXIS 6 = hat X, JOY_AXIS 7 = hat Y on some controllers)
-	look_x = Input.get_joy_axis(0, JOY_AXIS_MAX)  # Some controllers use higher axes
-	look_y = Input.get_joy_axis(0, JOY_AXIS_MAX)
-	
+	var dev := JoystickConfig.get_active_device()
+
+	# Try hat switch axes first (DirectInput hat: axis 6 = X, axis 7 = Y on most Windows joysticks)
+	if dev >= 0:
+		var hx := Input.get_joy_axis(dev, 6)  # hat horizontal
+		var hy := Input.get_joy_axis(dev, 7)  # hat vertical
+		if abs(hx) >= 0.5:
+			look_x = sign(hx)
+		if abs(hy) >= 0.5:
+			look_y = sign(hy)
+
 	# If no hat axis input, check D-pad buttons
 	if abs(look_x) < 0.1 and abs(look_y) < 0.1:
-		if Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_LEFT):
+		var d := dev if dev >= 0 else 0
+		if Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_LEFT):
 			look_x = -1.0
-		elif Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_RIGHT):
+		elif Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_RIGHT):
 			look_x = 1.0
-		if Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_UP):
+		if Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_UP):
 			look_y = -1.0  # Up on D-pad = look up (negative pitch)
-		elif Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_DOWN):
+		elif Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_DOWN):
 			look_y = 1.0   # Down on D-pad = look down (positive pitch)
 	
 	# Also support keyboard arrows for testing
@@ -1095,16 +1113,28 @@ func handle_orbit_camera(delta: float) -> void:
 	# Get input from hat switch, D-pad, or keyboard
 	var look_x: float = 0.0
 	var look_y: float = 0.0
-	
-	# Check D-pad buttons
-	if Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_LEFT):
-		look_x = -1.0
-	elif Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_RIGHT):
-		look_x = 1.0
-	if Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_UP):
-		look_y = 1.0   # Up = increase elevation
-	elif Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_DOWN):
-		look_y = -1.0  # Down = decrease elevation
+	var dev := JoystickConfig.get_active_device()
+
+	# Hat switch axes (DirectInput: axis 6 = X, axis 7 = Y)
+	if dev >= 0:
+		var hx := Input.get_joy_axis(dev, 6)
+		var hy := Input.get_joy_axis(dev, 7)
+		if abs(hx) >= 0.5:
+			look_x = sign(hx)
+		if abs(hy) >= 0.5:
+			look_y = -sign(hy)  # hat up = positive elevation
+
+	# Check D-pad buttons (fallback / gamepads)
+	if abs(look_x) < 0.1 and abs(look_y) < 0.1:
+		var d := dev if dev >= 0 else 0
+		if Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_LEFT):
+			look_x = -1.0
+		elif Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_RIGHT):
+			look_x = 1.0
+		if Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_UP):
+			look_y = 1.0   # Up = increase elevation
+		elif Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_DOWN):
+			look_y = -1.0  # Down = decrease elevation
 	
 	# Also support keyboard arrows for testing
 	if Input.is_key_pressed(KEY_LEFT):
@@ -1132,11 +1162,12 @@ func handle_orbit_camera(delta: float) -> void:
 	# Handle zoom - L1/R1 (shoulder buttons) or Page Up/Page Down
 	var zoom_in = 0.0
 	var zoom_out = 0.0
-	
+	var dz := dev if dev >= 0 else 0
+
 	# Gamepad shoulder buttons (L1 = button 4, R1 = button 5)
-	if Input.is_joy_button_pressed(0, JOY_BUTTON_LEFT_SHOULDER):
+	if Input.is_joy_button_pressed(dz, JOY_BUTTON_LEFT_SHOULDER):
 		zoom_in = 1.0
-	if Input.is_joy_button_pressed(0, JOY_BUTTON_RIGHT_SHOULDER):
+	if Input.is_joy_button_pressed(dz, JOY_BUTTON_RIGHT_SHOULDER):
 		zoom_out = 1.0
 	
 	# Keyboard Page Up/Down
@@ -1176,7 +1207,9 @@ func handle_orbit_camera(delta: float) -> void:
 func handle_chase_camera(delta: float) -> void:
 	var ac_node = $AC
 	var aircraft_pos = ac_node.global_position
-	
+	var dev2 := JoystickConfig.get_active_device()
+	var d2 := dev2 if dev2 >= 0 else 0
+
 	# Get aircraft's forward direction projected onto horizontal plane
 	var forward = ac_node.global_transform.basis.z
 	forward.y = 0
@@ -1188,9 +1221,9 @@ func handle_chase_camera(delta: float) -> void:
 	# Handle zoom - same controls as orbit camera
 	var zoom_in = 0.0
 	var zoom_out = 0.0
-	if Input.is_joy_button_pressed(0, JOY_BUTTON_LEFT_SHOULDER):
+	if Input.is_joy_button_pressed(d2, JOY_BUTTON_LEFT_SHOULDER):
 		zoom_in = 1.0
-	if Input.is_joy_button_pressed(0, JOY_BUTTON_RIGHT_SHOULDER):
+	if Input.is_joy_button_pressed(d2, JOY_BUTTON_RIGHT_SHOULDER):
 		zoom_out = 1.0
 	if Input.is_key_pressed(KEY_PAGEUP):
 		zoom_in = 1.0
@@ -1202,18 +1235,32 @@ func handle_chase_camera(delta: float) -> void:
 	
 	# Handle height adjust with D-pad up/down or arrow keys
 	var height_delta = 0.0
-	if Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_UP) or Input.is_key_pressed(KEY_UP):
+
+	# Hat switch axes for chase yaw (horizontal) and height (vertical)
+	var hat_x: float = 0.0
+	var hat_y: float = 0.0
+	if dev2 >= 0:
+		var hx := Input.get_joy_axis(dev2, 6)
+		var hy := Input.get_joy_axis(dev2, 7)
+		if abs(hx) >= 0.5: hat_x = sign(hx)
+		if abs(hy) >= 0.5: hat_y = -sign(hy)  # hat up = height up
+
+	if hat_y != 0.0:
+		height_delta = hat_y
+	elif Input.is_joy_button_pressed(d2, JOY_BUTTON_DPAD_UP) or Input.is_key_pressed(KEY_UP):
 		height_delta = 1.0
-	elif Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_DOWN) or Input.is_key_pressed(KEY_DOWN):
+	elif Input.is_joy_button_pressed(d2, JOY_BUTTON_DPAD_DOWN) or Input.is_key_pressed(KEY_DOWN):
 		height_delta = -1.0
 	chase_height += height_delta * ORBIT_ZOOM_SPEED * delta
 	chase_height = clamp(chase_height, 0.5, 20.0)
 	
 	# Handle yaw offset with D-pad left/right or arrow keys
 	var yaw_delta = 0.0
-	if Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_LEFT) or Input.is_key_pressed(KEY_LEFT):
+	if hat_x != 0.0:
+		yaw_delta = hat_x
+	elif Input.is_joy_button_pressed(d2, JOY_BUTTON_DPAD_LEFT) or Input.is_key_pressed(KEY_LEFT):
 		yaw_delta = -1.0
-	elif Input.is_joy_button_pressed(0, JOY_BUTTON_DPAD_RIGHT) or Input.is_key_pressed(KEY_RIGHT):
+	elif Input.is_joy_button_pressed(d2, JOY_BUTTON_DPAD_RIGHT) or Input.is_key_pressed(KEY_RIGHT):
 		yaw_delta = 1.0
 	chase_yaw += yaw_delta * ORBIT_SPEED * delta
 	if chase_yaw > 360.0:
@@ -1527,7 +1574,8 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 	# nodata territory), don't trap the user on the loading screen forever.
 	if is_fly_loading and _fly_loading_start_msec > 0:
 		var elapsed := Time.get_ticks_msec() - _fly_loading_start_msec
-		if elapsed > FLY_LOADING_MAX_MSEC and loaded > 0:
+		var max_msec := FLY_LOADING_NODATA_MSEC if loaded == 0 else FLY_LOADING_MAX_MSEC
+		if elapsed > max_msec:
 			scenery_ready = true
 			p_scenery = 1.0
 

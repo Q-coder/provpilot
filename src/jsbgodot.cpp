@@ -870,27 +870,40 @@ void JSBGodot::_ready()
         jsbsim_root = "../jsbsim";
         UtilityFunctions::print("JSBSim root (editor): ../jsbsim");
     } else {
-        // Exported app: prefer sibling-of-.app (portable install), but if
-        // that does not exist fall back to the copy bundled inside the .app
-        // at Contents/Resources/jsbsim/ so the DMG works out of the box.
+        // Exported app: path resolution depends on platform.
         String exe_path = OS::get_singleton()->get_executable_path();
-        // exe = .../ProvPilot.app/Contents/MacOS/ProvPilot
-        String contents_dir = exe_path.get_base_dir().get_base_dir();          // .../Contents
-        String app_dir      = contents_dir.get_base_dir();                     // .../ProvPilot.app
-        String parent_dir   = app_dir.get_base_dir();                          // .../
-        String sibling      = parent_dir.path_join("jsbsim");
-        String bundled      = contents_dir.path_join("Resources").path_join("jsbsim");
-        Ref<DirAccess> da   = DirAccess::open(parent_dir);
+        String exe_dir  = exe_path.get_base_dir();
+        String os_name  = OS::get_singleton()->get_name();
         String chosen;
-        if (DirAccess::dir_exists_absolute(sibling)) {
-            chosen = sibling;
-            UtilityFunctions::print("JSBSim root (sibling): ", chosen);
-        } else if (DirAccess::dir_exists_absolute(bundled)) {
-            chosen = bundled;
-            UtilityFunctions::print("JSBSim root (bundled): ", chosen);
+
+        if (os_name == "macOS") {
+            // macOS .app bundle: exe = .../ProvPilot.app/Contents/MacOS/ProvPilot
+            // Prefer jsbsim/ sibling of the .app (portable install), else fall
+            // back to the copy bundled inside Contents/Resources/jsbsim/.
+            String contents_dir = exe_dir.get_base_dir();                          // .../Contents
+            String app_dir      = contents_dir.get_base_dir();                     // .../ProvPilot.app
+            String parent_dir   = app_dir.get_base_dir();                          // .../
+            String sibling      = parent_dir.path_join("jsbsim");
+            String bundled      = contents_dir.path_join("Resources").path_join("jsbsim");
+            if (DirAccess::dir_exists_absolute(sibling)) {
+                chosen = sibling;
+                UtilityFunctions::print("JSBSim root (macOS sibling): ", chosen);
+            } else if (DirAccess::dir_exists_absolute(bundled)) {
+                chosen = bundled;
+                UtilityFunctions::print("JSBSim root (macOS bundled): ", chosen);
+            } else {
+                chosen = sibling; // will fail loudly below
+                UtilityFunctions::print("JSBSim root (macOS missing, tried sibling=", sibling, " bundled=", bundled, ")");
+            }
         } else {
-            chosen = sibling; // legacy default; will fail loudly below
-            UtilityFunctions::print("JSBSim root (missing, tried sibling=", sibling, " bundled=", bundled, ")");
+            // Windows / Linux: the exe sits directly in the install directory,
+            // so jsbsim/ is a subdirectory right next to it.
+            chosen = exe_dir.path_join("jsbsim");
+            if (DirAccess::dir_exists_absolute(chosen)) {
+                UtilityFunctions::print("JSBSim root: ", chosen);
+            } else {
+                UtilityFunctions::print("JSBSim root (missing, tried: ", chosen, ")");
+            }
         }
         jsbsim_root = chosen.utf8().get_data();
     }
