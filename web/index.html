@@ -99,6 +99,20 @@
   .card h3 { margin: 0 0 8px; font-size: 16px; }
   .card p { margin: 0; color: var(--fg-dim); font-size: 14px; }
 
+  /* ── Release notes ──────────────────────────────────────────── */
+  .release {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin: 18px 0;
+  }
+  .release h3 { margin: 0 0 4px 0; font-size: 18px; }
+  .release-date { margin: 0 0 10px 0; color: var(--fg-dim); font-size: 13px; }
+  .release ul { margin: 0; padding-left: 20px; }
+  .release li { margin: 6px 0; color: var(--fg); font-size: 14px; }
+  .release li strong { color: var(--fg); }
+
   /* ── Install columns ────────────────────────────────────────── */
   .platforms { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
   @media (max-width: 720px) { .platforms { grid-template-columns: 1fr; } }
@@ -153,6 +167,7 @@
     <a href="#install">Install</a>
     <a href="#controls">Controls</a>
     <a href="#scenery">Scenery</a>
+    <a href="#changelog">Changelog</a>
   </nav>
   <div class="dl-buttons">
     <a class="dl-btn" id="dmg-link" href="releases/ProvPilot-1.0.4-arm64.dmg">macOS</a>
@@ -386,6 +401,54 @@
       currently includes all of Switzerland and Baden-Württemberg. Click any
       canton for details.
     </p>
+  </div>
+</section>
+
+<section class="section" id="changelog">
+  <div class="wrap">
+    <h2>Release notes</h2>
+    <p style="color: var(--fg-dim);">
+      Latest builds are linked from the download buttons above. Older releases
+      live on the
+      <a href="https://gitlab.md80.ch/gery/provpilot/-/tags">GitLab tags page</a>.
+    </p>
+
+    <article class="release">
+      <h3>v1.0.4 &mdash; Scenery distribution &amp; in-app downloader</h3>
+      <p class="release-date">May 2026</p>
+      <ul>
+        <li><strong>In-app scenery downloader</strong> &mdash; <em>Settings &rarr; Download Scenery</em> fetches base + detail quadrants from md80.ch, verifies sha256 and extracts into a folder you pick. No more manual ZIP wrangling.</li>
+        <li><strong>Continue Flight</strong> &mdash; the welcome screen now offers a green <em>Continue</em> button to jump back into your last session after pressing Esc.</li>
+        <li><strong>About dialog</strong> with full credits and third-party licenses (Godot 4.6, JSBSim, Scenery3D, swisstopo, LGL-BW, OpenStreetMap, Cessna 172 model).</li>
+        <li>Scenery split into per-region <em>base</em> packs and four <em>detail</em> quadrants &mdash; install only the corners you fly in.</li>
+        <li>Project bumped to 1.0.4, version label now read from <code>project.godot</code> at runtime.</li>
+      </ul>
+    </article>
+
+    <article class="release">
+      <h3>v1.0.2 &mdash; Windows support</h3>
+      <p class="release-date">April 2026</p>
+      <ul>
+        <li>First <strong>Windows x86_64 build</strong> with a packaged ZIP, build script and loading-screen fix for cold starts on Windows.</li>
+        <li>Default startup map switched to OpenStreetMap only (swisstopo tiles load on demand).</li>
+        <li>Windows download button added to the website; <code>latest.json</code> now drives both platforms.</li>
+      </ul>
+    </article>
+
+    <article class="release">
+      <h3>v1.0.1 &mdash; First notarized macOS release</h3>
+      <p class="release-date">March 2026</p>
+      <ul>
+        <li>Signed &amp; <strong>notarized macOS DMG</strong> (Apple Silicon).</li>
+        <li>JSBSim aircraft &amp; engine data bundled inside the app; fixed duplicate-scenery scan on APFS volumes.</li>
+        <li><strong>FSX-style Scenery Library</strong> manager with per-folder enable/disable and white-pixel border fix at the CH/DE seam.</li>
+        <li>User-configurable <strong>joystick bindings &amp; calibration</strong> (half-axis throttle, deadzone, invert).</li>
+        <li>Migrated distant terrain from Terrain3D to the in-house <strong>Scenery3D</strong> GDExtension; load progress surfaced on the loading screen.</li>
+        <li>Clipmap streaming + zero-copy terrain rebase eliminate the old ghost-tile bug.</li>
+        <li>Interactive cockpit: mixture, throttle, magneto switch.</li>
+        <li>Orthophoto aerial imagery layer.</li>
+      </ul>
+    </article>
   </div>
 </section>
 
