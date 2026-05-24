@@ -64,6 +64,7 @@ var settings := {
 # UI references for reading back values
 var _controls := {}
 var _bg: ColorRect
+var _main_panel: PanelContainer
 
 
 func _ready() -> void:
@@ -72,6 +73,24 @@ func _ready() -> void:
 	_build_ui()
 	_load_settings()
 	_apply_to_ui()
+	_resize_panel()
+	get_viewport().size_changed.connect(_resize_panel)
+
+
+## Resize the main panel to fit the current viewport. Keeps the dialog
+## usable on small laptops while expanding to fill larger displays.
+func _resize_panel() -> void:
+	if _main_panel == null:
+		return
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	var target := Vector2(
+		clamp(vp.x * 0.95, 900.0, 1600.0),
+		clamp(vp.y * 0.95, 600.0, 1000.0)
+	)
+	target.x = min(target.x, vp.x)
+	target.y = min(target.y, vp.y)
+	_main_panel.custom_minimum_size = target
+	_main_panel.size = target
 
 
 # ── Public API ─────────────────────────────────────────────────────────
@@ -113,7 +132,9 @@ func _build_ui() -> void:
 	style.content_margin_top = 36
 	style.content_margin_bottom = 36
 	panel.add_theme_stylebox_override("panel", style)
+	# Initial size; _resize_panel() recomputes it from the viewport.
 	panel.custom_minimum_size = Vector2(1200, 860)
+	_main_panel = panel
 	center.add_child(panel)
 
 	var main_vbox = VBoxContainer.new()
