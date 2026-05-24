@@ -73,24 +73,6 @@ func _ready() -> void:
 	_build_ui()
 	_load_settings()
 	_apply_to_ui()
-	_resize_panel()
-	get_viewport().size_changed.connect(_resize_panel)
-
-
-## Resize the main panel to fit the current viewport. Keeps the dialog
-## usable on small laptops while expanding to fill larger displays.
-func _resize_panel() -> void:
-	if _main_panel == null:
-		return
-	var vp: Vector2 = get_viewport().get_visible_rect().size
-	var target := Vector2(
-		clamp(vp.x * 0.95, 900.0, 1600.0),
-		clamp(vp.y * 0.95, 600.0, 1000.0)
-	)
-	target.x = min(target.x, vp.x)
-	target.y = min(target.y, vp.y)
-	_main_panel.custom_minimum_size = target
-	_main_panel.size = target
 
 
 # ── Public API ─────────────────────────────────────────────────────────
@@ -116,9 +98,13 @@ func _build_ui() -> void:
 	_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_bg)
 
-	var center = CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_bg.add_child(center)
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 32)
+	margin.add_theme_constant_override("margin_right", 32)
+	margin.add_theme_constant_override("margin_top", 32)
+	margin.add_theme_constant_override("margin_bottom", 32)
+	_bg.add_child(margin)
 
 	var panel = PanelContainer.new()
 	var style = StyleBoxFlat.new()
@@ -132,10 +118,10 @@ func _build_ui() -> void:
 	style.content_margin_top = 36
 	style.content_margin_bottom = 36
 	panel.add_theme_stylebox_override("panel", style)
-	# Initial size; _resize_panel() recomputes it from the viewport.
-	panel.custom_minimum_size = Vector2(1200, 860)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_main_panel = panel
-	center.add_child(panel)
+	margin.add_child(panel)
 
 	var main_vbox = VBoxContainer.new()
 	main_vbox.add_theme_constant_override("separation", 16)

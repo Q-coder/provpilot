@@ -74,29 +74,8 @@ func _ready() -> void:
 	_build_ui()
 	_populate_aircraft_list()
 	_check_for_updates()
-	_resize_panel()
-	get_viewport().size_changed.connect(_resize_panel)
 	# Defer one frame so node_3d.gd has time to connect its signal handler.
 	call_deferred("_maybe_show_first_run_wizard")
-
-
-## Resize the main panel to fit the current viewport. Keeps a card-style
-## look on huge displays (capped) while shrinking gracefully on small ones.
-func _resize_panel() -> void:
-	if _main_panel == null:
-		return
-	var vp: Vector2 = get_viewport().get_visible_rect().size
-	# Fill ~95 % of the viewport, but never go below a usable minimum nor
-	# above the design target (1600x900) on very large displays.
-	var target := Vector2(
-		clamp(vp.x * 0.95, 900.0, 1600.0),
-		clamp(vp.y * 0.95, 600.0, 1000.0)
-	)
-	# If the viewport itself is smaller than the floor, just match it.
-	target.x = min(target.x, vp.x)
-	target.y = min(target.y, vp.y)
-	_main_panel.custom_minimum_size = target
-	_main_panel.size = target
 
 
 # ── Public API ─────────────────────────────────────────────────────────
@@ -146,10 +125,15 @@ func _build_ui() -> void:
 	_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_bg)
 
-	# Main layout: centered content area
-	var center_container = CenterContainer.new()
-	center_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_bg.add_child(center_container)
+	# Main layout: panel anchored to fill the whole viewport with a small
+	# uniform margin so it scales on any display resolution.
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 32)
+	margin.add_theme_constant_override("margin_right", 32)
+	margin.add_theme_constant_override("margin_top", 32)
+	margin.add_theme_constant_override("margin_bottom", 32)
+	_bg.add_child(margin)
 
 	var main_panel = PanelContainer.new()
 	var panel_style = StyleBoxFlat.new()
@@ -163,10 +147,10 @@ func _build_ui() -> void:
 	panel_style.content_margin_top = 40
 	panel_style.content_margin_bottom = 40
 	main_panel.add_theme_stylebox_override("panel", panel_style)
-	# Initial size; the real value is set by _resize_panel() from the viewport.
-	main_panel.custom_minimum_size = Vector2(1600, 900)
+	main_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	main_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_main_panel = main_panel
-	center_container.add_child(main_panel)
+	margin.add_child(main_panel)
 
 	var main_vbox = VBoxContainer.new()
 	main_vbox.add_theme_constant_override("separation", 20)
