@@ -54,6 +54,50 @@ skip_white_pixels = true
 On macOS this resolves to
 `~/Library/Application Support/Godot/app_userdata/ProVPilot/settings.cfg`.
 
+## Download Scenery (in-app)
+
+**Settings → Download Scenery** offers one-click installation of the official
+ProvPilot scenery packs hosted at
+`https://www.md80.ch/provpilot/scenery/`. The panel is implemented by
+[provpilot/scenery_downloader.gd](../provpilot/scenery_downloader.gd) and
+mounted as a section of `SettingsScreen`.
+
+UI flow:
+
+1. **Manifest URL** — defaults to
+   `https://www.md80.ch/provpilot/scenery_manifest.json`. Hit **Refresh** to
+   re-fetch.
+2. **Install Root** — defaults to `InstallRoot.get_scenery_root()` if set,
+   else `<install>/scenery`. **Browse…** picks any directory; the chosen root
+   is *not* persisted by the panel itself — it's just the extraction target
+   for this session.
+3. Each region in the manifest shows one **base** row plus four **detail**
+   rows (`nw/ne/sw/se` quadrants). Per pack you see size, install status, and
+   a **Download / Update / Reinstall** button; installed packs also get a
+   **Forget** button (drops state without deleting files).
+4. After a successful install the panel calls `on_area_installed(path)`,
+   which `SettingsScreen` wires to `_add_scenery_area()` — the new region
+   region root shows up automatically in the Scenery Library above.
+
+Pipeline per pack:
+
+- HTTPRequest streams the zip to
+  `<install_root>/.downloads/<pack_id>.zip` (threaded, no size limit).
+- Size + sha256 are verified against the manifest entry (chunked HashingContext
+  with per-frame yields so the UI stays responsive).
+- ZIPReader extracts every entry into `<install_root>/`, yielding every 32
+  files. The top-level region directory (e.g. `Switzerland/` or
+  `Germany/Baden-Wuertemberg/`) is detected automatically by walking the
+  single-child chain until an asset subdir is found.
+- The zip is deleted on success.
+- State is written into `settings["installed_scenery_packs"][pack_id]` =
+  `{version, sha256, size, path, installed_at}`. The manifest URL doubles as
+  the update check: a sha256 mismatch turns the row into "Update available".
+
+The panel does *not* manage the **Scenery Library** ranking — that's the
+user's job in the table above. Installs are additive; uninstalls are manual
+(rm -rf the region directory + click **Forget**).
+
 ## Runtime Plumbing
 
 `node_3d.gd::_apply_scenery_sources()` is called in `_ready()` and again on

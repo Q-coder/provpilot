@@ -34,6 +34,10 @@ var settings := {
 	# Roots scanned by "Scan for Scenery" button.
 	# Populated at runtime from InstallRoot (next to the .app, $HOME, etc.).
 	"scenery_scan_roots": PackedStringArray(),
+	# Per-pack install state for the in-app Scenery Downloader (see
+	# scenery_downloader.gd). Keyed by pack_id; value = {version, sha256, size,
+	# path, installed_at}.
+	"installed_scenery_packs": {},
 	"skip_white_pixels": true,
 	# Graphics
 	"render_distance": 8,      # terrain load radius in tiles
@@ -141,6 +145,8 @@ func _build_ui() -> void:
 	_build_paths_section(content)
 	content.add_child(HSeparator.new())
 	_build_scenery_sources_section(content)
+	content.add_child(HSeparator.new())
+	_build_scenery_downloader_section(content)
 	content.add_child(HSeparator.new())
 	_build_graphics_section(content)
 	content.add_child(HSeparator.new())
@@ -353,7 +359,7 @@ func _build_scenery_sources_section(parent: VBoxContainer) -> void:
 	_make_table_label(header, "Pri", 50)
 	_make_table_label(header, "Name", 220)
 	_make_table_label(header, "Assets", 240)
-	_make_table_label(header, "Path", 380)
+	_make_table_label(header, "Path", 520)
 	table.add_child(header)
 	table.add_child(HSeparator.new())
 
@@ -493,12 +499,14 @@ func _refresh_scenery_table() -> void:
 		assets_lbl.add_theme_color_override("font_color", Color(0.55, 0.78, 0.55))
 		row.add_child(assets_lbl)
 
-		# Path (truncated)
+		# Path — shown with $HOME collapsed to ~ and middle-elided so the
+		# tail (the distinguishing component) is always visible. Full path
+		# remains in the tooltip on hover.
 		var path_lbl := Label.new()
 		var p: String = str(area.get("path", ""))
-		path_lbl.text = p
+		path_lbl.text = _format_path_for_display(p, 60)
 		path_lbl.tooltip_text = p
-		path_lbl.custom_minimum_size.x = 380
+		path_lbl.custom_minimum_size.x = 520
 		path_lbl.add_theme_font_size_override("font_size", FONT_SM)
 		path_lbl.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
 		path_lbl.clip_text = true
@@ -541,6 +549,35 @@ func _detect_assets(path: String) -> PackedStringArray:
 		if dir.dir_exists(sub):
 			out.append(sub)
 	return out
+
+
+# Format a filesystem path for compact display:
+#   - Collapse $HOME to "~" so /Users/gery/foo → ~/foo
+#   - Case-collide aware: keep the path's original casing intact so
+#     `/Users/gery/provpilot/...` vs `/Users/gery/ProvPilot/...` remain
+#     distinguishable.
+#   - If the result still exceeds `max_chars`, elide the middle, keeping
+#     the first 2 components and the last 3 (e.g. ~/.../scenery/Germany/BW).
+func _format_path_for_display(path: String, max_chars: int) -> String:
+	if path.is_empty():
+		return ""
+	var p := path
+	var home := OS.get_environment("HOME")
+	if home != "" and p.begins_with(home + "/"):
+		p = "~" + p.substr(home.length())
+	elif home != "" and p == home:
+		p = "~"
+	if p.length() <= max_chars:
+		return p
+	var parts := p.split("/", false)
+	if parts.size() <= 5:
+		return p
+	var head := "/".join([parts[0], parts[1]])
+	var tail := "/".join([parts[parts.size() - 3], parts[parts.size() - 2], parts[parts.size() - 1]])
+	# Restore leading slash if absolute path.
+	if p.begins_with("/"):
+		head = "/" + head
+	return "%s/…/%s" % [head, tail]
 
 
 func _is_scenery_area_dir(path: String) -> bool:
@@ -667,6 +704,32 @@ func _on_remove_selected() -> void:
 	settings["scenery_areas"] = areas
 	_selected_area_idx = -1
 	_refresh_scenery_table()
+
+
+# ── Section: Download Scenery ─────────────────────────────────────────
+
+const SceneryDownloaderScript = preload("res://scenery_downloader.gd")
+
+
+func _build_scenery_downloader_section(parent: VBoxContainer) -> void:
+	var dl = SceneryDownloaderScript.new()
+	dl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Wire state callbacks so the downloader reads/writes our settings dict
+	# without taking a hard dependency on SettingsScreen.
+	dl.get_state = func() -> Dictionary:
+		var s = settings.get("installed_scenery_packs", {})
+		return s if s is Dictionary else {}
+	dl.set_state = func(state: Dictionary) -> void:
+		settings["installed_scenery_packs"] = state
+	dl.on_area_installed = func(path: String) -> void:
+		_add_scenery_area(path)
+	parent.add_child(dl)
+	_controls["scenery_downloader"] = dl
+	# Initial install-root suggestion: configured scenery_root, else <install>/scenery.
+	var root := InstallRoot.get_scenery_root()
+	if root.is_empty():
+		root = InstallRoot.get_install_root().path_join("scenery")
+	dl.bootstrap(root)
 
 
 func _on_move_selected_up() -> void:
@@ -808,7 +871,7 @@ func _save_settings() -> void:
 		var section = "paths"
 		if key in ["scenery_path", "jsbsim_path"]:
 			section = "paths"
-		elif key in ["scenery_areas", "scenery_scan_roots", "skip_white_pixels"]:
+		elif key in ["scenery_areas", "scenery_scan_roots", "installed_scenery_packs", "skip_white_pixels"]:
 			section = "scenery"
 		elif key in ["render_distance", "building_distance", "shadow_quality", "tree_density", "vsync", "fullscreen"]:
 			section = "graphics"
@@ -866,6 +929,7 @@ func _get_defaults() -> Dictionary:
 		"jsbsim_path": "jsbsim",
 		"scenery_areas": [],
 		"scenery_scan_roots": PackedStringArray(),
+		"installed_scenery_packs": {},
 		"skip_white_pixels": true,
 		"render_distance": 8,
 		"building_distance": 3,

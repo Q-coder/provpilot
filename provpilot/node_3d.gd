@@ -778,6 +778,9 @@ func _process(delta: float) -> void:
 	# Escape key: return to welcome screen
 	if Input.is_key_pressed(KEY_ESCAPE):
 		if _welcome_screen:
+			# Once at least one flight has started, offer "Continue" so the
+			# user can return to the cockpit without re-teleporting.
+			_welcome_screen.set_continue_enabled(not _first_flight)
 			_welcome_screen.show_welcome()
 			return
 	
@@ -1626,6 +1629,7 @@ func _create_welcome_screen() -> void:
 	add_child(_welcome_screen)
 	_welcome_screen.flight_requested.connect(_on_welcome_flight_requested)
 	_welcome_screen.settings_requested.connect(_on_welcome_settings_requested)
+	_welcome_screen.continue_requested.connect(_on_welcome_continue_requested)
 	_welcome_screen.scenery_setup_requested.connect(_on_welcome_scenery_setup_requested)
 
 	# Provide a default airport list (Scenery3D no longer ships POI data).
@@ -1735,6 +1739,15 @@ func _on_welcome_settings_requested() -> void:
 		_settings_screen.show_settings()
 
 
+## Resume the in-progress flight — simply hide the welcome overlay without
+## teleporting or reloading. Position, attitude and JSBSim state are
+## preserved because flight logic only pauses while the welcome screen is
+## visible (see `_process`).
+func _on_welcome_continue_requested() -> void:
+	if _welcome_screen:
+		_welcome_screen.hide_welcome()
+
+
 ## First-run wizard handler. The user picked a folder; treat it as a scan root,
 ## scan it for regions (Switzerland/, Baden-Wuertemberg/, …) and apply the
 ## resulting library to Scenery3D so tile loading starts.
@@ -1764,6 +1777,7 @@ func _on_settings_closed() -> void:
 	_apply_tree_density()
 	_apply_scenery_sources()
 	if _welcome_screen:
+		_welcome_screen.set_continue_enabled(not _first_flight)
 		_welcome_screen.visible = true
 		_welcome_screen.show_welcome()
 

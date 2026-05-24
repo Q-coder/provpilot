@@ -9,6 +9,9 @@ extends CanvasLayer
 
 signal flight_requested(aircraft_id: String, swiss_e: float, swiss_n: float, heading_deg: float)
 signal settings_requested()
+## Emitted when the user wants to resume an in-progress flight without
+## re-teleporting to the airport. Only available once a flight has started.
+signal continue_requested()
 ## Emitted by the first-run wizard after the user picks a scenery folder.
 ## node_3d.gd connects to this; it imports the folder into the scenery library
 ## and re-applies sources to the Scenery3D node.
@@ -55,6 +58,7 @@ var _airport_list: ItemList
 var _airport_info: RichTextLabel
 var _runway_picker: OptionButton
 var _fly_button: Button
+var _continue_button: Button
 var _status_label: Label
 
 # Filter checkboxes
@@ -99,6 +103,16 @@ func show_welcome() -> void:
 
 func hide_welcome() -> void:
 	visible = false
+
+
+## Show/hide the "Continue" button. The host calls this with `true` once a
+## flight is in progress (i.e. the user pressed Escape mid-flight) so that
+## returning to the welcome screen offers both "resume current flight" and
+## "restart at airport" actions.
+func set_continue_enabled(enabled: bool) -> void:
+	if _continue_button:
+		_continue_button.visible = enabled
+		_continue_button.disabled = not enabled
 
 
 # ── UI Construction ────────────────────────────────────────────────────
@@ -319,6 +333,14 @@ func _build_bottom_bar(parent: VBoxContainer) -> void:
 	settings_btn.pressed.connect(_on_settings_pressed)
 	hbox.add_child(settings_btn)
 
+	# About button
+	var about_btn = Button.new()
+	about_btn.text = "About"
+	about_btn.custom_minimum_size = Vector2(140, 52)
+	about_btn.add_theme_font_size_override("font_size", FONT_MD)
+	about_btn.pressed.connect(_on_about_pressed)
+	hbox.add_child(about_btn)
+
 	# Quit button
 	var quit_btn = Button.new()
 	quit_btn.text = "Quit"
@@ -329,14 +351,41 @@ func _build_bottom_bar(parent: VBoxContainer) -> void:
 
 	# Version label
 	var version_label = Label.new()
-	version_label.text = "v1.0.0"
+	version_label.text = "v" + String(ProjectSettings.get_setting("application/config/version", "0.0.0"))
 	version_label.add_theme_font_size_override("font_size", FONT_SM)
 	version_label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.4))
 	version_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	version_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	hbox.add_child(version_label)
 
-	# Fly button (right, prominent)
+	# Continue button (right, shown only when a flight is in progress).
+	# Lets the user return to the cockpit without re-teleporting to the
+	# airport — preserves position, attitude and JSBSim state.
+	_continue_button = Button.new()
+	_continue_button.text = "Continue Flight"
+	_continue_button.custom_minimum_size = Vector2(220, 56)
+	_continue_button.add_theme_font_size_override("font_size", FONT_LG)
+	_continue_button.pressed.connect(_on_continue_pressed)
+	_continue_button.visible = false
+	_continue_button.disabled = true
+	var cont_style_normal = StyleBoxFlat.new()
+	cont_style_normal.bg_color = Color(0.20, 0.45, 0.30)
+	cont_style_normal.corner_radius_top_left = 8
+	cont_style_normal.corner_radius_top_right = 8
+	cont_style_normal.corner_radius_bottom_left = 8
+	cont_style_normal.corner_radius_bottom_right = 8
+	_continue_button.add_theme_stylebox_override("normal", cont_style_normal)
+	var cont_style_hover = StyleBoxFlat.new()
+	cont_style_hover.bg_color = Color(0.28, 0.58, 0.40)
+	cont_style_hover.corner_radius_top_left = 8
+	cont_style_hover.corner_radius_top_right = 8
+	cont_style_hover.corner_radius_bottom_left = 8
+	cont_style_hover.corner_radius_bottom_right = 8
+	_continue_button.add_theme_stylebox_override("hover", cont_style_hover)
+	_continue_button.add_theme_color_override("font_color", Color.WHITE)
+	hbox.add_child(_continue_button)
+
+	# Fly button (right, prominent) — restarts the flight at the chosen airport.
 	_fly_button = Button.new()
 	_fly_button.text = "Fly!"
 	_fly_button.custom_minimum_size = Vector2(220, 56)
@@ -595,6 +644,62 @@ func _on_settings_pressed() -> void:
 	settings_requested.emit()
 
 
+func _on_about_pressed() -> void:
+	_show_about_dialog()
+
+
+## Build and show the About dialog. Lists the third-party components,
+## credits, license, and a use-at-your-own-risk disclaimer.
+func _show_about_dialog() -> void:
+	var dlg := AcceptDialog.new()
+	dlg.title = "About ProVPilot"
+	dlg.min_size = Vector2(760, 640)
+	dlg.dialog_hide_on_ok = true
+	dlg.confirmed.connect(func(): dlg.queue_free())
+	dlg.close_requested.connect(func(): dlg.queue_free())
+
+	var rtl := RichTextLabel.new()
+	rtl.bbcode_enabled = true
+	rtl.fit_content = false
+	rtl.scroll_active = true
+	rtl.custom_minimum_size = Vector2(720, 560)
+	rtl.add_theme_font_size_override("normal_font_size", FONT_SM)
+	rtl.add_theme_font_size_override("bold_font_size", FONT_SM)
+	rtl.meta_clicked.connect(func(meta): OS.shell_open(String(meta)))
+
+	var ver: String = String(ProjectSettings.get_setting("application/config/version", "0.0.0"))
+	rtl.text = """[center][b]ProVPilot v%s[/b]
+Swiss Flight Simulator — © 2025 Gerhard Gubler[/center]
+
+[b]Built with[/b]
+• [url=https://godotengine.org]Godot Engine[/url] 4.6 (custom [i]4.6-macdev[/i] fork, double precision) — MIT
+• [url=https://jsbsim.sourceforge.net]JSBSim[/url] flight dynamics model — LGPL 2.1
+• [url=https://gitlab.md80.ch/gery/scenery3d]Scenery3D[/url] GDExtension — MIT
+
+[b]Data sources[/b]
+• Switzerland terrain, orthophotos, buildings, roads, water: [url=https://www.swisstopo.admin.ch]swisstopo[/url] (swissALTI3D, SWISSIMAGE, swissTLM3D) — [url=https://www.swisstopo.admin.ch/en/terms-of-use-free-geodata-and-geoservices]free geodata licence[/url]
+• Baden-Württemberg terrain & orthophotos: [url=https://www.lgl-bw.de]LGL Baden-Württemberg[/url] — [url=https://www.govdata.de/dl-de/by-2-0]dl-de/by-2-0[/url] (Datenquelle: LGL, www.lgl-bw.de)
+• Airport & runway data: [url=https://www.openstreetmap.org]OpenStreetMap[/url] contributors — [url=https://www.openstreetmap.org/copyright]ODbL[/url]
+
+[b]3D models[/b]
+• Cessna 172: [url=https://sketchfab.com/3d-models/cessna172-d1b15841c29c43d0862667300bad55a4]"Cessna172"[/url] by [url=https://sketchfab.com/ioai25312]KOG_THORNS[/url] on Sketchfab — [url=http://creativecommons.org/licenses/by/4.0/]CC-BY-4.0[/url]
+
+[b]ProVPilot license[/b]
+Released under the [url=https://opensource.org/license/mit]MIT License[/url]. See [code]LICENSE[/code] in the source repository.
+
+[b]Disclaimer[/b]
+ProVPilot is provided "AS IS", without warranty of any kind. It is intended for entertainment and educational purposes only. It is [b]not[/b] certified for flight training and must [b]not[/b] be used for real-world navigation, flight planning, or any safety-critical purpose. Use at your own risk.""" % ver
+
+	dlg.add_child(rtl)
+	add_child(dlg)
+	dlg.popup_centered()
+
+
+func _on_continue_pressed() -> void:
+	continue_requested.emit()
+	hide_welcome()
+
+
 func _on_quit_pressed() -> void:
 	get_tree().quit()
 
@@ -605,8 +710,17 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed:
 		if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
-			_on_fly_pressed()
+			# If Continue is available, prefer resuming the existing flight.
+			if _continue_button and _continue_button.visible and not _continue_button.disabled:
+				_on_continue_pressed()
+			else:
+				_on_fly_pressed()
 			get_viewport().set_input_as_handled()
+		elif event.keycode == KEY_ESCAPE:
+			# Escape on the welcome screen resumes the flight when possible.
+			if _continue_button and _continue_button.visible and not _continue_button.disabled:
+				_on_continue_pressed()
+				get_viewport().set_input_as_handled()
 
 
 ## Block all unhandled input from reaching the sim behind the overlay

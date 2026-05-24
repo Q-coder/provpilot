@@ -26,6 +26,7 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 - **47 Swiss Airports**: OSM-verified runway geometry (teleport via welcome screen)
 - **Welcome Screen**: Startup UI with aircraft selection and airport/runway picker
 - **Settings Screen**: Configurable graphics, sound, realism, and data path settings (persisted to disk)
+- **In-App Scenery Downloader**: Pulls per-region base + per-quadrant detail packs from `https://www.md80.ch/provpilot/scenery/`, verifies sha256, extracts to a configurable install root, and auto-registers the result in the Scenery Library
 - **Loading Screen**: Progress overlay polling `Scenery3D.is_ready()`
 - **Multiple Camera Views**:
   - Cockpit camera with pilot head look (hat switch / D-pad / arrow keys)
@@ -287,9 +288,12 @@ Open the settings screen from the welcome screen's gear icon. Settings persist t
 | Section | Settings |
 |---------|----------|
 | **Paths** | Scenery directory, JSBSim data directory |
+| **Scenery Library** | FSX-style per-region scenery sources (priority, enable, scan/add/remove) — see [docs/SCENERY_LIBRARY.md](docs/SCENERY_LIBRARY.md) |
+| **Download Scenery** | One-click install of official region packs from https://www.md80.ch/provpilot/scenery/ — see [docs/SCENERY_DISTRIBUTION.md](docs/SCENERY_DISTRIBUTION.md) |
 | **Graphics** | Render distance (2–16 tiles), building distance (1–8 tiles), shadow quality (Off/Low/Medium/High), VSync, fullscreen |
 | **Sound** | Master volume, engine volume, wind volume, UI volume |
 | **Realism** | Auto mixture, auto carb heat, unlimited fuel, crash detection, turbulence (None/Light/Moderate/Severe), wind speed & direction |
+| **Joystick** | Per-axis bindings, calibration, deadzone, response curve |
 
 ## Building System
 

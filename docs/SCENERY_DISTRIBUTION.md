@@ -1,0 +1,182 @@
+# Scenery Distribution
+
+How the official ProvPilot scenery packs are built, signed, and consumed by
+the in-app downloader.
+
+Hosting: **https://www.md80.ch/provpilot/scenery/**
+
+## Pack Layout
+
+Every region is sliced into one **base** pack plus four **detail** quadrants
+(`nw / ne / sw / se`, 2×2 split of the region bbox in LV95).
+
+| Class  | Asset subdirs                                     |
+|--------|---------------------------------------------------|
+| base   | `terrain`, `roads`, `water`, `trees`, `airports`  |
+| detail | `buildings`, `orthophoto`, `vegetation`           |
+
+The two-tier split keeps the base pack flyable on its own (terrain + water +
+roads + airports = a complete world to fly over) while letting users opt into
+the heavy per-quadrant assets (orthophoto + buildings + vegetation) only for
+the corner of the region they actually fly in.
+
+ZIP format: `ZIP_STORED` (compression=0) with zip64 — no per-file CPU during
+extraction, and the OS can mmap the contained `.float32` / `.png` tiles
+directly if desired. SHA-256 and byte size are recorded in the manifest.
+
+## Region Config
+
+[scripts/scenery_regions.json](../scripts/scenery_regions.json) is the master
+list. Schema:
+
+```json
+{
+  "schema_version": 1,
+  "regions": [
+    {
+      "id": "switzerland",
+      "name": "Switzerland",
+      "scenery_subdir": "Switzerland",
+      "bbox_lv95": [2484224, 1069056, 2834432, 1298432],
+      "quadrants": [
+        {"id": "nw", "name": "North-West", "bbox_lv95": [...]},
+        {"id": "ne", "name": "North-East", "bbox_lv95": [...]},
+        {"id": "sw", "name": "South-West", "bbox_lv95": [...]},
+        {"id": "se", "name": "South-East", "bbox_lv95": [...]}
+      ]
+    },
+    { "id": "baden-wuerttemberg", ... }
+  ],
+  "asset_classes": {
+    "base":   ["terrain", "roads", "water", "trees", "airports"],
+    "detail": ["buildings", "orthophoto", "vegetation"]
+  }
+}
+```
+
+Bboxes are LV95 (EPSG:2056) meters, derived from the source terrain manifest
+as `(grid.ei_min × 1024, grid.ni_min × 1024, (grid.ei_max+1) × 1024,
+(grid.ni_max+1) × 1024)`.
+
+## Building Packs
+
+[scripts/bundle_scenery_pack.py](../scripts/bundle_scenery_pack.py) produces
+one zip at a time.
+
+```bash
+# Switzerland base
+python scripts/bundle_scenery_pack.py switzerland --base
+
+# Switzerland NW detail quadrant
+python scripts/bundle_scenery_pack.py switzerland --quadrant nw
+
+# Baden-Württemberg SE detail quadrant, custom source/destination
+python scripts/bundle_scenery_pack.py baden-wuerttemberg --quadrant se \
+    --scenery /Users/gery/provpilot/scenery \
+    --out build/scenery/baden-wuerttemberg-detail-se-v1.zip
+```
+
+Flags:
+
+- `--base` | `--quadrant {nw,ne,sw,se}` (required, mutually exclusive)
+- `--scenery PATH` (default `/Users/gery/provpilot/scenery`)
+- `--out PATH` (default `build/scenery/<region>-base-v<ver>.zip` etc.)
+- `--version VER` (default `1`) — bake into filename and manifest entries
+- `--no-mips` — skip mip2/mip3/mip4 orthophoto pyramids
+- `--dry-run` — list candidate files without writing the zip
+
+Tile selection:
+
+- Tile filenames matching `_<E_lv95>_<N_lv95>.<ext>` are tested for bbox
+  intersection treating the coordinate as the **SE corner** of a 1024 m
+  square. Mip levels double the footprint (`1024 × 2^(level+1)` for
+  `mip2…mip4`).
+- Buildings use LK25 (CH) or UTM (BW) filenames that don't encode LV95
+  directly. The bundler reads `buildings/manifest.json` and looks up each
+  tile's `center_e/center_n` (with `half_e=2500, half_n=1750`).
+- `terrain/distant_terrain*` and every `manifest.json` are always copied (no
+  matter the bbox) so consumers have full metadata.
+- `trees/` and `airports/` are tiny — bundled wholesale in every base pack.
+
+## Generating the Manifest
+
+[scripts/generate_scenery_manifest.py](../scripts/generate_scenery_manifest.py)
+scans `build/scenery/` and writes `build/scenery_manifest.json`:
+
+```bash
+python scripts/generate_scenery_manifest.py
+```
+
+Recognised filenames (regex):
+
+```
+^(?P<region>[a-z0-9-]+)-base-v(?P<ver>[\w.]+)\.zip$
+^(?P<region>[a-z0-9-]+)-detail-(?P<quad>[a-z0-9]+)-v(?P<ver>[\w.]+)\.zip$
+```
+
+Output schema (consumed by `scenery_downloader.gd`):
+
+```json
+{
+  "schema_version": 1,
+  "base_url": "https://www.md80.ch/provpilot/scenery/",
+  "regions": [
+    {
+      "id": "switzerland",
+      "name": "Switzerland",
+      "scenery_subdir": "Switzerland",
+      "base": {
+        "pack_id": "switzerland-base-v1",
+        "version": "1",
+        "filename": "switzerland-base-v1.zip",
+        "size": 46943221376,
+        "sha256": "769fa57d…",
+        "url": "https://www.md80.ch/provpilot/scenery/switzerland-base-v1.zip"
+      },
+      "detail_packs": [
+        {"pack_id": "switzerland-detail-nw-v1", "quadrant": "nw", ...},
+        ...
+      ]
+    },
+    ...
+  ]
+}
+```
+
+The downloader uses `sha256` as the install-state key — bump the `--version`
+on the bundler when republishing and clients automatically see "Update
+available".
+
+## Current Inventory (v1)
+
+| Pack                                 | Size    |
+|--------------------------------------|---------|
+| switzerland-base-v1                  | 43.7 GB |
+| switzerland-detail-nw-v1             | 12.0 GB |
+| switzerland-detail-ne-v1             | 14.6 GB |
+| switzerland-detail-sw-v1             | 11.5 GB |
+| switzerland-detail-se-v1             |  7.5 GB |
+| baden-wuerttemberg-base-v1           | 34.8 GB |
+| baden-wuerttemberg-detail-nw-v1      | 10.9 GB |
+| baden-wuerttemberg-detail-ne-v1      | 12.0 GB |
+| baden-wuerttemberg-detail-sw-v1      |  8.8 GB |
+| baden-wuerttemberg-detail-se-v1      |  9.2 GB |
+
+Total: ~165 GB.
+
+## Publishing Workflow
+
+1. Rebuild any changed packs (`bundle_scenery_pack.py`).
+2. Regenerate the manifest (`generate_scenery_manifest.py`).
+3. Upload the zips and `scenery_manifest.json` to
+   `https://www.md80.ch/provpilot/scenery/` (manifest goes one level up at
+   `https://www.md80.ch/provpilot/scenery_manifest.json`).
+4. Clients pick up new versions automatically on the next Refresh.
+
+## See Also
+
+- [SCENERY_LIBRARY.md](SCENERY_LIBRARY.md) — runtime scenery library + the
+  in-app downloader panel
+- [SCENERY_ARCHITECTURE.md](SCENERY_ARCHITECTURE.md) — Scenery3D plugin
+  overview
+- [TERRAIN_SETUP.md](TERRAIN_SETUP.md) — tile naming and file formats

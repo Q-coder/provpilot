@@ -1,0 +1,33 @@
+{
+    "schema_version": 1,
+    "regions": [
+        {
+            "id": "switzerland",
+            "name": "Switzerland",
+            "scenery_subdir": "Switzerland",
+            "bbox_lv95": [2484224, 1069056, 2834432, 1298432],
+            "quadrants": [
+                {"id": "nw", "name": "North-West", "bbox_lv95": [2484224, 1183744, 2659328, 1298432]},
+                {"id": "ne", "name": "North-East", "bbox_lv95": [2659328, 1183744, 2834432, 1298432]},
+                {"id": "sw", "name": "South-West", "bbox_lv95": [2484224, 1069056, 2659328, 1183744]},
+                {"id": "se", "name": "South-East", "bbox_lv95": [2659328, 1069056, 2834432, 1183744]}
+            ]
+        },
+        {
+            "id": "baden-wuerttemberg",
+            "name": "Baden-Württemberg",
+            "scenery_subdir": "Germany/Baden-Wuertemberg",
+            "bbox_lv95": [2620416, 1264640, 2826240, 1518592],
+            "quadrants": [
+                {"id": "nw", "name": "North-West", "bbox_lv95": [2620416, 1391616, 2723328, 1518592]},
+                {"id": "ne", "name": "North-East", "bbox_lv95": [2723328, 1391616, 2826240, 1518592]},
+                {"id": "sw", "name": "South-West", "bbox_lv95": [2620416, 1264640, 2723328, 1391616]},
+                {"id": "se", "name": "South-East", "bbox_lv95": [2723328, 1264640, 2826240, 1391616]}
+            ]
+        }
+    ],
+    "asset_classes": {
+        "base":   ["terrain", "roads", "water", "trees", "airports"],
+        "detail": ["buildings", "orthophoto", "vegetation"]
+    }
+}
