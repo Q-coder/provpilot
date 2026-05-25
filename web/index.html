@@ -190,6 +190,13 @@
       <a class="dl-btn" id="dmg-link-hero" href="releases/ProvPilot-1.0.4-arm64.dmg">Download for macOS (Apple Silicon)</a>
       <a class="dl-btn win" id="win-link-hero" href="releases/ProvPilot-Windows-1.0.4.zip">Download for Windows</a>
     </div>
+
+    <div class="shots">
+      <a href="images/bild1.png" target="_blank" rel="noopener"><img src="images/bild1.png" alt="ProVPilot screenshot 1" loading="lazy"></a>
+      <a href="images/bild2.png" target="_blank" rel="noopener"><img src="images/bild2.png" alt="ProVPilot screenshot 2" loading="lazy"></a>
+      <a href="images/bild3.png" target="_blank" rel="noopener"><img src="images/bild3.png" alt="ProVPilot screenshot 3" loading="lazy"></a>
+      <a href="images/bild4.png" target="_blank" rel="noopener"><img src="images/bild4.png" alt="ProVPilot screenshot 4" loading="lazy"></a>
+    </div>
   </div>
 </section>
 
@@ -395,11 +402,71 @@
       Use the in-app downloader: <strong>Settings &rarr; Download Scenery</strong>.
       Packs are sha256-verified and extracted to a folder of your choice.
     </p>
+
+    <div class="shot-pair">
+      <a href="images/scenery_download1.png" target="_blank" rel="noopener"><img src="images/scenery_download1.png" alt="In-app scenery downloader — region list" loading="lazy"></a>
+      <a href="images/scenery_download2.png" target="_blank" rel="noopener"><img src="images/scenery_download2.png" alt="In-app scenery downloader — progress" loading="lazy"></a>
+    </div>
+
     <div class="map-wrap"><div id="map"></div></div>
     <p style="color: var(--fg-dim); font-size: 13px; margin-top: 14px;">
       Cantons coloured green have base + detail scenery available today. Coverage
       currently includes all of Switzerland and Baden-Württemberg. Click any
       canton for details.
+    </p>
+
+    <h3 id="scenery-direct" style="margin-top: 32px;">Direct downloads</h3>
+    <p>
+      The in-app downloader is the recommended path — it streams these same
+      packs, sha256-verifies each one and extracts to a folder you pick. If you
+      prefer to grab them by hand (slow link, mirror, offline install), here are
+      the canonical URLs. Each <em>base</em> pack is flyable on its own; add the
+      detail quadrants (NW/NE/SW/SE) for the corners you actually fly in.
+    </p>
+    <table class="dl-table" id="scenery-dl-table">
+      <thead>
+        <tr><th>Region</th><th>Pack</th><th>Size</th><th>SHA-256</th></tr>
+      </thead>
+      <tbody>
+        <tr class="base"><td class="region" rowspan="5">Switzerland</td>
+            <td><a class="zip" href="https://www.md80.ch/provpilot/scenery/switzerland-base-v1.zip">base &mdash; terrain, roads, water, airports</a></td>
+            <td class="size">43.7 GiB</td>
+            <td><code class="sha">769fa57d&hellip;1dfa071d</code></td></tr>
+        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/switzerland-detail-nw-v1.zip">detail — North-West (orthophoto + buildings)</a></td>
+            <td class="size">12.0 GiB</td>
+            <td><code class="sha">6080ede5&hellip;12518393</code></td></tr>
+        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/switzerland-detail-ne-v1.zip">detail — North-East</a></td>
+            <td class="size">14.6 GiB</td>
+            <td><code class="sha">fdef98c7&hellip;58364886</code></td></tr>
+        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/switzerland-detail-sw-v1.zip">detail — South-West</a></td>
+            <td class="size">11.5 GiB</td>
+            <td><code class="sha">2421b77b&hellip;0f71d281</code></td></tr>
+        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/switzerland-detail-se-v1.zip">detail — South-East</a></td>
+            <td class="size">7.5 GiB</td>
+            <td><code class="sha">88cb9c89&hellip;4484ecda</code></td></tr>
+        <tr class="base"><td class="region" rowspan="5">Baden-Württemberg</td>
+            <td><a class="zip" href="https://www.md80.ch/provpilot/scenery/baden-wuerttemberg-base-v1.zip">base &mdash; terrain, roads, water, airports</a></td>
+            <td class="size">34.8 GiB</td>
+            <td><code class="sha">af5dba5f&hellip;8c4935cf</code></td></tr>
+        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/baden-wuerttemberg-detail-nw-v1.zip">detail — North-West</a></td>
+            <td class="size">10.9 GiB</td>
+            <td><code class="sha">e4d7f1f8&hellip;42c5353</code></td></tr>
+        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/baden-wuerttemberg-detail-ne-v1.zip">detail — North-East</a></td>
+            <td class="size">12.0 GiB</td>
+            <td><code class="sha">27baea7c&hellip;46cf781f</code></td></tr>
+        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/baden-wuerttemberg-detail-sw-v1.zip">detail — South-West</a></td>
+            <td class="size">8.8 GiB</td>
+            <td><code class="sha">9c749a28&hellip;9f2d33ad</code></td></tr>
+        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/baden-wuerttemberg-detail-se-v1.zip">detail — South-East</a></td>
+            <td class="size">9.2 GiB</td>
+            <td><code class="sha">2819502f&hellip;630b9925</code></td></tr>
+      </tbody>
+    </table>
+    <p style="color: var(--fg-dim); font-size: 12px; margin-top: 10px;">
+      Live manifest with the exact byte counts and full hashes:
+      <a href="https://www.md80.ch/provpilot/scenery_manifest.json">scenery_manifest.json</a>.
+      The in-app downloader uses this same file.
+    </p>
     </p>
   </div>
 </section>
@@ -412,13 +479,21 @@
     </p>
 
     <article class="release">
-      <h3>v1.0.4 &mdash; Scenery distribution &amp; in-app downloader</h3>
+      <h3>v1.0.4 &mdash; Scenery distribution, in-app downloader, Windows portable build</h3>
       <p class="release-date">May 2026</p>
       <ul>
-        <li><strong>In-app scenery downloader</strong> &mdash; <em>Settings &rarr; Download Scenery</em> fetches base + detail quadrants from md80.ch, verifies sha256 and extracts into a folder you pick. No more manual ZIP wrangling.</li>
+        <li><strong>In-app scenery downloader</strong> &mdash; <em>Settings &rarr; Download Scenery</em> fetches base + detail quadrants from md80.ch, verifies sha256 and extracts into a folder you pick. No more manual ZIP wrangling. Direct URLs are also <a href="#scenery-direct">listed below the coverage map</a> for offline / mirror use.</li>
+        <li><strong>Portable install</strong> &mdash; shared <code>provpilot.cfg</code> next to the executable, on-disk aircraft tree, and a runtime GLB load-from-PCK fallback. Drop the folder anywhere (or onto a USB stick) and it just runs; settings travel with it.</li>
+        <li><strong>Windows portable build</strong> &mdash; the Windows ZIP is now a self-contained portable install with the same layout as macOS. Extract anywhere writable, double-click <code>ProvPilot.exe</code>.</li>
+        <li><strong>Memory-leak fix in the streaming tile manager</strong> &mdash; rapid airport teleports no longer leak chunk-zone tiles. Previously <code>tiles.size()</code> would climb from ~10k to &gt;30k after a handful of jumps, dragging FPS into single digits and inflating <code>elev_db</code>, render objects and GPU memory unboundedly. The chunk-zone unload path now also drops tiles whose covering chunk is no longer tracked.</li>
+        <li><strong>Bodensee water flattened</strong> &mdash; baked water tiles whose vertex Y-span exceeds 30 m (a known bake bug in the Bodensee interior quads, where a single 4-vertex polygon shipped with corners from +5 m to +269 m) are now re-draped from the elevation database at runtime. The dark wing over Altenrhein is gone.</li>
+        <li><strong>2 GiB download fix</strong> &mdash; the downloader now uses the on-disk file size for progress, working around an <code>HTTPRequest</code> int32 overflow that broke progress display past 2 GiB.</li>
         <li><strong>Continue Flight</strong> &mdash; the welcome screen now offers a green <em>Continue</em> button to jump back into your last session after pressing Esc.</li>
         <li><strong>About dialog</strong> with full credits and third-party licenses (Godot 4.6, JSBSim, Scenery3D, swisstopo, LGL-BW, OpenStreetMap, Cessna 172 model).</li>
         <li>Scenery split into per-region <em>base</em> packs and four <em>detail</em> quadrants &mdash; install only the corners you fly in.</li>
+        <li>Welcome and settings screens now anchor and scale to the full viewport, so they work on 4K and ultrawide monitors.</li>
+        <li>HUD labels reorganised into a clean bottom row; cleared hard-coded dev-machine scenery paths from <code>node_3d.tscn</code>.</li>
+        <li>Per-second diagnostic snapshot in the log (jump count, tile / elev_db / chunk counts, GPU memory) for fast triage of regressions.</li>
         <li>Project bumped to 1.0.4, version label now read from <code>project.godot</code> at runtime.</li>
       </ul>
     </article>
@@ -515,7 +590,7 @@ Promise.all([
     if (!b)                   return `<h3>${name}</h3><div class="meta">No bundle planned yet.</div>`;
     if (b.status === "soon")  return `<h3>${name}</h3><div class="meta">Coming soon.</div>`;
     return `<h3>${name}</h3>
-            <div class="meta">Available &mdash; install from <strong>Settings &rarr; Download Scenery</strong> inside the app.</div>`;
+            <div class="meta">Available &mdash; install from <strong>Settings &rarr; Download Scenery</strong> inside the app, or grab the ZIPs directly from the <a href="#scenery-direct">downloads table</a> below.</div>`;
   };
 
   const layer = L.geoJSON(geo, {
