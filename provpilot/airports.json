@@ -1,0 +1,307 @@
+{
+  "_comment": "Hand-curated catalog of major airports and GA airfields. Coordinates are WGS84 decimal degrees; airports_lib.gd converts to Swiss LV95 at load time. To override the computed position (e.g. when scenery doesn't line up perfectly), add explicit 'swiss_e' and 'swiss_n' fields to an entry. Runway 'heading_deg' is the TRUE bearing of the lower-numbered designator; thresholds are computed from heading + length_m. Region IDs match scenery_manifest.json.",
+  "airports": [
+    {
+      "icao": "LSZH",
+      "name": "Z\u00fcrich",
+      "lat": 47.4647,
+      "lon": 8.5492,
+      "elevation_m": 432,
+      "type": "international_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "16/34", "heading_deg": 165, "length_m": 3700, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "LSGG",
+      "name": "Geneva",
+      "lat": 46.2381,
+      "lon": 6.1090,
+      "elevation_m": 430,
+      "type": "international_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "04/22", "heading_deg": 40, "length_m": 3900, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "LSZB",
+      "name": "Bern-Belp",
+      "lat": 46.9141,
+      "lon": 7.4970,
+      "elevation_m": 510,
+      "type": "regional_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "14/32", "heading_deg": 140, "length_m": 1730, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "LSZA",
+      "name": "Lugano-Agno",
+      "lat": 46.0043,
+      "lon": 8.9106,
+      "elevation_m": 280,
+      "type": "regional_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "01/19", "heading_deg": 10, "length_m": 1350, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "LSGS",
+      "name": "Sion",
+      "lat": 46.2196,
+      "lon": 7.3267,
+      "elevation_m": 482,
+      "type": "regional_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "07/25", "heading_deg": 70, "length_m": 2000, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "LSZS",
+      "name": "Samedan / St. Moritz",
+      "lat": 46.5340,
+      "lon": 9.8839,
+      "elevation_m": 1707,
+      "type": "regional_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "03/21", "heading_deg": 30, "length_m": 1800, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "LSZR",
+      "name": "Altenrhein (St. Gallen)",
+      "lat": 47.4850,
+      "lon": 9.5608,
+      "elevation_m": 398,
+      "type": "regional_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "10/28", "heading_deg": 100, "length_m": 1500, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "LSZG",
+      "name": "Grenchen",
+      "lat": 47.1816,
+      "lon": 7.4172,
+      "elevation_m": 430,
+      "type": "regional_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "06/24", "heading_deg": 60, "length_m": 1100, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "LSZF",
+      "name": "Birrfeld",
+      "lat": 47.4435,
+      "lon": 8.2336,
+      "elevation_m": 388,
+      "type": "regional_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "08/26", "heading_deg": 80, "length_m": 880, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "LSZN",
+      "name": "Hausen am Albis",
+      "lat": 47.2350,
+      "lon": 8.5180,
+      "elevation_m": 600,
+      "type": "grass_strip",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "06/24", "heading_deg": 60, "length_m": 660, "surface": "grass" }
+      ]
+    },
+    {
+      "icao": "LSPF",
+      "name": "Schaffhausen-Schmerlat",
+      "lat": 47.6906,
+      "lon": 8.5536,
+      "elevation_m": 464,
+      "type": "grass_strip",
+      "region": "switzerland",
+      "swiss_e": 2681881.0,
+      "swiss_n": 1282845.0,
+      "runways": [
+        { "designator": "07/25", "heading_deg": 70, "length_m": 600, "surface": "grass" }
+      ]
+    },
+    {
+      "icao": "LSZL",
+      "name": "Locarno",
+      "lat": 46.1608,
+      "lon": 8.8786,
+      "elevation_m": 198,
+      "type": "regional_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "08/26", "heading_deg": 80, "length_m": 870, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "LSZK",
+      "name": "Speck-Fehraltorf",
+      "lat": 47.3633,
+      "lon": 8.7572,
+      "elevation_m": 538,
+      "type": "grass_strip",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "06/24", "heading_deg": 60, "length_m": 700, "surface": "grass" }
+      ]
+    },
+    {
+      "icao": "LSZW",
+      "name": "Thun",
+      "lat": 46.7546,
+      "lon": 7.6005,
+      "elevation_m": 560,
+      "type": "grass_strip",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "06/24", "heading_deg": 60, "length_m": 740, "surface": "grass" }
+      ]
+    },
+    {
+      "icao": "LSGY",
+      "name": "Yverdon-les-Bains",
+      "lat": 46.7625,
+      "lon": 6.6105,
+      "elevation_m": 433,
+      "type": "grass_strip",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "05/23", "heading_deg": 50, "length_m": 800, "surface": "grass" }
+      ]
+    },
+    {
+      "icao": "EDDS",
+      "name": "Stuttgart",
+      "lat": 48.6899,
+      "lon": 9.2220,
+      "elevation_m": 387,
+      "type": "international_airport",
+      "region": "baden-wuerttemberg",
+      "runways": [
+        { "designator": "07/25", "heading_deg": 70, "length_m": 3345, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "EDNY",
+      "name": "Friedrichshafen",
+      "lat": 47.6713,
+      "lon": 9.5115,
+      "elevation_m": 416,
+      "type": "international_airport",
+      "region": "baden-wuerttemberg",
+      "runways": [
+        { "designator": "06/24", "heading_deg": 60, "length_m": 2356, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "EDSB",
+      "name": "Karlsruhe / Baden-Baden",
+      "lat": 48.7794,
+      "lon": 8.0805,
+      "elevation_m": 124,
+      "type": "regional_airport",
+      "region": "baden-wuerttemberg",
+      "runways": [
+        { "designator": "03/21", "heading_deg": 30, "length_m": 2500, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "EDTL",
+      "name": "Lahr",
+      "lat": 48.3693,
+      "lon": 7.8278,
+      "elevation_m": 155,
+      "type": "regional_airport",
+      "region": "baden-wuerttemberg",
+      "runways": [
+        { "designator": "03/21", "heading_deg": 30, "length_m": 3000, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "EDTF",
+      "name": "Freiburg",
+      "lat": 48.0228,
+      "lon": 7.8325,
+      "elevation_m": 244,
+      "type": "regional_airport",
+      "region": "baden-wuerttemberg",
+      "runways": [
+        { "designator": "16/34", "heading_deg": 160, "length_m": 700, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "EDTY",
+      "name": "Schw\u00e4bisch Hall",
+      "lat": 49.1183,
+      "lon": 9.7833,
+      "elevation_m": 387,
+      "type": "regional_airport",
+      "region": "baden-wuerttemberg",
+      "runways": [
+        { "designator": "10/28", "heading_deg": 100, "length_m": 1540, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "EDTM",
+      "name": "Mengen-Hohentengen",
+      "lat": 48.0533,
+      "lon": 9.3753,
+      "elevation_m": 559,
+      "type": "grass_strip",
+      "region": "baden-wuerttemberg",
+      "runways": [
+        { "designator": "08/26", "heading_deg": 80, "length_m": 1200, "surface": "grass" }
+      ]
+    },
+    {
+      "icao": "EDTD",
+      "name": "Donaueschingen-Villingen",
+      "lat": 47.9733,
+      "lon": 8.5222,
+      "elevation_m": 671,
+      "type": "regional_airport",
+      "region": "baden-wuerttemberg",
+      "runways": [
+        { "designator": "18/36", "heading_deg": 180, "length_m": 1015, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "EDTQ",
+      "name": "Stuttgart-Pattonville",
+      "lat": 48.8475,
+      "lon": 9.2436,
+      "elevation_m": 290,
+      "type": "grass_strip",
+      "region": "baden-wuerttemberg",
+      "runways": [
+        { "designator": "08/26", "heading_deg": 80, "length_m": 770, "surface": "grass" }
+      ]
+    },
+    {
+      "icao": "EDTH",
+      "name": "Heubach",
+      "lat": 48.7967,
+      "lon": 9.9233,
+      "elevation_m": 480,
+      "type": "grass_strip",
+      "region": "baden-wuerttemberg",
+      "runways": [
+        { "designator": "09/27", "heading_deg": 90, "length_m": 700, "surface": "grass" }
+      ]
+    }
+  ]
+}

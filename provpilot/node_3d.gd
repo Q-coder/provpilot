@@ -1,5 +1,7 @@
 extends Node3D
 
+const AirportsLib = preload("res://airports_lib.gd")
+
 # Terrain coordinate system (Swiss LV95)
 # These define the relationship between Godot world coords and Swiss coordinates.
 # MUST match Scenery3D's origin_east / origin_north (read from
@@ -218,6 +220,10 @@ var _fps_label: Label = null
 var _fps_visible: bool = false
 var _fps_key_held: bool = false
 
+# Per-second resource/leak diagnostic (helps track down post-multi-jump stalls)
+var _diag_last_msec: int = 0
+var _diag_jump_count: int = 0
+
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	print("Node3D _ready() starting...")
@@ -420,6 +426,15 @@ func _ready() -> void:
 	if vegetation_node:
 		print("Vegetation node found: ", vegetation_node)
 
+	# Hold all scenery streaming OFF until the user clicks Fly! and the
+	# aircraft teleports to the chosen airport. Without this, the tile/
+	# building/water/road/vegetation managers would start streaming around
+	# the origin (0,0) while the welcome screen is up, then thrash the
+	# worker queue with thousands of now-irrelevant tiles when the AC
+	# teleports far away — causing a long stall before terrain is ready
+	# at the destination. Re-enabled in _do_first_flight().
+	_set_scenery_streaming(false)
+
 	# Lock TERRAIN_CENTER to Scenery3D's own origin (from ProjectSettings).
 	# Swiss <-> Godot conversions and tile placement must share the same origin.
 	if ProjectSettings.has_setting("scenery3d/origin_east"):
@@ -437,8 +452,8 @@ func _ready() -> void:
 	_loading_done = true
 	if _loading_screen:
 		_loading_screen.hide_loading()
-	_create_welcome_screen()
 	_create_settings_screen()
+	_create_welcome_screen()
 	# Apply saved tree density now that _settings_screen has loaded its config.
 	_apply_tree_density()
 	# Apply scenery sources (orthophoto and terrain paths) from settings
@@ -650,6 +665,21 @@ func _do_deferred_terrain_init() -> void:
 		_terrain_init_print_timer = 60
 		print("=== _do_deferred_terrain_init target: x=%.1f z=%.1f hdg=%.1f° (dict_keys=%s) ===" % [
 			target_x, target_z, target_heading, str(_first_flight_target.keys())])
+		# Diagnostic: which Camera3D is the viewport actually streaming around?
+		var vp := get_viewport()
+		var active_cam: Camera3D = vp.get_camera_3d() if vp else null
+		var ac_pos = ac_node.global_position
+		var cam1_cur := (camera1 != null and camera1.current)
+		var cam2_cur := (camera2 != null and camera2.current)
+		if active_cam != null:
+			var cp = active_cam.global_position
+			print("    [cam diag] active=%s path=%s pos=(%.1f, %.1f, %.1f) cam1.current=%s cam2.current=%s AC.pos=(%.1f, %.1f, %.1f)" % [
+				active_cam.name, str(active_cam.get_path()),
+				cp.x, cp.y, cp.z, str(cam1_cur), str(cam2_cur),
+				ac_pos.x, ac_pos.y, ac_pos.z])
+		else:
+			print("    [cam diag] active=<null> cam1.current=%s cam2.current=%s AC.pos=(%.1f, %.1f, %.1f)" % [
+				str(cam1_cur), str(cam2_cur), ac_pos.x, ac_pos.y, ac_pos.z])
 
 	# Move aircraft to target position
 	ac_node.global_position.x = target_x
@@ -813,7 +843,10 @@ func _process(delta: float) -> void:
 
 	# --- Post-teleport position guard ---
 	_process_rebase_cooldown()
-	
+
+	# --- Per-second resource diagnostic ---
+	_emit_diag_snapshot()
+
 	# Toggle slew mode with Shift+Y
 	if Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_Y):
 		if not _slew_key_held:
@@ -1628,8 +1661,8 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 		_loading_done = true
 		if _loading_screen:
 			_loading_screen.hide_loading()
-		_create_welcome_screen()
 		_create_settings_screen()
+		_create_welcome_screen()
 		print("Loading complete — showing welcome screen")
 
 
@@ -1645,32 +1678,24 @@ func _create_welcome_screen() -> void:
 	_welcome_screen.continue_requested.connect(_on_welcome_continue_requested)
 	_welcome_screen.scenery_setup_requested.connect(_on_welcome_scenery_setup_requested)
 
-	# Provide a default airport list (Scenery3D no longer ships POI data).
-	# LSPF Schaffhausen-Schmerlat: small grass airfield, runway 07/25, 600 m.
-	# Coordinates verified against visible scenery (≈ 47°41′28″N 8°33′13″E).
-	var default_airports: Array[Dictionary] = [
-		{
-			"icao": "LSPF",
-			"name": "Schaffhausen",
-			"type": "small_airport",
-			"center_e": 2681881.0,
-			"center_n": 1282845.0,
-			"elevation_m": 464,
-			"runways": [
-				{
-					"designator": "07/25",
-					"heading_deg": 70,
-					"length_m": 600,
-					"surface": "grass",
-					# Thresholds derived from centre ±300 m along heading 070°:
-					#   dE = 300·sin70° ≈ 282,  dN = 300·cos70° ≈ 103
-					"threshold_07": {"e": 2681599.0, "n": 1282742.0},
-					"threshold_25": {"e": 2681901.0, "n": 1282855.0},
-				},
-			],
-		},
-	]
-	_welcome_screen.populate_airports(default_airports)
+	# Load the bundled airport catalog (res://airports.json) and tag entries
+	# with availability markers based on which scenery base packs are
+	# installed. Scenery3D no longer ships POI data so we curate the list
+	# in-app — see provpilot/airports_lib.gd.
+	var installed_packs: Dictionary = {}
+	var scenery_areas: Array = []
+	if _settings_screen != null:
+		installed_packs = _settings_screen.settings.get("installed_scenery_packs", {})
+		scenery_areas = _settings_screen.settings.get("scenery_areas", [])
+	var regions := AirportsLib.installed_regions(installed_packs)
+	# Also accept scenery placed on disk outside the in-app downloader
+	# (e.g. users who copied a Germany/ folder in manually, or who have
+	# the area present-but-disabled in settings).
+	var disk_regions := AirportsLib.installed_regions_from_areas(scenery_areas)
+	for r in disk_regions.keys():
+		regions[r] = true
+	_welcome_screen.set_installed_regions(regions)
+	_welcome_screen.populate_airports(AirportsLib.load_default())
 
 	_welcome_screen.show_welcome()
 
@@ -1683,11 +1708,44 @@ func _create_settings_screen() -> void:
 	_settings_screen.closed.connect(_on_settings_closed)
 
 
+## Per-second snapshot of scene-graph / renderer counters. Lets us spot
+## what's growing across repeated teleports. Logs at most once per second.
+func _emit_diag_snapshot() -> void:
+	var now: int = Time.get_ticks_msec()
+	if now - _diag_last_msec < 1000:
+		return
+	_diag_last_msec = now
+	var mem_static: int = int(Performance.get_monitor(Performance.MEMORY_STATIC))
+	var objects: int = int(Performance.get_monitor(Performance.OBJECT_COUNT))
+	var nodes: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	var orphans: int = int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
+	var resources: int = int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT))
+	var render_objs: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME))
+	var render_prims: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
+	var tex_mem: int = int(Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED))
+	var buf_mem: int = int(Performance.get_monitor(Performance.RENDER_BUFFER_MEM_USED))
+	var fps: int = Engine.get_frames_per_second()
+	var s3d_children := 0
+	if is_instance_valid(scenery3d_node):
+		s3d_children = scenery3d_node.get_child_count()
+	var veg_children := 0
+	if is_instance_valid(vegetation_node):
+		veg_children = vegetation_node.get_child_count()
+	print("[diag] jump=%d fps=%d mem=%.1fMB obj=%d node=%d orph=%d res=%d render_obj=%d prim=%d tex=%.1fMB buf=%.1fMB s3d_kids=%d veg_kids=%d" % [
+		_diag_jump_count, fps,
+		mem_static / 1048576.0, objects, nodes, orphans, resources,
+		render_objs, render_prims,
+		tex_mem / 1048576.0, buf_mem / 1048576.0,
+		s3d_children, veg_children,
+	])
+
+
 ## Handle Fly! from welcome screen — teleport to the selected airport
 func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: float, heading_deg: float) -> void:
 	print("=== WELCOME: Flight requested ===")
 	print("  Aircraft: %s" % aircraft_id)
 	print("  Target: E=%.0f N=%.0f Heading=%.0f°" % [swiss_e, swiss_n, heading_deg])
+	_diag_jump_count += 1
 
 	# Show loading screen while destination loads
 	_fly_loading = true
@@ -1702,6 +1760,21 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 		_first_flight = false
 	else:
 		_on_teleport_requested(swiss_e, swiss_n, heading_deg)
+
+
+## Toggle the per-frame `_process()` callback on every Scenery3D child
+## manager (tile / building / water / road) and on the sibling Vegetation
+## manager. Used to suppress all scenery streaming while the welcome
+## screen is up, so we don't waste worker time loading tiles around the
+## origin before the user has picked a destination.
+func _set_scenery_streaming(enabled: bool) -> void:
+	if scenery3d_node:
+		for child in scenery3d_node.get_children():
+			if child.has_method("set_process"):
+				child.set_process(enabled)
+	if vegetation_node and vegetation_node.has_method("set_process"):
+		vegetation_node.set_process(enabled)
+	print("Scenery streaming ", "ENABLED" if enabled else "DISABLED")
 
 
 ## First flight: load terrain, initialize JSBSim, enable scenery loaders.
@@ -1731,7 +1804,11 @@ func _do_first_flight(swiss_e: float, swiss_n: float, heading_deg: float) -> voi
 		"heading_deg": heading_deg
 	}
 
-	# 4. Scenery3D streams tiles automatically around load_radius.
+	# 4. Now that the camera-tracking AC is at its real destination, turn
+	# scenery streaming back on. The tile manager's first _process tick
+	# will see the camera at the airport and queue tiles around it,
+	# instead of around the origin.
+	_set_scenery_streaming(true)
 
 	# 5. Queue deferred JSBSim initialization (runs in next process frame).
 	_initialize_jsbsim_on_terrain()

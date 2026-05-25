@@ -46,6 +46,11 @@ var _filtered_airports: Array[Dictionary] = []
 var _selected_aircraft_idx: int = 0
 var _selected_airport: Dictionary = {}
 
+# Set of region IDs (e.g. "switzerland") with a base scenery pack installed.
+# Used to annotate airport entries with availability markers. Populated by
+# node_3d.gd before populate_airports() is called.
+var _installed_regions: Dictionary = {}
+
 # UI references
 var _bg: ColorRect
 var _main_panel: PanelContainer
@@ -87,6 +92,15 @@ func populate_airports(airports: Array[Dictionary]) -> void:
 	if _filtered_airports.size() > 0:
 		_airport_list.select(0)
 		_on_airport_selected(0)
+
+
+## Set the set of regions whose base scenery pack is installed. Airports in
+## other regions will be shown with a "locked" marker. Pass the result of
+## `AirportsLib.installed_regions(settings.installed_scenery_packs)`.
+func set_installed_regions(regions: Dictionary) -> void:
+	_installed_regions = regions
+	if _airport_list != null:
+		_rebuild_airport_list()
 
 
 ## Deferred helper — populate from POILoader node if airports weren't ready
@@ -503,8 +517,23 @@ func _rebuild_airport_list() -> void:
 		var ap_name = ap.get("name", "")
 		var elev = ap.get("elevation_m", 0)
 		var type_str = _type_icon(ap.get("type", ""))
-		var text = "%s  %s  %s  %dm" % [icao, ap_name, type_str, elev]
-		_airport_list.add_item(text)
+		var marker := _availability_marker(ap)
+		var text = "%s  %s  %s  %s  %dm" % [marker, icao, ap_name, type_str, elev]
+		var idx := _airport_list.add_item(text)
+		if marker == "\u2717":
+			_airport_list.set_item_custom_fg_color(idx, Color(0.55, 0.55, 0.58))
+
+
+## Availability marker derived from the installed scenery base packs.
+## Mirrors AirportsLib.availability_marker() but kept local so the welcome
+## screen does not need to import the lib at parse time.
+func _availability_marker(airport: Dictionary) -> String:
+	var region := str(airport.get("region", ""))
+	if region == "":
+		return "  "
+	if _installed_regions.has(region):
+		return "\u2713"
+	return "\u2717"
 
 
 func _on_search_changed(_new_text: String) -> void:
