@@ -627,17 +627,46 @@ Promise.all([
     return "#374151";
   };
   const label = f => (f.properties || {}).name || (f.properties || {}).ak || "Region";
-  const popupHtml = (b, name) => {
+
+  // Switzerland scenery packs (mirrors scenery_manifest.json) ────────────
+  const SCENERY_BASE = "https://www.md80.ch/provpilot/scenery/";
+  const CH_BASE   = { url: SCENERY_BASE + "switzerland-base-v1.zip",      size: "43.7 GiB" };
+  const CH_DETAIL = {
+    nw: { url: SCENERY_BASE + "switzerland-detail-nw-v1.zip", name: "North-West", size: "12.0 GiB" },
+    ne: { url: SCENERY_BASE + "switzerland-detail-ne-v1.zip", name: "North-East", size: "14.6 GiB" },
+    sw: { url: SCENERY_BASE + "switzerland-detail-sw-v1.zip", name: "South-West", size: "11.5 GiB" },
+    se: { url: SCENERY_BASE + "switzerland-detail-se-v1.zip", name: "South-East", size:  "7.5 GiB" }
+  };
+  // Split point in WGS84 \u2014 approx of LV95 E=2659328 / N=1183744 from
+  // scripts/scenery_regions.json. Good enough for canton centroids.
+  const CH_SPLIT_LON = 8.43;
+  const CH_SPLIT_LAT = 46.74;
+  const quadrantOf = ll => (ll.lat >= CH_SPLIT_LAT ? "n" : "s") + (ll.lng >= CH_SPLIT_LON ? "e" : "w");
+
+  const popupHtml = (b, name, center) => {
     if (!b)                   return `<h3>${name}</h3><div class="meta">No bundle planned yet.</div>`;
     if (b.status === "soon")  return `<h3>${name}</h3><div class="meta">Coming soon.</div>`;
+    const q = quadrantOf(center);
+    const det = CH_DETAIL[q];
     return `<h3>${name}</h3>
-            <div class="meta">Available &mdash; install from <strong>Settings &rarr; Download Scenery</strong> inside the app, or grab the ZIPs directly from the <a href="#scenery-direct">downloads table</a> below.</div>`;
+            <div class="meta">
+              Install in-app via <strong>Settings &rarr; Download Scenery</strong>, or download the ZIPs directly:
+              <ul style="margin:8px 0 0; padding-left: 18px;">
+                <li><a href="${CH_BASE.url}">Switzerland base</a>
+                    <span style="color:var(--fg-dim)">(${CH_BASE.size})</span></li>
+                <li><a href="${det.url}">Switzerland detail \u2014 ${det.name}</a>
+                    <span style="color:var(--fg-dim)">(${det.size})</span></li>
+              </ul>
+              <div style="margin-top:6px; font-size:11px; color:var(--fg-dim);">
+                See the full <a href="#scenery-direct">downloads table</a> for all quadrants.
+              </div>
+            </div>`;
   };
 
   const layer = L.geoJSON(geo, {
     style: f => ({ color: "#1e293b", weight: 1, fillColor: fillFor(bundleFor(f)), fillOpacity: 0.45 }),
     onEachFeature: (f, l) => {
-      l.bindPopup(popupHtml(bundleFor(f), label(f)));
+      l.bindPopup(popupHtml(bundleFor(f), label(f), l.getBounds().getCenter()));
       l.on("mouseover", () => l.setStyle({ weight: 2, fillOpacity: 0.65 }));
       l.on("mouseout",  () => l.setStyle({ weight: 1, fillOpacity: 0.45 }));
     }
