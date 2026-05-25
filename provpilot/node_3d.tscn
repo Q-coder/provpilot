@@ -8,71 +8,14 @@
 [node name="node_3d" type="Node3D" unique_id=778369784]
 script = ExtResource("1_1r08c")
 
-[node name="AC" parent="." unique_id=754408209 instance=ExtResource("2_yxcfd")]
-transform = Transform3D(0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1, -1257.9392, 618.0513, -1598.5332)
-
-[node name="Environment" parent="." unique_id=1222445889 instance=ExtResource("6_envir")]
-transform = Transform3D(-0.8124194877878104, -1.9342809112031988e-17, 0.5830733880589918, -0.3520715541081283, 0.797120463207206, -0.4905553872135308, -0.464779729173378, -0.6038203103045885, -0.6475961984239802, -1511.0961433885584, 1452.4076252391255, 1381.873410553254)
-
 [node name="Control" type="Control" parent="." unique_id=1312208183]
 layout_mode = 3
-anchors_preset = 0
-offset_left = 4.0
-offset_top = 2.0
-offset_right = 255.0
-offset_bottom = 208.0
-
-[node name="Label" type="Label" parent="Control" unique_id=1807507576]
-modulate = Color(0.509804, 1, 1, 1)
-layout_mode = 0
-offset_left = 49.0
-offset_top = 1410.0
-offset_right = 270.0
-offset_bottom = 1483.0
-scale = Vector2(2, 2)
-text = "Text"
-vertical_alignment = 1
-
-[node name="Label2" type="Label" parent="Control" unique_id=144761800]
-modulate = Color(0.364706, 1, 1, 1)
-layout_mode = 0
-offset_left = 590.0
-offset_top = 1457.0
-offset_right = 825.0
-offset_bottom = 1510.0
-scale = Vector2(2, 2)
-text = "text 2"
-
-[node name="Label3" type="Label" parent="Control" unique_id=1719974323]
-modulate = Color(0.482353, 1, 1, 1)
-layout_mode = 0
-offset_left = 1313.0
-offset_top = 1479.0
-offset_right = 1614.9999
-offset_bottom = 1539.0
-scale = Vector2(2, 2)
-text = "text 3"
-
-[node name="Label4" type="Label" parent="Control" unique_id=531801771]
-modulate = Color(0.490196, 1, 1, 1)
-layout_mode = 0
-offset_left = 2092.0
-offset_top = 1489.0
-offset_right = 2333.0
-offset_bottom = 1531.0
-scale = Vector2(2, 2)
-text = "Text 4"
-
-[node name="Label5" type="Label" parent="Control" unique_id=201692843]
-modulate = Color(0.329412, 1, 1, 1)
-layout_mode = 0
-offset_left = 2667.0
-offset_top = 1480.0
-offset_right = 2913.0
-offset_bottom = 1529.0
-scale = Vector2(2, 2)
-text = "Text 5
-"
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 
 [node name="Label6" type="Label" parent="Control" unique_id=930621710]
 modulate = Color(0.8, 1, 0.8, 1)
@@ -81,7 +24,7 @@ offset_left = 40.0
 offset_top = 207.00049
 offset_right = 333.0
 offset_bottom = 239.20038
-scale = Vector2(2, 2)
+theme_override_font_sizes/font_size = 32
 text = "Godot: X Y Z"
 
 [node name="Label7" type="Label" parent="Control" unique_id=1386947090]
@@ -91,35 +34,95 @@ offset_left = 40.0
 offset_top = 67.00049
 offset_right = 312.0
 offset_bottom = 111.0
-scale = Vector2(2, 2)
+theme_override_font_sizes/font_size = 32
 text = "Lat/Lon: 0.0 / 0.0"
 
 [node name="Label8" type="Label" parent="Control" unique_id=307479243]
 modulate = Color(1, 0.9, 0.6, 1)
 layout_mode = 0
-offset_left = 1713.0
-offset_top = 85.0
-offset_right = 2051.2
-offset_bottom = 151.4
-scale = Vector2(2, 2)
+offset_left = 403.0
+offset_top = 68.0
+offset_right = 625.0
+offset_bottom = 127.0
+theme_override_font_sizes/font_size = 32
+
+[node name="BottomRow" type="HBoxContainer" parent="Control" unique_id=765652053]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -120.0
+offset_bottom = -60.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_constants/separation = 40
+alignment = 1
+
+[node name="Label" type="Label" parent="Control/BottomRow" unique_id=1807507576]
+modulate = Color(0.509804, 1, 1, 1)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 32
+text = "Text"
+horizontal_alignment = 1
+vertical_alignment = 2
+
+[node name="Label2" type="Label" parent="Control/BottomRow" unique_id=144761800]
+modulate = Color(0.364706, 1, 1, 1)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 32
+text = "text 2"
+horizontal_alignment = 1
+vertical_alignment = 2
+
+[node name="Label3" type="Label" parent="Control/BottomRow" unique_id=1719974323]
+modulate = Color(0.482353, 1, 1, 1)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 32
+text = "text 3"
+horizontal_alignment = 1
+vertical_alignment = 2
+
+[node name="Label4" type="Label" parent="Control/BottomRow" unique_id=531801771]
+modulate = Color(0.490196, 1, 1, 1)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 32
+text = "Text 4"
+horizontal_alignment = 1
+vertical_alignment = 2
+
+[node name="Label5" type="Label" parent="Control/BottomRow" unique_id=201692843]
+modulate = Color(0.329412, 1, 1, 1)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 32
+text = "Text 5"
+horizontal_alignment = 1
+vertical_alignment = 2
+
+[node name="AC" parent="." unique_id=754408209 instance=ExtResource("2_yxcfd")]
+transform = Transform3D(0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1, -1257.9392, 618.0513, -1598.5332)
+
+[node name="Environment" parent="." unique_id=1222445889 instance=ExtResource("6_envir")]
+transform = Transform3D(-0.8124194877878104, -1.9342809112031988e-17, 0.5830733880589918, -0.3520715541081283, 0.797120463207206, -0.4905553872135308, -0.464779729173378, -0.6038203103045885, -0.6475961984239802, -1511.0961433885584, 1452.4076252391255, 1381.873410553254)
 
 [node name="Scenery3D" type="Scenery3D" parent="." unique_id=962717072]
+tile_px = 512
 load_radius = 50
 origin_east = 2682880.0
 origin_north = 1283072.0
-tile_px = 512
-data_path = ""
-data_paths = PackedStringArray()
-buildings_path = ""
-buildings_paths = PackedStringArray()
-water_paths = PackedStringArray()
-road_paths = PackedStringArray()
-orthophoto_path = ""
-orthophoto_paths = PackedStringArray()
+data_path = "/Users/gery/provpilot/scenery/Switzerland/terrain"
+data_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/terrain")
+buildings_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/buildings")
+water_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/water")
+road_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/roads")
 top_level = true
 
 [node name="Vegetation" type="S3DVegetationManager" parent="." unique_id=147336970]
-vegetation_paths = PackedStringArray()
 origin_east = 2682880.0
 origin_north = 1283072.0
 load_radius_m = 1500

@@ -9,6 +9,13 @@ extends Node3D
 var TERRAIN_CENTER_E: float = 2682880.0  # Swiss Easting at Godot X=0
 var TERRAIN_CENTER_N: float = 1283072.0  # Swiss Northing at Godot Z=0
 
+# User edit. Get the new organized labels.
+@onready var airspeed_label: Label = $Control/BottomRow/Label
+@onready var altitude_label: Label = $Control/BottomRow/Label2
+@onready var vspeed_label: Label = $Control/BottomRow/Label3
+@onready var throttle_label: Label = $Control/BottomRow/Label4
+@onready var heading_label: Label = $Control/BottomRow/Label5
+
 # Assuming your JSBGodot node is a child of the current node
 var jsb_node: Node
 var active_camera: Camera3D
@@ -876,11 +883,11 @@ func _process(delta: float) -> void:
 		var throttle_percent = throttle * 100.0
 		var heading = jsb_node.get_heading()
 
-		$Control/Label.text = "Airspeed: " + str(round(airspeed)) + " knots"
-		$Control/Label2.text = "Altitude: " + str(round(altitude_ft)) + " feet"
-		$Control/Label3.text = "Verical Speed: " + str(round(vertical_spd)) + " ft/m"
-		$Control/Label4.text = "Throttle: " +str(round(throttle_percent)) + " %"
-		$Control/Label5.text = "Heading: " +str(round(heading))
+		airspeed_label.text = "Airspeed: " + str(round(airspeed)) + " knots"
+		altitude_label.text = "Altitude: " + str(round(altitude_ft)) + " feet"
+		vspeed_label.text = "Verical Speed: " + str(round(vertical_spd)) + " ft/m"
+		throttle_label.text = "Throttle: " +str(round(throttle_percent)) + " %"
+		heading_label.text = "Heading: " +str(round(heading))
 		
 		# Coordinate display
 		var godot_pos = jsb_node.get_godot_position()
@@ -1016,11 +1023,11 @@ func handle_slew_mode(delta: float) -> void:
 	var terrain_height := _terrain_elevation_at(godot_pos.x, godot_pos.z)
 	
 	var heading_deg = fmod(rad_to_deg(-ac_node.rotation.y) + 360.0, 360.0)
-	$Control/Label.text = "=== SLEW MODE ==="
-	$Control/Label2.text = "Height AGL: %.1f m" % (godot_pos.y - terrain_height)
-	$Control/Label3.text = "Terrain: %.1f m ASL" % terrain_height
-	$Control/Label4.text = "Aircraft: %.1f m ASL" % godot_pos.y
-	$Control/Label5.text = "Shift+Y to exit"
+	airspeed_label.text = "=== SLEW MODE ==="
+	altitude_label.text = "Height AGL: %.1f m" % (godot_pos.y - terrain_height)
+	vspeed_label.text = "Terrain: %.1f m ASL" % terrain_height
+	throttle_label.text = "Aircraft: %.1f m ASL" % godot_pos.y
+	heading_label.text = "Shift+Y to exit"
 	$Control/Label6.text = "Godot: X=%.1f Y=%.1f Z=%.1f" % [godot_pos.x, godot_pos.y, godot_pos.z]
 	$Control/Label7.text = "Swiss E: %s, N: %s" % [format_swiss_coord(swiss_e), format_swiss_coord(swiss_n)]
 	$Control/Label8.text = "Heading: %.0f°" % heading_deg
