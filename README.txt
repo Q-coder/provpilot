@@ -9,6 +9,15 @@ CONTENTS
   ProvPilot.exe   — main application
   ProvPilot.pck   — game data (must stay next to the .exe)
   README.txt      — this file
+  bin\            — native GDExtension DLLs (must stay next to the .exe)
+
+On first launch ProvPilot creates two more items in the same folder:
+  aircraft\       — flight-dynamics & 3D model data per aircraft
+                    (X-Plane style — editable on disk)
+  provpilot.cfg   — your settings (scenery library, joystick, graphics, …)
+
+The whole folder is portable: move/copy it to another machine and your
+settings and aircraft tweaks come along.
 
 
 INSTALLATION
@@ -139,11 +148,14 @@ Coverage of the Schaffhausen demo (~47.6°–47.9°N, 8.3°–8.8°E):
 
 SETTINGS FILE
 -------------
-Settings are stored in:
-  %APPDATA%\Godot\app_userdata\ProvPilot\settings.cfg
+Settings are stored in `provpilot.cfg` next to ProvPilot.exe (portable
+install — the file moves with the folder). It also tracks which version
+of the bundled aircraft data has been extracted into `aircraft\`.
 
-Delete this file to reset all settings to defaults (scenery paths,
-joystick assignments, tree density, etc.).
+Delete `provpilot.cfg` to reset all settings to defaults (scenery paths,
+joystick assignments, tree density, etc.). Delete the `aircraft\` folder
+(or just `aircraft\c172p\`) to force ProvPilot to re-extract the bundled
+flight-dynamics and 3D model files on the next launch.
 
 
 KNOWN LIMITATIONS

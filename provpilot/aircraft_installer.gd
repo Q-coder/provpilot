@@ -18,21 +18,32 @@ extends Node
 ## Registered as a project autoload (see project.godot).
 
 # Bumping this string forces a re-extraction of res://aircraft/ on next run.
-const BUNDLE_VERSION := "1.0.5"
+const BUNDLE_VERSION := "1.0.6"
 
 # Subtree inside res:// that mirrors the on-disk layout we want to produce
 # under <install_root>/aircraft/.
 const RES_AIRCRAFT_ROOT := "res://aircraft"
+
+# Explicit manifest of required asset files (paths relative to RES_AIRCRAFT_ROOT
+# / dest_root). In exported PCKs, Godot's `DirAccess` does not reliably
+# enumerate "imported" source files such as .glb — the file is present and
+# `FileAccess.open()` succeeds, but `list_dir_*` skips it. So the recursive
+# copy below misses them. We re-copy these explicitly afterwards using
+# direct FileAccess reads, which always works.
+const REQUIRED_FILES := [
+	"c172p/model/C172P_1.glb",
+]
 
 
 func _ready() -> void:
 	var dest_root: String = InstallRoot.get_aircraft_root()
 	# Self-heal: even if the install is "initialized" per provpilot.cfg, the
 	# user might have deleted or moved the aircraft/ tree. Re-extract whenever
-	# the expected sentinel file is missing.
+	# any expected sentinel file is missing (XML + 3D model).
 	var sentinel := dest_root.path_join("c172p").path_join("jsbsim") \
 			.path_join("aircraft").path_join("c172p").path_join("c172p.xml")
-	var have_data := FileAccess.file_exists(sentinel)
+	var have_data := FileAccess.file_exists(sentinel) \
+			and _required_files_present(dest_root)
 	if InstallRoot.is_aircraft_initialized(BUNDLE_VERSION) and have_data:
 		print("AircraftInstaller: aircraft data already extracted (version=%s)"
 				% BUNDLE_VERSION)
@@ -50,6 +61,13 @@ func _ready() -> void:
 		push_error("AircraftInstaller: extraction failed (err=%d). Files may be missing under %s."
 				% [err, dest_root])
 		return
+
+# Second pass: copy files that DirAccess could not enumerate (e.g. .glb
+	# source assets in exported builds). Best-effort: in exported builds the
+	# .glb source is replaced by Godot's imported .scn and isn't reachable
+	# via res:// at all — the loader has a PackedScene fallback for that
+	# case, so a missing source here is non-fatal.
+	_copy_required_files(dest_root)
 
 	InstallRoot.mark_aircraft_initialized(BUNDLE_VERSION)
 	print("AircraftInstaller: extraction complete.")
@@ -133,3 +151,45 @@ func _copy_file(src_res: String, dest_abs: String) -> Error:
 	fout.store_buffer(buf)
 	fout.close()
 	return OK
+
+
+# ── Required-files pass ────────────────────────────────────────────────
+# Some asset types (notably .glb) live in the exported PCK but aren't
+# enumerated by DirAccess.list_dir_*(). We copy them explicitly by name,
+# using FileAccess directly which can open them just fine.
+func _copy_required_files(dest_root: String) -> void:
+	for rel in REQUIRED_FILES:
+		var src: String = RES_AIRCRAFT_ROOT.path_join(rel)
+		var dst: String = dest_root.path_join(rel)
+		if FileAccess.file_exists(dst):
+			continue
+		if not FileAccess.file_exists(src):
+			# Not fatal: in exported builds Godot imports .glb files into
+			# .scn and the source isn't accessible via res://. The runtime
+			# loader (c172p_loader.gd) falls back to the imported PackedScene.
+			push_warning("AircraftInstaller: source not in res:// (will use PCK resource): %s" % src)
+			continue
+		var parent: String = dst.get_base_dir()
+		var mk := DirAccess.make_dir_recursive_absolute(parent)
+		if mk != OK and mk != ERR_ALREADY_EXISTS:
+			push_warning("AircraftInstaller: mkdir %s failed (err=%d)" % [parent, mk])
+			continue
+		var err := _copy_file(src, dst)
+		if err != OK:
+			push_warning("AircraftInstaller: copy %s → %s failed (err=%d)"
+					% [src, dst, err])
+			continue
+		print("AircraftInstaller: copied %s" % dst)
+
+
+func _required_files_present(dest_root: String) -> bool:
+	# Only treat the file as required for self-heal purposes if its source is
+	# actually available via res:// — otherwise we'd thrash re-extracting
+	# every launch in exported builds.
+	for rel in REQUIRED_FILES:
+		var src: String = RES_AIRCRAFT_ROOT.path_join(rel)
+		if not FileAccess.file_exists(src):
+			continue
+		if not FileAccess.file_exists(dest_root.path_join(rel)):
+			return false
+	return true

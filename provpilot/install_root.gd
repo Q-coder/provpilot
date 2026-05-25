@@ -84,21 +84,30 @@ func _discover_and_load() -> void:
 
 func _candidate_roots() -> Array[String]:
 	var out: Array[String] = []
-	# 1) bundle parent
 	var exec := OS.get_executable_path()
+	# 1a) macOS bundle parent: strip /<exe>, /MacOS, /Contents, /<bundle>.app
 	if exec.find(".app/Contents/MacOS/") != -1:
-		# strip /<exe>, /MacOS, /Contents, then /<bundle>.app
 		var bundle_dir := exec.get_base_dir().get_base_dir().get_base_dir()
 		var parent := bundle_dir.get_base_dir()
 		if not parent.is_empty():
 			out.append(parent)
-	# 2) $PWD (terminal launch dir)
+	# 1b) Windows / Linux: the executable sits directly in the install root,
+	#     so its parent directory is the install root. Skip when inside a
+	#     macOS .app bundle (already handled above) or when running in-editor.
+	elif not exec.is_empty() and not OS.has_feature("editor"):
+		var exec_dir := exec.get_base_dir()
+		if not exec_dir.is_empty() and not out.has(exec_dir):
+			out.append(exec_dir)
+	# 2) $PWD (terminal launch dir — set on Linux/macOS but not on Windows CMD)
 	var pwd := OS.get_environment("PWD")
 	if not pwd.is_empty() and DirAccess.dir_exists_absolute(pwd):
 		if not out.has(pwd):
 			out.append(pwd)
-	# 3) ~/ProvPilot — friendly default
+	# 3) ~/ProvPilot — friendly default.
+	#    Windows uses USERPROFILE instead of HOME; check both.
 	var home := OS.get_environment("HOME")
+	if home.is_empty():
+		home = OS.get_environment("USERPROFILE")
 	if not home.is_empty():
 		var p := home.path_join("ProvPilot")
 		if not out.has(p):

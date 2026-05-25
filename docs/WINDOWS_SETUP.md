@@ -103,3 +103,62 @@ on the main thread. Tune visible radius via the `[scenery3d]` section of
 
 JSBSim debug output is suppressed with `SetDebugLevel(0)`; per-frame C++
 printfs were removed from `copy_outputs_from_JSBSim()`.
+
+## Distribution / Portable Install
+
+ProvPilot follows an X-Plane-style portable install model: the user copies the
+folder containing `ProvPilot.exe` anywhere on disk and the app keeps all of
+its state in that folder.
+
+**Ship-time layout** (what `build_windows.ps1` packs into the ZIP):
+
+```
+ProvPilot\
+  ProvPilot.exe
+  ProvPilot.pck      — contains res://aircraft/<id>/ subtree (JSBSim XMLs +
+                       imported .glb scenes for the 3D model)
+  README.txt
+  bin\               — GDExtension DLLs (libprovpilot, libscenery3d)
+```
+
+There is **no** top-level `jsbsim\` folder anymore. Aircraft data is bundled
+inside the PCK and unpacked on first run.
+
+**First-run layout** (created by the app):
+
+```
+ProvPilot\
+  provpilot.cfg                                — portable settings
+  aircraft\c172p\
+    jsbsim\{aircraft,engine,systems}\...      — extracted XMLs
+    model\license.txt                          — only files DirAccess can
+                                                 enumerate land on disk
+```
+
+The `aircraft\` extraction is driven by
+[`AircraftInstaller`](../provpilot/aircraft_installer.gd) (autoload) and keyed
+by `BUNDLE_VERSION`. Bump that constant whenever the bundled data changes to
+force a re-extraction on existing installs.
+
+### Loading the 3D model
+
+[`c172p_loader.gd`](../provpilot/c172p_loader.gd) prefers an on-disk
+`<install>\aircraft\c172p\model\C172P_1.glb` so users can swap the model.
+In exported builds Godot replaces source `.glb` files with the compiled
+`.scn` and the source is not reachable via `FileAccess`, so the loader
+falls back to `load("res://aircraft/c172p/model/C172P_1.glb")` which
+goes through the `.import` remap to the embedded PackedScene.
+
+### Discovery
+
+[`install_root.gd`](../provpilot/install_root.gd) tries (in order): the
+directory containing the executable, `$PWD`, `%USERPROFILE%\ProvPilot`, and
+finally the user data directory. The first writable candidate becomes the
+install root and `provpilot.cfg` is written there.
+
+### Native JSBSim path
+
+[`src/jsbgodot.cpp`](../src/jsbgodot.cpp) (`JSBGodot::_ready`) reads the
+resolved aircraft directory from the `InstallRoot` autoload and points
+`FGFDMExec` at `<install>\aircraft\<id>\jsbsim\{aircraft,engine,systems}`.
+No environment variables or absolute paths are baked into the binary.

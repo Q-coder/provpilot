@@ -23,28 +23,23 @@ extends Node3D
 
 const MODEL_REL_PATH := "c172p/model/C172P_1.glb"
 
+# Fallback to the resource embedded in the PCK (Godot imports the .glb into a
+# PackedScene at editor time; the .import sidecar remaps res://…/C172P_1.glb
+# to res://.godot/imported/C172P_1.glb-<hash>.scn). The source .glb itself is
+# *not* present in exported builds — the include_filter only keeps it for
+# direct FileAccess in the editor — so we must rely on the imported PackedScene
+# at runtime unless the user has dropped a real .glb on disk.
+const MODEL_RES_PATH := "res://aircraft/c172p/model/C172P_1.glb"
+
 
 func _ready() -> void:
 	# Child _ready() runs before parent _ready() in Godot, so node_3d.gd can
 	# rely on the GLB subtree being attached by the time it resolves paths.
-	var ir := get_node_or_null("/root/InstallRoot")
-	if ir == null:
-		push_error("C172PLoader: InstallRoot autoload missing")
-		return
-	var path: String = ir.get_aircraft_root().path_join(MODEL_REL_PATH)
-	if not FileAccess.file_exists(path):
-		push_error("C172PLoader: model not found at %s — was AircraftInstaller run?" % path)
-		return
-
-	var doc := GLTFDocument.new()
-	var state := GLTFState.new()
-	var err: int = doc.append_from_file(path, state)
-	if err != OK:
-		push_error("C172PLoader: append_from_file failed (err=%d) for %s" % [err, path])
-		return
-	var scene := doc.generate_scene(state)
+	var scene: Node = _load_from_disk()
 	if scene == null:
-		push_error("C172PLoader: generate_scene returned null for %s" % path)
+		scene = _load_from_resource()
+	if scene == null:
+		push_error("C172PLoader: failed to load model (no on-disk .glb and no PCK fallback)")
 		return
 
 	# Reparent the GLB's top-level child(ren) onto this node, then drop the
@@ -56,4 +51,45 @@ func _ready() -> void:
 		add_child(c)
 	scene.queue_free()
 
-	print("C172PLoader: loaded model from %s" % path)
+
+# Preferred path: load a real .glb from <install_root>/aircraft/... so users
+# can swap the model file without rebuilding the PCK. Returns null if the file
+# isn't there or fails to parse.
+func _load_from_disk() -> Node:
+	var ir := get_node_or_null("/root/InstallRoot")
+	if ir == null:
+		return null
+	var path: String = ir.get_aircraft_root().path_join(MODEL_REL_PATH)
+	if not FileAccess.file_exists(path):
+		return null
+
+	var doc := GLTFDocument.new()
+	var state := GLTFState.new()
+	var err: int = doc.append_from_file(path, state)
+	if err != OK:
+		push_warning("C172PLoader: append_from_file failed (err=%d) for %s" % [err, path])
+		return null
+	var scene := doc.generate_scene(state)
+	if scene == null:
+		push_warning("C172PLoader: generate_scene returned null for %s" % path)
+		return null
+	print("C172PLoader: loaded model from disk: %s" % path)
+	return scene
+
+
+# Fallback: instantiate the PackedScene Godot built when importing the .glb.
+# Works in both the editor and exported builds.
+func _load_from_resource() -> Node:
+	if not ResourceLoader.exists(MODEL_RES_PATH):
+		push_error("C172PLoader: resource missing: %s" % MODEL_RES_PATH)
+		return null
+	var ps: PackedScene = load(MODEL_RES_PATH) as PackedScene
+	if ps == null:
+		push_error("C172PLoader: load(%s) returned non-PackedScene" % MODEL_RES_PATH)
+		return null
+	var inst := ps.instantiate()
+	if inst == null:
+		push_error("C172PLoader: instantiate() returned null for %s" % MODEL_RES_PATH)
+		return null
+	print("C172PLoader: loaded model from PCK resource: %s" % MODEL_RES_PATH)
+	return inst

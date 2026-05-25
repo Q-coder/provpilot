@@ -335,33 +335,10 @@ Get-ChildItem $provpilotBin -Filter '*.windows.template_release.double.x86_64.dl
 
 Write-Host "  [OK] Export complete -> $buildOutput" -ForegroundColor Green
 
-# Copy only the c172p aircraft + its referenced engine files — skip the 60+
-# sample aircraft that ship with JSBSim source but are never used by ProvPilot.
-Write-Host '  Copying JSBSim data (c172p only)...' -ForegroundColor DarkGray
-$buildJsbsimDir = Join-Path $buildOutput 'jsbsim'
-
-# aircraft/c172p
-$c172pSrc = Join-Path $jsbsimDir 'aircraft\c172p'
-$c172pDst = Join-Path $buildJsbsimDir 'aircraft\c172p'
-Copy-Item -Path $c172pSrc -Destination $c172pDst -Recurse -Force
-Write-Host '  [OK] Copied jsbsim\aircraft\c172p' -ForegroundColor Green
-
-# engine files referenced by c172p.xml
-$engineDst = Join-Path $buildJsbsimDir 'engine'
-New-Item -ItemType Directory -Force $engineDst | Out-Null
-foreach ($engFile in @('eng_io320.xml', 'prop_75in2f.xml')) {
-    $src = Join-Path $jsbsimDir "engine\$engFile"
-    if (Test-Path $src) {
-        Copy-Item $src $engineDst -Force
-        Write-Host "  [OK] Copied jsbsim\engine\$engFile" -ForegroundColor Green
-    } else {
-        Write-Warning "  JSBSim engine file not found: $src"
-    }
-}
-
-# systems — c172p references no system files, but create the empty dir so
-# JSBSim's file-search doesn't emit warnings about a missing systems/ path.
-New-Item -ItemType Directory -Force (Join-Path $buildJsbsimDir 'systems') | Out-Null
+# JSBSim bundling is no longer needed at the top level. Aircraft data lives
+# inside the PCK at res://aircraft/<id>/jsbsim/ and the AircraftInstaller
+# autoload extracts it to <install_root>/aircraft/<id>/jsbsim/ on first run.
+# jsbgodot.cpp resolves that path via the InstallRoot autoload.
 
 # ---------------------------------------------------------------------------
 # Step 7 — Package distributable ZIP
@@ -393,7 +370,6 @@ Copy-Item (Join-Path $buildOutput 'ProvPilot.exe')  $stageRoot -Force
 Copy-Item (Join-Path $buildOutput 'ProvPilot.pck')  $stageRoot -Force
 Copy-Item (Join-Path $repoRoot    'README.txt')      $stageRoot -Force
 Copy-Item (Join-Path $buildOutput 'bin')    (Join-Path $stageRoot 'bin')    -Recurse -Force
-Copy-Item (Join-Path $buildOutput 'jsbsim') (Join-Path $stageRoot 'jsbsim') -Recurse -Force
 
 # Create the ZIP (overwrite if it exists)
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
@@ -420,8 +396,6 @@ Write-Host '  ProvPilot.pck' -ForegroundColor DarkGray
 Write-Host '  README.txt' -ForegroundColor DarkGray
 Write-Host '  bin\libprovpilot.windows.template_release.double.x86_64.dll' -ForegroundColor DarkGray
 Write-Host '  bin\libscenery3d.windows.template_release.double.x86_64.dll' -ForegroundColor DarkGray
-Write-Host '  jsbsim\aircraft\c172p\  jsbsim\engine\  jsbsim\systems\' -ForegroundColor DarkGray
 Write-Host ''
 Write-Host 'Users must keep this folder structure intact: the DLLs must stay in bin\' -ForegroundColor Yellow
-Write-Host 'The jsbsim_path setting (default: "jsbsim") must point to the jsbsim\ folder.' -ForegroundColor Yellow
 Write-Host ''
