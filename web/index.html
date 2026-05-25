@@ -671,7 +671,47 @@ Promise.all([
       l.on("mouseout",  () => l.setStyle({ weight: 1, fillOpacity: 0.45 }));
     }
   }).addTo(map);
-  map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+
+  // Baden-Württemberg scenery bbox split into 4 LV95 quadrants (no per-Land
+  // GeoJSON; the polygons below are the actual download quadrant corners,
+  // pre-projected from LV95 to WGS84 via scripts/scenery_pipeline.lv95_to_wgs84). 
+  const BW_BASE   = { url: SCENERY_BASE + "baden-wuerttemberg-base-v1.zip",      size: "34.8 GiB" };
+  const BW_DETAIL = {
+    nw: { url: SCENERY_BASE + "baden-wuerttemberg-detail-nw-v1.zip", name: "North-West", size: "10.9 GiB",
+          poly: [[48.67385,7.71569],[48.66236,9.11205],[49.80286,9.14938],[49.81458,7.72187]] },
+    ne: { url: SCENERY_BASE + "baden-wuerttemberg-detail-ne-v1.zip", name: "North-East", size: "12.0 GiB",
+          poly: [[48.66236,9.11205],[48.63443,10.50746],[49.77436,10.57594],[49.80286,9.14938]] },
+    sw: { url: SCENERY_BASE + "baden-wuerttemberg-detail-sw-v1.zip", name: "South-West", size:  "8.8 GiB",
+          poly: [[47.53217,7.70975],[47.52092,9.07617],[48.66236,9.11205],[48.67385,7.71569]] },
+    se: { url: SCENERY_BASE + "baden-wuerttemberg-detail-se-v1.zip", name: "South-East", size:  "9.2 GiB",
+          poly: [[47.52092,9.07617],[47.49355,10.44163],[48.63443,10.50746],[48.66236,9.11205]] }
+  };
+  const bwPopup = det =>
+    `<h3>Baden-W&uuml;rttemberg &mdash; ${det.name}</h3>
+     <div class="meta">
+       Install in-app via <strong>Settings &rarr; Download Scenery</strong>, or download the ZIPs directly:
+       <ul style="margin:8px 0 0; padding-left: 18px;">
+         <li><a href="${BW_BASE.url}">Baden-W&uuml;rttemberg base</a>
+             <span style="color:var(--fg-dim)">(${BW_BASE.size})</span></li>
+         <li><a href="${det.url}">Baden-W&uuml;rttemberg detail \u2014 ${det.name}</a>
+             <span style="color:var(--fg-dim)">(${det.size})</span></li>
+       </ul>
+       <div style="margin-top:6px; font-size:11px; color:var(--fg-dim);">
+         See the full <a href="#scenery-direct">downloads table</a> for all quadrants.
+       </div>
+     </div>`;
+  const bwPolys = [];
+  for (const det of Object.values(BW_DETAIL)) {
+    const p = L.polygon(det.poly, { color: "#1e293b", weight: 1, fillColor: "#22c55e", fillOpacity: 0.45 }).addTo(map);
+    p.bindPopup(bwPopup(det));
+    p.on("mouseover", () => p.setStyle({ weight: 2, fillOpacity: 0.65 }));
+    p.on("mouseout",  () => p.setStyle({ weight: 1, fillOpacity: 0.45 }));
+    bwPolys.push(p);
+  }
+
+  const allBounds = layer.getBounds();
+  bwPolys.forEach(p => allBounds.extend(p.getBounds()));
+  map.fitBounds(allBounds, { padding: [20, 20] });
 }).catch(err => console.error("Map load failed:", err));
 
 // ── Wire latest release URLs into all download buttons ────────────
