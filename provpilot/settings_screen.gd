@@ -2,7 +2,8 @@ extends CanvasLayer
 ## SettingsScreen — Configuration for paths, graphics, sound, and realism.
 ##
 ## Opened from the welcome screen or in-flight via menu.
-## Settings are persisted to user://settings.cfg.
+## Settings are persisted to the shared provpilot.cfg next to the .app
+## (via InstallRoot). Sections used: paths, scenery, graphics, sound, realism.
 
 signal closed()
 
@@ -17,7 +18,9 @@ const PANEL_COLOR := Color(0.12, 0.14, 0.18, 1.0)
 const SECTION_COLOR := Color(0.25, 0.55, 0.85, 1.0)
 const LABEL_COLOR := Color(0.75, 0.78, 0.82)
 
-const CONFIG_PATH := "user://settings.cfg"
+# Section names used inside provpilot.cfg. Each settings key is routed to one
+# of these sections by `_section_for_key()`.
+const SETTINGS_SECTIONS: PackedStringArray = ["paths", "scenery", "graphics", "sound", "realism"]
 
 # ── Settings state ─────────────────────────────────────────────────────
 var settings := {
@@ -873,34 +876,40 @@ func _read_from_ui() -> void:
 
 func _save_settings() -> void:
 	_read_from_ui()
-	var config = ConfigFile.new()
 	for key in settings.keys():
-		var section = "paths"
-		if key in ["scenery_path", "jsbsim_path"]:
-			section = "paths"
-		elif key in ["scenery_areas", "scenery_scan_roots", "installed_scenery_packs", "skip_white_pixels"]:
-			section = "scenery"
-		elif key in ["render_distance", "building_distance", "shadow_quality", "tree_density", "vsync", "fullscreen"]:
-			section = "graphics"
-		elif "volume" in key:
-			section = "sound"
-		else:
-			section = "realism"
-		config.set_value(section, key, settings[key])
-	config.save(CONFIG_PATH)
-	print("Settings saved to %s" % CONFIG_PATH)
+		InstallRoot.set_value(_section_for_key(key), key, settings[key])
+	var err: int = InstallRoot.save_config()
+	if err == OK:
+		print("Settings saved to provpilot.cfg")
+	else:
+		push_warning("SettingsScreen: save failed (err %d)" % err)
+
+
+static func _section_for_key(key: String) -> String:
+	if key in ["scenery_path", "jsbsim_path"]:
+		return "paths"
+	if key in ["scenery_areas", "scenery_scan_roots", "installed_scenery_packs", "skip_white_pixels"]:
+		return "scenery"
+	if key in ["render_distance", "building_distance", "shadow_quality", "tree_density", "vsync", "fullscreen"]:
+		return "graphics"
+	if "volume" in key:
+		return "sound"
+	return "realism"
 
 
 func _load_settings() -> void:
-	var config = ConfigFile.new()
-	if config.load(CONFIG_PATH) != OK:
-		print("SettingsScreen: No saved settings, using defaults")
+	var loaded := false
+	for section in SETTINGS_SECTIONS:
+		if not InstallRoot.has_section(section):
+			continue
+		for key in InstallRoot.get_section_keys(section):
+			if settings.has(key):
+				settings[key] = InstallRoot.get_value(section, key, settings[key])
+				loaded = true
+	if loaded:
+		print("Settings loaded from provpilot.cfg")
 	else:
-		for section in config.get_sections():
-			for key in config.get_section_keys(section):
-				if settings.has(key):
-					settings[key] = config.get_value(section, key)
-		print("Settings loaded from %s" % CONFIG_PATH)
+		print("SettingsScreen: No saved settings, using defaults")
 	# Ensure scan roots are always seeded from InstallRoot — even if a stale
 	# saved config has obsolete dev-machine paths, the user still sees sensible
 	# defaults when they click "Scan for Scenery". The user can append their own.
@@ -917,6 +926,7 @@ func _load_settings() -> void:
 			seen[r] = true
 			merged.append(r)
 	settings["scenery_scan_roots"] = merged
+
 
 	# Honor a portable provpilot.cfg living next to the .app: if it specifies a
 	# scenery_root and we have no library yet, scan it once and adopt the result.

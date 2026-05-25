@@ -58,20 +58,11 @@ if [[ ! -d "$APP_PATH" ]]; then
 fi
 echo ""
 
-# --- Step 3: Bundle JSBSim data into Contents/Resources ---
-# The provpilot GDExtension probes two locations for JSBSim data:
-#   1. <ProvPilot.app>/../jsbsim/  (portable install, side-by-side)
-#   2. <ProvPilot.app>/Contents/Resources/jsbsim/  (bundled)
-# A DMG-distributed app has no sibling, so we must bundle the data,
-# otherwise FGFDMExec::RunIC throws and Fly! aborts the process.
-echo "[3/6] Bundling JSBSim data into Contents/Resources/jsbsim ..."
-RES_JSBSIM="$APP_PATH/Contents/Resources/jsbsim"
-rm -rf "$RES_JSBSIM"
-mkdir -p "$RES_JSBSIM"
-for sub in aircraft engine systems; do
-    cp -R "$REPO_ROOT/jsbsim/$sub" "$RES_JSBSIM/"
-done
-echo "  $(du -sh "$RES_JSBSIM" | awk '{print $1}') bundled"
+# --- Step 3: (deprecated) JSBSim bundling no longer needed ---
+# JSBSim aircraft data is now loaded from `<install_root>/aircraft/<id>/jsbsim/`,
+# which the AircraftInstaller autoload extracts from the PCK on first run.
+# The XMLs are packed into the PCK via the `include_filter` in export_presets.cfg.
+echo "[3/6] JSBSim bundling skipped — data is extracted on first run."
 echo ""
 
 # --- Step 4: Code-sign with Developer ID ---

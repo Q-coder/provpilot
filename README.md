@@ -211,33 +211,59 @@ provpilot/
 └── SConstruct                   # Build configuration
 ```
 
-## macOS Distribution
+## Portable Install Layout
 
-ProvPilot can be exported as a standalone macOS application. The distribution uses a folder-based layout (like X-Plane) where the `.app` bundle, scenery data, and JSBSim data live as siblings:
+ProvPilot follows an **X-Plane-style portable install**: the user copies the
+`.app` (or `ProvPilot.exe` on Windows) into a folder of their choice anywhere
+on disk, and everything mutable lives next to it. The whole tree can be moved
+between machines by copying the folder.
 
 ```
-ProvPilot/
-  ProvPilot.app/     # Signed Godot export (~6GB)
-  scenery/            # Terrain, orthophoto, buildings, roads, water, POI
-  jsbsim/             # Aircraft, engine, and systems data
+<install_root>/
+  ProvPilot.app/            # Signed Godot export (macOS)         — or —
+  ProvPilot.exe             # Windows executable
+  provpilot.cfg             # All runtime settings (paths, joystick, graphics, …)
+  aircraft/                 # Auto-extracted from the PCK on first run
+    c172p/
+      jsbsim/               # JSBSim aircraft / engine / systems XML
+      model/
+        C172P_1.glb         # 3D model loaded from disk via GLTFDocument
+        license.txt
+  scenery/                  # User-managed via in-app downloader
+    terrain/ orthophoto/ buildings/ roads/ water/ poi/
 ```
 
-### Quick Build
+Three autoloads coordinate this on startup (see `provpilot/project.godot`):
+
+1. **`InstallRoot`** — discovers `<install_root>` (the directory containing
+   the `.app` / `.exe`), loads/saves `provpilot.cfg`, and exposes
+   `get_aircraft_root()` / `get_aircraft_dir(id)` helpers consumed by both
+   GDScript and the C++ GDExtension (`src/jsbgodot.cpp`).
+2. **`AircraftInstaller`** — on first launch (or when `BUNDLE_VERSION` bumps)
+   extracts `res://aircraft/` from the PCK to `<install_root>/aircraft/`.
+   Skips editor-only sidecars (`.import`, `.uid`, `.blend`, loose textures);
+   only the runtime-needed `.glb` + JSBSim XML lands on disk.
+3. **`JoystickConfig`** — bindings + calibration, persisted to the shared
+   `provpilot.cfg`.
+
+The 3D model is shipped in the PCK with `importer="keep"` (raw bytes
+preserved) and loaded at runtime via `GLTFDocument.append_from_file()` from
+the on-disk path — see `provpilot/c172p_loader.gd`. This means users can
+replace `aircraft/c172p/model/C172P_1.glb` without rebuilding the app.
+
+### Quick Build (macOS)
 
 ```bash
 ./scripts/build_macos.sh
 ```
 
-This script builds the GDExtension, exports the Godot project, signs with Developer ID, and assembles the distribution folder.
+Builds the GDExtension, exports the Godot project, signs with Developer ID,
+and packages a notarizable DMG. Aircraft data and the C172P GLB are baked
+into the PCK and extracted on first run — no sibling `jsbsim/` folder is
+required anymore.
 
-### Manual Steps
-
-1. Build the release GDExtension: `scons target=template_release arch=arm64`
-2. Export from Godot: uses the `macOS` preset in `provpilot/export_presets.cfg`
-3. Code-sign with Developer ID (inside-out: frameworks → dylibs → app)
-4. Place `scenery/` and `jsbsim/` alongside the `.app` in a folder
-
-The app auto-detects whether it's running in the editor or as an exported bundle and resolves data paths accordingly.
+See [docs/MACOS_SETUP.md](docs/MACOS_SETUP.md) and
+[docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md) for build prerequisites.
 
 ### Requirements
 

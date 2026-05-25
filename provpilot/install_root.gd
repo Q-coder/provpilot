@@ -30,6 +30,12 @@ const KEY_SCENERY_ROOT := "scenery_root"
 const KEY_REGIONS := "regions"           # PackedStringArray
 const KEY_FIRST_RUN_DONE := "first_run_done"
 
+# [aircraft] section — tracks first-run extraction of bundled aircraft data.
+const SEC_AIRCRAFT := "aircraft"
+const KEY_AIRCRAFT_INITIALIZED := "initialized"
+const KEY_AIRCRAFT_VERSION := "version"
+const AIRCRAFT_SUBDIR := "aircraft"
+
 var _install_root: String = ""
 var _config_path: String = ""
 var _config: ConfigFile = ConfigFile.new()
@@ -38,6 +44,7 @@ var _loaded: bool = false
 
 func _ready() -> void:
 	_discover_and_load()
+	_migrate_legacy_user_configs()
 
 
 # ── Discovery ──────────────────────────────────────────────────────────
@@ -203,6 +210,40 @@ func get_default_scan_roots() -> PackedStringArray:
 	return unique
 
 
+# ── Aircraft ────────────────────────────────────────────────────────────
+## Path to the writable per-airframe data tree (X-Plane style):
+##   <install_root>/aircraft/<id>/jsbsim/{aircraft,engine,systems}/...
+## Created on first run by `aircraft_installer.gd`.
+func get_aircraft_root() -> String:
+	return _install_root.path_join(AIRCRAFT_SUBDIR)
+
+
+func get_aircraft_dir(aircraft_id: String) -> String:
+	return get_aircraft_root().path_join(aircraft_id)
+
+
+## Returns true when the bundled aircraft tree has already been extracted to
+## the writable install location for the given `version`. Bumping the version
+## string forces a re-extraction on the next launch.
+func is_aircraft_initialized(version: String) -> bool:
+	if not bool(_config.get_value(SEC_AIRCRAFT, KEY_AIRCRAFT_INITIALIZED, false)):
+		return false
+	var stored := str(_config.get_value(SEC_AIRCRAFT, KEY_AIRCRAFT_VERSION, ""))
+	return stored == version
+
+
+func mark_aircraft_initialized(version: String) -> Error:
+	_config.set_value(SEC_AIRCRAFT, KEY_AIRCRAFT_INITIALIZED, true)
+	_config.set_value(SEC_AIRCRAFT, KEY_AIRCRAFT_VERSION, version)
+	var err := _config.save(_config_path)
+	if err == OK:
+		_loaded = true
+		print("InstallRoot: marked aircraft initialized (version=%s)" % version)
+	else:
+		push_error("InstallRoot: failed to save %s (err=%d)" % [_config_path, err])
+	return err
+
+
 ## Persist the user's first-run choice. Writes provpilot.cfg next to the .app
 ## (or wherever the discovered install root lives).
 func save_scenery_choice(scenery_root: String, regions: PackedStringArray = PackedStringArray()) -> Error:
@@ -217,3 +258,98 @@ func save_scenery_choice(scenery_root: String, regions: PackedStringArray = Pack
 	else:
 		push_error("InstallRoot: failed to save %s (err=%d)" % [_config_path, err])
 	return err
+
+
+# ── Generic config API ─────────────────────────────────────────────────
+## Read a value from the shared provpilot.cfg. All app config (scenery,
+## aircraft, joystick bindings, user settings) lives in this single file.
+func get_value(section: String, key: String, default: Variant = null) -> Variant:
+	return _config.get_value(section, key, default)
+
+
+## Stage a value into the in-memory ConfigFile. Call `save_config()` to
+## flush to disk.
+func set_value(section: String, key: String, value: Variant) -> void:
+	_config.set_value(section, key, value)
+
+
+func has_section(section: String) -> bool:
+	return _config.has_section(section)
+
+
+func get_sections() -> PackedStringArray:
+	return _config.get_sections()
+
+
+func get_section_keys(section: String) -> PackedStringArray:
+	if not _config.has_section(section):
+		return PackedStringArray()
+	return _config.get_section_keys(section)
+
+
+func erase_section(section: String) -> void:
+	if _config.has_section(section):
+		_config.erase_section(section)
+
+
+## Persist the in-memory config to provpilot.cfg.
+func save_config() -> Error:
+	var err := _config.save(_config_path)
+	if err == OK:
+		_loaded = true
+	else:
+		push_error("InstallRoot: failed to save %s (err=%d)" % [_config_path, err])
+	return err
+
+
+# ── One-time migration from user://*.cfg ───────────────────────────────
+## Earlier builds wrote joystick bindings and user settings to separate
+## ConfigFiles under user:// (e.g. ~/Library/Application Support/Godot/…).
+## On first launch with the consolidated layout, copy any pre-existing
+## values into provpilot.cfg so the user doesn't lose their setup. We never
+## delete the legacy files — leaving them in place is harmless and reversible.
+func _migrate_legacy_user_configs() -> void:
+	var migrated := false
+	if not _config.has_section("device") \
+			and not _has_any_section_with_prefix("axis.") \
+			and not _has_any_section_with_prefix("button."):
+		migrated = _import_legacy_cfg("user://joystick.cfg") or migrated
+	if not _config.has_section("graphics") \
+			and not _config.has_section("sound") \
+			and not _config.has_section("realism"):
+		migrated = _import_legacy_cfg("user://settings.cfg") or migrated
+	if migrated:
+		var err := _config.save(_config_path)
+		if err == OK:
+			_loaded = true
+			print("InstallRoot: migrated legacy user://*.cfg → %s" % _config_path)
+		else:
+			push_warning("InstallRoot: legacy migration save failed (err=%d)" % err)
+
+
+func _has_any_section_with_prefix(prefix: String) -> bool:
+	for s in _config.get_sections():
+		if String(s).begins_with(prefix):
+			return true
+	return false
+
+
+## Merge keys from a legacy ConfigFile into our shared config. Existing
+## keys in `_config` win (no overwrite). Returns true if anything was copied.
+func _import_legacy_cfg(legacy_path: String) -> bool:
+	if not FileAccess.file_exists(legacy_path):
+		return false
+	var cfg := ConfigFile.new()
+	if cfg.load(legacy_path) != OK:
+		return false
+	var any := false
+	for section in cfg.get_sections():
+		for key in cfg.get_section_keys(section):
+			if _config.has_section_key(section, key):
+				continue
+			_config.set_value(section, key, cfg.get_value(section, key))
+			any = true
+	if any:
+		print("InstallRoot: imported %s" % legacy_path)
+	return any
+

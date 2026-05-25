@@ -9,9 +9,13 @@ extends Node
 ## `JoystickConfig.get_axis("slew_vertical")` and the user picks an axis +
 ## calibrates it from the Settings screen.
 ##
-## Bindings persist to user://joystick.cfg via ConfigFile.
+## Bindings persist via the shared InstallRoot config (provpilot.cfg next to
+## the .app). Sections used: "device", "axis.<action>", "button.<action>".
 
-const CONFIG_PATH := "user://joystick.cfg"
+# Legacy stand-alone path; kept as a fallback for read-only migration if
+# InstallRoot is not yet present at autoload-init time. Writes always go
+# through InstallRoot.
+const LEGACY_CONFIG_PATH := "user://joystick.cfg"
 
 # ── Action catalog ─────────────────────────────────────────────────────
 # Every joystick-readable action gameplay code can request. Keep this list
@@ -235,44 +239,102 @@ func detect_active_button() -> int:
 # ── Persistence ────────────────────────────────────────────────────────
 
 func save() -> void:
-	var cfg := ConfigFile.new()
-	cfg.set_value("device", "id", device_id)
+	var ir := _install_root()
+	if ir == null:
+		push_warning("JoystickConfig: InstallRoot not available, save skipped")
+		return
+	# Wipe stale axis.*/button.* sections so removed bindings don't linger.
+	for s in ir.get_sections():
+		var sn := String(s)
+		if sn.begins_with("axis.") or sn.begins_with("button."):
+			ir.erase_section(sn)
+	ir.set_value("device", "id", device_id)
 	for action in axis_bindings.keys():
 		var b: Dictionary = axis_bindings[action]
 		for k in b.keys():
-			cfg.set_value("axis." + action, k, b[k])
+			ir.set_value("axis." + action, k, b[k])
 	for action in button_bindings.keys():
 		var b: Dictionary = button_bindings[action]
-		cfg.set_value("button." + action, "button", int(b.get("button", -1)))
-	var err := cfg.save(CONFIG_PATH)
+		ir.set_value("button." + action, "button", int(b.get("button", -1)))
+	var err: int = ir.save_config()
 	if err == OK:
-		print("JoystickConfig: saved to ", CONFIG_PATH)
+		print("JoystickConfig: saved to provpilot.cfg")
 	else:
 		push_warning("JoystickConfig: save failed (err %d)" % err)
 
 
 func _load() -> void:
-	var cfg := ConfigFile.new()
-	if cfg.load(CONFIG_PATH) != OK:
+	var ir := _install_root()
+	var sections: Array = []
+	var source := ""
+	if ir != null:
+		sections = Array(ir.get_sections())
+		if not sections.is_empty():
+			source = "provpilot.cfg"
+	# Fallback: read straight from legacy user://joystick.cfg if InstallRoot
+	# doesn't have any joystick sections yet (e.g. fresh install that has
+	# never run with the migration code).
+	var legacy_cfg: ConfigFile = null
+	var have_joy_in_ir := false
+	if ir != null:
+		if ir.has_section("device") \
+				or _any_section_with_prefix(sections, "axis.") \
+				or _any_section_with_prefix(sections, "button."):
+			have_joy_in_ir = true
+	if not have_joy_in_ir:
+		if FileAccess.file_exists(LEGACY_CONFIG_PATH):
+			legacy_cfg = ConfigFile.new()
+			if legacy_cfg.load(LEGACY_CONFIG_PATH) == OK:
+				sections = Array(legacy_cfg.get_sections())
+				source = LEGACY_CONFIG_PATH
+			else:
+				legacy_cfg = null
+	if sections.is_empty():
 		print("JoystickConfig: no saved config, using defaults")
 		return
-	if cfg.has_section("device"):
-		device_id = int(cfg.get_value("device", "id", -1))
-	for section in cfg.get_sections():
-		if section.begins_with("axis."):
-			var action := section.substr(5)
+	var read_value := func(section: String, key: String, default: Variant) -> Variant:
+		if legacy_cfg != null:
+			return legacy_cfg.get_value(section, key, default)
+		return ir.get_value(section, key, default)
+	if "device" in sections:
+		device_id = int(read_value.call("device", "id", -1))
+	for section in sections:
+		var sn := String(section)
+		if sn.begins_with("axis."):
+			var action := sn.substr(5)
 			if not axis_bindings.has(action):
 				continue
 			var b: Dictionary = axis_bindings[action]
-			for k in cfg.get_section_keys(section):
-				b[k] = cfg.get_value(section, k)
+			var keys: PackedStringArray
+			if legacy_cfg != null:
+				keys = legacy_cfg.get_section_keys(sn)
+			else:
+				keys = ir.get_section_keys(sn)
+			for k in keys:
+				b[k] = read_value.call(sn, k, b.get(k))
 			axis_bindings[action] = b
-		elif section.begins_with("button."):
-			var action2 := section.substr(7)
+		elif sn.begins_with("button."):
+			var action2 := sn.substr(7)
 			if not button_bindings.has(action2):
 				continue
-			button_bindings[action2] = {"button": int(cfg.get_value(section, "button", -1))}
-	print("JoystickConfig: loaded from ", CONFIG_PATH)
+			button_bindings[action2] = {"button": int(read_value.call(sn, "button", -1))}
+	print("JoystickConfig: loaded from %s" % source)
+
+
+func _install_root() -> Node:
+	var ml := Engine.get_main_loop()
+	if ml is SceneTree:
+		var st: SceneTree = ml
+		if st.root:
+			return st.root.get_node_or_null(^"InstallRoot")
+	return null
+
+
+static func _any_section_with_prefix(sections: Array, prefix: String) -> bool:
+	for s in sections:
+		if String(s).begins_with(prefix):
+			return true
+	return false
 
 
 func reset_to_defaults() -> void:

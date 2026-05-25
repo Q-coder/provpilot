@@ -13,6 +13,8 @@
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
+#include <godot_cpp/classes/window.hpp>
+#include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/variant/utility_functions.hpp> // For UtilityFunctions::print
 #include <cmath>
 #ifndef _WIN32
@@ -860,53 +862,34 @@ void JSBGodot::_ready()
         }
     }
 
-    // Compute JSBSim root directory — works in both editor and exported app.
-    // Use OS.has_feature("editor") instead of checking the exe path for
-    // ".app/Contents/MacOS/" because the Godot editor itself lives inside
-    // a .app bundle and would match the exported-app pattern.
+    // Compute JSBSim root via the InstallRoot autoload. Aircraft data lives
+    // under `<install_root>/aircraft/<id>/jsbsim/{aircraft,engine,systems}`.
+    // In the editor, install_root resolves to the project directory, so the
+    // path points at the curated source-of-truth tree shipped in the repo.
+    // In an exported build, the AircraftInstaller autoload has already
+    // extracted the bundled PCK resources to that location on first run.
     std::string jsbsim_root;
-    if (OS::get_singleton()->has_feature("editor")) {
-        // Editor: jsbsim/ is a sibling directory at the repo root level
-        jsbsim_root = "../jsbsim";
-        UtilityFunctions::print("JSBSim root (editor): ../jsbsim");
-    } else {
-        // Exported app: path resolution depends on platform.
-        String exe_path = OS::get_singleton()->get_executable_path();
-        String exe_dir  = exe_path.get_base_dir();
-        String os_name  = OS::get_singleton()->get_name();
-        String chosen;
-
-        if (os_name == "macOS") {
-            // macOS .app bundle: exe = .../ProvPilot.app/Contents/MacOS/ProvPilot
-            // Prefer jsbsim/ sibling of the .app (portable install), else fall
-            // back to the copy bundled inside Contents/Resources/jsbsim/.
-            String contents_dir = exe_dir.get_base_dir();                          // .../Contents
-            String app_dir      = contents_dir.get_base_dir();                     // .../ProvPilot.app
-            String parent_dir   = app_dir.get_base_dir();                          // .../
-            String sibling      = parent_dir.path_join("jsbsim");
-            String bundled      = contents_dir.path_join("Resources").path_join("jsbsim");
-            if (DirAccess::dir_exists_absolute(sibling)) {
-                chosen = sibling;
-                UtilityFunctions::print("JSBSim root (macOS sibling): ", chosen);
-            } else if (DirAccess::dir_exists_absolute(bundled)) {
-                chosen = bundled;
-                UtilityFunctions::print("JSBSim root (macOS bundled): ", chosen);
-            } else {
-                chosen = sibling; // will fail loudly below
-                UtilityFunctions::print("JSBSim root (macOS missing, tried sibling=", sibling, " bundled=", bundled, ")");
-            }
-        } else {
-            // Windows / Linux: the exe sits directly in the install directory,
-            // so jsbsim/ is a subdirectory right next to it.
-            chosen = exe_dir.path_join("jsbsim");
-            if (DirAccess::dir_exists_absolute(chosen)) {
-                UtilityFunctions::print("JSBSim root: ", chosen);
-            } else {
-                UtilityFunctions::print("JSBSim root (missing, tried: ", chosen, ")");
+    const char *aircraft_id = "c172p";
+    String chosen;
+    SceneTree *tree = Object::cast_to<SceneTree>(Engine::get_singleton()->get_main_loop());
+    if (tree && tree->get_root()) {
+        Node *install_root = tree->get_root()->get_node_or_null(NodePath("InstallRoot"));
+        if (install_root) {
+            Variant v = install_root->call("get_aircraft_dir", String(aircraft_id));
+            String dir = v;
+            if (!dir.is_empty()) {
+                chosen = dir.path_join("jsbsim");
             }
         }
-        jsbsim_root = chosen.utf8().get_data();
     }
+    if (chosen.is_empty()) {
+        UtilityFunctions::print("JSBSim root: InstallRoot autoload not available");
+    } else if (DirAccess::dir_exists_absolute(chosen)) {
+        UtilityFunctions::print("JSBSim root: ", chosen);
+    } else {
+        UtilityFunctions::print("JSBSim root (missing, tried: ", chosen, ")");
+    }
+    jsbsim_root = chosen.utf8().get_data();
     FDMExec->SetRootDir(SGPath(jsbsim_root));
     FDMExec->SetAircraftPath(SGPath(jsbsim_root + "/aircraft"));
     FDMExec->SetEnginePath(SGPath(jsbsim_root + "/engine"));
