@@ -38,6 +38,7 @@ const ACCENT_HOVER := Color(0.35, 0.65, 0.95, 1.0)
 # id: JSBSim model name, label: display name, description
 const AIRCRAFT := [
 	{"id": "c172p", "label": "Cessna 172P Skyhawk", "desc": "Single-engine piston, 4-seat trainer. 160 HP."},
+	{"id": "pc7", "label": "Pilatus PC-7 Turbo Trainer", "desc": "Single-engine turboprop military trainer. PT6A, ~650 SHP."},
 ]
 
 # ── State ──────────────────────────────────────────────────────────────

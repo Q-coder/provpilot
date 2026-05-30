@@ -1,6 +1,23 @@
 extends Node3D
 
 const AirportsLib = preload("res://airports_lib.gd")
+const AircraftConfig = preload("res://aircraft_config.gd")
+
+# Default airframe to load when nothing else specifies one.
+const DEFAULT_AIRCRAFT_ID := "c172p"
+
+# Per-airframe definition (aircraft.cfg), loaded at the start of _ready() so
+# model paths, control-surface node paths and tunables come from data rather
+# than being hardcoded here. See aircraft_config.gd.
+var _aircraft_cfg: AircraftConfig
+var _aircraft_id: String = DEFAULT_AIRCRAFT_ID
+# Aircraft id whose visual model (normals flip + surface/lever nodes) is
+# currently applied. Guards against re-flipping the same already-correct model,
+# which would double-flip normals and light the airframe from below.
+var _model_visuals_id: String = DEFAULT_AIRCRAFT_ID
+# Scene-tree path (from this node) to the loaded model's root node. Populated
+# from aircraft.cfg [model] root_node; falls back to the historical C172P path.
+var _model_root_path: String = "AC/Node3D2/C172P_1"
 
 # Terrain coordinate system (Swiss LV95)
 # These define the relationship between Godot world coords and Swiss coordinates.
@@ -24,6 +41,8 @@ var active_camera: Camera3D
 var camera1: Camera3D
 var camera2: Camera3D
 var camera1_base_transform: Transform3D  # Store original camera transform
+var _camera1_scene_transform: Transform3D  # Pristine Camera1 transform from the scene
+var _camera1_scene_fov: float = 0.0        # Pristine Camera1 fov from the scene
 
 # Pilot head look angles (in degrees) - for cockpit camera
 var head_yaw: float = 0.0    # Left/Right
@@ -56,47 +75,70 @@ var chase_smooth: float = 5.0     # Smoothing factor (higher = faster follow)
 # Control surface nodes
 var rudder_node: Node3D
 var rudder_base_transform: Transform3D  # Store original transform
-const RUDDER_MAX_ANGLE: float = 16.0  # Realistic rudder deflection
+var RUDDER_MAX_ANGLE: float = 16.0  # Realistic rudder deflection (cfg control_limits.rudder_max_deg)
+var RUDDER_AXIS: Vector3 = Vector3.UP  # Local hinge axis (cfg control_limits.rudder_hinge_axis: x/y/z)
 # Disable pivot offset - not needed now that we use the MeshInstance3D
 var rudder_pivot_offset: Vector3 = Vector3(0, 0, 0)
 
 # Propeller
 var propeller_node: Node3D
+var propeller_base_transform: Transform3D  # Original transform (spin is applied on top)
 var propeller_blur_disc: MeshInstance3D  # Blur disc mesh
 var propeller_blur_material: Material  # Blur material (can be Standard or Shader)
 var propeller_rotation: float = 0.0  # Current rotation angle
 var visual_rpm: float = 0.0  # Smoothed RPM for display (decays when engine off)
 const PROPELLER_DECAY_RATE: float = 1.5  # How fast visual RPM decays to 0 when engine off (per second)
-const PROPELLER_MAX_RPM: float = 2700.0  # Max RPM for reference
-const PROPELLER_BLUR_START_RPM: float = 900.0  # RPM where blur disc appears (above idle)
-const PROPELLER_HIDE_BLADES_RPM: float = 1200.0  # RPM where real blades hidden
-const PROPELLER_DISC_RADIUS: float = 0.95  # Radius of blur disc in meters
+var PROPELLER_MAX_RPM: float = 2700.0  # Max RPM for reference (cfg propeller.max_rpm)
+var PROPELLER_BLUR_START_RPM: float = 900.0  # RPM where blur disc appears (cfg propeller.blur_start_rpm)
+var PROPELLER_HIDE_BLADES_RPM: float = 1200.0  # RPM where real blades hidden (cfg propeller.hide_blades_rpm)
+var PROPELLER_DISC_RADIUS: float = 0.95  # Radius of blur disc in meters (cfg propeller.disc_radius_m)
+var PROPELLER_SPIN_AXIS: Vector3 = Vector3.BACK  # Local axis the prop spins about (cfg propeller.spin_axis: x/y/z)
+var PROPELLER_DISC_OFFSET: Vector3 = Vector3.ZERO  # Disc translation tweak in parent space (cfg propeller.disc_offset)
 
 # Ailerons
 var left_aileron_node: Node3D
 var right_aileron_node: Node3D
 var left_aileron_base_transform: Transform3D
 var right_aileron_base_transform: Transform3D
-const AILERON_MAX_ANGLE: float = 20.0  # Max aileron deflection in degrees
+var AILERON_MAX_ANGLE: float = 20.0  # Max aileron deflection in degrees (cfg control_limits.aileron_max_deg)
+var AILERON_AXIS: Vector3 = Vector3.RIGHT  # Local hinge axis the ailerons rotate about (cfg control_limits.aileron_hinge_axis: x/y/z)
 
 # Elevators
 var left_elevator_node: Node3D
 var right_elevator_node: Node3D
 var left_elevator_base_transform: Transform3D
 var right_elevator_base_transform: Transform3D
-const ELEVATOR_MAX_ANGLE: float = 25.0  # Max elevator deflection in degrees
+# Single-piece elevator / stabilator (cfg [animation] single_elevator). For
+# aircraft whose tailplane is one mesh instead of a left/right pair.
+var single_elevator_node: Node3D
+var single_elevator_base_transform: Transform3D
+var ELEVATOR_MAX_ANGLE: float = 25.0  # Max elevator deflection in degrees (cfg control_limits.elevator_max_deg)
+var ELEVATOR_AXIS: Vector3 = Vector3.RIGHT  # Local hinge axis for single_elevator (cfg control_limits.elevator_hinge_axis: x/y/z)
 
 # Flaps
 var left_flap_node: Node3D
 var right_flap_node: Node3D
 var left_flap_base_transform: Transform3D
 var right_flap_base_transform: Transform3D
-const FLAP_MAX_ANGLE: float = 30.0  # C172p max flap deflection (0, 10, 20, 30 degrees)
+var FLAP_MAX_ANGLE: float = 30.0  # Max flap deflection in degrees (cfg control_limits.flap_max_deg)
 
 # Front wheel (nose gear steering)
 var front_wheel_node: Node3D
 var front_wheel_base_transform: Transform3D
-const FRONT_WHEEL_MAX_ANGLE: float = 30.0  # Max steering angle
+var FRONT_WHEEL_MAX_ANGLE: float = 30.0  # Max steering angle (cfg control_limits.front_wheel_max_deg)
+
+# Retractable landing gear (cfg [gear]). Each leg is a Dictionary:
+#   { name, wheel:Node3D, strut:Node3D, wheel_base, strut_base,
+#     pivot:Vector3, axis:Vector3, retract_deg:float }
+# The wheel + strut of a leg rotate RIGIDLY about a shared local pivot (in the
+# model wrapper frame) so the whole leg sweeps up as one unit. Pivot/axis/angle
+# are per-leg cfg knobs because the geometry differs per airframe.
+var _gear_legs: Array = []
+var _gear_retractable: bool = false
+var _gear_retract_seconds: float = 4.0  # Time for a full up/down cycle
+var _gear_down: bool = true             # Commanded state (true = extended)
+var _gear_visual_pos: float = 1.0       # Animated position: 0 = up, 1 = down
+var _gear_key_held: bool = false        # Debounce for the G key
 
 # Scenery3D reference for ground height queries
 var scenery3d_node: Node
@@ -200,18 +242,18 @@ var _flap_key_held: bool = false
 var _flap_last_printed_pos: int = -1     # Dedup prints
 const FLAP_LEVER_COLLISION_LAYER: int = 128  # Separate physics layer
 const FLAP_LEVER_TRAVEL: float = -0.01    # Total lever travel along Y per notch
-const FLAP_POSITIONS: Array = [0.0, 0.333, 0.667, 1.0]  # JSBSim flap-cmd-norm values
-const FLAP_NAMES: Array = ["UP", "10°", "20°", "30°"]
+var FLAP_POSITIONS: Array = [0.0, 0.333, 0.667, 1.0]  # JSBSim flap-cmd-norm values (cfg flaps.positions)
+var FLAP_NAMES: Array = ["UP", "10°", "20°", "30°"]  # HUD labels (cfg flaps.names)
 
 # ── Engine sound ───────────────────────────────────────────────────────────
 var _engine_audio: AudioStreamPlayer = null
-const ENGINE_SOUND_PATH := "res://sounds/c172_engine_inflight.ogg"
-# RPM-to-pitch mapping: idle (~700 RPM) → 0.7, max (2700 RPM) → 1.6
-const ENGINE_PITCH_MIN: float = 0.7
-const ENGINE_PITCH_MAX: float = 1.6
-# RPM-to-volume mapping (before user volume slider): idle → -12 dB, max → +3 dB
-const ENGINE_VOL_DB_MIN: float = -12.0
-const ENGINE_VOL_DB_MAX: float = 3.0
+var ENGINE_SOUND_PATH: String = "res://sounds/c172_engine_inflight.ogg"  # cfg sound.engine
+# RPM-to-pitch mapping: idle (~700 RPM) → 0.7, max (2700 RPM) → 1.6 (cfg sound.pitch_*)
+var ENGINE_PITCH_MIN: float = 0.7
+var ENGINE_PITCH_MAX: float = 1.6
+# RPM-to-volume mapping (before user volume slider): idle → -12 dB, max → +3 dB (cfg sound.vol_db_*)
+var ENGINE_VOL_DB_MIN: float = -12.0
+var ENGINE_VOL_DB_MAX: float = 3.0
 # Below this RPM the engine sound fades out completely
 const ENGINE_SOUND_FADE_RPM: float = 50.0
 
@@ -250,6 +292,10 @@ func _ready() -> void:
 	# Show a lightweight loading screen immediately, before any heavy work.
 	_create_loading_screen()
 
+	# Load the per-airframe definition (aircraft.cfg) before resolving any
+	# model nodes, so paths/tunables come from data instead of hardcoded here.
+	_load_aircraft_config()
+
 	# Get JSBGodot node after we're in the scene tree
 	jsb_node = $AC/JSBGodot
 	print("JSBGodot node: ", jsb_node)
@@ -274,144 +320,29 @@ func _ready() -> void:
 	camera2 = ac_node.get_node("Camera2")
 	active_camera = camera1
 	camera1_base_transform = camera1.transform  # Store base transform
+	_camera1_scene_transform = camera1.transform  # Pristine scene value for swaps
+	_camera1_scene_fov = camera1.fov
 	print("Camera1: ", camera1)
 	print("Camera2: ", camera2)
 
 	# The C172P .blend import bakes normals with the opposite handedness from
 	# Godot's runtime convention, so without this the sun lights the underside
 	# of the wings instead of the top. Flip them in-place once at startup.
-	_flip_normals_recursive(ac_node)
+	# Controlled by aircraft.cfg [model] flip_normals / flip_normals_prefix.
+	_apply_model_normals(ac_node)
+
+	# Position the cockpit camera per the selected aircraft (aircraft.cfg [camera]).
+	_apply_camera_config()
 	
 	# Set Camera1 as the active one initially
 	active_camera.current = true
 	camera2.current = false
 	
-	# Get control surface nodes for animation - using the MeshInstance3D nodes
-	rudder_node = get_node("AC/Node3D2/C172P_1/Sketchfab_model/Cessna172_fbx/RootNode/75f3edaeef374a9f89e7b5ef606a0759_fbx/RootNode_001/Cessna-172/Cessna_Exterior/Cessna_Exterior_Body_MAT_0_008/Cessna_Exterior_Body_MAT_0_008_Rudder")
-	if rudder_node:
-		print("Rudder node found: ", rudder_node)
-		rudder_base_transform = rudder_node.transform  # Store original transform
-	else:
-		print("WARNING: Rudder node not found!")
-	
-	# Get propeller node - using the MeshInstance3D node
-	propeller_node = get_node("AC/Node3D2/C172P_1/Sketchfab_model/Cessna172_fbx/RootNode/75f3edaeef374a9f89e7b5ef606a0759_fbx/RootNode_001/Cessna-172/Cessna_Exterior/Cessna_Exterior_Body_MAT_0_001/Cessna_Exterior_Body_MAT_0_001_Body_MAT_0")
-	if propeller_node:
-		print("Propeller node found: ", propeller_node)
-		# Create the propeller blur disc
-		_create_propeller_blur_disc()
-	else:
-		print("WARNING: Propeller node not found!")
-	
-	# Get aileron nodes - using the MeshInstance3D for animation
-	left_aileron_node = get_node("AC/Node3D2/C172P_1/Sketchfab_model/Cessna172_fbx/RootNode/75f3edaeef374a9f89e7b5ef606a0759_fbx/RootNode_001/Cessna-172/Cessna_Exterior/Cessna_Exterior_Body_MAT_0_014/Cessna_Exterior_Body_MAT_0_014_Aileron_Left")
-	if left_aileron_node:
-		print("Left aileron node found: ", left_aileron_node)
-		left_aileron_base_transform = left_aileron_node.transform
-	else:
-		print("WARNING: Left aileron node not found!")
-	
-	right_aileron_node = get_node("AC/Node3D2/C172P_1/Sketchfab_model/Cessna172_fbx/RootNode/75f3edaeef374a9f89e7b5ef606a0759_fbx/RootNode_001/Cessna-172/Cessna_Exterior/Cessna_Exterior_Body_MAT_0_015/Cessna_Exterior_Body_MAT_0_015_Aileron_Right")
-	if right_aileron_node:
-		print("Right aileron node found: ", right_aileron_node)
-		right_aileron_base_transform = right_aileron_node.transform
-	else:
-		print("WARNING: Right aileron node not found!")
-	
-	# Get elevator nodes
-	left_elevator_node = get_node("AC/Node3D2/C172P_1/Sketchfab_model/Cessna172_fbx/RootNode/75f3edaeef374a9f89e7b5ef606a0759_fbx/RootNode_001/Cessna-172/Cessna_Exterior/Cessna_Exterior_Body_MAT_0_013/Cessna_Exterior_Body_MAT_0_013_Elevator_Left")
-	if left_elevator_node:
-		print("Left elevator node found: ", left_elevator_node)
-		left_elevator_base_transform = left_elevator_node.transform
-	else:
-		print("WARNING: Left elevator node not found!")
-	
-	right_elevator_node = get_node("AC/Node3D2/C172P_1/Sketchfab_model/Cessna172_fbx/RootNode/75f3edaeef374a9f89e7b5ef606a0759_fbx/RootNode_001/Cessna-172/Cessna_Exterior/Cessna_Exterior_Body_MAT_0_012/Cessna_Exterior_Body_MAT_0_012_Elevator_Right")
-	if right_elevator_node:
-		print("Right elevator node found: ", right_elevator_node)
-		right_elevator_base_transform = right_elevator_node.transform
-	else:
-		print("WARNING: Right elevator node not found!")
-	
-	# Get flap nodes
-	left_flap_node = get_node("AC/Node3D2/C172P_1/Sketchfab_model/Cessna172_fbx/RootNode/75f3edaeef374a9f89e7b5ef606a0759_fbx/RootNode_001/Cessna-172/Cessna_Exterior/Cessna_Exterior_Body_MAT_0_016/Cessna_Exterior_Body_MAT_0_016_Flaps_Left")
-	if left_flap_node:
-		print("Left flap node found: ", left_flap_node)
-		left_flap_base_transform = left_flap_node.transform
-	else:
-		print("WARNING: Left flap node not found!")
-	
-	right_flap_node = get_node("AC/Node3D2/C172P_1/Sketchfab_model/Cessna172_fbx/RootNode/75f3edaeef374a9f89e7b5ef606a0759_fbx/RootNode_001/Cessna-172/Cessna_Exterior/Cessna_Exterior_Body_MAT_0_017/Cessna_Exterior_Body_MAT_0_017_Flaps_Right")
-	if right_flap_node:
-		print("Right flap node found: ", right_flap_node)
-		right_flap_base_transform = right_flap_node.transform
-	else:
-		print("WARNING: Right flap node not found!")
-	
-	# Get front wheel node for nose gear steering
-	# The VehicleWheel3D node is: Cessna_Exterior_Body_MAT_0_021_Body_Front
-	front_wheel_node = get_node_or_null("AC/Node3D2/C172P_1/Sketchfab_model/Cessna172_fbx/RootNode/75f3edaeef374a9f89e7b5ef606a0759_fbx/RootNode_001/Cessna-172/Cessna_Exterior/Cessna_Exterior_Body_MAT_0_021/Cessna_Exterior_Body_MAT_0_021_Body_Front")
-	if front_wheel_node:
-		print("Front wheel node found: ", front_wheel_node)
-		front_wheel_base_transform = front_wheel_node.transform
-	else:
-		print("WARNING: Front wheel node not found!")
-	
-	# Get mixture lever node — user renamed it in Blender to Dynamic_Switch_006_Mixture
-	# Use find_child() to locate it regardless of exact hierarchy path
-	var c172_root = get_node_or_null("AC/Node3D2/C172P_1")
-	if c172_root:
-		mixture_lever_node = c172_root.find_child("Dynamic_Switch_006_Mixture", true, false)
-		if not mixture_lever_node:
-			# Fallback: try original name from the Sketchfab model
-			mixture_lever_node = c172_root.find_child("Dynamic_Switch_006", true, false)
-		if mixture_lever_node:
-			print("Mixture lever node found: ", mixture_lever_node.name)
-			mixture_lever_base_transform = mixture_lever_node.transform
-			_setup_mixture_lever_collision()
-		else:
-			print("WARNING: Mixture lever node not found (tried Dynamic_Switch_006_Mixture and Dynamic_Switch_006)")
-	
-		# Throttle lever — user renamed it to Dynamic_Switch_005_Throttle
-		throttle_lever_node = c172_root.find_child("Dynamic_Switch_005_Throttle", true, false)
-		if not throttle_lever_node:
-			throttle_lever_node = c172_root.find_child("Dynamic_Switch_005", true, false)
-		if throttle_lever_node:
-			print("Throttle lever node found: ", throttle_lever_node.name)
-			throttle_lever_base_transform = throttle_lever_node.transform
-			_setup_throttle_lever_collision()
-		else:
-			print("WARNING: Throttle lever node not found (tried Dynamic_Switch_005_Throttle and Dynamic_Switch_005)")
-	
-		# Magneto/ignition switch
-		magneto_switch_node = c172_root.find_child("Dynamic_Switch_003_Magnetos_Switch", true, false)
-		if not magneto_switch_node:
-			magneto_switch_node = c172_root.find_child("Dynamic_Switch_003", true, false)
-		if magneto_switch_node:
-			print("Magneto switch node found: ", magneto_switch_node.name)
-			magneto_switch_base_transform = magneto_switch_node.transform
-			_setup_magneto_switch_collision()
-			# Default to BOTH (position 3) — already set from init
-			_apply_magneto_position()
-		else:
-			print("WARNING: Magneto switch node not found (tried Dynamic_Switch_003_Magnetos_Switch and Dynamic_Switch_003)")
-	
-		# Flap lever
-		flap_lever_node = c172_root.find_child("Dynamic_Switch_007_Flaps_Leveler", true, false)
-		if not flap_lever_node:
-			flap_lever_node = c172_root.find_child("Dynamic_Switch_007", true, false)
-		if flap_lever_node:
-			print("Flap lever node found: ", flap_lever_node.name)
-			flap_lever_base_transform = flap_lever_node.transform
-			_setup_flap_lever_collision()
-			# Sync lever position to current JSBSim flap state
-			if jsb_node:
-				var cur_flaps := float(jsb_node.get_flaps())
-				flap_position = _flaps_norm_to_position(cur_flaps)
-			_apply_flap_position()
-		else:
-			print("WARNING: Flap lever node not found (tried Dynamic_Switch_007_Flaps_Leveler and Dynamic_Switch_007)")
-	
+	# Resolve all model-dependent nodes (control surfaces + cockpit levers).
+	# Extracted into a method so a runtime aircraft swap (welcome-screen
+	# selection) can re-resolve them against the freshly-loaded GLB.
+	_resolve_aircraft_nodes()
+
 	# Get Scenery3D node for ground height queries
 	scenery3d_node = get_node_or_null("Scenery3D")
 	if scenery3d_node:
@@ -529,16 +460,22 @@ func _create_propeller_blur_disc() -> void:
 		var aabb = mesh_inst.get_aabb()
 		var mesh_center = aabb.position + aabb.size / 2.0
 		
-		# Propeller diameter is the Y size (blades extend along Y axis)
-		var prop_diameter = aabb.size.y
-		var prop_radius = prop_diameter / 2.0
-		print("Propeller diameter: ", prop_diameter, " cm")
+		# Disc radius: prefer the configured value; otherwise derive it from the
+		# two mesh extents PERPENDICULAR to the spin axis (the swept disc plane).
+		var prop_radius := PROPELLER_DISC_RADIUS
+		if prop_radius <= 0.0:
+			var extents := Vector3(absf(aabb.size.x), absf(aabb.size.y), absf(aabb.size.z))
+			var spin_abs := Vector3(absf(PROPELLER_SPIN_AXIS.x), absf(PROPELLER_SPIN_AXIS.y), absf(PROPELLER_SPIN_AXIS.z))
+			# Zero out the spin-axis extent, take the largest remaining half-extent.
+			var plane := extents - extents * spin_abs
+			prop_radius = maxf(plane.x, maxf(plane.y, plane.z)) / 2.0
+		print("Propeller disc radius: ", prop_radius, " m")
 		
 		# Create a circular disc using CylinderMesh (very thin cylinder = disc)
 		var disc_mesh = CylinderMesh.new()
 		disc_mesh.top_radius = prop_radius
 		disc_mesh.bottom_radius = prop_radius
-		disc_mesh.height = 0.5  # Very thin
+		disc_mesh.height = 0.02  # Very thin
 		disc_mesh.radial_segments = 32  # Smooth circle
 		disc_mesh.rings = 1
 		
@@ -552,11 +489,19 @@ func _create_propeller_blur_disc() -> void:
 		var prop_parent = propeller_node.get_parent()
 		if prop_parent:
 			prop_parent.add_child(propeller_blur_disc)
-			# Position at the center of the propeller mesh geometry
-			propeller_blur_disc.position = mesh_center
-			# CylinderMesh stands upright (Y axis), rotate to face forward (Z axis)
-			propeller_blur_disc.rotation_degrees = Vector3(90, 0, 0)
-			print("Blur disc created with diameter: ", prop_diameter)
+			# The propeller pivot may sit at a blade tip (PC-7), so the mesh
+			# center is offset from the node origin. Map the local mesh center
+			# into the parent frame, then apply the cfg tuning offset.
+			propeller_blur_disc.transform = Transform3D(Basis(), propeller_node.transform * mesh_center + PROPELLER_DISC_OFFSET)
+			# Orient the cylinder (long axis = local Y) so its flat faces are
+			# perpendicular to the spin axis (the disc lies in the swept plane).
+			var spin_abs := Vector3(absf(PROPELLER_SPIN_AXIS.x), absf(PROPELLER_SPIN_AXIS.y), absf(PROPELLER_SPIN_AXIS.z))
+			if spin_abs.x > 0.5:
+				propeller_blur_disc.rotation_degrees = Vector3(0, 0, 90)  # Y -> X
+			elif spin_abs.z > 0.5:
+				propeller_blur_disc.rotation_degrees = Vector3(90, 0, 0)  # Y -> Z
+			# spin axis Y => no rotation needed
+			print("Blur disc created with radius: ", prop_radius)
 	else:
 		print("WARNING: Propeller is not a MeshInstance3D!")
 
@@ -584,10 +529,25 @@ func _initialize_jsbsim_on_terrain() -> void:
 ## normals; flipping them backface-culls them when viewed from inside the
 ## cabin, making the dashboard appear shifted/transparent. Likewise we skip
 ## the Dynamic_Switch_* subtree (re-rigged interactive cockpit controls).
-func _flip_normals_recursive(node: Node) -> void:
+# Flips mesh normals on the currently-loaded model so the sun lights the top
+# of the airframe instead of the underside. Driven by aircraft.cfg [model]:
+#   flip_normals        (bool)  — whether to flip at all
+#   flip_normals_prefix (str)   — only flip MeshInstance3D whose name starts
+#                                 with this prefix; empty "" = flip every mesh.
+# Re-runnable so a runtime model swap re-applies it to the fresh GLB.
+func _apply_model_normals(root: Node) -> void:
+	if _aircraft_cfg != null and not _aircraft_cfg.get_bool("model", "flip_normals", true):
+		return
+	var prefix := "Cessna_Exterior_"
+	if _aircraft_cfg != null:
+		prefix = _aircraft_cfg.get_string("model", "flip_normals_prefix", "Cessna_Exterior_")
+	_flip_normals_recursive(root, prefix)
+
+
+func _flip_normals_recursive(node: Node, prefix: String) -> void:
 	if node.name.begins_with("Dynamic_Switch_"):
 		return
-	if node is MeshInstance3D and node.name.begins_with("Cessna_Exterior_"):
+	if node is MeshInstance3D and (prefix.is_empty() or node.name.begins_with(prefix)):
 		var mi: MeshInstance3D = node
 		var mesh: Mesh = mi.mesh
 		if mesh:
@@ -607,7 +567,7 @@ func _flip_normals_recursive(node: Node) -> void:
 					new_mesh.surface_set_material(s, mat)
 			mi.mesh = new_mesh
 	for child in node.get_children():
-		_flip_normals_recursive(child)
+		_flip_normals_recursive(child, prefix)
 
 
 ## Query terrain elevation at a world XZ position via Scenery3D.
@@ -902,8 +862,14 @@ func _process(delta: float) -> void:
 	# Flap lever keyboard control: F = flaps down, Shift+F = flaps up
 	_handle_flap_keys()
 	
+	# Landing gear toggle: G raises/lowers retractable gear
+	_handle_gear_key()
+	
 	# Animate control surfaces
 	animate_control_surfaces()
+	
+	# Animate retractable landing gear retraction/extension
+	_animate_gear(delta)
 	
 	# Update terrain elevation for JSBSim ground collision
 	_update_terrain_elevation()
@@ -1381,9 +1347,9 @@ func animate_control_surfaces() -> void:
 		var rudder_input = jsb_node.get_input_rudder()  # -1 to 1
 		var rudder_angle = -rudder_input * RUDDER_MAX_ANGLE
 		
-		# Reset to base transform first, then apply LOCAL rotation around Y axis
+		# Reset to base transform first, then apply LOCAL rotation around the hinge axis
 		rudder_node.transform = rudder_base_transform
-		rudder_node.rotate_object_local(Vector3.UP, deg_to_rad(rudder_angle))
+		rudder_node.rotate_object_local(RUDDER_AXIS, deg_to_rad(rudder_angle))
 	
 	# Animate front wheel (nose gear steering) - opposite to rudder
 	if front_wheel_node:
@@ -1417,27 +1383,19 @@ func animate_control_surfaces() -> void:
 		# Keep angle in 0-360 range
 		propeller_rotation = fmod(propeller_rotation, 360.0)
 		
-		# Apply rotation around Z axis (forward axis of aircraft)
-		propeller_node.rotation_degrees.z = propeller_rotation
+		# Apply spin about the configured local axis, preserving the base pose.
+		propeller_node.transform = propeller_base_transform
+		propeller_node.rotate_object_local(PROPELLER_SPIN_AXIS, deg_to_rad(propeller_rotation))
 		
-		# Swap between real propeller blades and blur disc based on RPM
+		# Fade the blur disc in/out by RPM, but keep the real propeller (and its
+		# spinner cone) ALWAYS visible so hiding the blades never leaves a hole.
 		if propeller_blur_disc:
 			# Update shader RPM parameter if using shader material
 			if propeller_blur_material and propeller_blur_material is ShaderMaterial:
 				propeller_blur_material.set_shader_parameter("rpm", visual_rpm)
 			
-			if visual_rpm < PROPELLER_BLUR_START_RPM:
-				# Low RPM - show real blades, hide blur disc
-				propeller_node.visible = true
-				propeller_blur_disc.visible = false
-			elif visual_rpm < PROPELLER_HIDE_BLADES_RPM:
-				# Transition zone - show both with blur disc fading in
-				propeller_node.visible = true
-				propeller_blur_disc.visible = true
-			else:
-				# High RPM - hide real blades, show only blur disc
-				propeller_node.visible = false
-				propeller_blur_disc.visible = true
+			propeller_node.visible = true
+			propeller_blur_disc.visible = visual_rpm >= PROPELLER_BLUR_START_RPM
 		else:
 			# No blur disc available - always show real propeller
 			propeller_node.visible = true
@@ -1454,13 +1412,13 @@ func animate_control_surfaces() -> void:
 	if left_aileron_node:
 		var left_aileron_angle = aileron_input * AILERON_MAX_ANGLE
 		left_aileron_node.transform = left_aileron_base_transform
-		# Rotate around X axis (along the wing span)
-		left_aileron_node.rotation_degrees.x = left_aileron_base_transform.basis.get_euler().x * (180.0/PI) + left_aileron_angle
+		# Rotate about the configured local hinge axis (along the wing span).
+		left_aileron_node.rotate_object_local(AILERON_AXIS, deg_to_rad(left_aileron_angle))
 	
 	if right_aileron_node:
 		var right_aileron_angle = -aileron_input * AILERON_MAX_ANGLE  # Opposite direction from left aileron
 		right_aileron_node.transform = right_aileron_base_transform
-		right_aileron_node.rotation_degrees.x = right_aileron_base_transform.basis.get_euler().x * (180.0/PI) + right_aileron_angle
+		right_aileron_node.rotate_object_local(AILERON_AXIS, deg_to_rad(right_aileron_angle))
 	
 	# Animate elevators - both move in the same direction
 	var elevator_input = jsb_node.get_input_elevator()  # -1 to 1
@@ -1473,6 +1431,12 @@ func animate_control_surfaces() -> void:
 		var elevator_angle = -elevator_input * ELEVATOR_MAX_ANGLE  # Inverted
 		right_elevator_node.transform = right_elevator_base_transform
 		right_elevator_node.rotation_degrees.x = right_elevator_base_transform.basis.get_euler().x * (180.0/PI) + elevator_angle
+	
+	# Single-piece elevator / stabilator (one mesh for the whole tailplane).
+	if single_elevator_node:
+		var elevator_angle = elevator_input * ELEVATOR_MAX_ANGLE  # Sign opposite the L/R pair (rotates about a different axis)
+		single_elevator_node.transform = single_elevator_base_transform
+		single_elevator_node.rotate_object_local(ELEVATOR_AXIS, deg_to_rad(elevator_angle))
 	
 	# Animate flaps - both move in the same direction (down only, 0 to max)
 	var flap_input = jsb_node.get_flaps()  # 0 to 1
@@ -1569,6 +1533,376 @@ func format_swiss_coord(value: float) -> String:
 		result = str_val[i] + result
 		count += 1
 	return result
+
+
+# ── Aircraft definition (aircraft.cfg) ─────────────────────────────────────
+
+# Loads <install_root>/aircraft/<id>/aircraft.cfg and applies the values that
+# can be set before the model nodes are resolved (model root path + tunables).
+# Falls back silently to the hardcoded defaults when the file is missing.
+func _load_aircraft_config() -> void:
+	var cfg_path := ""
+	# In the editor, prefer the res:// source tree so live edits to
+	# aircraft.cfg take effect on relaunch without re-running the installer
+	# (which only re-extracts to <install_root>/aircraft on a version bump).
+	if OS.has_feature("editor"):
+		var res_path := "res://aircraft/%s/aircraft.cfg" % _aircraft_id
+		if FileAccess.file_exists(res_path):
+			cfg_path = res_path
+	if cfg_path.is_empty():
+		var ir := get_node_or_null("/root/InstallRoot")
+		if ir:
+			cfg_path = String(ir.get_aircraft_dir(_aircraft_id)).path_join("aircraft.cfg")
+		if cfg_path.is_empty() or not FileAccess.file_exists(cfg_path):
+			# Fallback: read the source tree shipped with the project.
+			cfg_path = "res://aircraft/%s/aircraft.cfg" % _aircraft_id
+	_aircraft_cfg = AircraftConfig.load_from_file(cfg_path)
+	if not _aircraft_cfg.loaded:
+		print("Aircraft config not found (%s) — using built-in defaults" % cfg_path)
+		return
+	print("Aircraft config loaded: %s" % cfg_path)
+
+	var cfg := _aircraft_cfg
+	_model_root_path = cfg.get_string("model", "root_node", _model_root_path)
+
+	# Control-surface deflection limits.
+	RUDDER_MAX_ANGLE = cfg.get_float("control_limits", "rudder_max_deg", RUDDER_MAX_ANGLE)
+	RUDDER_AXIS = _parse_axis(cfg.get_string("control_limits", "rudder_hinge_axis", "y"), Vector3.UP)
+	AILERON_MAX_ANGLE = cfg.get_float("control_limits", "aileron_max_deg", AILERON_MAX_ANGLE)
+	var aileron_axis_name := cfg.get_string("control_limits", "aileron_hinge_axis", "x").to_lower()
+	AILERON_AXIS = {"x": Vector3.RIGHT, "y": Vector3.UP, "z": Vector3.BACK}.get(aileron_axis_name, Vector3.RIGHT)
+	ELEVATOR_MAX_ANGLE = cfg.get_float("control_limits", "elevator_max_deg", ELEVATOR_MAX_ANGLE)
+	var elevator_axis_name := cfg.get_string("control_limits", "elevator_hinge_axis", "x").to_lower()
+	ELEVATOR_AXIS = {"x": Vector3.RIGHT, "y": Vector3.UP, "z": Vector3.BACK}.get(elevator_axis_name, Vector3.RIGHT)
+	FLAP_MAX_ANGLE = cfg.get_float("control_limits", "flap_max_deg", FLAP_MAX_ANGLE)
+	FRONT_WHEEL_MAX_ANGLE = cfg.get_float("control_limits", "front_wheel_max_deg", FRONT_WHEEL_MAX_ANGLE)
+
+	# Retractable landing gear.
+	_gear_retractable = cfg.get_bool("gear", "retractable", false)
+	_gear_retract_seconds = cfg.get_float("gear", "retract_seconds", 4.0)
+
+	# Flap detents.
+	var positions := cfg.get_float_array("flaps", "positions", FLAP_POSITIONS)
+	if not positions.is_empty():
+		FLAP_POSITIONS = positions
+	var names := cfg.get_string_array("flaps", "names", FLAP_NAMES)
+	if not names.is_empty():
+		FLAP_NAMES = names
+
+	# Propeller visuals.
+	PROPELLER_MAX_RPM = cfg.get_float("propeller", "max_rpm", PROPELLER_MAX_RPM)
+	PROPELLER_BLUR_START_RPM = cfg.get_float("propeller", "blur_start_rpm", PROPELLER_BLUR_START_RPM)
+	PROPELLER_HIDE_BLADES_RPM = cfg.get_float("propeller", "hide_blades_rpm", PROPELLER_HIDE_BLADES_RPM)
+	PROPELLER_DISC_RADIUS = cfg.get_float("propeller", "disc_radius_m", PROPELLER_DISC_RADIUS)
+	PROPELLER_SPIN_AXIS = _parse_axis(cfg.get_string("propeller", "spin_axis", "z"), Vector3.BACK)
+	var disc_off := cfg.get_float_array("propeller", "disc_offset", [])
+	if disc_off.size() == 3:
+		PROPELLER_DISC_OFFSET = Vector3(disc_off[0], disc_off[1], disc_off[2])
+	else:
+		PROPELLER_DISC_OFFSET = Vector3.ZERO
+
+	# Engine sound.
+	ENGINE_SOUND_PATH = cfg.get_string("sound", "engine", ENGINE_SOUND_PATH)
+	ENGINE_PITCH_MIN = cfg.get_float("sound", "pitch_min", ENGINE_PITCH_MIN)
+	ENGINE_PITCH_MAX = cfg.get_float("sound", "pitch_max", ENGINE_PITCH_MAX)
+	ENGINE_VOL_DB_MIN = cfg.get_float("sound", "vol_db_min", ENGINE_VOL_DB_MIN)
+	ENGINE_VOL_DB_MAX = cfg.get_float("sound", "vol_db_max", ENGINE_VOL_DB_MAX)
+
+
+# Adopt the airframe the user picked on the welcome screen. Re-reads
+# aircraft.cfg for the new id (so model paths / tunables follow) and asks the
+# JSBGodot extension to (re)load the matching JSBSim flight model, taken from
+# the cfg [jsbsim] model key (defaults to the aircraft id itself).
+func _apply_selected_aircraft(aircraft_id: String) -> void:
+	if aircraft_id.is_empty():
+		aircraft_id = DEFAULT_AIRCRAFT_ID
+	if aircraft_id != _aircraft_id:
+		_aircraft_id = aircraft_id
+		_load_aircraft_config()
+	var jsbsim_model := _aircraft_id
+	if _aircraft_cfg != null:
+		jsbsim_model = _aircraft_cfg.get_string("jsbsim", "model", _aircraft_id)
+	if jsb_node and jsb_node.has_method("load_aircraft"):
+		print("Loading JSBSim model '%s' for aircraft '%s'" % [jsbsim_model, _aircraft_id])
+		jsb_node.load_aircraft(_aircraft_id, jsbsim_model)
+
+	# Swap the visual GLB model to the selected aircraft, then re-resolve all
+	# model-dependent nodes (control surfaces + cockpit levers) against it. Only
+	# do this when the model actually changes — re-running it on the already-loaded
+	# model would double-flip the normals (lighting it from below).
+	if _aircraft_id != _model_visuals_id:
+		var loader := get_node_or_null(NodePath(_model_root_path))
+		if loader and loader.has_method("load_aircraft_model"):
+			if loader.load_aircraft_model(_aircraft_id):
+				_apply_model_normals(loader)
+				_resolve_aircraft_nodes()
+				_model_visuals_id = _aircraft_id
+	# Reposition the cockpit camera for the newly-selected airframe.
+	_apply_camera_config()
+
+
+# Positions the cockpit camera (Camera1) for the selected airframe from
+# aircraft.cfg [camera]:
+#   cockpit_position     "x, y, z"  — AC-local origin override (meters)
+#   cockpit_rotation_deg "p, y, r"  — optional extra rotation vs the scene basis
+#   cockpit_fov          float      — optional field of view
+# When no [camera] keys are present (e.g. the Cessna) the scene's own Camera1
+# transform is kept unchanged.
+func _apply_camera_config() -> void:
+	if camera1 == null or _aircraft_cfg == null:
+		return
+	var pos := _aircraft_cfg.get_float_array("camera", "cockpit_position", [])
+	var rot := _aircraft_cfg.get_float_array("camera", "cockpit_rotation_deg", [])
+	var fov := _aircraft_cfg.get_float("camera", "cockpit_fov", 0.0)
+	# Always start from the pristine scene transform so repeated swaps don't
+	# compound, and so an airframe with no [camera] keys restores the default.
+	camera1_base_transform = _camera1_scene_transform
+	camera1.transform = _camera1_scene_transform
+	camera1.fov = _camera1_scene_fov
+	if pos.size() != 3 and rot.size() != 3 and fov <= 0.0:
+		return  # no camera overrides for this aircraft
+
+	var xform := camera1_base_transform
+	if rot.size() == 3:
+		var extra := Basis.from_euler(Vector3(
+			deg_to_rad(rot[0]), deg_to_rad(rot[1]), deg_to_rad(rot[2])))
+		xform.basis = xform.basis * extra
+	if pos.size() == 3:
+		xform.origin = Vector3(pos[0], pos[1], pos[2])
+	camera1_base_transform = xform
+	camera1.transform = xform
+	if fov > 0.0:
+		camera1.fov = fov
+	print("Cockpit camera positioned for '%s': %s" % [_aircraft_id, xform.origin])
+
+
+
+# Resolves all model-dependent nodes (animated control surfaces + interactive
+# cockpit levers) against the currently-loaded GLB under _model_root_path.
+# Called once at startup and again after a runtime aircraft model swap. Nodes
+# absent from the aircraft.cfg [animation]/[levers] sections (or missing in the
+# model) resolve to null and are skipped gracefully by the animation code.
+func _resolve_aircraft_nodes() -> void:
+	rudder_node = _resolve_surface("rudder")
+	if rudder_node:
+		print("Rudder node found: ", rudder_node)
+		rudder_base_transform = rudder_node.transform
+	else:
+		print("WARNING: Rudder node not found!")
+
+	propeller_node = _resolve_surface("propeller")
+	if propeller_node:
+		print("Propeller node found: ", propeller_node)
+		propeller_base_transform = propeller_node.transform
+		_create_propeller_blur_disc()
+	else:
+		print("WARNING: Propeller node not found!")
+
+	left_aileron_node = _resolve_surface("left_aileron")
+	if left_aileron_node:
+		print("Left aileron node found: ", left_aileron_node)
+		left_aileron_base_transform = left_aileron_node.transform
+	else:
+		print("WARNING: Left aileron node not found!")
+
+	right_aileron_node = _resolve_surface("right_aileron")
+	if right_aileron_node:
+		print("Right aileron node found: ", right_aileron_node)
+		right_aileron_base_transform = right_aileron_node.transform
+	else:
+		print("WARNING: Right aileron node not found!")
+
+	left_elevator_node = _resolve_surface("left_elevator")
+	if left_elevator_node:
+		print("Left elevator node found: ", left_elevator_node)
+		left_elevator_base_transform = left_elevator_node.transform
+	else:
+		print("WARNING: Left elevator node not found!")
+
+	right_elevator_node = _resolve_surface("right_elevator")
+	if right_elevator_node:
+		print("Right elevator node found: ", right_elevator_node)
+		right_elevator_base_transform = right_elevator_node.transform
+	else:
+		print("WARNING: Right elevator node not found!")
+
+	single_elevator_node = _resolve_surface("single_elevator")
+	if single_elevator_node:
+		print("Single elevator node found: ", single_elevator_node)
+		single_elevator_base_transform = single_elevator_node.transform
+
+	left_flap_node = _resolve_surface("left_flap")
+	if left_flap_node:
+		print("Left flap node found: ", left_flap_node)
+		left_flap_base_transform = left_flap_node.transform
+	else:
+		print("WARNING: Left flap node not found!")
+
+	right_flap_node = _resolve_surface("right_flap")
+	if right_flap_node:
+		print("Right flap node found: ", right_flap_node)
+		right_flap_base_transform = right_flap_node.transform
+	else:
+		print("WARNING: Right flap node not found!")
+
+	front_wheel_node = _resolve_surface("front_wheel")
+	if front_wheel_node:
+		print("Front wheel node found: ", front_wheel_node)
+		front_wheel_base_transform = front_wheel_node.transform
+	else:
+		print("WARNING: Front wheel node not found!")
+
+	_resolve_gear_legs()
+
+	# Interactive cockpit levers — located by name (find_child) under the model
+	# root. Names + fallbacks come from aircraft.cfg [levers].
+	var c172_root = get_node_or_null(NodePath(_model_root_path))
+	if c172_root:
+		mixture_lever_node = _resolve_lever(c172_root, "mixture")
+		if mixture_lever_node:
+			print("Mixture lever node found: ", mixture_lever_node.name)
+			mixture_lever_base_transform = mixture_lever_node.transform
+			_setup_mixture_lever_collision()
+		else:
+			print("WARNING: Mixture lever node not found")
+
+		throttle_lever_node = _resolve_lever(c172_root, "throttle")
+		if throttle_lever_node:
+			print("Throttle lever node found: ", throttle_lever_node.name)
+			throttle_lever_base_transform = throttle_lever_node.transform
+			_setup_throttle_lever_collision()
+		else:
+			print("WARNING: Throttle lever node not found")
+
+		magneto_switch_node = _resolve_lever(c172_root, "magneto")
+		if magneto_switch_node:
+			print("Magneto switch node found: ", magneto_switch_node.name)
+			magneto_switch_base_transform = magneto_switch_node.transform
+			_setup_magneto_switch_collision()
+			_apply_magneto_position()
+		else:
+			print("WARNING: Magneto switch node not found")
+
+		flap_lever_node = _resolve_lever(c172_root, "flap_lever")
+		if flap_lever_node:
+			print("Flap lever node found: ", flap_lever_node.name)
+			flap_lever_base_transform = flap_lever_node.transform
+			_setup_flap_lever_collision()
+			if jsb_node:
+				var cur_flaps := float(jsb_node.get_flaps())
+				flap_position = _flaps_norm_to_position(cur_flaps)
+			_apply_flap_position()
+		else:
+			print("WARNING: Flap lever node not found")
+
+
+# Resolves an animated control-surface mesh from aircraft.cfg [animation].
+# The stored path is relative to _model_root_path.
+func _resolve_surface(key: String) -> Node3D:
+	if _aircraft_cfg == null:
+		return null
+	var rel := _aircraft_cfg.get_string("animation", key, "")
+	if rel.is_empty():
+		return null
+	return get_node_or_null(NodePath(_model_root_path.path_join(rel))) as Node3D
+
+
+# Resolves a model node from a path relative to _model_root_path (empty -> null).
+func _resolve_model_node(rel: String) -> Node3D:
+	if rel.is_empty():
+		return null
+	return get_node_or_null(NodePath(_model_root_path.path_join(rel))) as Node3D
+
+
+# Parses an axis name (x/y/z, optionally prefixed with - to invert the sweep
+# direction) into a unit Vector3. Falls back to [param fallback] on bad input.
+func _parse_axis(name: String, fallback: Vector3) -> Vector3:
+	var n := name.strip_edges().to_lower()
+	var sgn := 1.0
+	if n.begins_with("-"):
+		sgn = -1.0
+		n = n.substr(1)
+	elif n.begins_with("+"):
+		n = n.substr(1)
+	var axis: Vector3 = {"x": Vector3.RIGHT, "y": Vector3.UP, "z": Vector3.BACK}.get(n, Vector3.ZERO)
+	if axis == Vector3.ZERO:
+		return fallback
+	return axis * sgn
+
+
+# Builds the retractable-gear leg list from aircraft.cfg [gear]. The "legs" key
+# is a comma list of leg names; each leg <name> reads:
+#   <name>_wheel        path (rel to model root) of the wheel mesh
+#   <name>_strut        path of the strut/mechanic mesh (optional)
+#   <name>_pivot        "x, y, z" hinge point in the model wrapper frame
+#   <name>_axis         x|y|z  rotation axis (wrapper frame)
+#   <name>_retract_deg  sweep angle for a full retraction (sign sets direction)
+# Wheel + strut rotate rigidly about the shared pivot so the leg moves as a unit.
+func _resolve_gear_legs() -> void:
+	_gear_legs.clear()
+	_gear_down = true
+	_gear_visual_pos = 1.0
+	if _aircraft_cfg == null or not _gear_retractable:
+		return
+	var axis_map := {"x": Vector3.RIGHT, "y": Vector3.UP, "z": Vector3.BACK}
+	var leg_names := _aircraft_cfg.get_string_array("gear", "legs", [])
+	for leg in leg_names:
+		var wheel := _resolve_model_node(_aircraft_cfg.get_string("gear", leg + "_wheel", ""))
+		var strut := _resolve_model_node(_aircraft_cfg.get_string("gear", leg + "_strut", ""))
+		if wheel == null and strut == null:
+			print("WARNING: gear leg '%s' has no resolvable nodes" % leg)
+			continue
+		var pivot_arr := _aircraft_cfg.get_float_array("gear", leg + "_pivot", [])
+		var pivot := Vector3.ZERO
+		if pivot_arr.size() == 3:
+			pivot = Vector3(pivot_arr[0], pivot_arr[1], pivot_arr[2])
+		var axis_name := _aircraft_cfg.get_string("gear", leg + "_axis", "x").to_lower()
+		var axis: Vector3 = axis_map.get(axis_name, Vector3.RIGHT)
+		# Optional nose-wheel steering: the wheel yaws about its own steer axis
+		# with rudder input, composed UNDER the retract rotation.
+		var steer := _aircraft_cfg.get_bool("gear", leg + "_steer", false)
+		var steer_axis := _parse_axis(_aircraft_cfg.get_string("gear", leg + "_steer_axis", "z"), Vector3.BACK)
+		var steer_max := _aircraft_cfg.get_float("gear", leg + "_steer_max_deg", FRONT_WHEEL_MAX_ANGLE)
+		# Steer pivot: vertical hinge line the wheel + mechanic yaw about.
+		# Defaults to the retract pivot so they share one axis if unspecified.
+		var steer_pivot_arr := _aircraft_cfg.get_float_array("gear", leg + "_steer_pivot", [])
+		var steer_pivot := pivot
+		if steer_pivot_arr.size() == 3:
+			steer_pivot = Vector3(steer_pivot_arr[0], steer_pivot_arr[1], steer_pivot_arr[2])
+		_gear_legs.append({
+			"name": leg,
+			"wheel": wheel,
+			"strut": strut,
+			"wheel_base": wheel.transform if wheel else Transform3D.IDENTITY,
+			"strut_base": strut.transform if strut else Transform3D.IDENTITY,
+			"pivot": pivot,
+			"axis": axis,
+			"retract_deg": _aircraft_cfg.get_float("gear", leg + "_retract_deg", 90.0),
+			"steer": steer,
+			"steer_axis": steer_axis,
+			"steer_max": steer_max,
+			"steer_pivot": steer_pivot,
+		})
+		print("Gear leg '%s' resolved (wheel=%s strut=%s)" % [leg, wheel != null, strut != null])
+	if jsb_node and jsb_node.has_method("set_gear_down"):
+		jsb_node.set_gear_down(true)
+
+
+# Resolves a cockpit lever/switch by name (find_child) under [param root].
+# Reads the primary name from aircraft.cfg [levers] <key> and an optional
+# "<key>_fallback" for the original (unrenamed) Sketchfab node name.
+func _resolve_lever(root: Node, key: String) -> Node3D:
+	if _aircraft_cfg == null or root == null:
+		return null
+	var primary := _aircraft_cfg.get_string("levers", key, "")
+	var node: Node = null
+	if not primary.is_empty():
+		node = root.find_child(primary, true, false)
+	if node == null:
+		var fallback := _aircraft_cfg.get_string("levers", key + "_fallback", "")
+		if not fallback.is_empty():
+			node = root.find_child(fallback, true, false)
+	return node as Node3D
 
 
 # ── Loading Screen ─────────────────────────────────────────────────────────
@@ -1746,6 +2080,11 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 	print("  Aircraft: %s" % aircraft_id)
 	print("  Target: E=%.0f N=%.0f Heading=%.0f°" % [swiss_e, swiss_n, heading_deg])
 	_diag_jump_count += 1
+
+	# Adopt the airframe the user selected (reloads aircraft.cfg and asks the
+	# JSBSim extension to load the matching flight model) before we position
+	# and initialise the simulation.
+	_apply_selected_aircraft(aircraft_id)
 
 	# Show loading screen while destination loads
 	_fly_loading = true
@@ -2468,6 +2807,63 @@ func _handle_flap_keys() -> void:
 	
 	if flap_position != old_pos:
 		_apply_flap_position()
+
+
+## Handle G keyboard input: toggle retractable landing gear up/down.
+func _handle_gear_key() -> void:
+	if not _gear_retractable:
+		return
+	if not Input.is_key_pressed(KEY_G):
+		_gear_key_held = false
+		return
+	if _gear_key_held:
+		return
+	_gear_key_held = true
+	_gear_down = not _gear_down
+	if jsb_node and jsb_node.has_method("set_gear_down"):
+		jsb_node.set_gear_down(_gear_down)
+	print("Gear: ", "DOWN" if _gear_down else "UP")
+
+
+## Rigidly rotate a base transform about [param pivot] by [param steer] when
+## [param enabled], returning the steered Transform3D (in the wrapper frame).
+func _apply_steer(base: Transform3D, steer: Basis, pivot: Vector3, enabled: bool) -> Transform3D:
+	if not enabled:
+		return base
+	return Transform3D(steer * base.basis, pivot + steer * (base.origin - pivot))
+
+
+## Animate the retractable gear toward its commanded state. Each leg's wheel +
+## strut rotate rigidly about a configured pivot/axis (model wrapper frame).
+func _animate_gear(delta: float) -> void:
+	if _gear_legs.is_empty():
+		return
+	var target := 1.0 if _gear_down else 0.0
+	if _gear_visual_pos != target:
+		var step := delta / maxf(_gear_retract_seconds, 0.01)
+		_gear_visual_pos = move_toward(_gear_visual_pos, target, step)
+	var retract_frac := 1.0 - _gear_visual_pos  # 0 = down, 1 = fully retracted
+	for leg in _gear_legs:
+		var rot := Basis(leg["axis"], deg_to_rad(leg["retract_deg"] * retract_frac))
+		var pivot: Vector3 = leg["pivot"]
+		# Steering yaw (nose wheel only): the wheel AND its mechanic/strut rotate
+		# RIGIDLY about a shared steer pivot, composed UNDER the retract rotation
+		# so the steered leg still folds correctly when the gear retracts.
+		var steer_basis := Basis()
+		var steer_pivot: Vector3 = leg["steer_pivot"]
+		if leg["steer"] and jsb_node:
+			var steer_rad := deg_to_rad(jsb_node.get_input_rudder() * leg["steer_max"])
+			steer_basis = Basis(leg["steer_axis"], steer_rad)
+		var wheel: Node3D = leg["wheel"]
+		if wheel:
+			var base: Transform3D = leg["wheel_base"]
+			var st := _apply_steer(base, steer_basis, steer_pivot, leg["steer"])
+			wheel.transform = Transform3D(rot * st.basis, pivot + rot * (st.origin - pivot))
+		var strut: Node3D = leg["strut"]
+		if strut:
+			var sbase: Transform3D = leg["strut_base"]
+			var st := _apply_steer(sbase, steer_basis, steer_pivot, leg["steer"])
+			strut.transform = Transform3D(rot * st.basis, pivot + rot * (st.origin - pivot))
 
 
 ## Convert JSBSim flap-pos-norm (0.0-1.0) to lever position index (0-3).

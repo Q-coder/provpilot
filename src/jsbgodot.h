@@ -38,6 +38,11 @@ namespace jsbgodot
         float input_mixture = 1.0f; // Mixture input (0.0 = cutoff, 1.0 = full rich)
         int input_magnetos = 3; // Magneto switch: 0=OFF, 1=R, 2=L, 3=BOTH, 4=START
         int init_starter_frames = 0; // Grace period: keep starter engaged after init
+        // Landing gear command: 1.0 = down (default, so the aircraft spawns on
+        // its wheels), 0.0 = up. Pushed to JSBSim as fcs/gear-cmd-norm; the FDM
+        // drives gear/gear-pos-norm (drag + WOW). Visual retraction is animated
+        // separately in GDScript from get_gear_pos().
+        float gear_cmd = 1.0f;
         // Existing control input variables...
         float input_brake = 0.0f; // Brake input (0.0 to 1.0)
 
@@ -59,6 +64,15 @@ namespace jsbgodot
         void _input(const Ref<InputEvent> event); // Using Ref<InputEvent> requires full inclusion
         void _physics_process(const real_t delta);
         void initialise();
+
+        // Load (or reload) the JSBSim flight model for a given aircraft.
+        // `aircraft_id` selects the data tree under
+        // `<install_root>/aircraft/<id>/jsbsim/{aircraft,engine,systems}` (via
+        // the InstallRoot autoload); `jsbsim_model` is the model name passed to
+        // FGFDMExec::LoadModel (i.e. the .xml stem). Both default to "c172p"
+        // so existing callers keep the historical behaviour. Returns true on
+        // success. Safe to call again at flight time to switch airframes.
+        bool load_aircraft(const String &aircraft_id = "c172p", const String &jsbsim_model = "c172p");
 
         void set_input_pitch(float value);
         float get_input_pitch() const;
@@ -97,6 +111,14 @@ namespace jsbgodot
         void set_flaps(float value);  // Direct set (snaps to nearest notch)
         float get_flaps() const;      // Actual kinematic position (for wing animation)
         float get_flap_cmd() const;   // Commanded position (for lever indicator)
+
+        // Landing gear (retractable). gear_down: true = extend (cmd 1.0),
+        // false = retract (cmd 0.0). get_gear_pos returns the FDM's actual
+        // 0..1 position (for drag + visual animation); get_gear_cmd the command.
+        void set_gear_down(bool down);
+        bool get_gear_down() const;
+        float get_gear_pos() const;
+        float get_gear_cmd() const;
 
         // Propeller RPM from JSBSim
         double get_propeller_rpm() const;
@@ -155,6 +177,7 @@ namespace jsbgodot
         double pending_terrain_elevation = 0.0;  // Terrain elevation to use at initialization
         bool has_pending_terrain = false;  // Whether we have a terrain elevation to set
         double godot_terrain_y_offset = 0.0;  // Y offset to apply (Godot terrain Y - JSBSim terrain elevation)
+        std::string loaded_jsbsim_model;  // Model name currently loaded into FDMExec (empty = none)
     };
 
 }

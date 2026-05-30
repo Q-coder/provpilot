@@ -12,7 +12,8 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 
 ## Features
 
-- **Realistic Flight Dynamics**: Full 6-DOF simulation powered by JSBSim (Cessna 172 Skyhawk)
+- **Realistic Flight Dynamics**: Full 6-DOF simulation powered by JSBSim (Cessna 172P Skyhawk and Pilatus PC-7 Turbo Trainer)
+- **Config-Driven Aircraft**: Each airframe is described by a plain-text `aircraft.cfg` (model + JSBSim wiring, animations, gear, propeller, camera) so the engine stays aircraft-agnostic — see [docs/AIRCRAFT_CONFIG.md](docs/AIRCRAFT_CONFIG.md)
 - **Scenery3D World Streaming**: A single C++ GDExtension (`Scenery3D`) streams terrain, buildings, roads, water, and orthophotos on background threads with distance-based LOD
 - **Real-World Terrain**: SwissTopo swissALTI3D elevation data at 1m resolution, streamed as 1024×1024 m float32 tiles
 - **Orthophoto Aerial Imagery**: Real SWISSIMAGE photography mapped per tile with mip pyramid for far-LOD
@@ -36,6 +37,7 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 - **Interactive Cockpit Controls**: Mouse-drag mixture lever, throttle lever, flap lever, and magneto/ignition switch with visual feedback and keyboard shortcuts
 - **Engine Sound**: RPM-mapped engine audio with pitch and volume tied to propeller speed
 - **Animated Control Surfaces**: Ailerons, elevators, rudder, flaps, propeller with blur disc, nose gear steering
+- **Retractable Landing Gear**: Per-leg animated retract/extend (G key), with JSBSim drag and weight-on-wheels driven by gear position
 - **Propeller Visual Decay**: Propeller visually spins down when engine is off (ignores JSBSim windmilling)
 - **Elevator Trim**: Fine-tune pitch with Y/X buttons
 - **Slew Mode**: Reposition aircraft freely with airspeed preservation, then resume flight (Shift+Y)
@@ -203,6 +205,7 @@ provpilot/
 │   ├── build_macos.sh               # macOS build, sign & assemble script
 │   └── setup_windows.ps1            # Windows directory junction setup
 ├── docs/                        # Additional documentation
+│   ├── AIRCRAFT_CONFIG.md      # Per-aircraft aircraft.cfg format & systems
 │   ├── SCENERY_ARCHITECTURE.md  # Scenery data architecture & formats
 │   ├── TERRAIN_SETUP.md        # Terrain & collision architecture
 │   └── WINDOWS_SETUP.md        # Windows build setup guide

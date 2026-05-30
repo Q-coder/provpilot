@@ -67,12 +67,17 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("set_flaps", "value"), &JSBGodot::set_flaps);
     ClassDB::bind_method(D_METHOD("get_flaps"), &JSBGodot::get_flaps);
     ClassDB::bind_method(D_METHOD("get_flap_cmd"), &JSBGodot::get_flap_cmd);
+    ClassDB::bind_method(D_METHOD("set_gear_down", "down"), &JSBGodot::set_gear_down);
+    ClassDB::bind_method(D_METHOD("get_gear_down"), &JSBGodot::get_gear_down);
+    ClassDB::bind_method(D_METHOD("get_gear_pos"), &JSBGodot::get_gear_pos);
+    ClassDB::bind_method(D_METHOD("get_gear_cmd"), &JSBGodot::get_gear_cmd);
     ClassDB::bind_method(D_METHOD("get_propeller_rpm"), &JSBGodot::get_propeller_rpm);
     ClassDB::bind_method(D_METHOD("get_engine_running"), &JSBGodot::get_engine_running);
     ClassDB::bind_method(D_METHOD("set_input_magnetos", "value"), &JSBGodot::set_input_magnetos);
     ClassDB::bind_method(D_METHOD("get_input_magnetos"), &JSBGodot::get_input_magnetos);
     ClassDB::bind_method(D_METHOD("set_terrain_elevation", "elevation_m"), &JSBGodot::set_terrain_elevation);
     ClassDB::bind_method(D_METHOD("initialize_at_terrain", "terrain_elevation_m", "godot_pos", "heading_deg"), &JSBGodot::initialize_at_terrain);
+    ClassDB::bind_method(D_METHOD("load_aircraft", "aircraft_id", "jsbsim_model"), &JSBGodot::load_aircraft, DEFVAL("c172p"), DEFVAL("c172p"));
     ClassDB::bind_method(D_METHOD("is_initialized"), &JSBGodot::is_initialized);
     ClassDB::bind_method(D_METHOD("set_slew_mode", "enabled"), &JSBGodot::set_slew_mode);
     ClassDB::bind_method(D_METHOD("get_slew_mode"), &JSBGodot::get_slew_mode);
@@ -293,6 +298,31 @@ float JSBGodot::get_flap_cmd() const
 {
     // Return commanded flap position (instant, for lever indicator)
     return flaps;
+}
+
+void JSBGodot::set_gear_down(bool down)
+{
+    gear_cmd = down ? 1.0f : 0.0f;
+}
+
+bool JSBGodot::get_gear_down() const
+{
+    return gear_cmd > 0.5f;
+}
+
+float JSBGodot::get_gear_pos() const
+{
+    // Actual gear position from the FDM (0=up, 1=down). Reflects retract dynamics
+    // and is what the drag function uses. Falls back to the command if no FDM.
+    if (FDMExec) {
+        return FDMExec->GetPropertyValue("gear/gear-pos-norm");
+    }
+    return gear_cmd;
+}
+
+float JSBGodot::get_gear_cmd() const
+{
+    return gear_cmd;
 }
 
 double JSBGodot::get_propeller_rpm() const
@@ -862,6 +892,57 @@ void JSBGodot::_ready()
         }
     }
 
+    // Load the default airframe so the FDM is in a valid state immediately.
+    // GDScript (node_3d.gd) may call load_aircraft() again at flight time to
+    // switch to the airframe the user actually selected on the welcome screen.
+    if (!load_aircraft("c172p", "c172p"))
+    {
+        return; // Early exit if model loading fails
+    }
+
+    // Initialize the simulation
+    initialise();
+
+    // Enable physics processing so _physics_process will be called
+    set_physics_process(true);
+    UtilityFunctions::print("JSBGodot ready complete - physics enabled!");
+}
+
+bool JSBGodot::load_aircraft(const String &aircraft_id, const String &jsbsim_model)
+{
+    if (!FDMExec)
+    {
+        UtilityFunctions::print("load_aircraft: FDMExec not created.");
+        return false;
+    }
+
+    std::string model_name = jsbsim_model.utf8().get_data();
+
+    // If the requested model is already loaded, do nothing. Re-running
+    // LoadModel on an FDM that has already been initialised and stepped
+    // leaves it in an inconsistent state and crashes on the next
+    // initialize_at_terrain() call.
+    if (!loaded_jsbsim_model.empty() && loaded_jsbsim_model == model_name)
+    {
+        UtilityFunctions::print("JSBSim model '", jsbsim_model, "' already loaded — skipping reload.");
+        return true;
+    }
+
+    // Switching airframes: rebuild FDMExec from scratch. Calling LoadModel a
+    // second time on an FGFDMExec that already holds a model does NOT fully
+    // reset the propulsion/property state — stale FGPropertyValue pointers
+    // from the previous model survive and crash inside RunIC() (observed as
+    // a SIGSEGV in FGTurboProp::Calculate dereferencing a dangling property).
+    // A fresh FGFDMExec guarantees a clean property tree for the new model.
+    bool switching_models = !loaded_jsbsim_model.empty();
+    if (switching_models)
+    {
+        delete FDMExec;
+        FDMExec = new JSBSim::FGFDMExec();
+        FDMExec->SetDebugLevel(0);
+        loaded_jsbsim_model.clear();
+    }
+
     // Compute JSBSim root via the InstallRoot autoload. Aircraft data lives
     // under `<install_root>/aircraft/<id>/jsbsim/{aircraft,engine,systems}`.
     // In the editor, install_root resolves to the project directory, so the
@@ -869,13 +950,12 @@ void JSBGodot::_ready()
     // In an exported build, the AircraftInstaller autoload has already
     // extracted the bundled PCK resources to that location on first run.
     std::string jsbsim_root;
-    const char *aircraft_id = "c172p";
     String chosen;
     SceneTree *tree = Object::cast_to<SceneTree>(Engine::get_singleton()->get_main_loop());
     if (tree && tree->get_root()) {
         Node *install_root = tree->get_root()->get_node_or_null(NodePath("InstallRoot"));
         if (install_root) {
-            Variant v = install_root->call("get_aircraft_dir", String(aircraft_id));
+            Variant v = install_root->call("get_aircraft_dir", aircraft_id);
             String dir = v;
             if (!dir.is_empty()) {
                 chosen = dir.path_join("jsbsim");
@@ -896,26 +976,26 @@ void JSBGodot::_ready()
     FDMExec->SetSystemsPath(SGPath(jsbsim_root + "/systems"));
     UtilityFunctions::print("JSBSim directories set.");
 
-    // Load a known good aircraft model
+    bool was_loaded = switching_models;
     if (FDMExec->LoadModel(SGPath("aircraft"),
                            SGPath("engine"),
                            SGPath("systems"),
-                           "c172p"))
+                           model_name))
     {
-        UtilityFunctions::print("JSBSim model 'c172p' loaded successfully.");
-    }
-    else
-    {
-        UtilityFunctions::print("Failed to load JSBSim model 'c172p'.");
-        return; // Early exit if model loading fails
+        UtilityFunctions::print("JSBSim model '", jsbsim_model, "' loaded successfully.");
+        loaded_jsbsim_model = model_name;
+        // When switching airframes after the initial _ready() load, re-seed
+        // the initial conditions so the FDM is in a valid state before the
+        // next initialize_at_terrain() call.
+        if (was_loaded)
+        {
+            initialise();
+        }
+        return true;
     }
 
-    // Initialize the simulation
-    initialise();
-    
-    // Enable physics processing so _physics_process will be called
-    set_physics_process(true);
-    UtilityFunctions::print("JSBGodot ready complete - physics enabled!");
+    UtilityFunctions::print("Failed to load JSBSim model '", jsbsim_model, "'.");
+    return false;
 }
 
 void JSBGodot::initialise()
@@ -980,6 +1060,11 @@ void JSBGodot::copy_inputs_to_JSBSim()
 
     // Set flaps command
     FDMExec->SetPropertyValue("fcs/flap-cmd-norm", flaps);
+
+    // Set landing gear command (1=down, 0=up). Aircraft without retractable
+    // gear simply ignore this property; for retractable gear the FDM drives
+    // gear/gear-pos-norm (drag + WOW) from it.
+    FDMExec->SetPropertyValue("gear/gear-cmd-norm", gear_cmd);
 
     // Set mixture command
     FDMExec->SetPropertyValue("fcs/mixture-cmd-norm", input_mixture);
