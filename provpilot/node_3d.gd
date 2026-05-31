@@ -94,6 +94,10 @@ var PROPELLER_HIDE_BLADES_RPM: float = 1200.0  # RPM where real blades hidden (c
 var PROPELLER_DISC_RADIUS: float = 0.95  # Radius of blur disc in meters (cfg propeller.disc_radius_m)
 var PROPELLER_SPIN_AXIS: Vector3 = Vector3.BACK  # Local axis the prop spins about (cfg propeller.spin_axis: x/y/z)
 var PROPELLER_DISC_OFFSET: Vector3 = Vector3.ZERO  # Disc translation tweak in parent space (cfg propeller.disc_offset)
+# Optional separate spinner-cone mesh (cfg animation.propeller_cone). When set,
+# the bladed prop shows at low RPM and is swapped for this cone above
+# PROPELLER_HIDE_BLADES_RPM, so only one of the two is ever visible.
+var propeller_cone_node: Node3D
 
 # Ailerons
 var left_aileron_node: Node3D
@@ -121,6 +125,10 @@ var right_flap_node: Node3D
 var left_flap_base_transform: Transform3D
 var right_flap_base_transform: Transform3D
 var FLAP_MAX_ANGLE: float = 30.0  # Max flap deflection in degrees (cfg control_limits.flap_max_deg)
+var FLAP_AXIS: Vector3 = Vector3.RIGHT  # Local hinge axis for the generic [animation] flaps list (cfg control_limits.flap_hinge_axis)
+# Generic multi-flap list (cfg [animation] flaps) — e.g. the PC-7's four split
+# flaps. Each entry: {node: Node3D, base: Transform3D, sign: float}.
+var _flap_nodes: Array = []
 
 # Front wheel (nose gear steering)
 var front_wheel_node: Node3D
@@ -139,6 +147,13 @@ var _gear_retract_seconds: float = 4.0  # Time for a full up/down cycle
 var _gear_down: bool = true             # Commanded state (true = extended)
 var _gear_visual_pos: float = 1.0       # Animated position: 0 = up, 1 = down
 var _gear_key_held: bool = false        # Debounce for the G key
+# Optional imported gear retract/extend clip (cfg [gear] animation). When set,
+# the gear is driven by seeking this AnimationPlayer clip instead of the
+# procedural per-leg pivot rotation. The clip is authored so its START is gear
+# DOWN and its END is gear UP (legs in, bay doors closed).
+var _gear_anim_name: String = ""
+var _gear_anim_player: AnimationPlayer = null
+var _gear_anim_length: float = 0.0
 
 # Scenery3D reference for ground height queries
 var scenery3d_node: Node
@@ -1387,18 +1402,22 @@ func animate_control_surfaces() -> void:
 		propeller_node.transform = propeller_base_transform
 		propeller_node.rotate_object_local(PROPELLER_SPIN_AXIS, deg_to_rad(propeller_rotation))
 		
-		# Fade the blur disc in/out by RPM, but keep the real propeller (and its
-		# spinner cone) ALWAYS visible so hiding the blades never leaves a hole.
+		# If a dedicated spinner cone exists, swap the bladed prop for it once the
+		# blades blur out: blades at low RPM, cone-only at high RPM (never both).
+		# Otherwise keep the real prop always visible so no hole appears.
+		if propeller_cone_node:
+			var blades_visible := visual_rpm < PROPELLER_HIDE_BLADES_RPM
+			propeller_node.visible = blades_visible
+			propeller_cone_node.visible = not blades_visible
+		else:
+			propeller_node.visible = true
+		
+		# Fade the blur disc in/out by RPM, on top of whichever prop mesh shows.
 		if propeller_blur_disc:
 			# Update shader RPM parameter if using shader material
 			if propeller_blur_material and propeller_blur_material is ShaderMaterial:
 				propeller_blur_material.set_shader_parameter("rpm", visual_rpm)
-			
-			propeller_node.visible = true
 			propeller_blur_disc.visible = visual_rpm >= PROPELLER_BLUR_START_RPM
-		else:
-			# No blur disc available - always show real propeller
-			propeller_node.visible = true
 	
 	# Update engine sound pitch and volume from RPM
 	_update_engine_sound()
@@ -1449,6 +1468,13 @@ func animate_control_surfaces() -> void:
 		var flap_angle = -flap_input * FLAP_MAX_ANGLE  # Inverted
 		right_flap_node.transform = right_flap_base_transform
 		right_flap_node.rotation_degrees.x = right_flap_base_transform.basis.get_euler().x * (180.0/PI) + flap_angle
+
+	# Generic multi-flap list (cfg [animation] flaps): rotate each split flap about
+	# FLAP_AXIS by its per-flap sign, preserving the base pose.
+	for f in _flap_nodes:
+		var fnode: Node3D = f["node"]
+		fnode.transform = f["base"]
+		fnode.rotate_object_local(FLAP_AXIS, deg_to_rad(f["sign"] * flap_input * FLAP_MAX_ANGLE))
 	
 	# Animate mixture lever position (reflects current mixture_value)
 	# Base transform = Blender rest pose for mixture = 0.0 (cutoff, pulled out).
@@ -1575,11 +1601,13 @@ func _load_aircraft_config() -> void:
 	var elevator_axis_name := cfg.get_string("control_limits", "elevator_hinge_axis", "x").to_lower()
 	ELEVATOR_AXIS = {"x": Vector3.RIGHT, "y": Vector3.UP, "z": Vector3.BACK}.get(elevator_axis_name, Vector3.RIGHT)
 	FLAP_MAX_ANGLE = cfg.get_float("control_limits", "flap_max_deg", FLAP_MAX_ANGLE)
+	FLAP_AXIS = _parse_axis(cfg.get_string("control_limits", "flap_hinge_axis", "x"), Vector3.RIGHT)
 	FRONT_WHEEL_MAX_ANGLE = cfg.get_float("control_limits", "front_wheel_max_deg", FRONT_WHEEL_MAX_ANGLE)
 
 	# Retractable landing gear.
 	_gear_retractable = cfg.get_bool("gear", "retractable", false)
 	_gear_retract_seconds = cfg.get_float("gear", "retract_seconds", 4.0)
+	_gear_anim_name = cfg.get_string("gear", "animation", "")
 
 	# Flap detents.
 	var positions := cfg.get_float_array("flaps", "positions", FLAP_POSITIONS)
@@ -1698,6 +1726,12 @@ func _resolve_aircraft_nodes() -> void:
 	else:
 		print("WARNING: Propeller node not found!")
 
+	# Optional dedicated spinner cone shown in place of the blades at high RPM.
+	propeller_cone_node = _resolve_surface("propeller_cone")
+	if propeller_cone_node:
+		print("Propeller cone node found: ", propeller_cone_node)
+		propeller_cone_node.visible = false
+
 	left_aileron_node = _resolve_surface("left_aileron")
 	if left_aileron_node:
 		print("Left aileron node found: ", left_aileron_node)
@@ -1744,6 +1778,23 @@ func _resolve_aircraft_nodes() -> void:
 		right_flap_base_transform = right_flap_node.transform
 	else:
 		print("WARNING: Right flap node not found!")
+
+	# Generic multi-flap list (cfg [animation] flaps) — e.g. the PC-7's four split
+	# flaps. Each rotates about FLAP_AXIS by its per-flap sign (cfg flap_signs).
+	_flap_nodes.clear()
+	if _aircraft_cfg:
+		var flap_paths := _aircraft_cfg.get_string_array("animation", "flaps", [])
+		var flap_signs := _aircraft_cfg.get_float_array("control_limits", "flap_signs", [])
+		for i in flap_paths.size():
+			var fnode := _resolve_model_node(flap_paths[i])
+			if fnode:
+				var fsign := 1.0
+				if i < flap_signs.size():
+					fsign = flap_signs[i]
+				_flap_nodes.append({"node": fnode, "base": fnode.transform, "sign": fsign})
+				print("Flap node found: ", fnode.name)
+			else:
+				print("WARNING: Flap node not found: ", flap_paths[i])
 
 	front_wheel_node = _resolve_surface("front_wheel")
 	if front_wheel_node:
@@ -1842,6 +1893,8 @@ func _resolve_gear_legs() -> void:
 	_gear_legs.clear()
 	_gear_down = true
 	_gear_visual_pos = 1.0
+	_gear_anim_player = null
+	_gear_anim_length = 0.0
 	if _aircraft_cfg == null or not _gear_retractable:
 		return
 	var axis_map := {"x": Vector3.RIGHT, "y": Vector3.UP, "z": Vector3.BACK}
@@ -1869,6 +1922,12 @@ func _resolve_gear_legs() -> void:
 		var steer_pivot := pivot
 		if steer_pivot_arr.size() == 3:
 			steer_pivot = Vector3(steer_pivot_arr[0], steer_pivot_arr[1], steer_pivot_arr[2])
+		# Optional rolling wheel: the wheel mesh spins about its axle while the
+		# aircraft rolls on the ground, and stops once airborne (weight-off-wheels).
+		var roll := _aircraft_cfg.get_bool("gear", leg + "_roll", false)
+		var roll_axis := _parse_axis(_aircraft_cfg.get_string("gear", leg + "_roll_axis", "y"), Vector3.UP)
+		var radius := _aircraft_cfg.get_float("gear", leg + "_wheel_radius_m",
+			_aircraft_cfg.get_float("gear", "wheel_radius_m", 0.3))
 		_gear_legs.append({
 			"name": leg,
 			"wheel": wheel,
@@ -1882,10 +1941,39 @@ func _resolve_gear_legs() -> void:
 			"steer_axis": steer_axis,
 			"steer_max": steer_max,
 			"steer_pivot": steer_pivot,
+			"roll": roll,
+			"roll_axis": roll_axis,
+			"radius": maxf(radius, 0.01),
+			"spin": 0.0,
 		})
 		print("Gear leg '%s' resolved (wheel=%s strut=%s)" % [leg, wheel != null, strut != null])
 	if jsb_node and jsb_node.has_method("set_gear_down"):
 		jsb_node.set_gear_down(true)
+
+	# Optional imported retract/extend clip: locate the model's AnimationPlayer
+	# and the named clip, then hold it at the gear-DOWN (start) pose. When found,
+	# _animate_gear drives this clip by seeking instead of rotating leg pivots.
+	if not _gear_anim_name.is_empty():
+		var model_root := get_node_or_null(NodePath(_model_root_path))
+		if model_root:
+			var ap := model_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+			if ap and ap.has_animation(_gear_anim_name):
+				_gear_anim_player = ap
+				var clip := ap.get_animation(_gear_anim_name)
+				_gear_anim_length = clip.length
+				# Scrub-only: we drive the pose every frame via seek(), so the
+				# player must NOT auto-advance or loop (otherwise it runs forward
+				# on its own and snaps back, extending the gear right after it
+				# retracts). Disable looping and pause so seek() is the sole driver.
+				clip.loop_mode = Animation.LOOP_NONE
+				ap.current_animation = _gear_anim_name
+				ap.seek(0.0, true)  # 0 = first keyframe = gear down
+				ap.pause()
+				print("Gear animation '%s' found (length=%.3fs)" % [_gear_anim_name, _gear_anim_length])
+			else:
+				print("WARNING: gear animation '%s' not found in model" % _gear_anim_name)
+		else:
+			print("WARNING: model root not found for gear animation lookup")
 
 
 # Resolves a cockpit lever/switch by name (find_child) under [param root].
@@ -2833,16 +2921,60 @@ func _apply_steer(base: Transform3D, steer: Basis, pivot: Vector3, enabled: bool
 	return Transform3D(steer * base.basis, pivot + steer * (base.origin - pivot))
 
 
-## Animate the retractable gear toward its commanded state. Each leg's wheel +
-## strut rotate rigidly about a configured pivot/axis (model wrapper frame).
+## Linear ground distance (metres) the wheels rolled this frame. Zero when the
+## aircraft is airborne (weight-off-wheels) so the wheels stop spinning. Uses
+## JSBSim ground speed (velocities/vg-fps) and gear/wow; guarded so older C++
+## dylibs without these getters simply yield no rolling.
+func _wheel_roll_delta(delta: float) -> float:
+	if jsb_node == null:
+		return 0.0
+	if not jsb_node.has_method("get_ground_speed_fps"):
+		return 0.0
+	if jsb_node.has_method("get_weight_on_wheels") and not jsb_node.get_weight_on_wheels():
+		return 0.0
+	var ground_speed_mps: float = jsb_node.get_ground_speed_fps() * 0.3048
+	return ground_speed_mps * delta
+
+
+## Animate the retractable gear toward its commanded state. Either drives an
+## imported AnimationPlayer clip (cfg [gear] animation) by seeking, or rotates
+## each leg's wheel + strut rigidly about a configured pivot/axis (model wrapper
+## frame). Nose-wheel steering is applied on top in both modes.
 func _animate_gear(delta: float) -> void:
-	if _gear_legs.is_empty():
+	if _gear_legs.is_empty() and _gear_anim_player == null:
 		return
 	var target := 1.0 if _gear_down else 0.0
 	if _gear_visual_pos != target:
 		var step := delta / maxf(_gear_retract_seconds, 0.01)
 		_gear_visual_pos = move_toward(_gear_visual_pos, target, step)
 	var retract_frac := 1.0 - _gear_visual_pos  # 0 = down, 1 = fully retracted
+
+	# Imported-clip mode: seek the gear_cycle clip; start = down, end = up.
+	if _gear_anim_player:
+		_gear_anim_player.seek(retract_frac * _gear_anim_length, true)
+		# Per leg: spin rolling wheels with ground speed, and yaw the steered
+		# nose wheel. Both act on the wheel leaf node, whose LOCAL transform the
+		# retract clip never touches (the clip drives the parent mechanics), so
+		# they compose cleanly on top of the captured base transform.
+		var roll_delta := _wheel_roll_delta(delta)
+		for leg in _gear_legs:
+			var wheel: Node3D = leg["wheel"]
+			if wheel == null:
+				continue
+			var basis: Basis = leg["wheel_base"].basis
+			if leg["roll"]:
+				leg["spin"] = wrapf(leg["spin"] + roll_delta / leg["radius"], -TAU, TAU)
+				basis = basis * Basis(leg["roll_axis"], leg["spin"])
+			var origin: Vector3 = leg["wheel_base"].origin
+			if leg["steer"] and jsb_node:
+				var steer_rad := deg_to_rad(jsb_node.get_input_rudder() * leg["steer_max"])
+				var steer_basis := Basis(leg["steer_axis"], steer_rad)
+				wheel.transform = Transform3D(steer_basis * basis,
+					leg["steer_pivot"] + steer_basis * (origin - leg["steer_pivot"]))
+			else:
+				wheel.transform = Transform3D(basis, origin)
+		return
+
 	for leg in _gear_legs:
 		var rot := Basis(leg["axis"], deg_to_rad(leg["retract_deg"] * retract_frac))
 		var pivot: Vector3 = leg["pivot"]

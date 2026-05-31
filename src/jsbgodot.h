@@ -95,6 +95,9 @@ namespace jsbgodot
         double get_vertical_speed_fpm() const;
         double get_altitude_ft() const;
         double get_heading() const;
+        // Ground roll feedback for rolling-wheel visuals.
+        double get_ground_speed_fps() const;  // velocities/vg-fps
+        bool get_weight_on_wheels() const;     // gear/wow (any gear in contact)
         // Setter for brake input
         void set_input_brake(float value);
 

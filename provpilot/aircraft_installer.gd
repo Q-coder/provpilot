@@ -18,7 +18,7 @@ extends Node
 ## Registered as a project autoload (see project.godot).
 
 # Bumping this string forces a re-extraction of res://aircraft/ on next run.
-const BUNDLE_VERSION := "1.0.8"
+const BUNDLE_VERSION := "1.0.9"
 
 # Subtree inside res:// that mirrors the on-disk layout we want to produce
 # under <install_root>/aircraft/.

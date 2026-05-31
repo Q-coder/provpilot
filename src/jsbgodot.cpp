@@ -56,6 +56,8 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_vertical_speed_fpm"), &JSBGodot::get_vertical_speed_fpm);
     ClassDB::bind_method(D_METHOD("get_altitude_ft"), &JSBGodot::get_altitude_ft);
     ClassDB::bind_method(D_METHOD("get_heading"), &JSBGodot::get_heading);
+    ClassDB::bind_method(D_METHOD("get_ground_speed_fps"), &JSBGodot::get_ground_speed_fps);
+    ClassDB::bind_method(D_METHOD("get_weight_on_wheels"), &JSBGodot::get_weight_on_wheels);
     ClassDB::bind_method(D_METHOD("set_input_brake", "value"), &JSBGodot::set_input_brake);
     ClassDB::bind_method(D_METHOD("get_input_brake"), &JSBGodot::get_input_brake);
     ClassDB::bind_method(D_METHOD("set_input_mixture", "value"), &JSBGodot::set_input_mixture);
@@ -632,6 +634,26 @@ double JSBGodot::get_altitude_ft() const
 double JSBGodot::get_heading() const
 {
     return heading_deg;
+}
+
+double JSBGodot::get_ground_speed_fps() const
+{
+    // Ground speed (horizontal track speed) in ft/s. Drives wheel spin rate;
+    // unlike airspeed it stays sensible in wind and is ~0 when parked.
+    if (FDMExec) {
+        return FDMExec->GetPropertyValue("velocities/vg-fps");
+    }
+    return 0.0;
+}
+
+bool JSBGodot::get_weight_on_wheels() const
+{
+    // Aggregate gear/wow: nonzero when ANY gear unit is in ground contact.
+    // Goes false once airborne, so the visuals stop spinning the wheels.
+    if (FDMExec) {
+        return FDMExec->GetPropertyValue("gear/wow") > 0.5;
+    }
+    return false;
 }
 
 double JSBGodot::get_latitude_deg() const
