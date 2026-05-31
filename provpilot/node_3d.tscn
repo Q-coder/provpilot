@@ -115,11 +115,10 @@ tile_px = 512
 load_radius = 50
 origin_east = 2682880.0
 origin_north = 1283072.0
-data_path = "/Users/gery/provpilot/scenery/Switzerland/terrain"
-data_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/terrain")
-buildings_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/buildings")
-water_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/water")
-road_paths = PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/roads")
+data_paths = PackedStringArray()
+buildings_paths = PackedStringArray()
+water_paths = PackedStringArray()
+road_paths = PackedStringArray()
 top_level = true
 
 [node name="Vegetation" type="S3DVegetationManager" parent="." unique_id=147336970]

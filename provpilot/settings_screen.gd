@@ -223,6 +223,10 @@ func _add_section_header(parent: VBoxContainer, text: String) -> void:
 func _add_path_row(parent: VBoxContainer, key: String, label_text: String, placeholder: String) -> void:
 	var hbox = HBoxContainer.new()
 	hbox.add_theme_constant_override("separation", 12)
+	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Prevent the row from pushing the panel wider than its parent when the
+	# stored value is a long absolute path (e.g. I:/provpilot/scenery/...).
+	hbox.clip_contents = true
 
 	var label = Label.new()
 	label.text = label_text
@@ -235,7 +239,11 @@ func _add_path_row(parent: VBoxContainer, key: String, label_text: String, place
 	input.placeholder_text = placeholder
 	input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	input.add_theme_font_size_override("font_size", FONT_MD)
-	input.custom_minimum_size.y = 40
+	# Force the LineEdit to collapse rather than report a wide minimum
+	# size based on the text it currently holds.
+	input.custom_minimum_size = Vector2(100, 40)
+	input.expand_to_text_length = false
+	input.clip_contents = true
 	hbox.add_child(input)
 
 	_controls[key] = input
@@ -595,9 +603,31 @@ func _is_scenery_area_dir(path: String) -> bool:
 
 
 func _on_scan_scenery() -> void:
+	# Build the effective scan root set: configured roots + parents of every
+	# already-known scenery area (so adding one region automatically picks up
+	# its sibling regions on the next scan), de-duplicated.
 	var roots: PackedStringArray = settings.get("scenery_scan_roots", PackedStringArray())
-	var found: Array = []
+	var effective_roots := PackedStringArray()
+	var seen_roots := {}
+	var _case_insensitive := OS.get_name() == "macOS" or OS.get_name() == "Windows"
+	var _push_root := func(p: String) -> void:
+		if p.is_empty():
+			return
+		var k: String = p.to_lower() if _case_insensitive else p
+		if seen_roots.has(k):
+			return
+		seen_roots[k] = true
+		effective_roots.append(p)
 	for root in roots:
+		_push_root.call(root)
+	for area in settings.get("scenery_areas", []):
+		var ap: String = str(area.get("path", ""))
+		if ap.is_empty():
+			continue
+		_push_root.call(ap.get_base_dir())
+
+	var found: Array = []
+	for root in effective_roots:
 		_scan_dir_recursive(root, 0, 3, found)
 
 	# Merge with existing entries (preserve enabled/priority for known paths)
@@ -689,19 +719,64 @@ func _on_add_scenery_area() -> void:
 
 
 func _add_scenery_area(path: String) -> void:
+	if path.is_empty():
+		return
 	var areas: Array = settings.get("scenery_areas", []).duplicate()
 	for a in areas:
 		if a.get("path", "") == path:
 			print("Scenery area already in library: %s" % path)
 			return
-	if not _is_scenery_area_dir(path):
-		print("WARNING: %s does not contain any known asset subdirs (%s) — adding anyway" % [path, ", ".join(ASSET_SUBDIRS)])
-	areas.append({
-		"name": _name_from_path(path),
-		"path": path,
-		"enabled": true,
-		"priority": areas.size() + 1,
-	})
+
+	# If `path` is itself a region directory (contains terrain/, buildings/, …),
+	# add it directly. Otherwise treat it as a *parent* directory and look for
+	# region subdirs (e.g. user picks `I:/provpilot/scenery` which contains
+	# `Switzerland/`, `Germany/`, …). Also register the parent path as a scan
+	# root so future Scan presses keep finding new sibling regions.
+	var added := 0
+	if _is_scenery_area_dir(path):
+		areas.append({
+			"name": _name_from_path(path),
+			"path": path,
+			"enabled": true,
+			"priority": areas.size() + 1,
+		})
+		added = 1
+	else:
+		var found: Array = []
+		_scan_dir_recursive(path, 0, 3, found)
+		var existing_paths := {}
+		for a in areas:
+			existing_paths[a.get("path", "")] = true
+		# Sort by asset richness so the most complete region wins priority.
+		found.sort_custom(func(a, b): return _detect_assets(a).size() > _detect_assets(b).size())
+		for region in found:
+			if existing_paths.has(region):
+				continue
+			areas.append({
+				"name": _name_from_path(region),
+				"path": region,
+				"enabled": true,
+				"priority": areas.size() + 1,
+			})
+			added += 1
+		# Whether or not we found regions, register the parent as a scan root
+		# so a subsequent Scan picks up newly-extracted neighbours.
+		var roots: PackedStringArray = settings.get("scenery_scan_roots", PackedStringArray())
+		if not roots.has(path):
+			roots.append(path)
+			settings["scenery_scan_roots"] = roots
+		if added == 0:
+			# Fall back to the old behaviour so the user isn't left with nothing.
+			print("WARNING: %s does not contain any known asset subdirs (%s) — adding anyway" % [path, ", ".join(ASSET_SUBDIRS)])
+			areas.append({
+				"name": _name_from_path(path),
+				"path": path,
+				"enabled": true,
+				"priority": areas.size() + 1,
+			})
+			added = 1
+		else:
+			print("Add scenery: discovered %d region(s) under %s" % [added, path])
 	settings["scenery_areas"] = areas
 	_refresh_scenery_table()
 

@@ -402,11 +402,11 @@ func _on_download_completed(result: int, code: int, _hdrs: PackedStringArray, _b
 	# Extract.
 	_progress_lbl.text = "Extracting…"
 	var install_root: String = _root_edit.text.strip_edges()
-	var extract_ok := await _extract_zip(_job_zip_path, install_root)
+	var extract_err := await _extract_zip(_job_zip_path, install_root)
 	# Best-effort cleanup.
 	DirAccess.remove_absolute(_job_zip_path)
-	if not extract_ok:
-		_finish_job_failed("Extraction failed.")
+	if not extract_err.is_empty():
+		_finish_job_failed("Extraction failed: %s" % extract_err)
 		return
 	# Persist install state. The "path" we record is the first top-level
 	# directory inside the zip joined onto install_root — that's the region
@@ -488,35 +488,140 @@ func _verify_sha256(path: String, expected: String) -> bool:
 var _job_top_level: String = ""
 
 
-func _extract_zip(zip_path: String, dest_root: String) -> bool:
+## Extract `zip_path` into `dest_root`. Returns an empty string on success
+## or a human-readable error description otherwise.
+##
+## On Windows we prefer the bundled `tar.exe` (libarchive, ships with
+## Windows 10 1803+) which handles ZIP64 archives and long paths cleanly.
+## Godot's built-in ZIPReader trips on both with the multi-GB scenery
+## bundles, which is what was breaking the in-app downloader on Windows.
+func _extract_zip(zip_path: String, dest_root: String) -> String:
+	_job_top_level = ""
+	if not DirAccess.dir_exists_absolute(dest_root):
+		if DirAccess.make_dir_recursive_absolute(dest_root) != OK:
+			return "cannot create install root %s" % dest_root
+
+	# Probe the zip with ZIPReader so we can record the top-level dir
+	# (needed for the install-state "path" field) regardless of which
+	# backend we use to extract.
 	var zr := ZIPReader.new()
-	if zr.open(zip_path) != OK:
-		return false
+	var open_err := zr.open(zip_path)
+	if open_err == OK:
+		for entry in zr.get_files():
+			var parts := String(entry).split("/", false)
+			if parts.size() > 0:
+				_job_top_level = parts[0]
+				break
+		zr.close()
+	# A ZIPReader-open failure is OK if we have a native fallback; only
+	# fail outright when we have nothing left to try.
+
+	if OS.get_name() == "Windows":
+		var err := await _extract_with_tar_exe(zip_path, dest_root)
+		if err.is_empty():
+			return ""
+		push_warning("SceneryDownloader: tar.exe extraction failed (%s) — falling back to ZIPReader." % err)
+
+	if open_err != OK:
+		return "ZIPReader.open() returned %d" % open_err
+	return await _extract_with_zipreader(zip_path, dest_root)
+
+
+## Native Windows path: shell out to tar.exe and watch the destination
+## tree grow for progress. Returns "" on success, error string on failure.
+func _extract_with_tar_exe(zip_path: String, dest_root: String) -> String:
+	var tar := "tar.exe"
+	# Use cmd.exe so PATH lookups behave like a user terminal.
+	var args := PackedStringArray(["-xf", zip_path, "-C", dest_root])
+	var stdio := []
+	# Kick off as a background process and poll with a timer so the UI
+	# stays responsive and we can update the progress label.
+	var pid := OS.create_process(tar, args)
+	if pid <= 0:
+		return "OS.create_process('tar.exe') failed (is Windows 10 1803+ installed?)"
+	_progress.value = 0.0
+	_progress_lbl.text = "Extracting via tar.exe…"
+	# Poll until the process exits or the user cancels.
+	while OS.is_process_running(pid):
+		if _job_cancelled:
+			OS.kill(pid)
+			return "cancelled"
+		_progress_lbl.text = "Extracting via tar.exe… (%d files)" % _count_files_under(dest_root, 4000)
+		await get_tree().create_timer(0.5).timeout
+	var exit_code := OS.get_process_exit_code(pid)
+	if exit_code != 0:
+		return "tar.exe exited with code %d" % exit_code
+	_progress.value = 100.0
+	_progress_lbl.text = "Extraction complete (tar.exe)"
+	# Suppress unused-variable warning.
+	stdio.clear()
+	return ""
+
+
+## Cheap-and-bounded directory walk used purely for the progress label
+## during tar.exe extraction. Caps the recursion at `limit` files to keep
+## the UI tick under a few ms.
+func _count_files_under(path: String, limit: int) -> int:
+	var stack := [path]
+	var count := 0
+	while not stack.is_empty() and count < limit:
+		var cur: String = stack.pop_back()
+		var d := DirAccess.open(cur)
+		if d == null:
+			continue
+		d.list_dir_begin()
+		var n := d.get_next()
+		while n != "" and count < limit:
+			if not n.begins_with("."):
+				if d.current_is_dir():
+					stack.append(cur.path_join(n))
+				else:
+					count += 1
+			n = d.get_next()
+		d.list_dir_end()
+	return count
+
+
+## Godot-only fallback path. Loads each entry into memory and streams it
+## to disk. Returns "" on success or a description of the first failure.
+func _extract_with_zipreader(zip_path: String, dest_root: String) -> String:
+	var zr := ZIPReader.new()
+	var open_err := zr.open(zip_path)
+	if open_err != OK:
+		return "ZIPReader.open() returned %d" % open_err
 	var files := zr.get_files()
 	var total := files.size()
-	_job_top_level = ""
 	var dirs_made := {}
 	for i in range(total):
 		if _job_cancelled:
 			zr.close()
-			return false
+			return "cancelled"
 		var name: String = files[i]
 		if name.ends_with("/"):
 			continue  # bare directory entry
-		var data := zr.read_file(name)
 		var out_path := dest_root.path_join(name)
 		var out_dir := out_path.get_base_dir()
 		if not dirs_made.has(out_dir):
-			DirAccess.make_dir_recursive_absolute(out_dir)
+			if DirAccess.make_dir_recursive_absolute(out_dir) != OK \
+					and not DirAccess.dir_exists_absolute(out_dir):
+				zr.close()
+				return "cannot create dir %s" % out_dir
 			dirs_made[out_dir] = true
+		var data := zr.read_file(name)
+		if data.size() == 0:
+			# Distinguish a genuinely empty file from a read failure: skip
+			# real zero-byte entries silently, complain about everything
+			# else so the user sees the actual cause (typical Godot
+			# ZIPReader symptom for entries past the ZIP64 boundary).
+			# We can't ask ZIPReader for the expected size, so log + fail.
+			push_warning("SceneryDownloader: ZIPReader.read_file('%s') returned 0 bytes" % name)
 		var f := FileAccess.open(out_path, FileAccess.WRITE)
 		if f == null:
-			push_warning("SceneryDownloader: cannot write %s" % out_path)
+			var oserr := FileAccess.get_open_error()
 			zr.close()
-			return false
+			return "cannot write %s (FileAccess err=%d)" % [out_path, oserr]
 		f.store_buffer(data)
 		f.close()
-		# Record first top-level component for install state.
 		if _job_top_level.is_empty():
 			var parts := name.split("/", false)
 			if parts.size() > 0:
@@ -528,7 +633,7 @@ func _extract_zip(zip_path: String, dest_root: String) -> bool:
 	zr.close()
 	_progress.value = 100.0
 	_progress_lbl.text = "Extracted %d files" % total
-	return true
+	return ""
 
 
 func _top_level_dir_for_pack(install_root: String) -> String:

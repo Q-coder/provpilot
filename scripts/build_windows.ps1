@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# build_windows.ps1 — ProvPilot Windows Build Script
+# build_windows.ps1 - ProvPilot Windows Build Script
 #
 # Builds all components in the correct order:
 #   1. JSBSim    (static, /MT CRT, Release)
@@ -89,7 +89,7 @@ function Invoke-VcVars {
 }
 
 # ---------------------------------------------------------------------------
-# Step 1 — Build JSBSim (static library, /MT CRT)
+# Step 1 - Build JSBSim (static library, /MT CRT)
 # ---------------------------------------------------------------------------
 if (-not $SkipJSBSim) {
     Write-Host ''
@@ -103,7 +103,7 @@ if (-not $SkipJSBSim) {
     Push-Location $buildDir
     try {
         # Configure
-        cmd /c "cmake -G `"NMake Makefiles`" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DBUILD_PYTHON_MODULE=OFF .."
+        cmd /c "cmake -G `"NMake Makefiles`" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DBUILD_PYTHON_MODULE=OFF .. 2>&1"
         if ($LASTEXITCODE -ne 0) { throw "CMake configure failed (exit $LASTEXITCODE)" }
 
         # Patch /MD -> /MT in all flags.make files so the CRT matches Godot
@@ -119,7 +119,7 @@ if (-not $SkipJSBSim) {
         Get-ChildItem -Recurse -Filter '*.obj' | Remove-Item -Force -ErrorAction SilentlyContinue
 
         # Build (run via cmd so stderr stays plain text and doesn't trip PowerShell's error handling)
-        cmd /c "nmake"
+        cmd /c "nmake 2>&1"
         if ($LASTEXITCODE -ne 0) { throw "nmake failed (exit $LASTEXITCODE)" }
 
         $lib = Join-Path $buildDir 'src\JSBSim.lib'
@@ -132,7 +132,7 @@ if (-not $SkipJSBSim) {
 }
 
 # ---------------------------------------------------------------------------
-# Step 2 — Build Godot (double precision)
+# Step 2 - Build Godot (double precision)
 # ---------------------------------------------------------------------------
 if (-not $SkipGodot) {
     Write-Host ''
@@ -146,7 +146,7 @@ if (-not $SkipGodot) {
 
         foreach ($t in $targets) {
             Write-Host "  Building target=$t ..." -ForegroundColor DarkGray
-            cmd /c "scons platform=windows arch=x86_64 target=$t precision=double d3d12=no metal=no production=yes -j$Jobs"
+            cmd /c "scons platform=windows arch=x86_64 target=$t precision=double d3d12=no metal=no production=yes -j$Jobs 2>&1"
             if ($LASTEXITCODE -ne 0) { throw "Godot scons $t failed (exit $LASTEXITCODE)" }
 
             $expectedBin = Join-Path $godotDir "bin\godot.windows.$t.double.x86_64.exe"
@@ -162,12 +162,12 @@ if (-not $SkipGodot) {
 }
 
 # ---------------------------------------------------------------------------
-# Step 2b — Install compiled templates so the Godot export dialog is happy
+# Step 2b - Install compiled templates so the Godot export dialog is happy
 # ---------------------------------------------------------------------------
 if (-not $SkipGodot) {
     Write-Host ''
     Write-Host '[2b] Installing export templates...' -ForegroundColor Yellow
-    # Godot looks for templates at "major.minor.status.precision" — NOT the full custom build hash
+    # Godot looks for templates at "major.minor.status.precision" - NOT the full custom build hash
     $godotVersionFull = (cmd /c "`"$godotExe`" --version 2>&1").Trim()
     # e.g. "4.6.stable.double.custom_build.87a1090e1" -> "4.6.stable.double"
     $godotVersionShort = ($godotVersionFull -split '\.custom_build')[0]
@@ -181,7 +181,7 @@ if (-not $SkipGodot) {
 }
 
 # ---------------------------------------------------------------------------
-# Step 3 — Regenerate godot-cpp bindings (extension_api.json) and build
+# Step 3 - Regenerate godot-cpp bindings (extension_api.json) and build
 # ---------------------------------------------------------------------------
 if (-not $SkipGodotCpp) {
     Write-Host ''
@@ -198,7 +198,7 @@ if (-not $SkipGodotCpp) {
     Write-Host "  Dumping extension_api.json via: $godotExe" -ForegroundColor DarkGray
     Push-Location (Join-Path $godotCppDir 'gdextension')
     try {
-        cmd /c "`"$godotExe`" --headless --dump-extension-api extension_api.json"
+        cmd /c "`"$godotExe`" --headless --dump-extension-api extension_api.json 2>&1"
         if (-not (Test-Path $apiJson)) { throw "extension_api.json was not created." }
         Write-Host "  [OK] $apiJson" -ForegroundColor Green
     }
@@ -207,7 +207,7 @@ if (-not $SkipGodotCpp) {
     # Build godot-cpp
     Push-Location $godotCppDir
     try {
-        cmd /c "scons platform=windows arch=x86_64 precision=double -j$Jobs"
+        cmd /c "scons platform=windows arch=x86_64 precision=double -j$Jobs 2>&1"
         if ($LASTEXITCODE -ne 0) { throw "godot-cpp scons failed (exit $LASTEXITCODE)" }
         Write-Host '  [OK] godot-cpp built.' -ForegroundColor Green
     }
@@ -217,7 +217,7 @@ if (-not $SkipGodotCpp) {
 }
 
 # ---------------------------------------------------------------------------
-# Step 4 — Build ProvPilot GDExtension DLL
+# Step 4 - Build ProvPilot GDExtension DLL
 # ---------------------------------------------------------------------------
 Write-Host ''
 Write-Host '[4/5] Building ProvPilot GDExtension DLL (precision=double)...' -ForegroundColor Yellow
@@ -228,7 +228,7 @@ $extTargets = if ($Target -eq 'both') { @('template_debug','template_release') }
 Push-Location $repoRoot
 try {
     foreach ($t in $extTargets) {
-        cmd /c "scons platform=windows arch=x86_64 target=$t precision=double -j$Jobs"
+        cmd /c "scons platform=windows arch=x86_64 target=$t precision=double -j$Jobs 2>&1"
         if ($LASTEXITCODE -ne 0) { throw "ProvPilot scons target=$t failed (exit $LASTEXITCODE)" }
         $dll = Join-Path $repoRoot "provpilot\bin\libprovpilot.windows.$t.double.x86_64.dll"
         if (Test-Path $dll) {
@@ -241,7 +241,7 @@ try {
 finally { Pop-Location }
 
 # ---------------------------------------------------------------------------
-# Step 5 — Build Scenery3D GDExtension DLL
+# Step 5 - Build Scenery3D GDExtension DLL
 # ---------------------------------------------------------------------------
 if (-not $SkipScenery3D) {
     Write-Host ''
@@ -258,15 +258,28 @@ if (-not $SkipScenery3D) {
         Write-Host "  Copying double-precision extension_api.json to Scenery3D godot-cpp..." -ForegroundColor DarkGray
         Copy-Item $srcApi $destApi -Force
     } else {
-        Write-Host "  [WARN] $srcApi not found — Scenery3D will use its bundled API file." -ForegroundColor Yellow
+        Write-Host "  [WARN] $srcApi not found - Scenery3D will use its bundled API file." -ForegroundColor Yellow
     }
 
     # Build Scenery3D (builds its godot-cpp and the extension in one pass)
+    # Use a local target list so this step does not depend on $extTargets
+    # surviving from Step 4 (defensive against any earlier scope/state issues).
+    $s3dTargets = if ($Target -eq 'both') { @('template_debug','template_release') } else { @($Target) }
+    Write-Host "  Scenery3D dir : $scenery3dDir" -ForegroundColor DarkGray
+    Write-Host "  Targets       : $($s3dTargets -join ', ')" -ForegroundColor DarkGray
     Push-Location $scenery3dDir
     try {
-        foreach ($t in $extTargets) {
-            cmd /c "scons platform=windows arch=x86_64 target=$t precision=double -j$Jobs"
+        foreach ($t in $s3dTargets) {
+            Write-Host "  --- scons target=$t ---" -ForegroundColor Cyan
+            cmd /c "scons platform=windows arch=x86_64 target=$t precision=double -j$Jobs 2>&1"
             if ($LASTEXITCODE -ne 0) { throw "Scenery3D scons target=$t failed (exit $LASTEXITCODE)" }
+            $dll = Join-Path $scenery3dDir "demo\bin\libscenery3d.windows.$t.double.x86_64.dll"
+            if (Test-Path $dll) {
+                $ts = (Get-Item $dll).LastWriteTime
+                Write-Host "  [OK] $dll (built $ts)" -ForegroundColor Green
+            } else {
+                Write-Host "  [WARN] expected DLL missing: $dll" -ForegroundColor Yellow
+            }
         }
         Write-Host '  [OK] Scenery3D built.' -ForegroundColor Green
     }
@@ -306,14 +319,14 @@ if (-not $SkipScenery3D) {
         [System.IO.File]::WriteAllLines($gdextPath, $gdextLines, [System.Text.UTF8Encoding]::new($false))
         Write-Host "  [OK] scenery3d.gdextension written (no BOM, Windows double entries)." -ForegroundColor Green
     } else {
-        Write-Host "  [WARN] $s3dBinDir not found — check Scenery3D build output." -ForegroundColor Yellow
+        Write-Host "  [WARN] $s3dBinDir not found - check Scenery3D build output." -ForegroundColor Yellow
     }
 } else {
     Write-Host '[5/5] Skipping Scenery3D build (-SkipScenery3D set).' -ForegroundColor DarkGray
 }
 
 # ---------------------------------------------------------------------------
-# Step 6 — Export project (headless)
+# Step 6 - Export project (headless)
 # ---------------------------------------------------------------------------
 Write-Host ''
 Write-Host '[6/6] Exporting ProvPilot (Windows Desktop, release)...' -ForegroundColor Yellow
@@ -323,7 +336,7 @@ $buildBinDir = Join-Path $buildOutput 'bin'
 New-Item -ItemType Directory -Force $buildOutput | Out-Null
 New-Item -ItemType Directory -Force $buildBinDir | Out-Null
 
-cmd /c "`"$godotExe`" --path `"$(Join-Path $repoRoot 'provpilot')`" --headless --export-release `"Windows Desktop`" `"$(Join-Path $buildOutput 'ProvPilot.exe')`""
+cmd /c "`"$godotExe`" --path `"$(Join-Path $repoRoot 'provpilot')`" --headless --export-release `"Windows Desktop`" `"$(Join-Path $buildOutput 'ProvPilot.exe')`" 2>&1"
 if ($LASTEXITCODE -ne 0) { throw "Godot export failed (exit $LASTEXITCODE)" }
 
 # Copy GDExtension DLLs into build\bin\ (res://bin/ in the exported project)
@@ -341,7 +354,7 @@ Write-Host "  [OK] Export complete -> $buildOutput" -ForegroundColor Green
 # jsbgodot.cpp resolves that path via the InstallRoot autoload.
 
 # ---------------------------------------------------------------------------
-# Step 7 — Package distributable ZIP
+# Step 7 - Package distributable ZIP
 # ---------------------------------------------------------------------------
 Write-Host ''
 Write-Host '[7/7] Creating distributable ZIP...' -ForegroundColor Yellow

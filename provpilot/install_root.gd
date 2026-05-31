@@ -51,24 +51,39 @@ func _ready() -> void:
 
 func _discover_and_load() -> void:
 	var candidates: Array[String] = _candidate_roots()
-	# Pick the first candidate that already has a config file …
-	for c in candidates:
-		var p := c.path_join(CONFIG_FILENAME)
-		if FileAccess.file_exists(p):
-			_install_root = c
-			_config_path = p
-			break
-	# … otherwise pick the first writable candidate for future writes.
-	if _install_root.is_empty():
+	# Portable-install rule: in shipped (non-editor) builds the directory
+	# next to the executable IS the install root, even if no provpilot.cfg
+	# has been written there yet. This way the user can move the folder
+	# (e.g. C:\Users\me\ProvPilot → I:\ProvPilot) and the app immediately
+	# follows, instead of latching onto a stale provpilot.cfg in the legacy
+	# ~/ProvPilot location.
+	if not OS.has_feature("editor") and not candidates.is_empty() and _is_writable(candidates[0]):
+		_install_root = candidates[0]
+		_config_path = _install_root.path_join(CONFIG_FILENAME)
+	else:
+		# Editor / dev fallback: pick the first candidate that already has
+		# a config file, otherwise the first writable candidate.
 		for c in candidates:
-			if _is_writable(c):
+			var p := c.path_join(CONFIG_FILENAME)
+			if FileAccess.file_exists(p):
 				_install_root = c
-				_config_path = c.path_join(CONFIG_FILENAME)
+				_config_path = p
 				break
+		if _install_root.is_empty():
+			for c in candidates:
+				if _is_writable(c):
+					_install_root = c
+					_config_path = c.path_join(CONFIG_FILENAME)
+					break
 	# Last resort: user data dir (always writable).
 	if _install_root.is_empty():
 		_install_root = OS.get_user_data_dir()
 		_config_path = _install_root.path_join(CONFIG_FILENAME)
+
+	# One-time migration: if the chosen install root has no provpilot.cfg
+	# yet but the legacy ~/ProvPilot location does, copy that cfg in so
+	# the user keeps their scenery root, joystick bindings, etc.
+	_migrate_legacy_install_cfg(candidates)
 
 	if FileAccess.file_exists(_config_path):
 		var err := _config.load(_config_path)
@@ -309,6 +324,39 @@ func save_config() -> Error:
 	else:
 		push_error("InstallRoot: failed to save %s (err=%d)" % [_config_path, err])
 	return err
+
+
+# ── One-time migration from a legacy install-root cfg ─────────────────
+## When the user moves a portable install (e.g. C:\Users\me\ProvPilot →
+## I:\ProvPilot) the executable's new directory is empty and the old
+## ~/ProvPilot folder still has a stale provpilot.cfg. We adopt the new
+## exec_dir as the install root (see _discover_and_load) and, if no cfg
+## exists there yet, copy the latest legacy cfg in so the user keeps
+## their scenery root, joystick bindings, etc.
+func _migrate_legacy_install_cfg(candidates: Array[String]) -> void:
+	if FileAccess.file_exists(_config_path):
+		return  # current install root already has its own cfg
+	for c in candidates:
+		if c == _install_root:
+			continue
+		var legacy := c.path_join(CONFIG_FILENAME)
+		if not FileAccess.file_exists(legacy):
+			continue
+		# Copy bytes verbatim — preserves comments, ordering, and any
+		# sections we don't know about.
+		var src := FileAccess.open(legacy, FileAccess.READ)
+		if src == null:
+			continue
+		var data := src.get_buffer(src.get_length())
+		src.close()
+		var dst := FileAccess.open(_config_path, FileAccess.WRITE)
+		if dst == null:
+			push_warning("InstallRoot: cannot write %s — legacy cfg %s NOT migrated" % [_config_path, legacy])
+			return
+		dst.store_buffer(data)
+		dst.close()
+		print("InstallRoot: migrated legacy install cfg %s → %s" % [legacy, _config_path])
+		return
 
 
 # ── One-time migration from user://*.cfg ───────────────────────────────

@@ -41,11 +41,5 @@ textures/vram_compression/import_etc2_astc=true
 
 [scenery3d]
 
-data_path="/Users/gery/provpilot/scenery/Switzerland/terrain"
-data_paths=PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/terrain", "/Users/gery/provpilot/scenery/Germany/Baden-Wuertemberg/terrain")
-buildings_path="/Users/gery/provpilot/scenery/Switzerland/buildings"
-road_paths=PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/roads")
-water_paths=PackedStringArray("/Users/gery/provpilot/scenery/Switzerland/water")
-orthophoto_path="/Users/gery/provpilot/scenery/Switzerland/orthophoto"
 origin_east=2682880.0
 origin_north=1283072.0

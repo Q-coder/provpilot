@@ -193,7 +193,7 @@ var _loading_done: bool = false
 var _fly_loading: bool = false   # True while loading after user clicks Fly!
 var _fly_loading_start_msec: int = 0  # Timestamp when fly loading started (ms)
 const FLY_LOADING_MAX_MSEC: int = 45000  # Hard cap on fly loading screen (45s)
-const FLY_LOADING_NODATA_MSEC: int = 10000  # Give up faster when zero tiles load (10s)
+const FLY_LOADING_NODATA_MSEC: int = 15000  # Give up faster when zero tiles load (15s — must exceed TERRAIN_INIT_FALLBACK_MSEC)
 var _welcome_screen: CanvasLayer = null
 var _settings_screen: CanvasLayer = null
 
@@ -525,12 +525,18 @@ func _create_propeller_blur_disc() -> void:
 # Deferred terrain initialization - waits for first physics frame
 var _pending_terrain_init: bool = false
 var _terrain_init_print_timer: int = 0
+var _pending_terrain_init_start_msec: int = 0
+# If terrain elevation never streams in within this window, give up waiting
+# and initialise JSBSim at a fallback elevation so the user isn't stranded
+# on the loading screen.
+const TERRAIN_INIT_FALLBACK_MSEC: int = 12000
 
 # Initialize JSBSim with correct terrain elevation at startup
 # This must be called BEFORE JSBSim runs its physics, setting terrain during IC
 func _initialize_jsbsim_on_terrain() -> void:
 	# Store for deferred initialization in first physics frame
 	_pending_terrain_init = true
+	_pending_terrain_init_start_msec = Time.get_ticks_msec()
 	print("=== Terrain initialization queued for first physics frame ===")
 
 
@@ -665,9 +671,18 @@ func _do_deferred_terrain_init() -> void:
 	var api_height: float = _terrain_elevation_at(start_pos.x, start_pos.z)
 	# Tile not yet loaded — retry next frame rather than hand 0.0 to JSBSim.
 	if is_nan(api_height):
-		_pending_terrain_init = true
-		return
-	print("=== Scenery3D get_elevation(%.1f, %.1f) = %.1f m ===" % [start_pos.x, start_pos.z, api_height])
+		var waited := Time.get_ticks_msec() - _pending_terrain_init_start_msec
+		if waited < TERRAIN_INIT_FALLBACK_MSEC:
+			_pending_terrain_init = true
+			return
+		# Give up: the destination is outside any loaded terrain (typo in
+		# coordinates, partial scenery install, etc.). Initialise at 0 m ASL
+		# so the simulation can still start; the user will be airborne / over
+		# blank terrain instead of stuck on the loading screen forever.
+		push_warning("Terrain elevation unavailable at (%.0f, %.0f) after %.0fs — initialising JSBSim at fallback elevation 0 m ASL" % [start_pos.x, start_pos.z, waited / 1000.0])
+		api_height = 0.0
+	else:
+		print("=== Scenery3D get_elevation(%.1f, %.1f) = %.1f m ===" % [start_pos.x, start_pos.z, api_height])
 
 	# Position aircraft on the terrain (Godot Y coordinate)
 	# JSBSim will take over position control after initialization.
@@ -706,6 +721,8 @@ const TERRAIN_INIT_DELAY_FRAMES: int = 60  # Wait 60 frames (~1 sec) before per-
 # Set during initialization, used for per-frame terrain updates
 var jsbsim_elevation_offset: float = 0.0
 
+var _rebase_retry_start_msec: int = 0
+
 func _process_rebase_cooldown() -> void:
 	## Handle post-teleport position pinning and JSBSim release.
 	var ac_guard = get_node_or_null("AC")
@@ -716,9 +733,18 @@ func _process_rebase_cooldown() -> void:
 			# Terrain should be loaded by now — update height at pin position
 			var h: float = _terrain_elevation_at(_teleport_pin_pos.x, _teleport_pin_pos.z)
 			if is_nan(h):
-				# Tile still not loaded — keep pinning and retry next frame.
-				_rebase_cooldown = 1
-				return
+				# Tile still not loaded — keep pinning and retry next frame,
+				# but only up to TERRAIN_INIT_FALLBACK_MSEC so we don't loop
+				# forever when the destination is over nodata terrain.
+				if _rebase_retry_start_msec == 0:
+					_rebase_retry_start_msec = Time.get_ticks_msec()
+				var waited := Time.get_ticks_msec() - _rebase_retry_start_msec
+				if waited < TERRAIN_INIT_FALLBACK_MSEC:
+					_rebase_cooldown = 1
+					return
+				push_warning("Teleport: terrain elevation unavailable at (%.0f, %.0f) after %.0fs — releasing JSBSim at fallback elevation 0 m ASL" % [_teleport_pin_pos.x, _teleport_pin_pos.z, waited / 1000.0])
+				h = 0.0
+			_rebase_retry_start_msec = 0
 			if h > 0.1:
 				_teleport_pin_pos.y = h + 2.1  # terrain + gear clearance
 				ac_guard.global_position = _teleport_pin_pos
@@ -727,6 +753,8 @@ func _process_rebase_cooldown() -> void:
 			if jsb_node:
 				if jsb_node.has_method("reinitialize_from_godot_position"):
 					var h_terr: float = _terrain_elevation_at(ac_guard.global_position.x, ac_guard.global_position.z)
+					if is_nan(h_terr):
+						h_terr = h
 					jsb_node.reinitialize_from_godot_position(ac_guard.global_position, ac_guard.rotation.y, h_terr)
 				_update_terrain_elevation()
 				if jsb_node.has_method("set_slew_mode"):
@@ -2053,6 +2081,13 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 	var cooldown_pending := _rebase_cooldown if is_fly_loading else 0
 	var p_cooldown := 1.0 - (float(cooldown_pending) / float(maxi(1, REBASE_COOLDOWN_FRAMES)))
 
+	# Block loading-screen completion while the deferred terrain-init handshake
+	# is still pending. Otherwise the scenery-ready timeout can fire first and
+	# we dismiss the loading screen into a void with the aircraft hanging at
+	# Y=500 m, only to slam down to ground level seconds later when JSBSim
+	# finally initialises.
+	var terrain_init_pending := is_fly_loading and _pending_terrain_init
+
 	var progress: float
 	if is_fly_loading:
 		progress = p_scenery * 0.7 + p_cooldown * 0.3
@@ -2063,12 +2098,14 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 		_loading_screen.set_progress(progress)
 		if not scenery_ready:
 			_loading_screen.set_status("Loading scenery... (%d/%d tiles)" % [loaded, total])
+		elif terrain_init_pending:
+			_loading_screen.set_status("Initialising flight model...")
 		elif cooldown_pending > 0:
 			_loading_screen.set_status("Stabilizing aircraft...")
 		else:
 			_loading_screen.set_status("Ready")
 
-	var all_done := scenery_ready and cooldown_pending == 0
+	var all_done := scenery_ready and not terrain_init_pending and cooldown_pending == 0
 	if not all_done:
 		return
 
@@ -2167,6 +2204,16 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 	print("=== WELCOME: Flight requested ===")
 	print("  Aircraft: %s" % aircraft_id)
 	print("  Target: E=%.0f N=%.0f Heading=%.0f°" % [swiss_e, swiss_n, heading_deg])
+
+	# Pre-flight scenery check: if no enabled scenery area actually has any
+	# terrain/orthophoto data on disk, the loading screen would stall forever
+	# waiting for tiles that never arrive. Bail out early with a clear message
+	# so the user can fix the configuration in Settings → Scenery.
+	var missing := _missing_scenery_reason()
+	if missing != "":
+		_show_scenery_error_dialog(missing)
+		return
+
 	_diag_jump_count += 1
 
 	# Adopt the airframe the user selected (reloads aircraft.cfg and asks the
@@ -2187,6 +2234,48 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 		_first_flight = false
 	else:
 		_on_teleport_requested(swiss_e, swiss_n, heading_deg)
+
+
+## Returns "" when the configured scenery library has at least one enabled
+## area with terrain or orthophoto data present on disk. Otherwise returns
+## a human-readable explanation suitable for an error dialog.
+func _missing_scenery_reason() -> String:
+	if not _settings_screen or not _settings_screen.has_method("get_enabled_scenery_areas"):
+		return "Settings unavailable — cannot verify scenery configuration."
+	var areas: Array = _settings_screen.get_enabled_scenery_areas()
+	if areas.is_empty():
+		return "No scenery areas are configured.\n\nOpen Settings → Scenery and add the directory that contains your scenery data (e.g. the folder with Switzerland/, Germany/, …)."
+	var missing_paths := PackedStringArray()
+	var has_any_data := false
+	for a in areas:
+		var base: String = str(a.get("path", ""))
+		if base.is_empty():
+			continue
+		if not DirAccess.dir_exists_absolute(base):
+			missing_paths.append(base)
+			continue
+		# A region is considered usable if it has terrain or orthophoto tiles.
+		if DirAccess.dir_exists_absolute(base.path_join("terrain")) \
+				or DirAccess.dir_exists_absolute(base.path_join("orthophoto")):
+			has_any_data = true
+	if has_any_data:
+		return ""
+	if missing_paths.size() > 0:
+		return "The configured scenery folder(s) do not exist on disk:\n\n  %s\n\nOpen Settings → Scenery to update the paths." % "\n  ".join(missing_paths)
+	return "The configured scenery folder(s) contain no terrain or orthophoto tiles.\n\nExtract the scenery ZIPs into the folder you registered in Settings → Scenery, then click Scan."
+
+
+func _show_scenery_error_dialog(message: String) -> void:
+	var dlg := AcceptDialog.new()
+	dlg.title = "Scenery not available"
+	dlg.dialog_text = message
+	dlg.dialog_autowrap = true
+	dlg.min_size = Vector2(560, 0)
+	add_child(dlg)
+	dlg.confirmed.connect(func() -> void: dlg.queue_free())
+	dlg.canceled.connect(func() -> void: dlg.queue_free())
+	dlg.popup_centered()
+	push_warning("Fly! aborted: %s" % message)
 
 
 ## Toggle the per-frame `_process()` callback on every Scenery3D child
@@ -2332,8 +2421,7 @@ func _apply_scenery_sources() -> void:
 
 	var areas: Array = _settings_screen.get_enabled_scenery_areas()
 	if areas.is_empty():
-		print("Scenery sources: no enabled scenery areas in library")
-		return
+		print("Scenery sources: no enabled scenery areas in library — clearing Scenery3D paths")
 
 	# Build per-asset path arrays from enabled areas (priority order).
 	var terrain_paths := PackedStringArray()
@@ -2356,6 +2444,9 @@ func _apply_scenery_sources() -> void:
 		var base: String = str(a.get("path", ""))
 		if base.is_empty():
 			continue
+		if not DirAccess.dir_exists_absolute(base):
+			push_warning("Scenery area path does not exist (skipped): %s" % base)
+			continue
 		var t := base.path_join("terrain")
 		if DirAccess.dir_exists_absolute(t): _append_unique.call(terrain_paths, t)
 		var o := base.path_join("orthophoto")
@@ -2369,28 +2460,25 @@ func _apply_scenery_sources() -> void:
 		var v := base.path_join("vegetation")
 		if DirAccess.dir_exists_absolute(v): _append_unique.call(vegetation_paths, v)
 
-	# Apply to Scenery3D node (only override if we have at least one entry,
-	# so an empty library falls back to scene-defined defaults).
+	# Always assign — even empty arrays. Otherwise stale paths baked into the
+	# scene file (.tscn) or ProjectSettings (scenery3d/*) would survive when
+	# the runtime library has nothing, producing confusing "/Users/gery/..."
+	# manifest warnings on a fresh Windows install.
 	# IMPORTANT: do NOT also set the single-path properties (data_path,
 	# orthophoto_path) — their setters in C++ CLEAR the array first, which
 	# would silently drop all but one path. buildings_path stays as a legacy
 	# fallback for older Scenery3D builds that do not expose buildings_paths.
-	if terrain_paths.size() > 0:
-		scenery3d_node.data_paths = terrain_paths
-	if ortho_paths.size() > 0:
-		scenery3d_node.orthophoto_paths = ortho_paths
-	if building_paths.size() > 0:
-		if scenery3d_node.has_method("set_buildings_paths"):
-			scenery3d_node.buildings_paths = building_paths
-		else:
-			scenery3d_node.buildings_path = building_paths[0]
-	if water_paths.size() > 0:
-		scenery3d_node.water_paths = water_paths
-	if road_paths.size() > 0:
-		scenery3d_node.road_paths = road_paths
+	scenery3d_node.data_paths = terrain_paths
+	scenery3d_node.orthophoto_paths = ortho_paths
+	if scenery3d_node.has_method("set_buildings_paths") or "buildings_paths" in scenery3d_node:
+		scenery3d_node.buildings_paths = building_paths
+	elif building_paths.size() > 0:
+		scenery3d_node.buildings_path = building_paths[0]
+	scenery3d_node.water_paths = water_paths
+	scenery3d_node.road_paths = road_paths
 
 	# Vegetation node uses its own paths
-	if is_instance_valid(vegetation_node) and vegetation_paths.size() > 0:
+	if is_instance_valid(vegetation_node):
 		vegetation_node.vegetation_paths = vegetation_paths
 
 	print("Scenery library applied: %d enabled area(s)" % areas.size())
