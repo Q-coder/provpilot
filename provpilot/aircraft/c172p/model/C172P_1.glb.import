@@ -1,0 +1,10 @@
+[remap]
+
+importer="keep"
+type=""
+uid="uid://cxxf8b5520ato"
+
+[deps]
+
+source_file="res://aircraft/c172p/model/C172P_1.glb"
+dest_files=[]

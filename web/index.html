@@ -208,10 +208,11 @@
     <a href="#install">Install</a>
     <a href="#controls">Controls</a>
     <a href="#scenery">Scenery</a>
+    <a href="movable-parts.html">Modding</a>
     <a href="#changelog">Changelog</a>
   </nav>
   <div class="dl-buttons">
-    <a class="dl-btn" id="dmg-link" href="releases/ProvPilot-1.0.4-arm64.dmg">macOS</a>
+    <a class="dl-btn" id="dmg-link" href="releases/ProvPilot-1.0.6-arm64.dmg">macOS</a>
     <a class="dl-btn win" id="win-link" href="releases/ProvPilot-Windows-1.0.4.zip">Windows</a>
   </div>
 </header>
@@ -228,7 +229,7 @@
       and <a href="https://www.lgl-bw.de">LGL&nbsp;BW</a>. Hop in the Cessna 172, pick an airport, and go.
     </p>
     <div class="ctas">
-      <a class="dl-btn" id="dmg-link-hero" href="releases/ProvPilot-1.0.4-arm64.dmg">Download for macOS (Apple Silicon)</a>
+      <a class="dl-btn" id="dmg-link-hero" href="releases/ProvPilot-1.0.6-arm64.dmg">Download for macOS (Apple Silicon)</a>
       <a class="dl-btn win" id="win-link-hero" href="releases/ProvPilot-Windows-1.0.4.zip">Download for Windows</a>
     </div>
 
@@ -518,6 +519,17 @@
     <p style="color: var(--fg-dim);">
       Latest builds are linked from the download buttons above.
     </p>
+
+    <article class="release">
+      <h3>v1.0.6 &mdash; Pilatus PC-7, retractable gear animation, rolling wheels</h3>
+      <p class="release-date">May 2026</p>
+      <ul>
+        <li><strong>Pilatus PC-7 Turbo Trainer</strong> &mdash; a second aircraft joins the Cessna 172. Swiss-built tandem trainer with its own JSBSim flight model, cockpit and exterior, selectable from the welcome screen.</li>
+        <li><strong>Animated retractable landing gear</strong> &mdash; the PC-7 gear now plays a proper Blender retract/extend animation (legs fold, then the nose-wheel bay doors close). Toggle with <code>G</code>; the cycle holds at the end and only reverses on the next toggle.</li>
+        <li><strong>Rolling wheels</strong> &mdash; the PC-7 main and nose wheels now spin up with ground speed (driven by JSBSim) and stop once airborne, with correct per-wheel rotation direction. Nose-wheel steering tracks the rudder on the ground.</li>
+        <li><strong>Scenery trees</strong> &mdash; low-poly vegetation is now part of the distribution.</li>
+      </ul>
+    </article>
 
     <article class="release">
       <h3>v1.0.4 &mdash; Scenery distribution, in-app downloader, Windows portable build</h3>

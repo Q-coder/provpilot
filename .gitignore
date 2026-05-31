@@ -1,6 +1,8 @@
 # Godot
 .godot/
 *.import
+# ...but DO track aircraft model import settings (keep-mode glb fix must reach all platforms)
+!provpilot/aircraft/*/model/*.glb.import
 
 # Build artifacts
 *.o
