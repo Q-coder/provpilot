@@ -212,8 +212,8 @@
     <a href="#changelog">Changelog</a>
   </nav>
   <div class="dl-buttons">
-    <a class="dl-btn" id="dmg-link" href="releases/ProvPilot-1.0.6-arm64.dmg">macOS</a>
-    <a class="dl-btn win" id="win-link" href="releases/ProvPilot-Windows-1.0.6.zip">Windows</a>
+    <a class="dl-btn" id="dmg-link" href="releases/ProvPilot-1.0.8-arm64.dmg">macOS</a>
+    <a class="dl-btn win" id="win-link" href="releases/ProvPilot-Windows-1.0.8.zip">Windows</a>
   </div>
 </header>
 
@@ -229,8 +229,8 @@
       and <a href="https://www.lgl-bw.de">LGL&nbsp;BW</a>. Hop in the Cessna 172, pick an airport, and go.
     </p>
     <div class="ctas">
-      <a class="dl-btn" id="dmg-link-hero" href="releases/ProvPilot-1.0.6-arm64.dmg">Download for macOS (Apple Silicon)</a>
-      <a class="dl-btn win" id="win-link-hero" href="releases/ProvPilot-Windows-1.0.6.zip">Download for Windows</a>
+      <a class="dl-btn" id="dmg-link-hero" href="releases/ProvPilot-1.0.8-arm64.dmg">Download for macOS (Apple Silicon)</a>
+      <a class="dl-btn win" id="win-link-hero" href="releases/ProvPilot-Windows-1.0.8.zip">Download for Windows</a>
     </div>
 
     <div class="shots">
@@ -519,6 +519,20 @@
     <p style="color: var(--fg-dim);">
       Latest builds are linked from the download buttons above.
     </p>
+
+    <article class="release">
+      <h3>v1.0.8 &mdash; Scenery precision pass: draping, alignment, distant terrain</h3>
+      <p class="release-date">June 2026</p>
+      <ul>
+        <li><strong>Rivers &amp; lakes no longer drape or float</strong> &mdash; Swiss water bodies that used to hover above (or cut through) the ground now sit flush on the terrain. The runtime drape heuristic was mis-flagging legitimately-sloped Alpine rivers as bake errors; it now inspects each triangle individually, so genuine sloped water stays put while the rare corrupt tile is still corrected.</li>
+        <li><strong>Roads &amp; railways hug the ground</strong> &mdash; baked roads were rendered a fixed step above the bare-earth terrain, so at taxi height the aircraft appeared to drive underneath them. Roads are now dropped to sit flush, while bridges and embankments keep their real height.</li>
+        <li><strong>Aircraft sits correctly on the terrain</strong> &mdash; the near-field terrain mesh now renders at full resolution and block-averages coarser tiles, so the visible ground matches the surface the flight model rides on. No more sinking into, or hovering above, the ground on steep terrain.</li>
+        <li><strong>Distant scenery is back</strong> &mdash; the low-resolution mountain panorama (e.g. the Alps seen from the northern plateau) is rendered again. A streaming bug was silently discarding every far-terrain chunk before it could load; the horizon now fills in properly.</li>
+        <li><strong>Terrain Distance setting now works</strong> &mdash; the <em>Settings &rarr; Terrain Distance</em> slider was previously saved but never applied. It now controls how far the full-detail terrain ring extends.</li>
+        <li><strong>Orthophoto tile seams removed</strong> &mdash; photoreal tiles are now clamped at their edges, eliminating the thin seams that appeared between adjacent tiles at distance.</li>
+        <li><strong>macOS: buildings, roads and rivers render again</strong> &mdash; the 1.0.7 macOS build shipped an out-of-date scenery engine, so the release app showed only terrain and orthophotos. The build pipeline now always rebuilds the scenery engine from source, so 3D buildings, roads/rail and rivers &amp; lakes appear for both Switzerland and Baden-Württemberg.</li>
+      </ul>
+    </article>
 
     <article class="release">
       <h3>v1.0.6 &mdash; Pilatus PC-7, retractable gear animation, rolling wheels</h3>

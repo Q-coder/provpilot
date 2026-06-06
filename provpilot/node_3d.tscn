@@ -112,7 +112,8 @@ transform = Transform3D(-0.8124194877878104, -1.9342809112031988e-17, 0.58307338
 
 [node name="Scenery3D" type="Scenery3D" parent="." unique_id=962717072]
 tile_px = 512
-load_radius = 50
+load_radius = 8
+far_radius = 200
 origin_east = 2682880.0
 origin_north = 1283072.0
 data_paths = PackedStringArray()

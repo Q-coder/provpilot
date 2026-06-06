@@ -79,6 +79,11 @@ double-precision Godot engine optimized for Apple M4 Max. Based on the
       ../../bin/
    ```
 
+   > This builds the **`template_debug`** dylib used by the editor. The
+   > **`template_release`** dylib used by the shipped app is built
+   > automatically by `scripts/build_macos.sh` (see *Export Build* below),
+   > so you do **not** need to build it by hand before packaging.
+
 7. **Run the editor:**
    ```bash
    godot/bin/godot.macos.editor.double.arm64 --editor --path provpilot
@@ -206,6 +211,21 @@ scons platform=macos arch=arm64 target=template_release precision=double \
   vulkan=no opengl3=no metal=yes \
   -j$(sysctl -n hw.ncpu)
 ```
+
+Once the engine `template_release` binary exists, package the app with:
+
+```bash
+./scripts/build_macos.sh
+```
+
+This script rebuilds **both** GDExtension `template_release` dylibs from source
+— `libprovpilot` and `libscenery3d` (from the `provpilot/addons/scenery3d`
+submodule) — copies them into `provpilot/bin/`, exports the Godot project,
+code-signs the bundle with the Developer ID, and produces the app-only DMG.
+Building the scenery engine inside the script guarantees the shipped app can
+never lag behind the source (an earlier release shipped a stale scenery dylib
+and rendered only terrain + orthophotos). The script stops at the signed DMG;
+**notarization and stapling are a separate manual step** (see below).
 
 The export preset in `provpilot/export_presets.cfg` is configured for:
 - Code signing: Developer ID Application (DUWB54DV3A)

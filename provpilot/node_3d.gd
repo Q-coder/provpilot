@@ -2498,6 +2498,19 @@ func _apply_scenery_sources() -> void:
 		scenery3d_node.skip_white_pixels = skip_white
 		print("  skip_white_pixels = %s" % [skip_white])
 
+	# Terrain Distance (render_distance, in tiles) → Scenery3D.load_radius.
+	# Previously this slider was saved but never applied, so it had no effect.
+	# Keep the radius modest: the low-res far-terrain CHUNK panorama fills
+	# everything beyond it out to far_radius, so a small value (default 8 =
+	# ~8 km of full-detail tiles) keeps streaming fast and memory bounded
+	# while distant scenery still renders. Large values (e.g. 50) push the
+	# chunk panorama past the horizon haze and balloon the tile count.
+	var render_distance: int = int(_settings_screen.settings.get("render_distance", 8))
+	render_distance = clampi(render_distance, 2, 16)
+	if "load_radius" in scenery3d_node:
+		scenery3d_node.load_radius = render_distance
+		print("  load_radius (terrain distance) = %d tiles" % render_distance)
+
 
 # ── Position / Teleport ────────────────────────────────────────────────────
 

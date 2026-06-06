@@ -25,20 +25,49 @@ echo "=== ProvPilot macOS Build — v${VERSION} ==="
 echo "Repo root: $REPO_ROOT"
 echo ""
 
-# --- Step 1: Build the provpilot GDExtension (double precision, release) ---
-echo "[1/6] Building libprovpilot (template_release, double, arm64)..."
+# --- Step 1: Build BOTH GDExtensions (double precision, release) ---
+echo "[1/6] Building GDExtensions (template_release, double, arm64)..."
 cd "$REPO_ROOT"
 if [[ -d ".venv" ]]; then
     source .venv/bin/activate
 fi
+
+# 1a. libprovpilot (JSBSim bridge) — builds into provpilot/bin/ directly.
+echo "  - libprovpilot ..."
 scons platform=macos arch=arm64 precision=double target=template_release \
     -j$(sysctl -n hw.ncpu) 2>&1 | tail -3
+
+# 1b. libscenery3d — built from its own submodule. build_macos.sh USED to
+# assume this dylib was already up-to-date and only re-signed it, which
+# silently shipped a stale dylib (e.g. missing the runtime manager-creation
+# fix → no buildings/roads/water in the release app while the editor was
+# fine). Build it here so the release always matches the source.
+SCEN_SRC_DIR="$REPO_ROOT/provpilot/addons/scenery3d"
+SCEN_BUILT="$SCEN_SRC_DIR/demo/bin/libscenery3d.macos.template_release.double.arm64.dylib"
+SCEN_DYLIB="provpilot/bin/libscenery3d.macos.template_release.double.arm64.dylib"
+if [[ -d "$SCEN_SRC_DIR/src" ]]; then
+    echo "  - libscenery3d (submodule) ..."
+    ( cd "$SCEN_SRC_DIR" && scons precision=double arch=arm64 target=template_release \
+        -j$(sysctl -n hw.ncpu) 2>&1 | tail -3 )
+    if [[ ! -f "$SCEN_BUILT" ]]; then
+        echo "ERROR: scenery3d release build produced no dylib at $SCEN_BUILT" >&2
+        exit 1
+    fi
+    # Copy into provpilot/bin/ (where scenery3d.gdextension points) only if it
+    # changed, so an unchanged source doesn't churn the signature/mtime.
+    if ! cmp -s "$SCEN_BUILT" "$REPO_ROOT/$SCEN_DYLIB"; then
+        echo "    updated → $SCEN_DYLIB"
+        cp "$SCEN_BUILT" "$REPO_ROOT/$SCEN_DYLIB"
+    else
+        echo "    unchanged (already current)"
+    fi
+else
+    echo "  - libscenery3d submodule not checked out — using existing dylib in provpilot/bin/"
+fi
 echo ""
 
-# Sanity-check both extension dylibs are present. We assume libscenery3d
-# has already been built from its own submodule — see docs/MACOS_SETUP.md.
+# Sanity-check both extension dylibs are present.
 PROV_DYLIB="provpilot/bin/libprovpilot.macos.template_release.double.arm64.dylib"
-SCEN_DYLIB="provpilot/bin/libscenery3d.macos.template_release.double.arm64.dylib"
 for f in "$PROV_DYLIB" "$SCEN_DYLIB"; do
     if [[ ! -f "$REPO_ROOT/$f" ]]; then
         echo "ERROR: missing $f — build it first" >&2
