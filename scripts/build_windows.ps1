@@ -89,6 +89,51 @@ function Invoke-VcVars {
 }
 
 # ---------------------------------------------------------------------------
+# Helper: ensure a submodule's working tree matches the commit the parent
+# repo records (the gitlink). A plain `git pull` on the parent advances the
+# gitlink but does NOT check out the submodule's files, so the source can be
+# stale while the gitlink points at newer code. Building then silently ships
+# an out-of-date binary. This syncs the working tree to the recorded commit.
+# ---------------------------------------------------------------------------
+function Update-Submodule {
+    param([string]$RelPath)
+
+    # git pathspecs and HEAD:<path> lookups require forward slashes.
+    $gitPath = $RelPath -replace '\\', '/'
+    $subPath = Join-Path $repoRoot $RelPath
+    if (-not (Test-Path (Join-Path $subPath '.git'))) {
+        Write-Host "  [submodule] $RelPath not initialized - running submodule update..." -ForegroundColor Yellow
+        cmd /c "git -C `"$repoRoot`" submodule update --init --recursive -- `"$gitPath`" 2>&1"
+        return
+    }
+
+    # Commit recorded by the parent index (source of truth for the build).
+    $recorded = (& git -C $repoRoot rev-parse "HEAD:$gitPath" 2>$null)
+    $current  = (& git -C $subPath  rev-parse HEAD 2>$null)
+    if (-not $recorded -or -not $current) {
+        Write-Host "  [submodule] $RelPath - could not determine commits, skipping sync check." -ForegroundColor Yellow
+        return
+    }
+
+    if ($recorded -eq $current) {
+        Write-Host "  [submodule] $RelPath up to date ($($current.Substring(0,7)))." -ForegroundColor DarkGray
+        return
+    }
+
+    Write-Host "  [submodule] $RelPath out of sync:" -ForegroundColor Yellow
+    Write-Host "      checked out : $($current.Substring(0,7))" -ForegroundColor Yellow
+    Write-Host "      parent wants: $($recorded.Substring(0,7))" -ForegroundColor Yellow
+    Write-Host "  [submodule] Syncing working tree to recorded commit..." -ForegroundColor Yellow
+    cmd /c "git -C `"$repoRoot`" submodule update --init --recursive -- `"$gitPath`" 2>&1"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to sync submodule $RelPath to $($recorded.Substring(0,7)). " +
+              "Commit or stash local changes in $RelPath, then re-run."
+    }
+    $now = (& git -C $subPath rev-parse HEAD 2>$null)
+    Write-Host "  [submodule] $RelPath now at $($now.Substring(0,7))." -ForegroundColor Green
+}
+
+# ---------------------------------------------------------------------------
 # Step 1 - Build JSBSim (static library, /MT CRT)
 # ---------------------------------------------------------------------------
 if (-not $SkipJSBSim) {
@@ -248,6 +293,11 @@ if (-not $SkipScenery3D) {
     Write-Host '[5/5] Building Scenery3D GDExtension DLL (precision=double)...' -ForegroundColor Yellow
 
     Invoke-VcVars
+
+    # Ensure the scenery3d working tree matches the commit the parent records.
+    # Otherwise a `git pull` on the parent (which only advances the gitlink)
+    # leaves stale source, scons reports "up to date", and we ship an old DLL.
+    Update-Submodule 'provpilot\addons\scenery3d'
 
     # Scenery3D's SConstruct builds its own godot-cpp internally via SConscript,
     # so we just run one scons command from the scenery3d root.
