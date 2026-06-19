@@ -6,8 +6,8 @@ reloadable = true
 
 [libraries]
 
-macos.debug = "res://bin/libscenery3d.macos.template_debug.double.arm64.dylib"
-macos.release = "res://bin/libscenery3d.macos.template_release.double.arm64.dylib"
+#macos.debug = "res://bin/libscenery3d.macos.template_debug.double.arm64.dylib"
+macos.template_release = "res://bin/libscenery3d.macos.template_release.double.arm64.dylib"
 windows.debug.x86_64 = "res://bin/libscenery3d.windows.template_debug.double.x86_64.dll"
 windows.release.x86_64 = "res://bin/libscenery3d.windows.template_release.double.x86_64.dll"
 linux.debug.x86_64 = "res://bin/libscenery3d.linux.template_debug.double.x86_64.so"

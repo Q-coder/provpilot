@@ -22,6 +22,7 @@
 #endif
 #include <cmath>
 #include <exception>
+#include <locale>
 
 using namespace godot;
 using namespace jsbgodot;
@@ -991,17 +992,38 @@ bool JSBGodot::load_aircraft(const String &aircraft_id, const String &jsbsim_mod
     } else {
         UtilityFunctions::print("JSBSim root (missing, tried: ", chosen, ")");
     }
-    jsbsim_root = chosen.utf8().get_data();
+    // Capture the UTF-8 path through a NAMED CharString. Assigning directly
+    // from `chosen.utf8().get_data()` relies on the temporary CharString
+    // surviving the assignment; under godot-cpp 4.7 that produced an empty
+    // std::string here (while the log above still printed `chosen`
+    // correctly), leaving RootDir empty so JSBSim tried to open the relative
+    // path "aircraft/c172p/c172p.xml" and failed.
+    CharString jsbsim_root_cs = chosen.utf8();
+    jsbsim_root = jsbsim_root_cs.get_data();
+    UtilityFunctions::print("JSBSim resolved root path: '", String(jsbsim_root.c_str()), "'");
     FDMExec->SetRootDir(SGPath(jsbsim_root));
     FDMExec->SetAircraftPath(SGPath(jsbsim_root + "/aircraft"));
     FDMExec->SetEnginePath(SGPath(jsbsim_root + "/engine"));
     FDMExec->SetSystemsPath(SGPath(jsbsim_root + "/systems"));
     UtilityFunctions::print("JSBSim directories set.");
 
+    // JSBSim parses the aircraft/engine/systems XML numbers through C++
+    // iostreams, which honour the global C++ locale. Godot 4.7 sets the
+    // process-wide locale to the user's system locale; on comma-decimal
+    // locales (e.g. de_CH/de_DE) "0.5" parses as 0 and LoadModel silently
+    // fails. Force the classic (C) locale so numeric parsing always uses a
+    // '.' decimal separator. Godot's own number formatting is
+    // locale-independent, so this is safe to leave set.
+    std::locale::global(std::locale::classic());
+
+    // Pass ABSOLUTE aircraft/engine/systems paths to LoadModel. JSBSim's
+    // GetFullPath() only prepends RootDir to RELATIVE paths; absolute paths
+    // are used verbatim, so this resolves correctly regardless of the
+    // process working directory or RootDir state.
     bool was_loaded = switching_models;
-    if (FDMExec->LoadModel(SGPath("aircraft"),
-                           SGPath("engine"),
-                           SGPath("systems"),
+    if (FDMExec->LoadModel(SGPath(jsbsim_root + "/aircraft"),
+                           SGPath(jsbsim_root + "/engine"),
+                           SGPath(jsbsim_root + "/systems"),
                            model_name))
     {
         UtilityFunctions::print("JSBSim model '", jsbsim_model, "' loaded successfully.");

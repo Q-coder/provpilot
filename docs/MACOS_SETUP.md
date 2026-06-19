@@ -1,8 +1,8 @@
 # macOS Development Setup (Apple Silicon — M4 Max Optimized)
 
 Guide for building and running ProvPilot on macOS with a Metal-only
-double-precision Godot engine optimized for Apple M4 Max. Based on the
-`4.6-macdev` branch of the Godot fork.
+double-precision Godot engine optimized for Apple M4 Max. Tracks the
+`4.7-flightsim` branch of the Godot fork (Godot 4.7).
 
 ## Prerequisites
 
@@ -89,9 +89,68 @@ double-precision Godot engine optimized for Apple M4 Max. Based on the
    godot/bin/godot.macos.editor.double.arm64 --editor --path provpilot
    ```
 
-## What's Different: 4.6-macdev Branch
+## Upgrading the Godot Engine (e.g. 4.7 → 4.8)
 
-The `4.6-macdev` branch contains macOS-specific optimizations to the Godot 4.6 engine:
+A major engine bump touches every layer of the build. Do these **in order** —
+the dependency chain is what makes upgrades fail in subtle, runtime-only ways:
+
+1. **Engine** — rebuild both the `editor` and `template_release` binaries
+   (`precision=double vulkan=no opengl3=no metal=yes`). A custom double build
+   means the stock Godot export templates can never be used.
+2. **godot-cpp** — rebuild for the new version and regenerate
+   `godot-cpp/gdextension/extension_api.json` from the **new** editor
+   (`--dump-extension-api`).
+3. **JSBSim static lib** — if the `jsbsim` submodule moved, **rebuild it**:
+   ```bash
+   cd jsbsim/build && cmake .. && cmake --build . --target libJSBSim -j$(sysctl -n hw.ncpu)
+   ```
+   ⚠️ A stale `jsbsim/build/src/libJSBSim.a` against newer `jsbsim/src` headers
+   is an ABI/layout mismatch: inline accessors compiled into `libprovpilot`
+   read JSBSim members at the wrong offset, producing a garbage `GetIC()`
+   pointer → **bus error** at startup, and a corrupted `RootDir` →
+   `Could not open file: aircraft/c172p/c172p.xml`. Sanity check:
+   `find jsbsim/src -name '*.h' -newer jsbsim/build/src/libJSBSim.a` must be empty.
+4. **Both GDExtensions** — rebuild `libprovpilot` (delete its dylib first to
+   force a relink so the fresh `libJSBSim.a` is picked up) and `libscenery3d`
+   against the new godot-cpp; re-codesign after copying into `provpilot/bin/`.
+5. **Export template `godot/bin/macos.zip`** — rebuild it from the **official**
+   template, never by hand:
+   ```bash
+   cp -R godot/misc/dist/macos_template.app /tmp/mt && \
+   mkdir -p /tmp/mt/macos_template.app/Contents/MacOS && \
+   cp godot/bin/godot.macos.template_release.double.arm64 \
+      /tmp/mt/macos_template.app/Contents/MacOS/godot_macos_release.universal && \
+   (cd /tmp/mt && zip -r -X "$OLDPWD/godot/bin/macos.zip" macos_template.app)
+   ```
+   The official `Contents/Info.plist` carries the `$binary`/`$name`/`$icon`
+   placeholders the exporter substitutes. A hand-rolled Info.plist (no
+   placeholders) ships a bundle whose `CFBundleExecutable` doesn't match the
+   renamed binary → *"the application … is damaged or incomplete"* and **no
+   icon**. Also never let a nested `Contents/macos_template.app/` end up in the
+   zip → codesign fails with *"bundle format unrecognized"*.
+6. **Reimport assets** — a major upgrade invalidates `.godot/imported`. Any
+   `*.glb.import` showing `valid=false` (notably the symlinked
+   `provpilot/Tree_lowpoly.glb`) must be regenerated, or the exported PCK is
+   missing the imported `.scn` → `No loader found for resource`:
+   ```bash
+   rm -f provpilot/Tree_lowpoly.glb.import provpilot/.godot/imported/Tree_lowpoly.glb-*
+   godot/bin/godot.macos.editor.double.arm64 --headless --path provpilot --import
+   ```
+7. **Package + smoke-test** — run `scripts/build_macos.sh`, then **run the
+   exported app from a terminal** (the editor can't load the release
+   extensions, so it can't catch these): grep its output for
+   `loaded successfully` + `physics enabled`, and check
+   `~/Library/Logs/DiagnosticReports/ProVPilot-*.ips` for crashes.
+8. **Windows** — `scripts/build_windows.ps1` needs the same JSBSim-lib and
+   extension rebuilds against the new godot-cpp.
+
+> A blank Finder icon after repeated rebuilds is a stale LaunchServices cache,
+> **not** a bundle defect — `lsregister -f <app>` + `killall Dock`, or
+> `sudo rm -rf /Library/Caches/com.apple.iconservices.store`.
+
+## What's Different: 4.7-flightsim Branch
+
+The `4.7-flightsim` branch contains macOS-specific optimizations to the Godot 4.7 engine:
 
 ### Build System (`platform/macos/detect.py`)
 

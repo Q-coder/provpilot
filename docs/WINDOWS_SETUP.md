@@ -5,7 +5,7 @@ Guide for building and running ProvPilot on Windows (tested on Windows 11, MSVC 
 ## Prerequisites
 
 - **Visual Studio 2019** (or newer) with C++ Desktop workload
-- **Godot 4.6** (standard build, not .NET)
+- **Godot 4.7** (standard build, not .NET)
 - **SCons** (`pip install scons`)
 - **CMake** (included with Visual Studio)
 - **Python 3** (for scenery pipeline scripts)
@@ -39,6 +39,15 @@ Guide for building and running ProvPilot on Windows (tested on Windows 11, MSVC 
    Get-ChildItem -Recurse -Filter "*.obj" | Remove-Item -Force
    nmake
    ```
+
+   > ⚠️ **Rebuild JSBSim after any `jsbsim` submodule bump** (e.g. during a
+   > Godot major-version upgrade). The prebuilt `JSBSim.lib` is linked into
+   > `libprovpilot`; if the compiled lib is older than the `jsbsim/src`
+   > headers, the `FGFDMExec` layout mismatch produces a garbage `GetIC()`
+   > pointer → crash at startup, and a corrupted root dir →
+   > `Could not open file: aircraft/c172p/c172p.xml`. Delete the build dir
+   > (or at least the `*.obj` and `JSBSim.lib`) and rebuild from the current
+   > submodule before rebuilding the GDExtension.
 
 4. **Build Godot (double precision)** and the ProvPilot GDExtension:
    ```powershell

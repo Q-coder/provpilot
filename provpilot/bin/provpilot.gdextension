@@ -6,8 +6,8 @@ reloadable = true
 
 [libraries]
 
-macos.debug = "res://bin/libprovpilot.macos.template_debug.double.arm64.dylib"
-macos.release = "res://bin/libprovpilot.macos.template_release.double.arm64.dylib"
+#macos.debug = "res://bin/libprovpilot.macos.template_debug.double.arm64.dylib"
+macos.template_release = "res://bin/libprovpilot.macos.template_release.double.arm64.dylib"
 windows.debug.x86_64 = "res://bin/libprovpilot.windows.template_debug.double.x86_64.dll"
 windows.release.x86_64 = "res://bin/libprovpilot.windows.template_release.double.x86_64.dll"
 linux.debug.x86_64 = "res://bin/libprovpilot.linux.template_debug.double.x86_64.so"
