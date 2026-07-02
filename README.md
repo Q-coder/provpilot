@@ -208,6 +208,7 @@ provpilot/
 │   ├── AIRCRAFT_CONFIG.md      # Per-aircraft aircraft.cfg format & systems
 │   ├── SCENERY_ARCHITECTURE.md  # Scenery data architecture & formats
 │   ├── TERRAIN_SETUP.md        # Terrain & collision architecture
+│   ├── WORLD3D.md              # Global (world3d) globe integration
 │   └── WINDOWS_SETUP.md        # Windows build setup guide
 ├── jsbsim/                      # JSBSim flight dynamics (submodule)
 ├── godot-cpp/                   # Godot C++ bindings (submodule)

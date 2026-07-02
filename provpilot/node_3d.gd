@@ -55,6 +55,19 @@ const HEAD_LOOK_SPEED: float = 90.0 # Degrees per second
 enum CameraMode { COCKPIT, ORBIT, CHASE }
 var camera_mode: int = CameraMode.COCKPIT
 
+# Cinematic space→spot intro zoom (world3d globe). When entering fly mode we
+# start high above the Earth (whole globe visible) and smoothly zoom down to the
+# external "spot" view of the aircraft, then hand off to the normal orbit camera.
+var _intro_playing: bool = false
+var _intro_elapsed: float = 0.0
+const INTRO_DURATION: float = 6.0
+const INTRO_START_ALT_M: float = 1.6e7   # metres above the aircraft (space view)
+var _intro_up_dir: Vector3 = Vector3.UP
+var _intro_start_pos: Vector3 = Vector3.ZERO
+# Dedicated camera for the intro, parented to the ROOT (not the aircraft) so its
+# space position is not dragged around by JSBSim's per-frame AC transform writes.
+var _intro_camera: Camera3D = null
+
 # Spot camera orbit angles (in degrees) - for external camera
 var orbit_yaw: float = 135.0    # Horizontal angle around aircraft (start behind-left)
 var orbit_pitch: float = 15.0   # Vertical angle (elevation)
@@ -159,6 +172,39 @@ var _gear_anim_length: float = 0.0
 var scenery3d_node: Node
 # Vegetation node reference
 var vegetation_node: Node
+
+# ── World3D global globe (replaces Scenery3D local patch) ──────────────────
+# When true, the whole-planet world3d globe provides terrain (elevation +
+# visuals) instead of the flat scenery3d LV95 tile patch. The globe renders in
+# ECEF; we mount it into ProvPilot's existing flat frame via an inverse tangent
+# transform on GlobeMount, so the aircraft/JSBSim/cameras keep working in the
+# flat local frame unchanged while the curved Earth appears around them.
+const USE_WORLD3D_GLOBE := true
+var globe_node: Node = null            # W3DGlobe (under GlobeMount)
+var _globe_mount: Node3D = null        # carries inverse-ECEF transform
+var _w3d_coords = null                 # W3DCoords instance for conversions
+# flat local (X=West, Y=Up, Z=North) at the LV95 origin -> ECEF metres.
+var _ecef_from_flat: Transform3D = Transform3D.IDENTITY
+# Atmospheric fog is exponential (density-based), so it saturates to the fog
+# colour at very large distances — which turns the whole Earth into a white disc
+# when viewed from space. Fade the fog density out with camera altitude so we
+# keep near-ground haze but see oceans/continents from orbit.
+var _world_env: Environment = null
+var _fog_base_density: float = 0.0
+const FOG_FULL_ALT_M := 4000.0    # full fog at/below this camera altitude (m ASL)
+const FOG_ZERO_ALT_M := 60000.0   # no fog at/above this camera altitude (m ASL)
+# Fade the sky background to black as we leave the atmosphere (space = black).
+# The sun still lights the globe (directional light is unaffected).
+var _bg_base_energy: float = 1.0
+var _ambient_base_energy: float = 1.0
+var _glow_base_intensity: float = 0.0
+const SKY_FULL_ALT_M := 12000.0    # full sky at/below this camera altitude (m ASL)
+const SKY_BLACK_ALT_M := 100000.0  # black background at/above this altitude (m ASL)
+const AMBIENT_SPACE_ENERGY := 0.35 # ambient light energy in space (vs bright ground value)
+# The coarse global globe (~2 km ETOPO) would poke through the fine Swiss/BW
+# scenery3d patch, so hide it below this camera altitude (the detailed patch is
+# the ground there) and show it above (high-altitude / space backdrop).
+const GLOBE_SHOW_ALT_M := 25000.0
 
 # Tree density mapping (index = tree_density setting value).
 # Off / Low / Medium / High / Very High
@@ -389,6 +435,10 @@ func _ready() -> void:
 		TERRAIN_CENTER_N = float(ProjectSettings.get_setting("scenery3d/origin_north"))
 	print("TERRAIN_CENTER locked to Scenery3D origin: E=%d N=%d" % [int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N)])
 
+	# Mount the world3d global globe at the LV95 origin. Must run after
+	# TERRAIN_CENTER_E/N are final so the tangent frame matches the flat frame.
+	_setup_world3d_globe()
+
 	# Print the aircraft model hierarchy to find control surfaces
 	print("=== Aircraft Node Hierarchy ===")
 	print_node_tree($AC, 0)
@@ -596,20 +646,267 @@ func _flip_normals_recursive(node: Node, prefix: String) -> void:
 ## Callers that need a numeric fallback should check is_nan() explicitly —
 ## feeding 0.0 to JSBSim as ground elevation causes catastrophic ground impact
 ## spikes when the real tile (hundreds of metres ASL) finally loads.
+## Query terrain elevation at a world XZ position.
+## Prefers the precise scenery3d patch (Swiss/BW); falls back to the coarse
+## whole-planet world3d globe so the aircraft always has ground beneath it when
+## flying beyond the detailed patch. Returns NAN only if neither has data.
 func _terrain_elevation_at(x: float, z: float) -> float:
+	var h: float = _scenery_elevation_at(x, z)
+	if not is_nan(h):
+		return h
+	return _globe_elevation_at(x, z)
+
+
+## Precise scenery3d elevation (NAN if no node / method / data / tile not loaded).
+func _scenery_elevation_at(x: float, z: float) -> float:
 	if not is_instance_valid(scenery3d_node):
 		return NAN
 	if not scenery3d_node.has_method("get_elevation"):
 		return NAN
 	var h: float = scenery3d_node.get_elevation(x, z)
-	# Older builds of the Scenery3D extension returned 0.0 instead of NaN
-	# when a tile was not yet loaded. Swiss LV95 terrain is never below
-	# ~193 m ASL, so treat a returned 0.0 as "no data" defensively. This
-	# prevents JSBSim from being initialised at sea level while we wait
-	# for the real tile to stream in.
+	# Older Scenery3D builds returned 0.0 (not NaN) for unloaded tiles; Swiss/BW
+	# terrain is never at 0 m ASL, so treat 0.0 as "no data" defensively.
 	if h == 0.0 or is_nan(h):
 		return NAN
 	return h
+
+
+## Coarse whole-planet globe elevation (NAN if the globe is unavailable).
+func _globe_elevation_at(x: float, z: float) -> float:
+	if not (USE_WORLD3D_GLOBE and is_instance_valid(globe_node) and _w3d_coords != null):
+		return NAN
+	var ecef: Vector3 = _ecef_from_flat * Vector3(x, 0.0, z)
+	var geo: Vector3 = _w3d_coords.ecef_to_geodetic(ecef)  # (lat, lon, height)
+	var gh: float = globe_node.get_elevation(geo.x, geo.y)
+	if is_nan(gh):
+		return NAN
+	return gh
+
+
+## Mount the world3d global globe into the flat ProvPilot frame.
+## The globe renders in ECEF (~6.4 M m); we give GlobeMount the inverse of the
+## tangent frame at the LV95 origin so the globe's origin surface point lands at
+## the flat frame origin. The globe reads the camera via to_local(), so it still
+## computes the correct ECEF camera position for LOD/streaming internally.
+func _setup_world3d_globe() -> void:
+	if not USE_WORLD3D_GLOBE:
+		return
+	_globe_mount = get_node_or_null("GlobeMount")
+	globe_node = get_node_or_null("GlobeMount/Globe")
+	if not _globe_mount or not is_instance_valid(globe_node):
+		push_warning("World3D: GlobeMount/Globe nodes missing — keeping Scenery3D terrain")
+		return
+	if not ClassDB.class_exists("W3DCoords"):
+		push_warning("World3D: W3DCoords not available — extension not loaded?")
+		globe_node = null
+		return
+	_w3d_coords = ClassDB.instantiate("W3DCoords")
+	var ll: Vector2 = _lv95_to_wgs84(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
+	var origin_lat: float = ll.x
+	var origin_lon: float = ll.y
+	var origin_h: float = 0.0
+	# forward transform: flat local (X=West, Y=Up, Z=North) -> ECEF metres.
+	_ecef_from_flat = _w3d_coords.enu_to_ecef_transform(origin_lat, origin_lon, origin_h, true)
+	# Map the ECEF globe back into the flat frame.
+	_globe_mount.transform = _ecef_from_flat.affine_inverse()
+	# Cameras must reach the global horizon (default far was 200 km).
+	if camera1:
+		camera1.far = 12000000.0
+	if camera2:
+		camera2.far = 12000000.0
+	# Dedicated root-level camera for the cinematic intro (independent of AC).
+	if _intro_camera == null:
+		_intro_camera = Camera3D.new()
+		_intro_camera.name = "IntroCamera"
+		_intro_camera.far = 4.0e7
+		_intro_camera.fov = 70.0
+		add_child(_intro_camera)
+	# Cache the scene Environment so we can fade fog with altitude (the globe
+	# would otherwise wash out to the fog colour when seen from space).
+	var we := get_node_or_null("Environment/WorldEnvironment")
+	if we and we.environment:
+		_world_env = we.environment
+		_fog_base_density = _world_env.fog_density
+		_bg_base_energy = _world_env.background_energy_multiplier
+		_ambient_base_energy = _world_env.ambient_light_energy
+		_glow_base_intensity = _world_env.glow_intensity
+	print("World3D globe mounted: LV95 %d/%d -> lat=%.5f lon=%.5f" % [
+		int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N), origin_lat, origin_lon])
+
+
+## Swiss LV95 (CH1903+) easting/northing (metres) -> WGS84 (lat, lon) degrees.
+## Standard swisstopo approximation (sub-metre accurate over Switzerland).
+func _lv95_to_wgs84(e: float, n: float) -> Vector2:
+	var y: float = (e - 2600000.0) / 1000000.0
+	var x: float = (n - 1200000.0) / 1000000.0
+	var lon: float = 2.6779094 + 4.728982 * y + 0.791484 * y * x + 0.1306 * y * x * x - 0.0436 * y * y * y
+	var lat: float = 16.9023892 + 3.238272 * x - 0.270978 * y * y - 0.002528 * x * x - 0.0447 * y * y * x - 0.0140 * x * x * x
+	lon = lon * 100.0 / 36.0
+	lat = lat * 100.0 / 36.0
+	return Vector2(lat, lon)
+
+
+## Begin the cinematic space→spot zoom (called when fly-loading completes).
+## Animates the external spot camera (camera2) from high above the Earth down to
+## the normal orbit "spot" view of the aircraft, then hands off to orbit mode.
+func _start_intro_zoom() -> void:
+	if not USE_WORLD3D_GLOBE or not is_instance_valid(globe_node) or not _globe_mount:
+		return
+	var ac_node := get_node_or_null("AC")
+	if not ac_node or not is_instance_valid(_intro_camera):
+		return
+	# Start the camera straight up (local +Y) above the aircraft. Using the true
+	# radial direction tilts it a few km horizontally (the aircraft sits off the
+	# tangent origin), which makes the scenery managers stream tiles around the
+	# wrong spot during the descent. Straight up keeps streaming centred on the
+	# aircraft so detailed buildings load directly instead of far-first.
+	_intro_up_dir = Vector3.UP
+	_intro_start_pos = ac_node.global_position + _intro_up_dir * INTRO_START_ALT_M
+	_intro_elapsed = 0.0
+	_intro_playing = true
+	# Drive the dedicated root-level intro camera.
+	var ac_pos: Vector3 = ac_node.global_position
+	_intro_camera.global_position = _intro_start_pos
+	var fwd0: Vector3 = (ac_pos - _intro_start_pos).normalized()
+	var up0: Vector3 = Vector3(0, 0, -1) if absf(fwd0.dot(Vector3.UP)) > 0.98 else Vector3.UP
+	_intro_camera.look_at(ac_pos, up0)
+	active_camera = _intro_camera
+	if camera1:
+		camera1.current = false
+	if camera2:
+		camera2.current = false
+	_intro_camera.current = true
+	print("World3D intro zoom started (space → spot)")
+
+
+## Per-frame update of the intro zoom. Log-interpolates distance (many orders of
+## magnitude) and slerps the view direction from straight-down to the spot angle.
+func _update_intro_zoom(delta: float) -> void:
+	var ac_node := get_node_or_null("AC")
+	if not ac_node or not is_instance_valid(_intro_camera):
+		_end_intro_zoom()
+		return
+	# Allow the user to skip the cinematic.
+	if Input.is_key_pressed(KEY_ESCAPE) or Input.is_key_pressed(KEY_SPACE):
+		_end_intro_zoom()
+		return
+
+	_intro_elapsed += delta
+	var p: float = clampf(_intro_elapsed / INTRO_DURATION, 0.0, 1.0)
+	var pe: float = smoothstep(0.0, 1.0, p)  # ease in/out
+
+	var target: Vector3 = ac_node.global_position
+
+	# Spot (orbit) end offset — matches handle_orbit_camera exactly for a
+	# seamless handoff.
+	var yaw_rad := deg_to_rad(orbit_yaw)
+	var pitch_rad := deg_to_rad(orbit_pitch)
+	var spot_offset := Vector3(
+		orbit_distance * cos(pitch_rad) * sin(yaw_rad),
+		orbit_distance * sin(pitch_rad),
+		orbit_distance * cos(pitch_rad) * cos(yaw_rad))
+
+	var start_dir := _intro_up_dir
+	var end_dir := spot_offset.normalized()
+	var start_dist := INTRO_START_ALT_M
+	var end_dist := maxf(spot_offset.length(), 0.5)
+
+	# Log distance interpolation feels linear in "orders of magnitude".
+	var dist: float = exp(lerpf(log(start_dist), log(end_dist), pe))
+	# Keep the view top-down while high, swing to the spot angle near the end.
+	var dir := start_dir.slerp(end_dir, pe * pe)
+	var cam_pos := target + dir * dist
+	_intro_camera.global_position = cam_pos
+
+	# Robust up vector: avoid look_at degeneracy when peering straight down.
+	var fwd := (target - cam_pos).normalized()
+	var ref_up := Vector3.UP
+	if absf(fwd.dot(ref_up)) > 0.98:
+		ref_up = Vector3(0, 0, -1)
+	_intro_camera.look_at(target, ref_up)
+
+	if p >= 1.0:
+		_end_intro_zoom()
+
+
+## Finish the intro and hand control to the normal orbit spot camera.
+func _end_intro_zoom() -> void:
+	if not _intro_playing:
+		return
+	_intro_playing = false
+	camera_mode = CameraMode.ORBIT
+	active_camera = camera2
+	# Position camera2 at the spot immediately so the handoff has no 1-frame gap.
+	var ac_node := get_node_or_null("AC")
+	if ac_node and is_instance_valid(camera2):
+		var yaw_rad := deg_to_rad(orbit_yaw)
+		var pitch_rad := deg_to_rad(orbit_pitch)
+		var spot_offset := Vector3(
+			orbit_distance * cos(pitch_rad) * sin(yaw_rad),
+			orbit_distance * sin(pitch_rad),
+			orbit_distance * cos(pitch_rad) * cos(yaw_rad))
+		camera2.global_position = ac_node.global_position + spot_offset
+		if spot_offset.length_squared() > 0.01:
+			camera2.look_at(ac_node.global_position, Vector3.UP)
+	if is_instance_valid(_intro_camera):
+		_intro_camera.current = false
+	if is_instance_valid(camera2):
+		camera2.current = true
+	print("World3D intro zoom complete — spot view active")
+
+
+## Scale exponential fog density by the rendering camera's altitude so the globe
+## is fully visible from space (fog off) but keeps atmospheric haze near ground.
+func _update_atmosphere() -> void:
+	if not USE_WORLD3D_GLOBE or _world_env == null:
+		return
+	var vp := get_viewport()
+	var cam: Camera3D = vp.get_camera_3d() if vp else null
+	if not is_instance_valid(cam):
+		return
+	# Flat-frame Y ≈ altitude ASL near the origin (good enough for a fog ramp).
+	var alt: float = cam.global_position.y
+	var t: float = clampf((FOG_ZERO_ALT_M - alt) / (FOG_ZERO_ALT_M - FOG_FULL_ALT_M), 0.0, 1.0)
+	_world_env.fog_density = _fog_base_density * t
+	# Disable fog ENTIRELY above the haze band: exponential fog still tints the
+	# infinite-depth background to the pale fog colour via fog_sky_affect /
+	# aerial-perspective even at density 0, which turns "black space" pale blue.
+	_world_env.fog_enabled = t > 0.0
+	# Darken the sky background toward black as we climb out of the atmosphere.
+	# Above the atmosphere switch to a solid black background (energy fading alone
+	# leaves a lit sky that never reaches true black); below, ramp the sky back in.
+	var ts: float = clampf((SKY_BLACK_ALT_M - alt) / (SKY_BLACK_ALT_M - SKY_FULL_ALT_M), 0.0, 1.0)
+	if ts <= 0.0:
+		if _world_env.background_mode != Environment.BG_COLOR:
+			_world_env.background_mode = Environment.BG_COLOR
+			_world_env.background_color = Color(0, 0, 0)
+	else:
+		if _world_env.background_mode != Environment.BG_SKY:
+			_world_env.background_mode = Environment.BG_SKY
+		_world_env.background_energy_multiplier = _bg_base_energy * ts
+	# High ambient (tuned for ground) over-brightens the globe and blooms into
+	# space; taper it toward a low value at altitude.
+	_world_env.ambient_light_energy = lerpf(AMBIENT_SPACE_ENERGY, _ambient_base_energy, ts)
+	# Glow blooms the sunlit globe across the (black) background, which reads as a
+	# bright grey haze from space. Fade it out with altitude and disable it fully
+	# above the atmosphere (the world3d demo uses no glow for its clean black space).
+	_world_env.glow_intensity = _glow_base_intensity * ts
+	_world_env.glow_enabled = ts > 0.02
+
+
+## Show the coarse global globe only above the detailed Swiss/BW patch, so its
+## ~2 km ETOPO surface doesn't poke through the fine scenery3d terrain at low
+## altitude. The globe's terrain queries are unaffected by visibility.
+func _update_globe_visibility() -> void:
+	if not USE_WORLD3D_GLOBE or not is_instance_valid(globe_node):
+		return
+	var vp := get_viewport()
+	var cam: Camera3D = vp.get_camera_3d() if vp else null
+	if not is_instance_valid(cam):
+		return
+	var want_visible := cam.global_position.y > GLOBE_SHOW_ALT_M
+	if globe_node.visible != want_visible:
+		globe_node.visible = want_visible
 
 
 # Called from _process on first frame to do actual terrain positioning
@@ -668,19 +965,21 @@ func _do_deferred_terrain_init() -> void:
 	ac_node.rotation.y = -deg_to_rad(target_heading)
 
 	var start_pos = Vector3(ac_node.global_position.x, 0, ac_node.global_position.z)
-	var api_height: float = _terrain_elevation_at(start_pos.x, start_pos.z)
-	# Tile not yet loaded — retry next frame rather than hand 0.0 to JSBSim.
+	# Spawn on the PRECISE scenery3d patch when available: wait for the Swiss/BW
+	# tile to stream in rather than initialising on the coarse globe and then
+	# jumping ~100+ m when the fine tile loads.
+	var api_height: float = _scenery_elevation_at(start_pos.x, start_pos.z)
 	if is_nan(api_height):
 		var waited := Time.get_ticks_msec() - _pending_terrain_init_start_msec
 		if waited < TERRAIN_INIT_FALLBACK_MSEC:
 			_pending_terrain_init = true
 			return
-		# Give up: the destination is outside any loaded terrain (typo in
-		# coordinates, partial scenery install, etc.). Initialise at 0 m ASL
-		# so the simulation can still start; the user will be airborne / over
-		# blank terrain instead of stuck on the loading screen forever.
-		push_warning("Terrain elevation unavailable at (%.0f, %.0f) after %.0fs — initialising JSBSim at fallback elevation 0 m ASL" % [start_pos.x, start_pos.z, waited / 1000.0])
-		api_height = 0.0
+		# No detailed patch here (outside CH/BW, or partial install): fall back to
+		# the coarse global globe so we can still spawn instead of hanging.
+		api_height = _globe_elevation_at(start_pos.x, start_pos.z)
+		if is_nan(api_height):
+			api_height = 0.0
+		push_warning("Scenery patch elevation unavailable at (%.0f, %.0f) after %.0fs — spawning on globe/fallback elevation %.0f m ASL" % [start_pos.x, start_pos.z, waited / 1000.0, api_height])
 	else:
 		print("=== Scenery3D get_elevation(%.1f, %.1f) = %.1f m ===" % [start_pos.x, start_pos.z, api_height])
 
@@ -803,6 +1102,11 @@ func _process(delta: float) -> void:
 	if _pending_terrain_init:
 		_do_deferred_terrain_init()
 
+	# Fade fog with camera altitude so the globe is clear from space.
+	_update_atmosphere()
+	# Hide the coarse globe under the detailed Swiss/BW patch.
+	_update_globe_visibility()
+
 	# While loading screen is active, update progress and wait for completion
 	if not _loading_done:
 		_update_loading_progress(false)  # initial startup loading
@@ -819,6 +1123,11 @@ func _process(delta: float) -> void:
 	if _welcome_screen and _welcome_screen.visible:
 		return
 	if _settings_screen and _settings_screen.visible:
+		return
+
+	# Cinematic space→spot zoom on entering fly mode (world3d globe).
+	if _intro_playing:
+		_update_intro_zoom(delta)
 		return
 
 	# Escape key: return to welcome screen
@@ -2061,7 +2370,14 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 	]
 	var total := samples.size()
 	var loaded := 0
-	if is_instance_valid(scenery3d_node) and scenery3d_node.has_method("get_elevation"):
+	if USE_WORLD3D_GLOBE:
+		# The globe has whole-planet elevation immediately, so terrain is always
+		# "loaded" — this makes the fly-to-airport screen dismiss promptly.
+		for s in samples:
+			var h: float = _terrain_elevation_at(s.x, s.y)
+			if not is_nan(h):
+				loaded += 1
+	elif is_instance_valid(scenery3d_node) and scenery3d_node.has_method("get_elevation"):
 		for s in samples:
 			var h: float = scenery3d_node.get_elevation(s.x, s.y)
 			if not is_nan(h) and h != 0.0:
@@ -2115,6 +2431,8 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 		if _loading_screen:
 			_loading_screen.hide_loading()
 		print("Fly loading complete — simulation active")
+		# Kick off the cinematic space→spot zoom over the globe.
+		_start_intro_zoom()
 	else:
 		# Startup loading complete — show welcome screen
 		_loading_done = true

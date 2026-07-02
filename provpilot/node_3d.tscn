@@ -132,3 +132,10 @@ mesh_pitch_deg = 90.0
 density_fraction = 0.5
 script = ExtResource("veg_setup")
 tree_scene_path = "res://Tree_lowpoly.glb"
+
+[node name="GlobeMount" type="Node3D" parent="." unique_id=610000001]
+
+[node name="Globe" type="W3DGlobe" parent="GlobeMount" unique_id=610000002]
+faces_path = "res://faces"
+vertical_exaggeration = 1.0
+clamp_sea_level = true
