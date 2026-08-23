@@ -143,6 +143,11 @@ the dependency chain is what makes upgrades fail in subtle, runtime-only ways:
    `~/Library/Logs/DiagnosticReports/ProVPilot-*.ips` for crashes.
 8. **Windows** — `scripts/build_windows.ps1` needs the same JSBSim-lib and
    extension rebuilds against the new godot-cpp.
+   
+9. **Test run from Terminal**
+   In the project home call ./godot/bin/godot.macos.editor.double.arm64 provpilot/project.godot
+
+
 
 > A blank Finder icon after repeated rebuilds is a stale LaunchServices cache,
 > **not** a bundle defect — `lsregister -f <app>` + `killall Dock`, or
