@@ -4,6 +4,7 @@
 #include <godot_cpp/godot.hpp>
 #include "jsbgodot.h"
 #include "geo.h"
+#include "control_surfaces.h"
 
 using namespace godot;
 using namespace jsbgodot;
@@ -16,6 +17,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	}
 	ClassDB::register_class<JSBGodot>();
 	ClassDB::register_class<Geo>();
+	ClassDB::register_class<ControlSurfaces>();
 }
 
 void uninitialize_gojsb_module(ModuleInitializationLevel p_level)
