@@ -701,7 +701,7 @@ func _setup_world3d_globe() -> void:
 		globe_node = null
 		return
 	_w3d_coords = ClassDB.instantiate("W3DCoords")
-	var ll: Vector2 = _lv95_to_wgs84(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
+	var ll: Vector2 = Geo.lv95_to_wgs84(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
 	var origin_lat: float = ll.x
 	var origin_lon: float = ll.y
 	var origin_h: float = 0.0
@@ -732,18 +732,6 @@ func _setup_world3d_globe() -> void:
 		_glow_base_intensity = _world_env.glow_intensity
 	print("World3D globe mounted: LV95 %d/%d -> lat=%.5f lon=%.5f" % [
 		int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N), origin_lat, origin_lon])
-
-
-## Swiss LV95 (CH1903+) easting/northing (metres) -> WGS84 (lat, lon) degrees.
-## Standard swisstopo approximation (sub-metre accurate over Switzerland).
-func _lv95_to_wgs84(e: float, n: float) -> Vector2:
-	var y: float = (e - 2600000.0) / 1000000.0
-	var x: float = (n - 1200000.0) / 1000000.0
-	var lon: float = 2.6779094 + 4.728982 * y + 0.791484 * y * x + 0.1306 * y * x * x - 0.0436 * y * y * y
-	var lat: float = 16.9023892 + 3.238272 * x - 0.270978 * y * y - 0.002528 * x * x - 0.0447 * y * y * x - 0.0140 * x * x * x
-	lon = lon * 100.0 / 36.0
-	lat = lat * 100.0 / 36.0
-	return Vector2(lat, lon)
 
 
 ## Begin the cinematic space→spot zoom (called when fly-loading completes).
@@ -1850,36 +1838,6 @@ func animate_control_surfaces() -> void:
 		flap_lever_node.transform = flap_lever_base_transform
 		var y_offset := -float(flap_position) * FLAP_LEVER_TRAVEL
 		flap_lever_node.translate_object_local(Vector3(0, y_offset, 0))
-
-
-# Convert Swiss LV95 coordinates to WGS84 latitude/longitude
-# Based on the approximate formulas from swisstopo
-# Returns Vector2(latitude, longitude) in degrees
-func lv95_to_wgs84(easting: float, northing: float) -> Vector2:
-	# Convert to auxiliary values (shift origin and scale)
-	var y_aux = (easting - 2600000.0) / 1000000.0
-	var x_aux = (northing - 1200000.0) / 1000000.0
-	
-	# Calculate latitude in 10000" units
-	var lat_aux = 16.9023892 \
-		+ 3.238272 * x_aux \
-		- 0.270978 * y_aux * y_aux \
-		- 0.002528 * x_aux * x_aux \
-		- 0.0447 * y_aux * y_aux * x_aux \
-		- 0.0140 * x_aux * x_aux * x_aux
-	
-	# Calculate longitude in 10000" units
-	var lon_aux = 2.6779094 \
-		+ 4.728982 * y_aux \
-		+ 0.791484 * y_aux * x_aux \
-		+ 0.1306 * y_aux * x_aux * x_aux \
-		- 0.0436 * y_aux * y_aux * y_aux
-	
-	# Convert to degrees
-	var latitude = lat_aux * 100.0 / 36.0
-	var longitude = lon_aux * 100.0 / 36.0
-	
-	return Vector2(latitude, longitude)
 
 
 # Format Swiss coordinate with apostrophe thousand separators

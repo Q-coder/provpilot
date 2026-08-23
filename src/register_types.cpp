@@ -3,6 +3,7 @@
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/godot.hpp>
 #include "jsbgodot.h"
+#include "geo.h"
 
 using namespace godot;
 using namespace jsbgodot;
@@ -14,6 +15,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 		return;
 	}
 	ClassDB::register_class<JSBGodot>();
+	ClassDB::register_class<Geo>();
 }
 
 void uninitialize_gojsb_module(ModuleInitializationLevel p_level)
