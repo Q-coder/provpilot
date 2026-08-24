@@ -81,6 +81,14 @@ var _control_surfaces := ControlSurfaces.new()
 # the rig; camera_mode/active_camera stay in sync for lever raycasts.
 var _camera_rig := CameraRig.new()
 
+# Interactive cockpit levers/switches (mixture, throttle, magneto, flaps, gear)
+# live in the C++ CockpitControls module (src/cockpit_controls.cpp). GDScript
+# resolves the lever nodes + collision bodies from aircraft.cfg [levers],
+# registers them (base transforms captured at registration), pushes the cfg
+# flap detents / gear flag, and drives per-frame updates from _process. Mouse
+# dragging stays here in _unhandled_input and calls into the module.
+var _cockpit_controls := CockpitControls.new()
+
 # Rudder indicator pivot tweak (debug drag on screen, not part of the animator)
 var rudder_pivot_offset: Vector3 = Vector3(0, 0, 0)
 
@@ -97,8 +105,8 @@ var PROPELLER_DISC_OFFSET: Vector3 = Vector3.ZERO  # Disc translation tweak in p
 # frame) so the whole leg sweeps up as one unit, or drives an imported
 # retract/extend clip by seeking instead.
 var _gear_retractable: bool = false
-var _gear_down: bool = true             # Commanded state (true = extended)
-var _gear_key_held: bool = false        # Debounce for the G key
+# The commanded gear state + G-key debounce live in the C++ CockpitControls
+# module (its reset() mirrors JSBSim's gear-cmd back to fully down).
 # Optional imported gear retract/extend clip name (cfg [gear] animation).
 var _gear_anim_name: String = ""
 
@@ -182,63 +190,41 @@ var _first_flight: bool = true
 var _first_flight_target: Dictionary = {}  # {swiss_e, swiss_n, heading_deg}
 
 # ── Interactive cockpit mixture lever ──────────────────────────────────────
+# Value, base transform, key input + JSBSim writes live in CockpitControls.
 var mixture_lever_node: Node3D           # The lever mesh node
 var mixture_lever_body: StaticBody3D     # Runtime physics body for raycasting
-var mixture_lever_base_transform: Transform3D  # Original transform at mixture=0 (cutoff/idle)
-var mixture_value: float = 1.0           # 0.0 = cutoff, 1.0 = full rich
 var _mixture_dragging: bool = false      # True while mouse is dragging the lever
 var _mixture_drag_start_y: float = 0.0   # Screen Y at drag start
 var _mixture_drag_start_value: float = 0.0  # Mixture value at drag start
-var _mixture_key_held: bool = false          # Debounce for M key
-const MIXTURE_LEVER_TRAVEL: float = 0.05  # Lever travel in local units (≈2 cm)
 const MIXTURE_LEVER_COLLISION_LAYER: int = 16  # Physics layer for lever picking
-const MIXTURE_KEY_STEP: float = 0.05  # Mixture change per key press (5%)
-var _mixture_debug_visible: bool = false  # Show collision box for debugging
 
 # ── Interactive cockpit throttle lever ─────────────────────────────────────
+# Throttle value lives in JSBSim; base transform + key input live in
+# CockpitControls (it syncs the lever visual from the FDM every frame).
 var throttle_lever_node: Node3D
 var throttle_lever_body: StaticBody3D
-var throttle_lever_base_transform: Transform3D  # Original transform at throttle=0 (idle)
 var _throttle_dragging: bool = false
 var _throttle_drag_start_y: float = 0.0
 var _throttle_drag_start_value: float = 0.0
-var _throttle_key_held: bool = false
-const THROTTLE_LEVER_TRAVEL: float = 0.05  # Same travel as mixture lever
 const THROTTLE_LEVER_COLLISION_LAYER: int = 32  # Separate physics layer
-const THROTTLE_KEY_STEP: float = 0.05  # 5% per key press
-var _throttle_debug_visible: bool = false
 
 # ── Interactive cockpit magneto switch ─────────────────────────────────────
+# Position, base transform + key input live in CockpitControls.
 var magneto_switch_node: Node3D            # The switch mesh node
 var magneto_switch_body: StaticBody3D      # Runtime physics body for raycasting
-var magneto_switch_base_transform: Transform3D  # Original transform (BOTH position)
-var magneto_position: int = 3              # 0=OFF, 1=R, 2=L, 3=BOTH, 4=START
 var _magneto_dragging: bool = false
 var _magneto_drag_start_x: float = 0.0    # Screen X at drag start
 var _magneto_drag_start_pos: int = 3       # Position at drag start
-var _magneto_key_held: bool = false
-var _magneto_last_printed_pos: int = -1  # Dedup prints
 const MAGNETO_SWITCH_COLLISION_LAYER: int = 64  # Separate physics layer
-const MAGNETO_STEP_ANGLE: float = 30.0     # Degrees per switch position
-const MAGNETO_DEFAULT_POSITION: int = 3    # Switch position the Blender rest pose represents (BOTH)
-const MAGNETO_BASE_POSITION: float = 6.5   # Legacy: model default orientation (between R and L)
-# Angle offsets relative to base: OFF=-45, R=-15, L=+15, BOTH=+45, START=+75
-const MAGNETO_ANGLE_OFFSET: float = -95.0  # Angle of pos 0 (OFF) relative to base
 
 # ── Interactive cockpit flap lever ─────────────────────────────────────────
+# Position, base transform, detent table + key input live in CockpitControls.
 var flap_lever_node: Node3D              # The lever mesh node
 var flap_lever_body: StaticBody3D        # Runtime physics body for raycasting
-var flap_lever_base_transform: Transform3D  # Original transform at flaps=0 (UP)
-var flap_position: int = 0               # 0=UP, 1=10°, 2=20°, 3=30°
 var _flap_dragging: bool = false
 var _flap_drag_start_y: float = 0.0      # Screen Y at drag start
 var _flap_drag_start_pos: int = 0        # Position at drag start
-var _flap_key_held: bool = false
-var _flap_last_printed_pos: int = -1     # Dedup prints
 const FLAP_LEVER_COLLISION_LAYER: int = 128  # Separate physics layer
-const FLAP_LEVER_TRAVEL: float = -0.01    # Total lever travel along Y per notch
-var FLAP_POSITIONS: Array = [0.0, 0.333, 0.667, 1.0]  # JSBSim flap-cmd-norm values (cfg flaps.positions)
-var FLAP_NAMES: Array = ["UP", "10°", "20°", "30°"]  # HUD labels (cfg flaps.names)
 
 # ── Engine sound ───────────────────────────────────────────────────────────
 var _engine_audio: AudioStreamPlayer = null
@@ -1114,30 +1100,16 @@ func _process(delta: float) -> void:
 	# (C++ CameraRig; the active joystick index comes from JoystickConfig).
 	_camera_rig.update(delta, JoystickConfig.get_active_device())
 	
-	# Mixture lever keyboard control: M = richer, Shift+M = leaner
-	_handle_mixture_keys()
-	
-	# Throttle lever keyboard control: T = increase, Shift+T = decrease
-	_handle_throttle_keys()
-	
-	# Magneto switch keyboard control: I = clockwise, Shift+I = counterclockwise
-	_handle_magneto_keys()
-	
-	# Flap lever keyboard control: F = flaps down, Shift+F = flaps up
-	_handle_flap_keys()
-	
-	# Landing gear toggle: G raises/lowers retractable gear
-	_handle_gear_key()
-	
+	# Cockpit levers/switches (C++ module): keyboard control, lever visual sync
+	# and JSBSim writes for mixture / throttle / magneto / flaps / gear.
+	_cockpit_controls.update(jsb_node, _control_surfaces)
+
 	# Animate control surfaces, propeller and landing gear (C++ module).
 	# Skipped while jsb_node is null, exactly as before; engine sound follows.
 	if jsb_node:
 		_control_surfaces.update(jsb_node, delta)
 		_update_engine_sound()
 
-	# Animate cockpit lever visuals (kept in GDScript next to their input code)
-	_update_lever_visuals()
-	
 	# Update terrain elevation for JSBSim ground collision
 	_update_terrain_elevation()
 	
@@ -1363,49 +1335,6 @@ func handle_pivot_adjustment() -> void:
 	if changed:
 		print("Pivot offset: ", rudder_pivot_offset)
 
-# Animate the interactive cockpit levers/switches (kept in GDScript next to
-# their input handling; the airframe control surfaces, propeller and landing
-# gear are animated by the C++ ControlSurfaces module).
-func _update_lever_visuals() -> void:
-	# Animate mixture lever position (reflects current mixture_value)
-	# Base transform = Blender rest pose for mixture = 0.0 (cutoff, pulled out).
-	# Push lever forward along local -Z as mixture increases (same as throttle).
-	if mixture_lever_node and not _mixture_dragging:
-		mixture_lever_node.transform = mixture_lever_base_transform
-		var travel_offset := -mixture_value * MIXTURE_LEVER_TRAVEL
-		mixture_lever_node.translate_object_local(Vector3(0, 0, travel_offset))
-	
-	# Animate throttle lever position (reads current throttle from JSBSim)
-	# Base transform = idle (Blender default); push in (-Z) for full throttle
-	if throttle_lever_node and not _throttle_dragging and jsb_node:
-		var cur_throttle := float(jsb_node.get_input_throttle())
-		throttle_lever_node.transform = throttle_lever_base_transform
-		var t_offset := -cur_throttle * THROTTLE_LEVER_TRAVEL
-		throttle_lever_node.translate_object_local(Vector3(0, 0, t_offset))
-	
-	# Animate magneto switch rotation (rotates around Z axis)
-	# Base transform = Blender rest pose for the BOTH position (MAGNETO_DEFAULT_POSITION).
-	if magneto_switch_node and not _magneto_dragging:
-		magneto_switch_node.transform = magneto_switch_base_transform
-		var angle_offset := float(magneto_position - MAGNETO_DEFAULT_POSITION) * MAGNETO_STEP_ANGLE
-		magneto_switch_node.rotate_object_local(Vector3.FORWARD, deg_to_rad(angle_offset))
-	
-	# Animate flap lever position (slides along Y axis)
-	# Base transform = Blender default (flaps UP). Lever moves down (-Y) for more flaps.
-	# Sync flap_position from the commanded value so gamepad changes move the lever.
-	if flap_lever_node and not _flap_dragging:
-		if jsb_node:
-			var cmd_pos := _flaps_norm_to_position(jsb_node.get_flap_cmd())
-			if cmd_pos != flap_position:
-				flap_position = cmd_pos
-				if flap_position != _flap_last_printed_pos:
-					_flap_last_printed_pos = flap_position
-					print("Flaps: %s" % FLAP_NAMES[flap_position])
-		flap_lever_node.transform = flap_lever_base_transform
-		var y_offset := -float(flap_position) * FLAP_LEVER_TRAVEL
-		flap_lever_node.translate_object_local(Vector3(0, y_offset, 0))
-
-
 # Format Swiss coordinate with apostrophe thousand separators
 # e.g., 2681931 -> "2'681'931"
 func format_swiss_coord(value: float) -> String:
@@ -1467,16 +1396,17 @@ func _load_aircraft_config() -> void:
 
 	# Retractable landing gear.
 	_gear_retractable = cfg.get_bool("gear", "retractable", false)
+	_cockpit_controls.set_gear_retractable(_gear_retractable)
 	_control_surfaces.set_gear_retract_seconds(cfg.get_float("gear", "retract_seconds", 4.0))
 	_gear_anim_name = cfg.get_string("gear", "animation", "")
 
-	# Flap detents.
-	var positions := cfg.get_float_array("flaps", "positions", FLAP_POSITIONS)
+	# Flap detents (cockpit lever notches; the C++ module owns the state).
+	var positions := cfg.get_float_array("flaps", "positions", [0.0, 0.333, 0.667, 1.0])
 	if not positions.is_empty():
-		FLAP_POSITIONS = positions
-	var names := cfg.get_string_array("flaps", "names", FLAP_NAMES)
+		_cockpit_controls.set_flap_positions(positions)
+	var names := cfg.get_string_array("flaps", "names", ["UP", "10°", "20°", "30°"])
 	if not names.is_empty():
-		FLAP_NAMES = names
+		_cockpit_controls.set_flap_names(names)
 
 	# Propeller visuals: blur thresholds + spin axis go to the C++ animator;
 	# disc size/offset stay here because the blur-disc mesh is built in GDScript.
@@ -1576,6 +1506,7 @@ func _resolve_aircraft_nodes() -> void:
 	# The model loader frees the previous GLB subtree synchronously on an
 	# airframe swap, so drop every registered pointer before re-resolving.
 	_control_surfaces.reset()
+	_cockpit_controls.reset()
 
 	var rudder_node := _resolve_surface("rudder")
 	if rudder_node:
@@ -1673,13 +1604,14 @@ func _resolve_aircraft_nodes() -> void:
 	_resolve_gear_legs()
 
 	# Interactive cockpit levers — located by name (find_child) under the model
-	# root. Names + fallbacks come from aircraft.cfg [levers].
+	# root. Names + fallbacks come from aircraft.cfg [levers]. Base transforms,
+	# key input and JSBSim writes live in the C++ CockpitControls module;
+	# GDScript keeps node resolution, collision bodies and mouse dragging.
 	var c172_root = get_node_or_null(NodePath(_model_root_path))
 	if c172_root:
 		mixture_lever_node = _resolve_lever(c172_root, "mixture")
 		if mixture_lever_node:
 			print("Mixture lever node found: ", mixture_lever_node.name)
-			mixture_lever_base_transform = mixture_lever_node.transform
 			_setup_mixture_lever_collision()
 		else:
 			print("WARNING: Mixture lever node not found")
@@ -1687,7 +1619,6 @@ func _resolve_aircraft_nodes() -> void:
 		throttle_lever_node = _resolve_lever(c172_root, "throttle")
 		if throttle_lever_node:
 			print("Throttle lever node found: ", throttle_lever_node.name)
-			throttle_lever_base_transform = throttle_lever_node.transform
 			_setup_throttle_lever_collision()
 		else:
 			print("WARNING: Throttle lever node not found")
@@ -1695,23 +1626,27 @@ func _resolve_aircraft_nodes() -> void:
 		magneto_switch_node = _resolve_lever(c172_root, "magneto")
 		if magneto_switch_node:
 			print("Magneto switch node found: ", magneto_switch_node.name)
-			magneto_switch_base_transform = magneto_switch_node.transform
 			_setup_magneto_switch_collision()
-			_apply_magneto_position()
 		else:
 			print("WARNING: Magneto switch node not found")
 
 		flap_lever_node = _resolve_lever(c172_root, "flap_lever")
 		if flap_lever_node:
 			print("Flap lever node found: ", flap_lever_node.name)
-			flap_lever_base_transform = flap_lever_node.transform
 			_setup_flap_lever_collision()
-			if jsb_node:
-				var cur_flaps := float(jsb_node.get_flaps())
-				flap_position = _flaps_norm_to_position(cur_flaps)
-			_apply_flap_position()
 		else:
 			print("WARNING: Flap lever node not found")
+
+		# Register with the C++ module (captures base transforms), then apply
+		# the initial states exactly as before.
+		_cockpit_controls.register_levers(mixture_lever_node, throttle_lever_node, magneto_switch_node, flap_lever_node)
+		_cockpit_controls.register_debug_bodies(mixture_lever_body, throttle_lever_body)
+		if mixture_lever_node:
+			_cockpit_controls.apply_mixture_value(jsb_node)
+		if magneto_switch_node:
+			_cockpit_controls.apply_magneto_position(jsb_node)
+		if flap_lever_node:
+			_cockpit_controls.sync_flaps_from_jsb(jsb_node)
 
 
 # Resolves an animated control-surface mesh from aircraft.cfg [animation].
@@ -1757,9 +1692,8 @@ func _parse_axis(name: String, fallback: Vector3) -> Vector3:
 #   <name>_retract_deg  sweep angle for a full retraction (sign sets direction)
 # Wheel + strut rotate rigidly about the shared pivot so the leg moves as a unit.
 func _resolve_gear_legs() -> void:
-	# C++ side resets gear state (fully down) and clears previously registered
-	# legs/animation player as part of reset(), called from _resolve_aircraft_nodes.
-	_gear_down = true
+	# Both C++ modules (ControlSurfaces + CockpitControls) reset their gear
+	# state to fully down as part of reset(), called from _resolve_aircraft_nodes.
 	if _aircraft_cfg == null or not _gear_retractable:
 		return
 	var axis_map := {"x": Vector3.RIGHT, "y": Vector3.UP, "z": Vector3.BACK}
@@ -2444,9 +2378,8 @@ func _setup_mixture_lever_collision() -> void:
 	
 	mixture_lever_body.add_child(shape)
 	mixture_lever_node.add_child(mixture_lever_body)
-	
-	# Also send initial mixture value to JSBSim
-	_apply_mixture_value()
+	# Initial mixture value is applied in _resolve_aircraft_nodes after the
+	# lever nodes are registered with the C++ module (base transform needed).
 
 
 ## Create collision body on the throttle lever for mouse picking.
@@ -2464,139 +2397,6 @@ func _setup_throttle_lever_collision() -> void:
 	throttle_lever_node.add_child(throttle_lever_body)
 
 
-## Handle M / Shift+M keyboard input for mixture control.
-## Shift+Ctrl+M toggles debug visibility of the collision box.
-func _handle_mixture_keys() -> void:
-	if Input.is_action_just_pressed("ui_text_scroll_down"):
-		# Avoid conflicts — only use raw key checks
-		pass
-	
-	if Input.is_key_pressed(KEY_M):
-		# Debounce: only act on the frame the key is first pressed
-		pass
-	
-	# Use is_physical_key_pressed for single-fire via just_pressed workaround
-	if not Input.is_key_pressed(KEY_M):
-		_mixture_key_held = false
-		return
-	
-	if _mixture_key_held:
-		return  # Wait for key release before next step
-	_mixture_key_held = true
-	
-	# Shift+Ctrl+M = toggle collision debug visibility
-	if Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_CTRL):
-		_toggle_mixture_debug()
-		return
-	
-	var old_value := mixture_value
-	if Input.is_key_pressed(KEY_SHIFT):
-		# Shift+M = decrease mixture (leaner)
-		mixture_value = clampf(mixture_value - MIXTURE_KEY_STEP, 0.0, 1.0)
-	else:
-		# M = increase mixture (richer)
-		mixture_value = clampf(mixture_value + MIXTURE_KEY_STEP, 0.0, 1.0)
-	
-	if mixture_value != old_value:
-		_apply_mixture_value()
-		print("Mixture: %.0f%%" % (mixture_value * 100.0))
-
-
-## Handle T / Shift+T keyboard input for throttle control.
-## Shift+Ctrl+T toggles debug visibility of the throttle collision box.
-func _handle_throttle_keys() -> void:
-	if not Input.is_key_pressed(KEY_T):
-		_throttle_key_held = false
-		return
-	
-	if _throttle_key_held:
-		return
-	_throttle_key_held = true
-	
-	# Shift+Ctrl+T = toggle collision debug visibility
-	if Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_CTRL):
-		_toggle_throttle_debug()
-		return
-	
-	if not jsb_node:
-		return
-	
-	var cur := float(jsb_node.get_input_throttle())
-	if Input.is_key_pressed(KEY_SHIFT):
-		cur = clampf(cur - THROTTLE_KEY_STEP, 0.0, 1.0)
-	else:
-		cur = clampf(cur + THROTTLE_KEY_STEP, 0.0, 1.0)
-	
-	jsb_node.set_input_throttle(cur)
-	print("Throttle: %.0f%%" % (cur * 100.0))
-
-
-## Toggle debug visualization of the mixture lever collision area.
-func _toggle_mixture_debug() -> void:
-	_mixture_debug_visible = not _mixture_debug_visible
-	if not mixture_lever_body:
-		print("No mixture lever body to debug")
-		return
-	
-	# Find or create the debug mesh
-	var debug_mesh := mixture_lever_body.get_node_or_null("DebugMesh") as MeshInstance3D
-	if _mixture_debug_visible:
-		if not debug_mesh:
-			debug_mesh = MeshInstance3D.new()
-			debug_mesh.name = "DebugMesh"
-			var box := BoxMesh.new()
-			box.size = Vector3(0.02, 0.02, 0.04)  # Same as collision shape
-			debug_mesh.mesh = box
-			var mat := StandardMaterial3D.new()
-			mat.albedo_color = Color(1.0, 0.0, 0.0, 0.3)
-			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			debug_mesh.material_override = mat
-			mixture_lever_body.add_child(debug_mesh)
-		debug_mesh.visible = true
-		print("Mixture lever collision box: VISIBLE")
-		print("  Global position: ", mixture_lever_body.global_position)
-		print("  Lever node global pos: ", mixture_lever_node.global_position)
-	else:
-		if debug_mesh:
-			debug_mesh.visible = false
-		print("Mixture lever collision box: HIDDEN")
-
-
-## Toggle debug visualization of the throttle lever collision area.
-func _toggle_throttle_debug() -> void:
-	_throttle_debug_visible = not _throttle_debug_visible
-	if not throttle_lever_body:
-		print("No throttle lever body to debug")
-		return
-	
-	var debug_mesh := throttle_lever_body.get_node_or_null("DebugMesh") as MeshInstance3D
-	if _throttle_debug_visible:
-		if not debug_mesh:
-			debug_mesh = MeshInstance3D.new()
-			debug_mesh.name = "DebugMesh"
-			var box := BoxMesh.new()
-			box.size = Vector3(0.02, 0.02, 0.04)
-			debug_mesh.mesh = box
-			var mat := StandardMaterial3D.new()
-			mat.albedo_color = Color(0.0, 0.0, 1.0, 0.3)
-			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			debug_mesh.material_override = mat
-			throttle_lever_body.add_child(debug_mesh)
-		debug_mesh.visible = true
-		print("Throttle lever collision box: VISIBLE")
-		print("  Global position: ", throttle_lever_body.global_position)
-	else:
-		if debug_mesh:
-			debug_mesh.visible = false
-		print("Throttle lever collision box: HIDDEN")
-
-
-## Handle mouse input for cockpit lever interaction.
-## Called from _unhandled_input so UI elements get priority.
 func _unhandled_input(event: InputEvent) -> void:
 	# Only interact in cockpit camera mode
 	if camera_mode != CameraMode.COCKPIT:
@@ -2619,41 +2419,48 @@ func _unhandled_input(event: InputEvent) -> void:
 				# Try mixture lever first, then throttle, then magneto switch
 				if mixture_lever_node and _raycast_hits_body(mb.position, mixture_lever_body, MIXTURE_LEVER_COLLISION_LAYER):
 					_mixture_dragging = true
+					_cockpit_controls.set_dragging(CockpitControls.LEVER_MIXTURE, true)
 					_mixture_drag_start_y = mb.position.y
-					_mixture_drag_start_value = mixture_value
+					_mixture_drag_start_value = _cockpit_controls.get_mixture_value()
 					get_viewport().set_input_as_handled()
 				elif throttle_lever_node and jsb_node and _raycast_hits_body(mb.position, throttle_lever_body, THROTTLE_LEVER_COLLISION_LAYER):
 					_throttle_dragging = true
+					_cockpit_controls.set_dragging(CockpitControls.LEVER_THROTTLE, true)
 					_throttle_drag_start_y = mb.position.y
 					_throttle_drag_start_value = float(jsb_node.get_input_throttle())
 					get_viewport().set_input_as_handled()
 				elif magneto_switch_node and _raycast_hits_body(mb.position, magneto_switch_body, MAGNETO_SWITCH_COLLISION_LAYER):
 					_magneto_dragging = true
+					_cockpit_controls.set_dragging(CockpitControls.LEVER_MAGNETO, true)
 					_magneto_drag_start_x = mb.position.x
-					_magneto_drag_start_pos = magneto_position
+					_magneto_drag_start_pos = _cockpit_controls.get_magneto_position()
 					get_viewport().set_input_as_handled()
 				elif flap_lever_node and _raycast_hits_body(mb.position, flap_lever_body, FLAP_LEVER_COLLISION_LAYER):
 					_flap_dragging = true
+					_cockpit_controls.set_dragging(CockpitControls.LEVER_FLAP, true)
 					_flap_drag_start_y = mb.position.y
-					_flap_drag_start_pos = flap_position
+					_flap_drag_start_pos = _cockpit_controls.get_flap_position()
 					get_viewport().set_input_as_handled()
 			else:
 				if _mixture_dragging:
 					_mixture_dragging = false
+					_cockpit_controls.set_dragging(CockpitControls.LEVER_MIXTURE, false)
 					get_viewport().set_input_as_handled()
 				if _throttle_dragging:
 					_throttle_dragging = false
+					_cockpit_controls.set_dragging(CockpitControls.LEVER_THROTTLE, false)
 					get_viewport().set_input_as_handled()
 				if _magneto_dragging:
 					_magneto_dragging = false
+					_cockpit_controls.set_dragging(CockpitControls.LEVER_MAGNETO, false)
 					# Spring back from START on mouse release
-					if magneto_position == 4:
-						magneto_position = 3
-						_apply_magneto_position()
+					if _cockpit_controls.get_magneto_position() == 4:
+						_cockpit_controls.set_magneto_position(3, jsb_node)
 						print("Magneto: BOTH")
 					get_viewport().set_input_as_handled()
 				if _flap_dragging:
 					_flap_dragging = false
+					_cockpit_controls.set_dragging(CockpitControls.LEVER_FLAP, false)
 					get_viewport().set_input_as_handled()
 	
 	elif event is InputEventMouseMotion:
@@ -2661,38 +2468,32 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _mixture_dragging:
 			var delta_y := _mixture_drag_start_y - mm.position.y
 			var delta_mixture := delta_y / 200.0
-			mixture_value = clampf(_mixture_drag_start_value + delta_mixture, 0.0, 1.0)
-			_apply_mixture_value()
+			var new_value := clampf(_mixture_drag_start_value + delta_mixture, 0.0, 1.0)
+			_cockpit_controls.set_mixture_value(new_value, jsb_node)
 			get_viewport().set_input_as_handled()
 		elif _throttle_dragging and jsb_node:
 			var delta_y := _throttle_drag_start_y - mm.position.y
 			var delta_throttle := delta_y / 200.0
 			var new_throttle := clampf(_throttle_drag_start_value + delta_throttle, 0.0, 1.0)
 			jsb_node.set_input_throttle(new_throttle)
-			# Update lever visual immediately during drag
-			throttle_lever_node.transform = throttle_lever_base_transform
-			throttle_lever_node.translate_object_local(Vector3(0, 0, -new_throttle * THROTTLE_LEVER_TRAVEL))
+			# Update lever visual immediately during drag (C++ owns the node)
+			_cockpit_controls.apply_throttle_visual(new_throttle)
 			get_viewport().set_input_as_handled()
 		elif _magneto_dragging:
 			# Drag right = clockwise (toward START), left = counterclockwise (toward OFF)
 			var delta_x := mm.position.x - _magneto_drag_start_x
 			var steps := int(delta_x / 40.0)  # 40px per position step
 			var new_pos := clampi(_magneto_drag_start_pos + steps, 0, 4)
-			if new_pos != magneto_position:
-				magneto_position = new_pos
-				_apply_magneto_position()
+			if new_pos != _cockpit_controls.get_magneto_position():
+				_cockpit_controls.set_magneto_position(new_pos, jsb_node)
 			get_viewport().set_input_as_handled()
 		elif _flap_dragging:
 			# Drag down = more flaps, up = less flaps (vertical, like a pull-down lever)
 			var delta_y := mm.position.y - _flap_drag_start_y
 			var steps := int(delta_y / 40.0)  # 40px per notch
 			var new_pos := clampi(_flap_drag_start_pos + steps, 0, 3)
-			if new_pos != flap_position:
-				flap_position = new_pos
-				_apply_flap_position()
-			# Update lever visual immediately during drag
-			flap_lever_node.transform = flap_lever_base_transform
-			flap_lever_node.translate_object_local(Vector3(0, -float(flap_position) * FLAP_LEVER_TRAVEL, 0))
+			if new_pos != _cockpit_controls.get_flap_position():
+				_cockpit_controls.set_flap_position(new_pos, jsb_node)
 			get_viewport().set_input_as_handled()
 
 
@@ -2719,22 +2520,6 @@ func _raycast_hits_body(screen_pos: Vector2, body: StaticBody3D, layer: int) -> 
 	return result["collider"] == body
 
 
-## Apply the current mixture_value to both the lever animation and JSBSim.
-func _apply_mixture_value() -> void:
-	# The captured base_transform is the Blender rest pose, which represents
-	# mixture = 0.0 (cutoff, lever pulled out). Push the lever forward along
-	# local -Z as the pilot enriches the mixture (same convention as throttle).
-	if mixture_lever_node:
-		mixture_lever_node.transform = mixture_lever_base_transform
-		var travel_offset := -mixture_value * MIXTURE_LEVER_TRAVEL
-		mixture_lever_node.translate_object_local(Vector3(0, 0, travel_offset))
-	
-	# Send to JSBSim
-	if jsb_node and jsb_node.has_method("set_input_mixture"):
-		jsb_node.set_input_mixture(mixture_value)
-
-
-## Create collision body on the magneto switch for mouse picking.
 func _setup_magneto_switch_collision() -> void:
 	magneto_switch_body = StaticBody3D.new()
 	magneto_switch_body.collision_layer = MAGNETO_SWITCH_COLLISION_LAYER
@@ -2750,54 +2535,6 @@ func _setup_magneto_switch_collision() -> void:
 	magneto_switch_node.add_child(magneto_switch_body)
 
 
-## Handle I / Shift+I keyboard input for magneto switch control.
-## I past BOTH = momentary START (springs back to BOTH on release).
-const MAGNETO_NAMES: Array = ["OFF", "R", "L", "BOTH", "START"]
-
-func _handle_magneto_keys() -> void:
-	# I / Shift+I = step through positions (with debounce)
-	if not Input.is_key_pressed(KEY_I):
-		_magneto_key_held = false
-		# If at START and I released, spring back to BOTH (but not during mouse drag)
-		if magneto_position == 4 and not _magneto_dragging:
-			magneto_position = 3
-			_apply_magneto_position()
-		return
-	
-	if _magneto_key_held:
-		return
-	_magneto_key_held = true
-	
-	var old_pos := magneto_position
-	if Input.is_key_pressed(KEY_SHIFT):
-		magneto_position = maxi(magneto_position - 1, 0)
-	else:
-		magneto_position = mini(magneto_position + 1, 4)  # Allow going to START (4)
-	
-	if magneto_position != old_pos:
-		_apply_magneto_position()
-
-
-## Apply current magneto position: update visual + send to JSBSim.
-func _apply_magneto_position() -> void:
-	# Print only on actual change
-	if magneto_position != _magneto_last_printed_pos:
-		_magneto_last_printed_pos = magneto_position
-		print("Magneto: %s" % MAGNETO_NAMES[magneto_position])
-	
-	# The captured base_transform is the Blender rest pose at the default
-	# startup position (BOTH = 3). Offsets are measured relative to that.
-	if magneto_switch_node:
-		magneto_switch_node.transform = magneto_switch_base_transform
-		var angle_offset := float(magneto_position - MAGNETO_DEFAULT_POSITION) * MAGNETO_STEP_ANGLE
-		magneto_switch_node.rotate_object_local(Vector3.FORWARD, deg_to_rad(angle_offset))
-	
-	# Send to JSBSim
-	if jsb_node and jsb_node.has_method("set_input_magnetos"):
-		jsb_node.set_input_magnetos(magneto_position)
-
-
-## Create collision body on the flap lever for mouse picking.
 func _setup_flap_lever_collision() -> void:
 	flap_lever_body = StaticBody3D.new()
 	flap_lever_body.collision_layer = FLAP_LEVER_COLLISION_LAYER
@@ -2812,68 +2549,3 @@ func _setup_flap_lever_collision() -> void:
 	flap_lever_node.add_child(flap_lever_body)
 
 
-## Handle F / Shift+F keyboard input for flap lever control.
-func _handle_flap_keys() -> void:
-	if not Input.is_key_pressed(KEY_F):
-		_flap_key_held = false
-		return
-	
-	if _flap_key_held:
-		return
-	_flap_key_held = true
-	
-	var old_pos := flap_position
-	if Input.is_key_pressed(KEY_SHIFT):
-		flap_position = maxi(flap_position - 1, 0)  # Shift+F = flaps up
-	else:
-		flap_position = mini(flap_position + 1, 3)  # F = flaps down
-	
-	if flap_position != old_pos:
-		_apply_flap_position()
-
-
-## Handle G keyboard input: toggle retractable landing gear up/down.
-func _handle_gear_key() -> void:
-	if not _gear_retractable:
-		return
-	if not Input.is_key_pressed(KEY_G):
-		_gear_key_held = false
-		return
-	if _gear_key_held:
-		return
-	_gear_key_held = true
-	_gear_down = not _gear_down
-	_control_surfaces.set_gear_down(_gear_down)
-	if jsb_node and jsb_node.has_method("set_gear_down"):
-		jsb_node.set_gear_down(_gear_down)
-	print("Gear: ", "DOWN" if _gear_down else "UP")
-
-
-## Convert JSBSim flap-pos-norm (0.0-1.0) to lever position index (0-3).
-func _flaps_norm_to_position(norm: float) -> int:
-	if norm < 0.167:
-		return 0
-	elif norm < 0.5:
-		return 1
-	elif norm < 0.833:
-		return 2
-	else:
-		return 3
-
-
-## Apply current flap position: update visual + send to JSBSim.
-func _apply_flap_position() -> void:
-	# Print only on actual change
-	if flap_position != _flap_last_printed_pos:
-		_flap_last_printed_pos = flap_position
-		print("Flaps: %s" % FLAP_NAMES[flap_position])
-	
-	# Update lever visual
-	if flap_lever_node:
-		flap_lever_node.transform = flap_lever_base_transform
-		var y_offset := -float(flap_position) * FLAP_LEVER_TRAVEL
-		flap_lever_node.translate_object_local(Vector3(0, y_offset, 0))
-	
-	# Send to JSBSim
-	if jsb_node and jsb_node.has_method("set_flaps"):
-		jsb_node.set_flaps(FLAP_POSITIONS[flap_position])
