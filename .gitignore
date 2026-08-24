@@ -82,3 +82,7 @@ provpilot/Assets/buildings/
 # provpilot/Assets/buildings_schaffhausen/
 build/
 .venv/
+
+# Remote LLM delegation config (contains API key) + call log (usage/quality stats)
+scripts/.llm_remote.env
+scripts/.llm_remote.log.jsonl

@@ -18,6 +18,12 @@ soft switch to the prompt, so it works even on servers that ignore the kwarg.
 Good for mechanical subtasks; keep thinking on for deep reviews.
 -v prints finish_reason + token usage to stderr after each call.
 
+Every call is appended as one JSON line to scripts/.llm_remote.log.jsonl
+(gitignored; override with LLM_REMOTE_LOG) so agent sessions can review usage
+and answer quality afterwards:
+  python3 scripts/llm_delegate.py --stats        # summary + last 10 calls
+  python3 scripts/llm_delegate.py --stats 25     # ...last 25 calls
+
 When both piped stdin and a prompt argument are given, the stdin content is attached
 as <context> before the prompt.
 
@@ -30,9 +36,11 @@ Output: the model's message content on stdout; diagnostics on stderr.
 Exit codes: 0 = ok, 1 = HTTP/API error, 2 = config/usage error.
 """
 
+import datetime
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -43,6 +51,96 @@ DEFAULTS = {
 }
 
 ENV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".llm_remote.env")
+LOG_FILE = os.environ.get(
+    "LLM_REMOTE_LOG",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), ".llm_remote.log.jsonl"),
+)
+
+
+def log_call(record):
+    """Append one JSON line per call so usage/quality can be reviewed later."""
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError as e:
+        print(f"warning: could not write call log {LOG_FILE}: {e}", file=sys.stderr)
+
+
+def _read_log():
+    if not os.path.isfile(LOG_FILE):
+        return []
+    records = []
+    with open(LOG_FILE, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+    return records
+
+
+def print_stats(last_n=10):
+    """Summarise the call log: frequency, latency, tokens, quality flags."""
+    records = _read_log()
+    if not records:
+        print(f"No calls logged yet (log file {LOG_FILE} is missing or empty).")
+        return 0
+
+    ok = [r for r in records if r.get("ok")]
+    bad = [r for r in records if not r.get("ok")]
+    days = {}
+    for r in records:
+        days.setdefault(str(r.get("ts", "?"))[:10], []).append(r)
+
+    print(f"LLM delegate usage — {LOG_FILE}")
+    print(f"Total calls: {len(records)}  (ok: {len(ok)}, failed: {len(bad)})")
+    if ok:
+        times = [float(r.get("elapsed_s", 0.0)) for r in ok]
+        pt = sum(int(r.get("prompt_tokens") or 0) for r in ok)
+        ct = sum(int(r.get("completion_tokens") or 0) for r in ok)
+        print(f"Latency (ok calls): avg {sum(times) / len(times):.1f}s, "
+              f"min {min(times):.1f}s, max {max(times):.1f}s")
+        print(f"Tokens: {pt} prompt + {ct} completion")
+    no_content = [r for r in records if int(r.get("content_chars") or 0) == 0]
+    if no_content:
+        print(f"Quality flags: {len(no_content)} call(s) returned empty content "
+              f"(token budget burned on reasoning, or an error)")
+    models = {}
+    for r in records:
+        m = r.get("model", "?")
+        models[m] = models.get(m, 0) + 1
+    print("\nBy model:")
+    for m in sorted(models):
+        print(f"  {m}: {models[m]} call(s)")
+    print("\nBy day:")
+    for d in sorted(days):
+        rs = days[d]
+        ro = [r for r in rs if r.get("ok")]
+        avg = (sum(float(r.get("elapsed_s", 0.0)) for r in ro) / len(ro)) if ro else 0.0
+        print(f"  {d}: {len(rs)} call(s), ok {len(ro)}, avg {avg:.1f}s")
+
+    n = min(last_n, len(records))
+    print(f"\nLast {n} call(s):")
+    for r in records[-n:]:
+        status = "ok  " if r.get("ok") else "FAIL"
+        tok = ""
+        if r.get("prompt_tokens") is not None or r.get("completion_tokens") is not None:
+            tok = f" pt={r.get('prompt_tokens')} ct={r.get('completion_tokens')}"
+        think = " no-think" if r.get("no_think") else ""
+        print(f"  {r.get('ts', '?')}  {status} {float(r.get('elapsed_s', 0.0)):6.1f}s{tok}{think}")
+        prompt = (r.get("prompt_excerpt") or "").replace("\n", " ")
+        print(f"      prompt: {prompt[:100]}{'...' if len(prompt) > 100 else ''}")
+        resp = (r.get("response") or "").strip()
+        if resp:
+            snippet = resp.replace("\n", "\n      ")
+            print(f"      answer: {snippet[:400]}{'...' if len(resp) > 400 else ''}")
+        elif not r.get("ok"):
+            err = (r.get("error") or "").replace("\n", " ")
+            print(f"      error:  {err[:200]}")
+    return 0
 
 
 def load_env_file(path):
@@ -63,7 +161,8 @@ def main():
     args = sys.argv[1:]
     opts = {"model": None, "system": None, "temp": None,
             "max_tokens": 4096, "timeout": 600,
-            "no_think": False, "verbose": False}
+            "no_think": False, "verbose": False,
+            "stats": False, "stats_count": 10}
     prompt_parts = []
     i = 0
     while i < len(args):
@@ -82,12 +181,20 @@ def main():
             opts["no_think"] = True
         elif a in ("-v", "--verbose"):
             opts["verbose"] = True
+        elif a == "--stats":
+            opts["stats"] = True
+            if i + 1 < len(args) and args[i + 1].isdigit():
+                i += 1
+                opts["stats_count"] = int(args[i])
         elif a in ("-h", "--help"):
             print(__doc__)
             return 0
         else:
             prompt_parts.append(a)
         i += 1
+
+    if opts["stats"]:
+        return print_stats(opts["stats_count"])
 
     stdin_text = ""
     if not sys.stdin.isatty():
@@ -134,6 +241,26 @@ def main():
         # appended to the prompt above is the fallback for plain chat templates.
         body["chat_template_kwargs"] = {"enable_thinking": False}
 
+    t0 = time.monotonic()
+    base_record = {
+        "ts": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "model": model,
+        "prompt_chars": len(prompt),
+        "context_chars": len(stdin_text),
+        "no_think": opts["no_think"],
+        "temp": opts["temp"],
+        "max_tokens": opts["max_tokens"],
+        "prompt_excerpt": prompt[:120],
+    }
+
+    def finish_record(ok, error=None, **extra):
+        rec = dict(base_record)
+        rec.update({"ok": ok, "elapsed_s": round(time.monotonic() - t0, 2)})
+        if error is not None:
+            rec["error"] = str(error)[:300]
+        rec.update(extra)
+        log_call(rec)
+
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
@@ -149,11 +276,13 @@ def main():
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", "replace")[:500]
         print(f"error: HTTP {e.code} from remote model: {detail}", file=sys.stderr)
+        finish_record(False, error=f"HTTP {e.code}: {detail}")
         return 1
     except (urllib.error.URLError, TimeoutError) as e:
         print(f"error: cannot reach remote model at {url}: {e}", file=sys.stderr)
         print("hint: is the Windows machine awake and Unsloth Studio running?",
               file=sys.stderr)
+        finish_record(False, error=f"unreachable: {e}")
         return 1
 
     try:
@@ -162,14 +291,15 @@ def main():
     except (KeyError, IndexError):
         print(f"error: unexpected response shape: {json.dumps(data)[:500]}",
               file=sys.stderr)
+        finish_record(False, error="unexpected response shape")
         return 1
 
     content = (msg.get("content") or "").strip()
     reasoning = (msg.get("reasoning_content") or "").strip()
     finish = choice.get("finish_reason", "")
+    usage = data.get("usage", {})
 
     if opts["verbose"]:
-        usage = data.get("usage", {})
         print(f"[delegate] finish={finish!r} "
               f"prompt_tokens={usage.get('prompt_tokens')} "
               f"completion_tokens={usage.get('completion_tokens')} "
@@ -177,6 +307,11 @@ def main():
 
     if content:
         print(content)
+        finish_record(True, finish_reason=finish,
+                      prompt_tokens=usage.get("prompt_tokens"),
+                      completion_tokens=usage.get("completion_tokens"),
+                      reasoning_chars=len(reasoning),
+                      content_chars=len(content), response=content)
         return 0
 
     # Thinking models may burn the token budget on reasoning before answering.
@@ -186,6 +321,12 @@ def main():
         print("reasoning_content was:", file=sys.stderr)
         print(reasoning[:2000], file=sys.stderr)
     print("hint: retry with a larger --max-tokens", file=sys.stderr)
+    finish_record(False, error=f"empty content (finish_reason={finish!r})",
+                  finish_reason=finish,
+                  prompt_tokens=usage.get("prompt_tokens"),
+                  completion_tokens=usage.get("completion_tokens"),
+                  reasoning_chars=len(reasoning),
+                  content_chars=0, response="")
     return 1
 
 
