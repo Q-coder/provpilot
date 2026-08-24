@@ -89,6 +89,13 @@ var _camera_rig := CameraRig.new()
 # dragging stays here in _unhandled_input and calls into the module.
 var _cockpit_controls := CockpitControls.new()
 
+# Free-movement slew mode (Shift+Y) lives in the C++ SlewMode module
+# (src/slew_mode.cpp). GDScript registers the session-stable AC root + HUD
+# labels in _ready, pushes the Swiss origin once TERRAIN_CENTER is locked,
+# and drives per-frame updates from _process with the calibrated joystick
+# axes (JoystickConfig) and the terrain height under the aircraft.
+var _slew_mode := SlewMode.new()
+
 # Rudder indicator pivot tweak (debug drag on screen, not part of the animator)
 var rudder_pivot_offset: Vector3 = Vector3(0, 0, 0)
 
@@ -155,13 +162,6 @@ const TREE_DENSITY_FRACTION := [0.0, 0.25, 0.50, 0.75, 1.0]
 # the number of trees within this radius, not the radius itself.
 const TREE_LOAD_RADIUS_M := 1500
 
-# Slew mode - free movement without physics
-var slew_mode: bool = false
-var slew_speed: float = 400.0  # Base speed in m/s
-var slew_fast_multiplier: float = 5.0  # Speed multiplier when holding boost
-var slew_vertical_speed: float = 60.0  # Vertical movement speed
-var _slew_key_held: bool = false  # Prevent key repeat
-
 # Teleport cooldown: pin the aircraft to the teleport target until JSBSim
 # has stabilised.  C++ _physics_process sets the AC position directly from
 # JSBSim output, which can be garbage on the first frames after reinitialize;
@@ -173,7 +173,6 @@ var _teleport_pin_pos: Vector3 = Vector3.ZERO  # Position to hold AC at during c
 # Position dialog (Shift+P)
 var _position_dialog: Window = null
 var _position_key_held: bool = false
-var _pre_slew_airspeed_kts: float = 0.0  # saved airspeed for slew mode restore
 
 # Loading / Welcome / Settings screens
 var _loading_screen: CanvasLayer = null
@@ -358,6 +357,11 @@ func _ready() -> void:
 	if ProjectSettings.has_setting("scenery3d/origin_north"):
 		TERRAIN_CENTER_N = float(ProjectSettings.get_setting("scenery3d/origin_north"))
 	print("TERRAIN_CENTER locked to Scenery3D origin: E=%d N=%d" % [int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N)])
+
+	# Slew mode (C++ module): register the session-stable AC root + HUD labels
+	# and the Swiss origin (must run after TERRAIN_CENTER is locked above).
+	_slew_mode.register_nodes($AC, airspeed_label, altitude_label, vspeed_label, throttle_label, heading_label, $Control/Label6, $Control/Label7, $Control/Label8)
+	_slew_mode.set_swiss_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
 
 	# Mount the world3d global globe at the LV95 origin. Must run after
 	# TERRAIN_CENTER_E/N are final so the tangent frame matches the flat frame.
@@ -1068,14 +1072,6 @@ func _process(delta: float) -> void:
 	# --- Per-second resource diagnostic ---
 	_emit_diag_snapshot()
 
-	# Toggle slew mode with Shift+Y
-	if Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_Y):
-		if not _slew_key_held:
-			_slew_key_held = true
-			toggle_slew_mode()
-	else:
-		_slew_key_held = false
-
 	# Position dialog with Shift+P
 	if Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_P):
 		if not _position_key_held:
@@ -1084,14 +1080,29 @@ func _process(delta: float) -> void:
 	else:
 		_position_key_held = false
 	
-	# Handle slew mode movement
-	if slew_mode:
-		handle_slew_mode(delta)
-		# Allow camera controls in slew mode, but skip other processing
+	# Slew mode (C++ module): Shift+Y toggle + free movement while active,
+	# including the slew HUD. Joystick axes come from JoystickConfig
+	# (user-calibrated); terrain height under the aircraft is queried here
+	# because it belongs to the scenery stack. While slewing we still allow
+	# camera controls but skip flight controls and normal HUD updates.
+	var was_slewing := _slew_mode.is_enabled()
+	var slewing := _slew_mode.update(
+		delta, jsb_node,
+		JoystickConfig.get_axis("slew_strafe"),
+		JoystickConfig.get_axis("slew_forward"),
+		JoystickConfig.get_axis("slew_yaw"),
+		JoystickConfig.get_axis("slew_vertical"),
+		_terrain_elevation_at($AC.global_position.x, $AC.global_position.z),
+		JoystickConfig.get_active_device())
+	if slewing:
 		if Input.is_action_just_pressed("flip_camera"):
 			flip_camera()
 		_camera_rig.update(delta, JoystickConfig.get_active_device())
 		return  # Skip flight controls and HUD updates in slew mode
+	if was_slewing:
+		# Just exited slew mode — refresh JSBSim's terrain elevation at the
+		# new position (the C++ toggle already reinitialized JSBSim there).
+		_update_terrain_elevation()
 	
 	if Input.is_action_just_pressed("flip_camera"):
 		flip_camera()
@@ -1138,151 +1149,6 @@ func _process(delta: float) -> void:
 		$Control/Label7.text = "Swiss E: %s, N: %s" % [format_swiss_coord(swiss_e), format_swiss_coord(swiss_n)]
 	else:
 		$Label.text = "JSBGodot node not found."
-
-
-## Toggle slew mode on/off
-func toggle_slew_mode() -> void:
-	slew_mode = not slew_mode
-	
-	# Tell JSBGodot to pause position updates in slew mode
-	if jsb_node and jsb_node.has_method("set_slew_mode"):
-		jsb_node.set_slew_mode(slew_mode)
-	
-	if slew_mode:
-		# Save current airspeed before entering slew
-		if jsb_node:
-			_pre_slew_airspeed_kts = jsb_node.get_airspeed_knots()
-		print("=== SLEW MODE ENABLED ===")
-		# Debug joystick state so axis mapping issues are easy to spot in the log
-		var pads := Input.get_connected_joypads()
-		print("  Connected joypads: %d — indices: %s" % [pads.size(), pads])
-		var active_dev := JoystickConfig.get_active_device()
-		print("  JoystickConfig active device: %d" % active_dev)
-		if active_dev >= 0:
-			for ax in range(8):
-				var v := Input.get_joy_axis(active_dev, ax)
-				if abs(v) > 0.01:
-					print("    axis %d = %.3f (non-zero)" % [ax, v])
-		print("  Saved airspeed: %.1f kts" % _pre_slew_airspeed_kts)
-		print("  Controls:")
-		print("    Left stick / WASD: Move horizontally")
-		print("    Right stick Y / Q,E: Move up/down")
-		print("    Right stick X: Rotate (yaw)")
-		print("    Hold Shift: Move faster (5x)")
-		print("  Press Shift+Y to exit slew mode")
-	else:
-		print("=== SLEW MODE DISABLED ===")
-		# Clear slew-only HUD elements
-		$Control/Label8.text = ""
-		# Re-initialize JSBSim at new position with saved airspeed
-		var ac_node = $AC
-		if ac_node and jsb_node:
-			var pos = ac_node.global_position
-			var heading = ac_node.rotation.y
-			# Query terrain under aircraft and lift it above ground if it sank below
-			# the surface during slew. Without this, ic->RunIC() fires gear-collision
-			# forces for the first frame and the aircraft bounces.
-			var terr_h: float = _terrain_elevation_at(pos.x, pos.z)
-			if not is_nan(terr_h):
-				var min_y: float = terr_h + 2.0  # 2 m gear clearance
-				if pos.y < min_y:
-					pos.y = min_y
-					ac_node.global_position = pos
-			print("  Reinitializing JSBSim at Godot position: ", pos)
-			print("  Heading: ", rad_to_deg(heading), " degrees")
-			print("  Restoring airspeed: %.1f kts" % _pre_slew_airspeed_kts)
-			
-			# Reinitialize with preserved airspeed
-			if jsb_node.has_method("reinitialize_from_godot_position_with_speed"):
-				jsb_node.reinitialize_from_godot_position_with_speed(pos, heading, _pre_slew_airspeed_kts, terr_h)
-			elif jsb_node.has_method("reinitialize_from_godot_position"):
-				jsb_node.reinitialize_from_godot_position(pos, heading, terr_h)
-			
-			# Update terrain elevation at new position
-			_update_terrain_elevation()
-
-
-## Handle slew mode movement using gamepad
-func handle_slew_mode(delta: float) -> void:
-	var ac_node = $AC
-	if ac_node == null:
-		return
-	
-	# Speed multiplier (hold shift for faster movement)
-	var speed_mult = slew_fast_multiplier if Input.is_key_pressed(KEY_SHIFT) else 1.0
-	
-	# Gamepad input — calibrated through JoystickConfig (Settings → Joystick).
-	# Each axis returns [-1, 1] with deadzone, invert and curve already applied.
-	var move_x := JoystickConfig.get_axis("slew_strafe")
-	var move_z := JoystickConfig.get_axis("slew_forward")
-	var rotate_y := JoystickConfig.get_axis("slew_yaw")
-	var move_y := JoystickConfig.get_axis("slew_vertical")
-
-	# Also support keyboard for vertical movement
-	if Input.is_key_pressed(KEY_Q) or Input.is_key_pressed(KEY_PAGEUP):
-		move_y = 1.0
-	elif Input.is_key_pressed(KEY_E) or Input.is_key_pressed(KEY_PAGEDOWN):
-		move_y = -1.0
-	
-	# Keyboard WASD support
-	if Input.is_key_pressed(KEY_W):
-		move_z = -1.0
-	elif Input.is_key_pressed(KEY_S):
-		move_z = 1.0
-	if Input.is_key_pressed(KEY_A):
-		move_x = -1.0
-	elif Input.is_key_pressed(KEY_D):
-		move_x = 1.0
-	
-	# Calculate movement in world space based on aircraft heading
-	var current_rotation = ac_node.rotation.y
-	var forward = Vector3(sin(current_rotation), 0, cos(current_rotation))
-	var right = Vector3(cos(current_rotation), 0, -sin(current_rotation))
-	
-	# Calculate velocity (negate move_x to fix left/right direction)
-	var velocity = Vector3.ZERO
-	velocity += forward * (-move_z) * slew_speed * speed_mult
-	velocity += right * (-move_x) * slew_speed * speed_mult
-	velocity.y = move_y * slew_vertical_speed * speed_mult
-	
-	# Apply movement
-	ac_node.global_position += velocity * delta
-	
-	# Apply rotation (yaw)
-	if abs(rotate_y) > 0.1:
-		ac_node.rotation.y -= rotate_y * 2.0 * delta  # 2 rad/s rotation speed
-	
-	# Update HUD with current position
-	var godot_pos = ac_node.global_position
-	var swiss_e = TERRAIN_CENTER_E - godot_pos.x
-	var swiss_n = TERRAIN_CENTER_N + godot_pos.z
-	
-	# Query terrain height at current position
-	var terrain_height := _terrain_elevation_at(godot_pos.x, godot_pos.z)
-	
-	var heading_deg = fmod(rad_to_deg(-ac_node.rotation.y) + 360.0, 360.0)
-	airspeed_label.text = "=== SLEW MODE ==="
-	altitude_label.text = "Height AGL: %.1f m" % (godot_pos.y - terrain_height)
-	vspeed_label.text = "Terrain: %.1f m ASL" % terrain_height
-	throttle_label.text = "Aircraft: %.1f m ASL" % godot_pos.y
-	heading_label.text = "Shift+Y to exit"
-	$Control/Label6.text = "Godot: X=%.1f Y=%.1f Z=%.1f" % [godot_pos.x, godot_pos.y, godot_pos.z]
-	$Control/Label7.text = "Swiss E: %s, N: %s" % [format_swiss_coord(swiss_e), format_swiss_coord(swiss_n)]
-	$Control/Label8.text = "Heading: %.0f°" % heading_deg
-
-
-## Read a joystick axis with a deadzone, returning 0 inside the deadzone and
-## a smoothly rescaled value outside so resting drift never produces motion.
-##
-## Deprecated: gameplay code should call JoystickConfig.get_axis(action) so
-## bindings remain user-configurable. Kept as a fallback for spots that have
-## not yet been migrated.
-func _slew_axis(axis: int, deadzone: float) -> float:
-	var v := Input.get_joy_axis(0, axis)
-	if absf(v) < deadzone:
-		return 0.0
-	var sign_v := signf(v)
-	return sign_v * (absf(v) - deadzone) / (1.0 - deadzone)
 
 
 # Function to cycle between camera modes: Cockpit → Orbit → Chase → Cockpit.
@@ -2350,9 +2216,8 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	_update_terrain_elevation()
 
 	# 11. Keep JSBSim in slew mode — physics stays paused until cooldown expires.
-	#     GDScript slew_mode is false so the slew movement UI is not shown.
-	slew_mode = false
-	$Control/Label8.text = ""
+	#     The C++ module's state + HUD are cleared so the slew UI is not shown.
+	_slew_mode.note_external_exit()
 
 	# Arm cooldown: pin AC at this position while JSBSim stabilizes
 	_teleport_pin_pos = ac_node.global_position
@@ -2547,5 +2412,3 @@ func _setup_flap_lever_collision() -> void:
 	
 	flap_lever_body.add_child(shape)
 	flap_lever_node.add_child(flap_lever_body)
-
-

@@ -7,6 +7,7 @@
 #include "control_surfaces.h"
 #include "camera_rig.h"
 #include "cockpit_controls.h"
+#include "slew_mode.h"
 
 using namespace godot;
 using namespace jsbgodot;
@@ -22,6 +23,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<ControlSurfaces>();
 	ClassDB::register_class<CameraRig>();
 	ClassDB::register_class<CockpitControls>();
+	ClassDB::register_class<SlewMode>();
 }
 
 void uninitialize_gojsb_module(ModuleInitializationLevel p_level)
