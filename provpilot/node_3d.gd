@@ -40,18 +40,12 @@ var jsb_node: Node
 var active_camera: Camera3D
 var camera1: Camera3D
 var camera2: Camera3D
-var camera1_base_transform: Transform3D  # Store original camera transform
 var _camera1_scene_transform: Transform3D  # Pristine Camera1 transform from the scene
 var _camera1_scene_fov: float = 0.0        # Pristine Camera1 fov from the scene
 
-# Pilot head look angles (in degrees) - for cockpit camera
-var head_yaw: float = 0.0    # Left/Right
-var head_pitch: float = 0.0  # Up/Down
-const HEAD_YAW_MAX: float = 120.0   # Max look left/right
-const HEAD_PITCH_MAX: float = 60.0  # Max look up/down
-const HEAD_LOOK_SPEED: float = 90.0 # Degrees per second
-
-# Camera mode enum
+# Camera mode enum (values mirror the C++ CameraRig::Mode). Kept here because
+# lever raycasts and the intro handoff branch on it; kept in sync with the rig
+# by flip_camera() / _end_intro_zoom().
 enum CameraMode { COCKPIT, ORBIT, CHASE }
 var camera_mode: int = CameraMode.COCKPIT
 
@@ -68,22 +62,9 @@ var _intro_start_pos: Vector3 = Vector3.ZERO
 # space position is not dragged around by JSBSim's per-frame AC transform writes.
 var _intro_camera: Camera3D = null
 
-# Spot camera orbit angles (in degrees) - for external camera
-var orbit_yaw: float = 135.0    # Horizontal angle around aircraft (start behind-left)
-var orbit_pitch: float = 15.0   # Vertical angle (elevation)
-var orbit_distance: float = 6.0   # Distance from aircraft (default view)
-const ORBIT_PITCH_MIN: float = -10.0   # Min elevation (slightly below)
-const ORBIT_PITCH_MAX: float = 80.0    # Max elevation (almost top-down)
-const ORBIT_SPEED: float = 90.0        # Degrees per second
-const ORBIT_ZOOM_SPEED: float = 10.0   # Units per second
-const ORBIT_DISTANCE_MIN: float = 1.5  # Closest zoom (scaled for 0.1x model)
-const ORBIT_DISTANCE_MAX: float = 50.0 # Furthest zoom
-
-# Chase camera parameters
-var chase_distance: float = 8.0    # Distance behind aircraft
-var chase_height: float = 3.0     # Height above aircraft
-var chase_yaw: float = 0.0        # Yaw offset relative to aircraft heading (degrees)
-var chase_smooth: float = 5.0     # Smoothing factor (higher = faster follow)
+# Spot/orbit and chase camera state (angles, distances, smoothing) lives in the
+# C++ CameraRig module (src/camera_rig.cpp); the intro-zoom handoff reads the
+# orbit offset back via _camera_rig.orbit_offset().
 
 # Control surfaces, propeller and landing-gear animation live in the C++
 # ControlSurfaces module (src/control_surfaces.cpp). Per-aircraft tunables are
@@ -91,6 +72,14 @@ var chase_smooth: float = 5.0     # Smoothing factor (higher = faster follow)
 # (with their base transforms captured) in _resolve_aircraft_nodes /
 # _resolve_gear_legs. The smoothed visual RPM is read back via get_visual_rpm().
 var _control_surfaces := ControlSurfaces.new()
+
+# Cockpit/orbit/chase camera behaviour lives in the C++ CameraRig module
+# (src/camera_rig.cpp). GDScript registers the scene cameras + AC root, re-
+# captures the cockpit base transform whenever aircraft.cfg [camera] overrides
+# are applied, and drives per-frame updates from _process. The "flip_camera"
+# action press is detected here (remappable project action) and forwarded to
+# the rig; camera_mode/active_camera stay in sync for lever raycasts.
+var _camera_rig := CameraRig.new()
 
 # Rudder indicator pivot tweak (debug drag on screen, not part of the animator)
 var rudder_pivot_offset: Vector3 = Vector3(0, 0, 0)
@@ -325,7 +314,6 @@ func _ready() -> void:
 	camera1 = ac_node.get_node("Camera1")
 	camera2 = ac_node.get_node("Camera2")
 	active_camera = camera1
-	camera1_base_transform = camera1.transform  # Store base transform
 	_camera1_scene_transform = camera1.transform  # Pristine scene value for swaps
 	_camera1_scene_fov = camera1.fov
 	print("Camera1: ", camera1)
@@ -336,6 +324,11 @@ func _ready() -> void:
 	# of the wings instead of the top. Flip them in-place once at startup.
 	# Controlled by aircraft.cfg [model] flip_normals / flip_normals_prefix.
 	_apply_model_normals(ac_node)
+
+	# Register the scene cameras with the C++ camera rig (it captures the
+	# cockpit base transform; _apply_camera_config re-captures it after
+	# applying any aircraft.cfg [camera] overrides).
+	_camera_rig.register_cameras(camera1, camera2, ac_node)
 
 	# Position the cockpit camera per the selected aircraft (aircraft.cfg [camera]).
 	_apply_camera_config()
@@ -711,6 +704,9 @@ func _start_intro_zoom() -> void:
 	if camera2:
 		camera2.current = false
 	_intro_camera.current = true
+	# The dedicated intro camera is active, so suppress the rig's cockpit
+	# (head-look) branch until the handoff back to Camera2.
+	_camera_rig.set_cockpit_enabled(false)
 	print("World3D intro zoom started (space → spot)")
 
 
@@ -732,14 +728,9 @@ func _update_intro_zoom(delta: float) -> void:
 
 	var target: Vector3 = ac_node.global_position
 
-	# Spot (orbit) end offset — matches handle_orbit_camera exactly for a
-	# seamless handoff.
-	var yaw_rad := deg_to_rad(orbit_yaw)
-	var pitch_rad := deg_to_rad(orbit_pitch)
-	var spot_offset := Vector3(
-		orbit_distance * cos(pitch_rad) * sin(yaw_rad),
-		orbit_distance * sin(pitch_rad),
-		orbit_distance * cos(pitch_rad) * cos(yaw_rad))
+	# Spot (orbit) end offset — from the C++ CameraRig, so the handoff to the
+	# orbit camera is seamless.
+	var spot_offset := _camera_rig.orbit_offset()
 
 	var start_dir := _intro_up_dir
 	var end_dir := spot_offset.normalized()
@@ -769,24 +760,21 @@ func _end_intro_zoom() -> void:
 	if not _intro_playing:
 		return
 	_intro_playing = false
+	# Hand the rig over to the orbit camera (it toggles the current flags) and
+	# re-enable its cockpit branch for when the user flips back later.
+	_camera_rig.set_mode(CameraMode.ORBIT)
+	_camera_rig.set_cockpit_enabled(true)
 	camera_mode = CameraMode.ORBIT
 	active_camera = camera2
 	# Position camera2 at the spot immediately so the handoff has no 1-frame gap.
 	var ac_node := get_node_or_null("AC")
 	if ac_node and is_instance_valid(camera2):
-		var yaw_rad := deg_to_rad(orbit_yaw)
-		var pitch_rad := deg_to_rad(orbit_pitch)
-		var spot_offset := Vector3(
-			orbit_distance * cos(pitch_rad) * sin(yaw_rad),
-			orbit_distance * sin(pitch_rad),
-			orbit_distance * cos(pitch_rad) * cos(yaw_rad))
+		var spot_offset := _camera_rig.orbit_offset()
 		camera2.global_position = ac_node.global_position + spot_offset
 		if spot_offset.length_squared() > 0.01:
 			camera2.look_at(ac_node.global_position, Vector3.UP)
 	if is_instance_valid(_intro_camera):
 		_intro_camera.current = false
-	if is_instance_valid(camera2):
-		camera2.current = true
 	print("World3D intro zoom complete — spot view active")
 
 
@@ -1116,26 +1104,15 @@ func _process(delta: float) -> void:
 		# Allow camera controls in slew mode, but skip other processing
 		if Input.is_action_just_pressed("flip_camera"):
 			flip_camera()
-		match camera_mode:
-			CameraMode.COCKPIT:
-				handle_head_look(delta)
-			CameraMode.ORBIT:
-				handle_orbit_camera(delta)
-			CameraMode.CHASE:
-				handle_chase_camera(delta)
+		_camera_rig.update(delta, JoystickConfig.get_active_device())
 		return  # Skip flight controls and HUD updates in slew mode
 	
 	if Input.is_action_just_pressed("flip_camera"):
 		flip_camera()
 	
 	# Handle hat switch / D-pad for pilot head look, orbit, or chase camera
-	match camera_mode:
-		CameraMode.COCKPIT:
-			handle_head_look(delta)
-		CameraMode.ORBIT:
-			handle_orbit_camera(delta)
-		CameraMode.CHASE:
-			handle_chase_camera(delta)
+	# (C++ CameraRig; the active joystick index comes from JoystickConfig).
+	_camera_rig.update(delta, JoystickConfig.get_active_device())
 	
 	# Mixture lever keyboard control: M = richer, Shift+M = leaner
 	_handle_mixture_keys()
@@ -1336,257 +1313,16 @@ func _slew_axis(axis: int, deadzone: float) -> float:
 	return sign_v * (absf(v) - deadzone) / (1.0 - deadzone)
 
 
-# Function to cycle between camera modes: Cockpit → Orbit → Chase → Cockpit
+# Function to cycle between camera modes: Cockpit → Orbit → Chase → Cockpit.
+# The mode cycling, head-look reset and current-camera flags are handled by the
+# C++ CameraRig; GDScript keeps its own mirror of the mode + active camera for
+# lever raycasts.
 func flip_camera():
-	match camera_mode:
-		CameraMode.COCKPIT:
-			camera_mode = CameraMode.ORBIT
-			active_camera = camera2
-		CameraMode.ORBIT:
-			camera_mode = CameraMode.CHASE
-			active_camera = camera2
-		CameraMode.CHASE:
-			camera_mode = CameraMode.COCKPIT
-			active_camera = camera1
-			# Reset head position when switching back to cockpit view
-			head_yaw = 0.0
-			head_pitch = 0.0
+	_camera_rig.flip()
+	camera_mode = _camera_rig.get_mode()
+	active_camera = camera1 if camera_mode == CameraMode.COCKPIT else camera2
 
-	# Set the current camera
-	camera1.current = (active_camera == camera1)
-	camera2.current = (active_camera == camera2)
 
-# Handle pilot head look using hat switch or D-pad
-func handle_head_look(delta: float) -> void:
-	# Only apply head look when using cockpit camera (Camera1)
-	if active_camera != camera1:
-		return
-	
-	# Get hat switch input (typically axes 6 and 7 on many controllers)
-	# Or use D-pad which maps to JOY_BUTTON_DPAD_*
-	var look_x: float = 0.0
-	var look_y: float = 0.0
-	var dev := JoystickConfig.get_active_device()
-
-	# Try hat switch axes first (DirectInput hat: axis 6 = X, axis 7 = Y on most Windows joysticks)
-	if dev >= 0:
-		var hx := Input.get_joy_axis(dev, 6)  # hat horizontal
-		var hy := Input.get_joy_axis(dev, 7)  # hat vertical
-		if abs(hx) >= 0.5:
-			look_x = sign(hx)
-		if abs(hy) >= 0.5:
-			look_y = sign(hy)
-
-	# If no hat axis input, check D-pad buttons
-	if abs(look_x) < 0.1 and abs(look_y) < 0.1:
-		var d := dev if dev >= 0 else 0
-		if Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_LEFT):
-			look_x = -1.0
-		elif Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_RIGHT):
-			look_x = 1.0
-		if Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_UP):
-			look_y = -1.0  # Up on D-pad = look up (negative pitch)
-		elif Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_DOWN):
-			look_y = 1.0   # Down on D-pad = look down (positive pitch)
-	
-	# Also support keyboard arrows for testing
-	if Input.is_key_pressed(KEY_LEFT):
-		look_x = -1.0
-	elif Input.is_key_pressed(KEY_RIGHT):
-		look_x = 1.0
-	if Input.is_key_pressed(KEY_UP):
-		look_y = -1.0
-	elif Input.is_key_pressed(KEY_DOWN):
-		look_y = 1.0
-	
-	# Update head angles
-	head_yaw += look_x * HEAD_LOOK_SPEED * delta
-	head_pitch += look_y * HEAD_LOOK_SPEED * delta
-	
-	# Clamp to limits
-	head_yaw = clamp(head_yaw, -HEAD_YAW_MAX, HEAD_YAW_MAX)
-	head_pitch = clamp(head_pitch, -HEAD_PITCH_MAX, HEAD_PITCH_MAX)
-	
-	# Apply rotation to camera (relative to base transform)
-	# Start from base transform, then apply head rotation
-	camera1.transform = camera1_base_transform
-	camera1.rotate_y(deg_to_rad(-head_yaw))  # Yaw (left/right)
-	camera1.rotate_object_local(Vector3.RIGHT, deg_to_rad(-head_pitch))  # Pitch (up/down)
-
-# Handle external/spot camera orbit around aircraft
-func handle_orbit_camera(delta: float) -> void:
-	# Get input from hat switch, D-pad, or keyboard
-	var look_x: float = 0.0
-	var look_y: float = 0.0
-	var dev := JoystickConfig.get_active_device()
-
-	# Hat switch axes (DirectInput: axis 6 = X, axis 7 = Y)
-	if dev >= 0:
-		var hx := Input.get_joy_axis(dev, 6)
-		var hy := Input.get_joy_axis(dev, 7)
-		if abs(hx) >= 0.5:
-			look_x = sign(hx)
-		if abs(hy) >= 0.5:
-			look_y = -sign(hy)  # hat up = positive elevation
-
-	# Check D-pad buttons (fallback / gamepads)
-	if abs(look_x) < 0.1 and abs(look_y) < 0.1:
-		var d := dev if dev >= 0 else 0
-		if Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_LEFT):
-			look_x = -1.0
-		elif Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_RIGHT):
-			look_x = 1.0
-		if Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_UP):
-			look_y = 1.0   # Up = increase elevation
-		elif Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_DOWN):
-			look_y = -1.0  # Down = decrease elevation
-	
-	# Also support keyboard arrows for testing
-	if Input.is_key_pressed(KEY_LEFT):
-		look_x = -1.0
-	elif Input.is_key_pressed(KEY_RIGHT):
-		look_x = 1.0
-	if Input.is_key_pressed(KEY_UP):
-		look_y = 1.0
-	elif Input.is_key_pressed(KEY_DOWN):
-		look_y = -1.0
-	
-	# Update orbit angles
-	orbit_yaw += look_x * ORBIT_SPEED * delta
-	orbit_pitch += look_y * ORBIT_SPEED * delta
-	
-	# Wrap yaw (allow full 360 rotation)
-	if orbit_yaw > 360.0:
-		orbit_yaw -= 360.0
-	elif orbit_yaw < 0.0:
-		orbit_yaw += 360.0
-	
-	# Clamp pitch to limits
-	orbit_pitch = clamp(orbit_pitch, ORBIT_PITCH_MIN, ORBIT_PITCH_MAX)
-	
-	# Handle zoom - L1/R1 (shoulder buttons) or Page Up/Page Down
-	var zoom_in = 0.0
-	var zoom_out = 0.0
-	var dz := dev if dev >= 0 else 0
-
-	# Gamepad shoulder buttons (L1 = button 4, R1 = button 5)
-	if Input.is_joy_button_pressed(dz, JOY_BUTTON_LEFT_SHOULDER):
-		zoom_in = 1.0
-	if Input.is_joy_button_pressed(dz, JOY_BUTTON_RIGHT_SHOULDER):
-		zoom_out = 1.0
-	
-	# Keyboard Page Up/Down
-	if Input.is_key_pressed(KEY_PAGEUP):
-		zoom_in = 1.0
-	if Input.is_key_pressed(KEY_PAGEDOWN):
-		zoom_out = 1.0
-	
-	# Update distance
-	orbit_distance -= zoom_in * ORBIT_ZOOM_SPEED * delta
-	orbit_distance += zoom_out * ORBIT_ZOOM_SPEED * delta
-	orbit_distance = clamp(orbit_distance, ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX)
-	
-	# Calculate camera offset in world space (not affected by aircraft rotation)
-	var yaw_rad = deg_to_rad(orbit_yaw)
-	var pitch_rad = deg_to_rad(orbit_pitch)
-	
-	# Spherical to Cartesian conversion (world-aligned offset)
-	var offset_x = orbit_distance * cos(pitch_rad) * sin(yaw_rad)
-	var offset_y = orbit_distance * sin(pitch_rad)
-	var offset_z = orbit_distance * cos(pitch_rad) * cos(yaw_rad)
-	var world_offset = Vector3(offset_x, offset_y, offset_z)
-	
-	# Get the AC node (parent of camera2) and its global position
-	var ac_node = $AC
-	var aircraft_global_pos = ac_node.global_position
-	
-	# Set camera to world position (aircraft position + world-aligned offset)
-	camera2.global_position = aircraft_global_pos + world_offset
-	
-	# Make camera look at the aircraft center in world space
-	# Guard against degenerate case (zero offset → same position)
-	if world_offset.length_squared() > 0.01:
-		camera2.look_at(aircraft_global_pos, Vector3.UP)
-
-# Chase camera: follows behind the aircraft, rotating with its heading
-func handle_chase_camera(delta: float) -> void:
-	var ac_node = $AC
-	var aircraft_pos = ac_node.global_position
-	var dev2 := JoystickConfig.get_active_device()
-	var d2 := dev2 if dev2 >= 0 else 0
-
-	# Get aircraft's forward direction projected onto horizontal plane
-	var forward = ac_node.global_transform.basis.z
-	forward.y = 0
-	if forward.length_squared() > 0.001:
-		forward = forward.normalized()
-	else:
-		forward = Vector3(0, 0, -1)  # Default to north if degenerate
-	
-	# Handle zoom - same controls as orbit camera
-	var zoom_in = 0.0
-	var zoom_out = 0.0
-	if Input.is_joy_button_pressed(d2, JOY_BUTTON_LEFT_SHOULDER):
-		zoom_in = 1.0
-	if Input.is_joy_button_pressed(d2, JOY_BUTTON_RIGHT_SHOULDER):
-		zoom_out = 1.0
-	if Input.is_key_pressed(KEY_PAGEUP):
-		zoom_in = 1.0
-	if Input.is_key_pressed(KEY_PAGEDOWN):
-		zoom_out = 1.0
-	chase_distance -= zoom_in * ORBIT_ZOOM_SPEED * delta
-	chase_distance += zoom_out * ORBIT_ZOOM_SPEED * delta
-	chase_distance = clamp(chase_distance, ORBIT_DISTANCE_MIN, ORBIT_DISTANCE_MAX)
-	
-	# Handle height adjust with D-pad up/down or arrow keys
-	var height_delta = 0.0
-
-	# Hat switch axes for chase yaw (horizontal) and height (vertical)
-	var hat_x: float = 0.0
-	var hat_y: float = 0.0
-	if dev2 >= 0:
-		var hx := Input.get_joy_axis(dev2, 6)
-		var hy := Input.get_joy_axis(dev2, 7)
-		if abs(hx) >= 0.5: hat_x = sign(hx)
-		if abs(hy) >= 0.5: hat_y = -sign(hy)  # hat up = height up
-
-	if hat_y != 0.0:
-		height_delta = hat_y
-	elif Input.is_joy_button_pressed(d2, JOY_BUTTON_DPAD_UP) or Input.is_key_pressed(KEY_UP):
-		height_delta = 1.0
-	elif Input.is_joy_button_pressed(d2, JOY_BUTTON_DPAD_DOWN) or Input.is_key_pressed(KEY_DOWN):
-		height_delta = -1.0
-	chase_height += height_delta * ORBIT_ZOOM_SPEED * delta
-	chase_height = clamp(chase_height, 0.5, 20.0)
-	
-	# Handle yaw offset with D-pad left/right or arrow keys
-	var yaw_delta = 0.0
-	if hat_x != 0.0:
-		yaw_delta = hat_x
-	elif Input.is_joy_button_pressed(d2, JOY_BUTTON_DPAD_LEFT) or Input.is_key_pressed(KEY_LEFT):
-		yaw_delta = -1.0
-	elif Input.is_joy_button_pressed(d2, JOY_BUTTON_DPAD_RIGHT) or Input.is_key_pressed(KEY_RIGHT):
-		yaw_delta = 1.0
-	chase_yaw += yaw_delta * ORBIT_SPEED * delta
-	if chase_yaw > 360.0:
-		chase_yaw -= 360.0
-	elif chase_yaw < 0.0:
-		chase_yaw += 360.0
-	
-	# Rotate the "behind" direction by chase_yaw around the vertical axis
-	var rotated_forward = forward.rotated(Vector3.UP, deg_to_rad(chase_yaw))
-	
-	# Target position: behind and above the aircraft
-	var target_pos = aircraft_pos - rotated_forward * chase_distance + Vector3(0, chase_height, 0)
-	
-	# Smooth follow using lerp
-	var t = clamp(chase_smooth * delta, 0.0, 1.0)
-	camera2.global_position = camera2.global_position.lerp(target_pos, t)
-	
-	# Look at aircraft
-	var to_target = aircraft_pos - camera2.global_position
-	if to_target.length_squared() > 0.01:
-		camera2.look_at(aircraft_pos, Vector3.UP)
 
 # Helper to print node tree
 func print_node_tree(node: Node, depth: int) -> void:
@@ -1811,24 +1547,23 @@ func _apply_camera_config() -> void:
 	var fov := _aircraft_cfg.get_float("camera", "cockpit_fov", 0.0)
 	# Always start from the pristine scene transform so repeated swaps don't
 	# compound, and so an airframe with no [camera] keys restores the default.
-	camera1_base_transform = _camera1_scene_transform
 	camera1.transform = _camera1_scene_transform
 	camera1.fov = _camera1_scene_fov
-	if pos.size() != 3 and rot.size() != 3 and fov <= 0.0:
-		return  # no camera overrides for this aircraft
-
-	var xform := camera1_base_transform
-	if rot.size() == 3:
-		var extra := Basis.from_euler(Vector3(
-			deg_to_rad(rot[0]), deg_to_rad(rot[1]), deg_to_rad(rot[2])))
-		xform.basis = xform.basis * extra
-	if pos.size() == 3:
-		xform.origin = Vector3(pos[0], pos[1], pos[2])
-	camera1_base_transform = xform
-	camera1.transform = xform
-	if fov > 0.0:
-		camera1.fov = fov
-	print("Cockpit camera positioned for '%s': %s" % [_aircraft_id, xform.origin])
+	if pos.size() == 3 or rot.size() == 3 or fov > 0.0:
+		var xform := _camera1_scene_transform
+		if rot.size() == 3:
+			var extra := Basis.from_euler(Vector3(
+				deg_to_rad(rot[0]), deg_to_rad(rot[1]), deg_to_rad(rot[2])))
+			xform.basis = xform.basis * extra
+		if pos.size() == 3:
+			xform.origin = Vector3(pos[0], pos[1], pos[2])
+		camera1.transform = xform
+		if fov > 0.0:
+			camera1.fov = fov
+		print("Cockpit camera positioned for '%s': %s" % [_aircraft_id, xform.origin])
+	# Head look composes on top of this transform; keep the C++ rig's captured
+	# cockpit base in sync (it resets Camera1 to it every frame).
+	_camera_rig.capture_cockpit_base()
 
 
 

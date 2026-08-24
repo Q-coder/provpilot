@@ -5,6 +5,7 @@
 #include "jsbgodot.h"
 #include "geo.h"
 #include "control_surfaces.h"
+#include "camera_rig.h"
 
 using namespace godot;
 using namespace jsbgodot;
@@ -18,6 +19,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<JSBGodot>();
 	ClassDB::register_class<Geo>();
 	ClassDB::register_class<ControlSurfaces>();
+	ClassDB::register_class<CameraRig>();
 }
 
 void uninitialize_gojsb_module(ModuleInitializationLevel p_level)
