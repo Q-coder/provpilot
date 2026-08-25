@@ -110,12 +110,20 @@ var _intro_zoom := IntroZoom.new()
 # update(get_viewport()) from _process.
 var _atmosphere := Atmosphere.new()
 
+# Engine-sound pitch/volume mapping (RPM -> AudioStreamPlayer pitch_scale +
+# volume_db) lives in the C++ EngineSound module (src/engine_sound.cpp).
+# GDScript owns the looping AudioStreamPlayer node, pushes the per-aircraft
+# tunables from aircraft.cfg ([sound] ranges + [propeller] max_rpm), registers
+# the node in _setup_engine_sound, and calls update() from _process with the
+# ControlSurfaces smoothed RPM + the user engine-volume setting.
+var _engine_sound := EngineSound.new()
+
 # Rudder indicator pivot tweak (debug drag on screen, not part of the animator)
 var rudder_pivot_offset: Vector3 = Vector3(0, 0, 0)
 
 # Propeller blur-disc creation parameters (the disc mesh itself is built here
-# in GDScript; spin/blur/cone animation is done by ControlSurfaces).
-var PROPELLER_MAX_RPM: float = 2700.0  # Max RPM for reference (cfg propeller.max_rpm)
+# in GDScript; spin/blur/cone animation is done by ControlSurfaces). The
+# max_rpm used to normalise engine sound lives in the C++ EngineSound module.
 var PROPELLER_DISC_RADIUS: float = 0.95  # Radius of blur disc in meters (cfg propeller.disc_radius_m)
 var PROPELLER_SPIN_AXIS: Vector3 = Vector3.BACK  # Local axis the prop spins about (cfg propeller.spin_axis: x/y/z)
 var PROPELLER_DISC_OFFSET: Vector3 = Vector3.ZERO  # Disc translation tweak in parent space (cfg propeller.disc_offset)
@@ -227,14 +235,8 @@ const FLAP_LEVER_COLLISION_LAYER: int = 128  # Separate physics layer
 # ── Engine sound ───────────────────────────────────────────────────────────
 var _engine_audio: AudioStreamPlayer = null
 var ENGINE_SOUND_PATH: String = "res://sounds/c172_engine_inflight.ogg"  # cfg sound.engine
-# RPM-to-pitch mapping: idle (~700 RPM) → 0.7, max (2700 RPM) → 1.6 (cfg sound.pitch_*)
-var ENGINE_PITCH_MIN: float = 0.7
-var ENGINE_PITCH_MAX: float = 1.6
-# RPM-to-volume mapping (before user volume slider): idle → -12 dB, max → +3 dB (cfg sound.vol_db_*)
-var ENGINE_VOL_DB_MIN: float = -12.0
-var ENGINE_VOL_DB_MAX: float = 3.0
-# Below this RPM the engine sound fades out completely
-const ENGINE_SOUND_FADE_RPM: float = 50.0
+# The RPM->pitch/volume mapping + low-RPM fade threshold live in the C++
+# EngineSound module (tunables pushed from aircraft.cfg [sound] / [propeller]).
 
 # FPS counter
 var _fps_label: Label = null
@@ -405,6 +407,8 @@ func _setup_engine_sound() -> void:
 	_engine_audio.volume_db = -80.0  # Start silent
 	add_child(_engine_audio)
 	_engine_audio.play()
+	# Hand the player to the C++ module so update() can drive pitch/volume.
+	_engine_sound.register_nodes(_engine_audio)
 	print("Engine sound loaded and playing (looped)")
 
 
@@ -412,28 +416,13 @@ func _update_engine_sound() -> void:
 	if _engine_audio == null:
 		return
 
-	# Use the C++ animator's smoothed RPM (handles engine-off decay)
-	var rpm := _control_surfaces.get_visual_rpm()
-
-	# Fade to silence below threshold
-	if rpm < ENGINE_SOUND_FADE_RPM:
-		_engine_audio.volume_db = -80.0
-		return
-
-	# Normalise RPM to 0-1 range (idle ~700 = 0.26, max 2700 = 1.0)
-	var rpm_norm = clampf(rpm / PROPELLER_MAX_RPM, 0.0, 1.0)
-
-	# Pitch: linear interpolation
-	_engine_audio.pitch_scale = lerpf(ENGINE_PITCH_MIN, ENGINE_PITCH_MAX, rpm_norm)
-
-	# Volume: linear interpolation in dB, then apply user engine_volume setting
-	var base_db = lerpf(ENGINE_VOL_DB_MIN, ENGINE_VOL_DB_MAX, rpm_norm)
+	# The RPM->pitch/volume math lives in the C++ EngineSound module. We keep
+	# only the scene/UI concerns here: the null gate, reading the ControlSurfaces
+	# smoothed RPM (handles engine-off decay), and the user engine-volume setting.
 	var user_vol_pct: float = 70.0  # default
 	if _settings_screen and "settings" in _settings_screen:
 		user_vol_pct = float(_settings_screen.settings.get("engine_volume", 70))
-	# Convert 0-100% to dB offset: 0% → -80 dB (silent), 100% → 0 dB (no attenuation)
-	var user_db_offset = lerpf(-80.0, 0.0, user_vol_pct / 100.0)
-	_engine_audio.volume_db = base_db + user_db_offset
+	_engine_sound.update(_control_surfaces.get_visual_rpm(), user_vol_pct)
 
 
 # Create the propeller blur disc mesh (as a sibling of the propeller) and hand
@@ -1140,7 +1129,8 @@ func _load_aircraft_config() -> void:
 
 	# Propeller visuals: blur thresholds + spin axis go to the C++ animator;
 	# disc size/offset stay here because the blur-disc mesh is built in GDScript.
-	PROPELLER_MAX_RPM = cfg.get_float("propeller", "max_rpm", PROPELLER_MAX_RPM)
+	# (max_rpm is read in the Engine-sound section below — it only feeds the
+	# C++ EngineSound RPM normalisation.)
 	_control_surfaces.set_propeller_blur_start_rpm(cfg.get_float("propeller", "blur_start_rpm", 900.0))
 	_control_surfaces.set_propeller_hide_blades_rpm(cfg.get_float("propeller", "hide_blades_rpm", 1200.0))
 	PROPELLER_DISC_RADIUS = cfg.get_float("propeller", "disc_radius_m", PROPELLER_DISC_RADIUS)
@@ -1152,12 +1142,13 @@ func _load_aircraft_config() -> void:
 	else:
 		PROPELLER_DISC_OFFSET = Vector3.ZERO
 
-	# Engine sound.
+	# Engine sound. The audio stream path stays here (GDScript loads the node);
+	# the RPM->pitch/volume tunables go to the C++ EngineSound module, including
+	# [propeller] max_rpm which only feeds its RPM normalisation.
 	ENGINE_SOUND_PATH = cfg.get_string("sound", "engine", ENGINE_SOUND_PATH)
-	ENGINE_PITCH_MIN = cfg.get_float("sound", "pitch_min", ENGINE_PITCH_MIN)
-	ENGINE_PITCH_MAX = cfg.get_float("sound", "pitch_max", ENGINE_PITCH_MAX)
-	ENGINE_VOL_DB_MIN = cfg.get_float("sound", "vol_db_min", ENGINE_VOL_DB_MIN)
-	ENGINE_VOL_DB_MAX = cfg.get_float("sound", "vol_db_max", ENGINE_VOL_DB_MAX)
+	_engine_sound.set_pitch_range(cfg.get_float("sound", "pitch_min", 0.7), cfg.get_float("sound", "pitch_max", 1.6))
+	_engine_sound.set_vol_db_range(cfg.get_float("sound", "vol_db_min", -12.0), cfg.get_float("sound", "vol_db_max", 3.0))
+	_engine_sound.set_max_rpm(cfg.get_float("propeller", "max_rpm", 2700.0))
 
 
 # Adopt the airframe the user picked on the welcome screen. Re-reads

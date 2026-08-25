@@ -10,6 +10,7 @@
 #include "slew_mode.h"
 #include "intro_zoom.h"
 #include "atmosphere.h"
+#include "engine_sound.h"
 
 using namespace godot;
 using namespace jsbgodot;
@@ -28,6 +29,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<SlewMode>();
 	ClassDB::register_class<IntroZoom>();
 	ClassDB::register_class<Atmosphere>();
+	ClassDB::register_class<EngineSound>();
 }
 
 void uninitialize_gojsb_module(ModuleInitializationLevel p_level)
