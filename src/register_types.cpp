@@ -8,6 +8,8 @@
 #include "camera_rig.h"
 #include "cockpit_controls.h"
 #include "slew_mode.h"
+#include "intro_zoom.h"
+#include "atmosphere.h"
 
 using namespace godot;
 using namespace jsbgodot;
@@ -24,6 +26,8 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<CameraRig>();
 	ClassDB::register_class<CockpitControls>();
 	ClassDB::register_class<SlewMode>();
+	ClassDB::register_class<IntroZoom>();
+	ClassDB::register_class<Atmosphere>();
 }
 
 void uninitialize_gojsb_module(ModuleInitializationLevel p_level)

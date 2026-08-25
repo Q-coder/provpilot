@@ -45,26 +45,24 @@ var _camera1_scene_fov: float = 0.0        # Pristine Camera1 fov from the scene
 
 # Camera mode enum (values mirror the C++ CameraRig::Mode). Kept here because
 # lever raycasts and the intro handoff branch on it; kept in sync with the rig
-# by flip_camera() / _end_intro_zoom().
+# by flip_camera() and when IntroZoom reports its orbit handoff.
 enum CameraMode { COCKPIT, ORBIT, CHASE }
 var camera_mode: int = CameraMode.COCKPIT
 
 # Cinematic space→spot intro zoom (world3d globe). When entering fly mode we
 # start high above the Earth (whole globe visible) and smoothly zoom down to the
 # external "spot" view of the aircraft, then hand off to the normal orbit camera.
+# The animation state + math live in the C++ IntroZoom module
+# (src/intro_zoom.cpp); _intro_playing is the GDScript-side mirror used by
+# _process and the smoke test.
 var _intro_playing: bool = false
-var _intro_elapsed: float = 0.0
-const INTRO_DURATION: float = 6.0
-const INTRO_START_ALT_M: float = 1.6e7   # metres above the aircraft (space view)
-var _intro_up_dir: Vector3 = Vector3.UP
-var _intro_start_pos: Vector3 = Vector3.ZERO
 # Dedicated camera for the intro, parented to the ROOT (not the aircraft) so its
 # space position is not dragged around by JSBSim's per-frame AC transform writes.
 var _intro_camera: Camera3D = null
 
 # Spot/orbit and chase camera state (angles, distances, smoothing) lives in the
-# C++ CameraRig module (src/camera_rig.cpp); the intro-zoom handoff reads the
-# orbit offset back via _camera_rig.orbit_offset().
+# C++ CameraRig module (src/camera_rig.cpp); the C++ IntroZoom handoff reads
+# the orbit offset directly from it via orbit_offset().
 
 # Control surfaces, propeller and landing-gear animation live in the C++
 # ControlSurfaces module (src/control_surfaces.cpp). Per-aircraft tunables are
@@ -95,6 +93,22 @@ var _cockpit_controls := CockpitControls.new()
 # and drives per-frame updates from _process with the calibrated joystick
 # axes (JoystickConfig) and the terrain height under the aircraft.
 var _slew_mode := SlewMode.new()
+
+# Cinematic space→spot intro zoom (world3d globe) lives in the C++ IntroZoom
+# module (src/intro_zoom.cpp). GDScript keeps the scene-side gates (globe
+# mounted, AC + dedicated intro camera valid), registers the session-stable
+# nodes in _setup_world3d_globe, and drives per-frame updates from _process.
+# The handoff to the orbit camera is done by the module through CameraRig; the
+# camera_mode/active_camera mirrors are refreshed here when update() reports
+# STATUS_FINISHED.
+var _intro_zoom := IntroZoom.new()
+
+# Altitude-driven atmosphere (fog fade-out toward space, sky-to-black
+# background, ambient/glow taper) + coarse-globe visibility gate live in the
+# C++ Atmosphere module (src/atmosphere.cpp). GDScript registers the scene
+# Environment + globe node once the world3d globe is mounted and calls
+# update(get_viewport()) from _process.
+var _atmosphere := Atmosphere.new()
 
 # Rudder indicator pivot tweak (debug drag on screen, not part of the animator)
 var rudder_pivot_offset: Vector3 = Vector3(0, 0, 0)
@@ -134,26 +148,11 @@ var _globe_mount: Node3D = null        # carries inverse-ECEF transform
 var _w3d_coords = null                 # W3DCoords instance for conversions
 # flat local (X=West, Y=Up, Z=North) at the LV95 origin -> ECEF metres.
 var _ecef_from_flat: Transform3D = Transform3D.IDENTITY
-# Atmospheric fog is exponential (density-based), so it saturates to the fog
-# colour at very large distances — which turns the whole Earth into a white disc
-# when viewed from space. Fade the fog density out with camera altitude so we
-# keep near-ground haze but see oceans/continents from orbit.
-var _world_env: Environment = null
-var _fog_base_density: float = 0.0
-const FOG_FULL_ALT_M := 4000.0    # full fog at/below this camera altitude (m ASL)
-const FOG_ZERO_ALT_M := 60000.0   # no fog at/above this camera altitude (m ASL)
-# Fade the sky background to black as we leave the atmosphere (space = black).
-# The sun still lights the globe (directional light is unaffected).
-var _bg_base_energy: float = 1.0
-var _ambient_base_energy: float = 1.0
-var _glow_base_intensity: float = 0.0
-const SKY_FULL_ALT_M := 12000.0    # full sky at/below this camera altitude (m ASL)
-const SKY_BLACK_ALT_M := 100000.0  # black background at/above this altitude (m ASL)
-const AMBIENT_SPACE_ENERGY := 0.35 # ambient light energy in space (vs bright ground value)
-# The coarse global globe (~2 km ETOPO) would poke through the fine Swiss/BW
-# scenery3d patch, so hide it below this camera altitude (the detailed patch is
-# the ground there) and show it above (high-altitude / space backdrop).
-const GLOBE_SHOW_ALT_M := 25000.0
+# The altitude-driven atmosphere ramps (exponential fog fade-out toward space,
+# sky-to-black background above the atmosphere, ambient/glow taper) and the
+# coarse-globe visibility gate live in the C++ Atmosphere module
+# (src/atmosphere.cpp); it captures the scene Environment's base values when
+# registered (see _setup_world3d_globe).
 
 # Tree density mapping (index = tree_density setting value).
 # Off / Low / Medium / High / Very High
@@ -651,175 +650,35 @@ func _setup_world3d_globe() -> void:
 		_intro_camera.far = 4.0e7
 		_intro_camera.fov = 70.0
 		add_child(_intro_camera)
-	# Cache the scene Environment so we can fade fog with altitude (the globe
-	# would otherwise wash out to the fog colour when seen from space).
+	# Register the altitude-driven atmosphere ramps + coarse-globe visibility
+	# gate with the C++ module (it captures the Environment's base values now,
+	# so the globe doesn't wash out to the fog colour when seen from space).
 	var we := get_node_or_null("Environment/WorldEnvironment")
-	if we and we.environment:
-		_world_env = we.environment
-		_fog_base_density = _world_env.fog_density
-		_bg_base_energy = _world_env.background_energy_multiplier
-		_ambient_base_energy = _world_env.ambient_light_energy
-		_glow_base_intensity = _world_env.glow_intensity
+	_atmosphere.register_nodes(we.environment if we else null, globe_node)
+	# Register the cinematic intro zoom nodes (session-stable; the dedicated
+	# intro camera was created just above).
+	_intro_zoom.register_nodes(get_node_or_null("AC"), _intro_camera, camera1, camera2, _camera_rig)
 	print("World3D globe mounted: LV95 %d/%d -> lat=%.5f lon=%.5f" % [
 		int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N), origin_lat, origin_lon])
 
 
 ## Begin the cinematic space→spot zoom (called when fly-loading completes).
-## Animates the external spot camera (camera2) from high above the Earth down to
-## the normal orbit "spot" view of the aircraft, then hands off to orbit mode.
+## Animates the dedicated intro camera from high above the Earth down to the
+## normal orbit "spot" view of the aircraft, then hands off to orbit mode. The
+## animation state + math live in the C++ IntroZoom module; this keeps the
+## scene-side gates (globe mounted, AC + dedicated intro camera valid) and the
+## active_camera mirror.
 func _start_intro_zoom() -> void:
 	if not USE_WORLD3D_GLOBE or not is_instance_valid(globe_node) or not _globe_mount:
 		return
 	var ac_node := get_node_or_null("AC")
 	if not ac_node or not is_instance_valid(_intro_camera):
 		return
-	# Start the camera straight up (local +Y) above the aircraft. Using the true
-	# radial direction tilts it a few km horizontally (the aircraft sits off the
-	# tangent origin), which makes the scenery managers stream tiles around the
-	# wrong spot during the descent. Straight up keeps streaming centred on the
-	# aircraft so detailed buildings load directly instead of far-first.
-	_intro_up_dir = Vector3.UP
-	_intro_start_pos = ac_node.global_position + _intro_up_dir * INTRO_START_ALT_M
-	_intro_elapsed = 0.0
-	_intro_playing = true
-	# Drive the dedicated root-level intro camera.
-	var ac_pos: Vector3 = ac_node.global_position
-	_intro_camera.global_position = _intro_start_pos
-	var fwd0: Vector3 = (ac_pos - _intro_start_pos).normalized()
-	var up0: Vector3 = Vector3(0, 0, -1) if absf(fwd0.dot(Vector3.UP)) > 0.98 else Vector3.UP
-	_intro_camera.look_at(ac_pos, up0)
-	active_camera = _intro_camera
-	if camera1:
-		camera1.current = false
-	if camera2:
-		camera2.current = false
-	_intro_camera.current = true
-	# The dedicated intro camera is active, so suppress the rig's cockpit
-	# (head-look) branch until the handoff back to Camera2.
-	_camera_rig.set_cockpit_enabled(false)
-	print("World3D intro zoom started (space → spot)")
+	if _intro_zoom.start():
+		_intro_playing = true
+		active_camera = _intro_camera
 
 
-## Per-frame update of the intro zoom. Log-interpolates distance (many orders of
-## magnitude) and slerps the view direction from straight-down to the spot angle.
-func _update_intro_zoom(delta: float) -> void:
-	var ac_node := get_node_or_null("AC")
-	if not ac_node or not is_instance_valid(_intro_camera):
-		_end_intro_zoom()
-		return
-	# Allow the user to skip the cinematic.
-	if Input.is_key_pressed(KEY_ESCAPE) or Input.is_key_pressed(KEY_SPACE):
-		_end_intro_zoom()
-		return
-
-	_intro_elapsed += delta
-	var p: float = clampf(_intro_elapsed / INTRO_DURATION, 0.0, 1.0)
-	var pe: float = smoothstep(0.0, 1.0, p)  # ease in/out
-
-	var target: Vector3 = ac_node.global_position
-
-	# Spot (orbit) end offset — from the C++ CameraRig, so the handoff to the
-	# orbit camera is seamless.
-	var spot_offset := _camera_rig.orbit_offset()
-
-	var start_dir := _intro_up_dir
-	var end_dir := spot_offset.normalized()
-	var start_dist := INTRO_START_ALT_M
-	var end_dist := maxf(spot_offset.length(), 0.5)
-
-	# Log distance interpolation feels linear in "orders of magnitude".
-	var dist: float = exp(lerpf(log(start_dist), log(end_dist), pe))
-	# Keep the view top-down while high, swing to the spot angle near the end.
-	var dir := start_dir.slerp(end_dir, pe * pe)
-	var cam_pos := target + dir * dist
-	_intro_camera.global_position = cam_pos
-
-	# Robust up vector: avoid look_at degeneracy when peering straight down.
-	var fwd := (target - cam_pos).normalized()
-	var ref_up := Vector3.UP
-	if absf(fwd.dot(ref_up)) > 0.98:
-		ref_up = Vector3(0, 0, -1)
-	_intro_camera.look_at(target, ref_up)
-
-	if p >= 1.0:
-		_end_intro_zoom()
-
-
-## Finish the intro and hand control to the normal orbit spot camera.
-func _end_intro_zoom() -> void:
-	if not _intro_playing:
-		return
-	_intro_playing = false
-	# Hand the rig over to the orbit camera (it toggles the current flags) and
-	# re-enable its cockpit branch for when the user flips back later.
-	_camera_rig.set_mode(CameraMode.ORBIT)
-	_camera_rig.set_cockpit_enabled(true)
-	camera_mode = CameraMode.ORBIT
-	active_camera = camera2
-	# Position camera2 at the spot immediately so the handoff has no 1-frame gap.
-	var ac_node := get_node_or_null("AC")
-	if ac_node and is_instance_valid(camera2):
-		var spot_offset := _camera_rig.orbit_offset()
-		camera2.global_position = ac_node.global_position + spot_offset
-		if spot_offset.length_squared() > 0.01:
-			camera2.look_at(ac_node.global_position, Vector3.UP)
-	if is_instance_valid(_intro_camera):
-		_intro_camera.current = false
-	print("World3D intro zoom complete — spot view active")
-
-
-## Scale exponential fog density by the rendering camera's altitude so the globe
-## is fully visible from space (fog off) but keeps atmospheric haze near ground.
-func _update_atmosphere() -> void:
-	if not USE_WORLD3D_GLOBE or _world_env == null:
-		return
-	var vp := get_viewport()
-	var cam: Camera3D = vp.get_camera_3d() if vp else null
-	if not is_instance_valid(cam):
-		return
-	# Flat-frame Y ≈ altitude ASL near the origin (good enough for a fog ramp).
-	var alt: float = cam.global_position.y
-	var t: float = clampf((FOG_ZERO_ALT_M - alt) / (FOG_ZERO_ALT_M - FOG_FULL_ALT_M), 0.0, 1.0)
-	_world_env.fog_density = _fog_base_density * t
-	# Disable fog ENTIRELY above the haze band: exponential fog still tints the
-	# infinite-depth background to the pale fog colour via fog_sky_affect /
-	# aerial-perspective even at density 0, which turns "black space" pale blue.
-	_world_env.fog_enabled = t > 0.0
-	# Darken the sky background toward black as we climb out of the atmosphere.
-	# Above the atmosphere switch to a solid black background (energy fading alone
-	# leaves a lit sky that never reaches true black); below, ramp the sky back in.
-	var ts: float = clampf((SKY_BLACK_ALT_M - alt) / (SKY_BLACK_ALT_M - SKY_FULL_ALT_M), 0.0, 1.0)
-	if ts <= 0.0:
-		if _world_env.background_mode != Environment.BG_COLOR:
-			_world_env.background_mode = Environment.BG_COLOR
-			_world_env.background_color = Color(0, 0, 0)
-	else:
-		if _world_env.background_mode != Environment.BG_SKY:
-			_world_env.background_mode = Environment.BG_SKY
-		_world_env.background_energy_multiplier = _bg_base_energy * ts
-	# High ambient (tuned for ground) over-brightens the globe and blooms into
-	# space; taper it toward a low value at altitude.
-	_world_env.ambient_light_energy = lerpf(AMBIENT_SPACE_ENERGY, _ambient_base_energy, ts)
-	# Glow blooms the sunlit globe across the (black) background, which reads as a
-	# bright grey haze from space. Fade it out with altitude and disable it fully
-	# above the atmosphere (the world3d demo uses no glow for its clean black space).
-	_world_env.glow_intensity = _glow_base_intensity * ts
-	_world_env.glow_enabled = ts > 0.02
-
-
-## Show the coarse global globe only above the detailed Swiss/BW patch, so its
-## ~2 km ETOPO surface doesn't poke through the fine scenery3d terrain at low
-## altitude. The globe's terrain queries are unaffected by visibility.
-func _update_globe_visibility() -> void:
-	if not USE_WORLD3D_GLOBE or not is_instance_valid(globe_node):
-		return
-	var vp := get_viewport()
-	var cam: Camera3D = vp.get_camera_3d() if vp else null
-	if not is_instance_valid(cam):
-		return
-	var want_visible := cam.global_position.y > GLOBE_SHOW_ALT_M
-	if globe_node.visible != want_visible:
-		globe_node.visible = want_visible
 
 
 # Called from _process on first frame to do actual terrain positioning
@@ -1015,10 +874,10 @@ func _process(delta: float) -> void:
 	if _pending_terrain_init:
 		_do_deferred_terrain_init()
 
-	# Fade fog with camera altitude so the globe is clear from space.
-	_update_atmosphere()
-	# Hide the coarse globe under the detailed Swiss/BW patch.
-	_update_globe_visibility()
+	# Altitude-driven atmosphere ramps + coarse-globe visibility gate (C++
+	# Atmosphere module): fog fades with camera altitude so the globe is clear
+	# from space, and the coarse globe stays hidden under the detailed patch.
+	_atmosphere.update(get_viewport())
 
 	# While loading screen is active, update progress and wait for completion
 	if not _loading_done:
@@ -1038,9 +897,14 @@ func _process(delta: float) -> void:
 	if _settings_screen and _settings_screen.visible:
 		return
 
-	# Cinematic space→spot zoom on entering fly mode (world3d globe).
+	# Cinematic space→spot zoom on entering fly mode (world3d globe). The C++
+	# IntroZoom module owns the animation + the CameraRig orbit handoff; sync
+	# the camera_mode/active_camera mirrors when it reports the handoff.
 	if _intro_playing:
-		_update_intro_zoom(delta)
+		if _intro_zoom.update(delta) == IntroZoom.STATUS_FINISHED:
+			_intro_playing = false
+			camera_mode = CameraMode.ORBIT
+			active_camera = camera2
 		return
 
 	# Escape key: return to welcome screen
