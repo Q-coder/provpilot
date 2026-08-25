@@ -11,6 +11,7 @@
 #include "intro_zoom.h"
 #include "atmosphere.h"
 #include "engine_sound.h"
+#include "terrain_elevation.h"
 
 using namespace godot;
 using namespace jsbgodot;
@@ -30,6 +31,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<IntroZoom>();
 	ClassDB::register_class<Atmosphere>();
 	ClassDB::register_class<EngineSound>();
+	ClassDB::register_class<TerrainElevation>();
 }
 
 void uninitialize_gojsb_module(ModuleInitializationLevel p_level)

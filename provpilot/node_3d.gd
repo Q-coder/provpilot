@@ -118,6 +118,12 @@ var _atmosphere := Atmosphere.new()
 # ControlSurfaces smoothed RPM + the user engine-volume setting.
 var _engine_sound := EngineSound.new()
 
+# Post-teleport terrain handling (rebase cooldown + per-frame JSBSim ground
+# elevation) lives in the C++ TerrainElevation module (src/terrain_elevation.cpp).
+# GDScript keeps the scenery-stack terrain query, the terrain_initialized gate,
+# node registration, and pushes the config it still owns locally.
+var _terrain_elevation := TerrainElevation.new()
+
 # Rudder indicator pivot tweak (debug drag on screen, not part of the animator)
 var rudder_pivot_offset: Vector3 = Vector3(0, 0, 0)
 
@@ -169,13 +175,11 @@ const TREE_DENSITY_FRACTION := [0.0, 0.25, 0.50, 0.75, 1.0]
 # the number of trees within this radius, not the radius itself.
 const TREE_LOAD_RADIUS_M := 1500
 
-# Teleport cooldown: pin the aircraft to the teleport target until JSBSim
-# has stabilised.  C++ _physics_process sets the AC position directly from
-# JSBSim output, which can be garbage on the first frames after reinitialize;
-# we override it in _process.
-var _rebase_cooldown: int = 0
-const REBASE_COOLDOWN_FRAMES: int = 120  # ~2 seconds at 60 fps
-var _teleport_pin_pos: Vector3 = Vector3.ZERO  # Position to hold AC at during cooldown
+# Teleport rebase cooldown (pin the AC until JSBSim stabilises) + per-frame
+# JSBSim ground-elevation push live in the C++ TerrainElevation module
+# (src/terrain_elevation.cpp). GDScript still gates them on terrain_initialized,
+# supplies the scenery-stack ground-height query, and reads the cooldown for the
+# loading-progress bar.
 
 # Position dialog (Shift+P)
 var _position_dialog: Window = null
@@ -363,6 +367,12 @@ func _ready() -> void:
 	# and the Swiss origin (must run after TERRAIN_CENTER is locked above).
 	_slew_mode.register_nodes($AC, airspeed_label, altitude_label, vspeed_label, throttle_label, heading_label, $Control/Label6, $Control/Label7, $Control/Label8)
 	_slew_mode.set_swiss_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
+
+	# Terrain elevation (C++ module): register the session-stable AC root and push
+	# the fallback timeout GDScript still owns locally (it also gates the deferred
+	# init handshake). The other tunables use the module's built-in defaults.
+	_terrain_elevation.register_nodes($AC)
+	_terrain_elevation.set_terrain_init_fallback_msec(TERRAIN_INIT_FALLBACK_MSEC)
 
 	# Mount the world3d global globe at the LV95 origin. Must run after
 	# TERRAIN_CENTER_E/N are final so the tangent frame matches the flat frame.
@@ -752,9 +762,11 @@ func _do_deferred_terrain_init() -> void:
 	print("=== Initial aircraft position at Godot Y: %.1f m (terrain: %.1f m) ===" % [new_y, api_height])
 	ac_node.global_position.y = new_y
 
-	# For JSBSim we need real ASL elevation — Scenery3D Y is already ASL.
-	jsbsim_elevation_offset = 0.0
-	var jsbsim_terrain_elevation = api_height + jsbsim_elevation_offset
+	# For JSBSim we need real ASL elevation — Scenery3D Y is already ASL. The Godot
+	# Y -> JSBSim ASL offset is owned by the C++ TerrainElevation module (used for
+	# both this initial setup and the per-frame ground-elevation push).
+	_terrain_elevation.set_elevation_offset(0.0)
+	var jsbsim_terrain_elevation = api_height + _terrain_elevation.get_elevation_offset()
 
 	# JSBSim reports CG altitude. The C172P CG sits ~1.32 m above the wheel
 	# contact points (CG z=36.5" vs main gear z=-15.5" in c172p.xml). The
@@ -774,87 +786,31 @@ func _do_deferred_terrain_init() -> void:
 # Update terrain elevation for JSBSim ground collision (per-frame, after init)
 # This updates the terrain elevation as the aircraft moves over varying terrain
 var terrain_debug_printed: bool = false
-var terrain_initialized: bool = false
-var terrain_init_frame_count: int = 0
-const TERRAIN_INIT_DELAY_FRAMES: int = 60  # Wait 60 frames (~1 sec) before per-frame updates
-# Offset to convert Godot Y coordinates to JSBSim ASL elevation
-# Set during initialization, used for per-frame terrain updates
-var jsbsim_elevation_offset: float = 0.0
-
-var _rebase_retry_start_msec: int = 0
+var terrain_initialized: bool = false  # Set during the deferred init handshake
+# (terrain_init_frame_count, TERRAIN_INIT_DELAY_FRAMES, jsbsim_elevation_offset
+# and _rebase_retry_start_msec moved to the C++ TerrainElevation module.)
 
 func _process_rebase_cooldown() -> void:
-	## Handle post-teleport position pinning and JSBSim release.
-	var ac_guard = get_node_or_null("AC")
-	if ac_guard and terrain_initialized and _rebase_cooldown > 0:
-		ac_guard.global_position = _teleport_pin_pos
-		_rebase_cooldown -= 1
-		if _rebase_cooldown == 0:
-			# Terrain should be loaded by now — update height at pin position
-			var h: float = _terrain_elevation_at(_teleport_pin_pos.x, _teleport_pin_pos.z)
-			if is_nan(h):
-				# Tile still not loaded — keep pinning and retry next frame,
-				# but only up to TERRAIN_INIT_FALLBACK_MSEC so we don't loop
-				# forever when the destination is over nodata terrain.
-				if _rebase_retry_start_msec == 0:
-					_rebase_retry_start_msec = Time.get_ticks_msec()
-				var waited := Time.get_ticks_msec() - _rebase_retry_start_msec
-				if waited < TERRAIN_INIT_FALLBACK_MSEC:
-					_rebase_cooldown = 1
-					return
-				push_warning("Teleport: terrain elevation unavailable at (%.0f, %.0f) after %.0fs — releasing JSBSim at fallback elevation 0 m ASL" % [_teleport_pin_pos.x, _teleport_pin_pos.z, waited / 1000.0])
-				h = 0.0
-			_rebase_retry_start_msec = 0
-			if h > 0.1:
-				_teleport_pin_pos.y = h + 2.1  # terrain + gear clearance
-				ac_guard.global_position = _teleport_pin_pos
-				print("Teleport: updated terrain height to %.1fm" % h)
-			# Re-initialize JSBSim at the final pinned position and release
-			if jsb_node:
-				if jsb_node.has_method("reinitialize_from_godot_position"):
-					var h_terr: float = _terrain_elevation_at(ac_guard.global_position.x, ac_guard.global_position.z)
-					if is_nan(h_terr):
-						h_terr = h
-					jsb_node.reinitialize_from_godot_position(ac_guard.global_position, ac_guard.rotation.y, h_terr)
-				_update_terrain_elevation()
-				if jsb_node.has_method("set_slew_mode"):
-					jsb_node.set_slew_mode(false)
-			print("Teleport cooldown expired – JSBSim released at ", ac_guard.global_position)
-
-func _update_terrain_elevation() -> void:
-	# Skip if not yet initialized
+	## Handle post-teleport position pinning and JSBSim release. The state machine
+	## + math live in the C++ TerrainElevation module; GDScript gates on
+	## terrain_initialized and supplies the scenery-stack ground-height query at
+	## the pinned position (NAN when no data there).
 	if not terrain_initialized:
 		return
+	var pin := _terrain_elevation.get_teleport_pin_pos()
+	_terrain_elevation.process_rebase(jsb_node, _terrain_elevation_at(pin.x, pin.z), is_instance_valid(scenery3d_node))
 
-	# Skip first N frames to let JSBSim stabilize
-	terrain_init_frame_count += 1
-	if terrain_init_frame_count < TERRAIN_INIT_DELAY_FRAMES:
+func _update_terrain_elevation() -> void:
+	## Push the terrain elevation under the aircraft to JSBSim's ground-collision
+	## model. The per-frame counter + math live in the C++ TerrainElevation module;
+	## GDScript gates on terrain_initialized and supplies the scenery-stack query
+	## (NAN when no data there) + whether the precise Scenery3D node is alive.
+	if not terrain_initialized:
 		return
-
-	if not jsb_node:
+	var ac = get_node_or_null("AC")
+	if ac == null:
 		return
-	if not is_instance_valid(scenery3d_node):
-		return
-
-	var ac_node = get_node_or_null("AC")
-	if not ac_node:
-		return
-
-	var ac_position = ac_node.global_position
-	var terrain_height_godot: float = _terrain_elevation_at(ac_position.x, ac_position.z)
-
-	# If the tile under the aircraft hasn't streamed in yet, do NOT push 0.0
-	# to JSBSim — that would make it think the ground is at sea level and
-	# produce a multi-hundred-metre collision spike when the real tile loads.
-	# Leaving the previous elevation in place keeps physics stable.
-	if is_nan(terrain_height_godot):
-		return
-
-	# Convert Godot Y coordinate to JSBSim ASL elevation
-	var terrain_elevation_jsbsim = terrain_height_godot + jsbsim_elevation_offset
-
-	# Set terrain elevation in JSBSim (in meters - the method converts to feet)
-	jsb_node.set_terrain_elevation(terrain_elevation_jsbsim)
+	_terrain_elevation.update_terrain_elevation(jsb_node, _terrain_elevation_at(ac.global_position.x, ac.global_position.z), is_instance_valid(scenery3d_node))
 
 
 # Called every frame. 'delta' is the elapsed time since the previous frame.
@@ -1565,8 +1521,8 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 			scenery_ready = true
 			p_scenery = 1.0
 
-	var cooldown_pending := _rebase_cooldown if is_fly_loading else 0
-	var p_cooldown := 1.0 - (float(cooldown_pending) / float(maxi(1, REBASE_COOLDOWN_FRAMES)))
+	var cooldown_pending := _terrain_elevation.get_rebase_cooldown() if is_fly_loading else 0
+	var p_cooldown := 1.0 - (float(cooldown_pending) / float(maxi(1, _terrain_elevation.get_rebase_cooldown_frames())))
 
 	# Block loading-screen completion while the deferred terrain-init handshake
 	# is still pending. Otherwise the scenery-ready timeout can fire first and
@@ -1820,9 +1776,9 @@ func _do_first_flight(swiss_e: float, swiss_n: float, heading_deg: float) -> voi
 
 	# 6. Nothing else to enable — Scenery3D handles buildings/roads/water natively.
 
-	# 7. Set teleport pin so aircraft stays in place until terrain settles
-	_teleport_pin_pos = ac_node.global_position
-	_rebase_cooldown = REBASE_COOLDOWN_FRAMES
+	# 7. Arm the rebase cooldown (C++ module) so the aircraft stays in place until
+	#    terrain settles and JSBSim stabilises.
+	_terrain_elevation.start_rebase(ac_node.global_position)
 
 	print("=== FIRST FLIGHT: scenery loading initiated ===")
 
@@ -2074,9 +2030,8 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	#     The C++ module's state + HUD are cleared so the slew UI is not shown.
 	_slew_mode.note_external_exit()
 
-	# Arm cooldown: pin AC at this position while JSBSim stabilizes
-	_teleport_pin_pos = ac_node.global_position
-	_rebase_cooldown = REBASE_COOLDOWN_FRAMES
+	# Arm the rebase cooldown (C++ module): pin the AC here while JSBSim stabilises.
+	_terrain_elevation.start_rebase(ac_node.global_position)
 
 	print("=== TELEPORT COMPLETE ===")
 
