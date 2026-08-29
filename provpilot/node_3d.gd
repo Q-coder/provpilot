@@ -1184,6 +1184,13 @@ func _resolve_aircraft_nodes() -> void:
 	# airframe swap, so drop every registered pointer before re-resolving.
 	_control_surfaces.reset()
 	_cockpit_controls.reset()
+	# Drop stale lever physics bodies. They live inside the model subtree, which
+	# is freed on an airframe swap; a lingering reference would otherwise be
+	# passed to register_debug_bodies() below and dereference freed memory.
+	mixture_lever_body = null
+	throttle_lever_body = null
+	magneto_switch_body = null
+	flap_lever_body = null
 
 	var rudder_node := _resolve_surface("rudder")
 	if rudder_node:
