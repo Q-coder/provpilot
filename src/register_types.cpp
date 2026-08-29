@@ -12,6 +12,7 @@
 #include "atmosphere.h"
 #include "engine_sound.h"
 #include "terrain_elevation.h"
+#include "loading_progress.h"
 
 using namespace godot;
 using namespace jsbgodot;
@@ -32,6 +33,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<Atmosphere>();
 	ClassDB::register_class<EngineSound>();
 	ClassDB::register_class<TerrainElevation>();
+	ClassDB::register_class<LoadingProgress>();
 }
 
 void uninitialize_gojsb_module(ModuleInitializationLevel p_level)

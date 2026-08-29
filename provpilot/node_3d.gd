@@ -124,6 +124,11 @@ var _engine_sound := EngineSound.new()
 # node registration, and pushes the config it still owns locally.
 var _terrain_elevation := TerrainElevation.new()
 
+# Loading-screen progress blending + completion state machine live in the C++
+# LoadingProgress module (src/loading_progress.cpp). GDScript keeps the scenery
+# ring sampling (it reports loaded/total) and drives the loading-screen UI.
+var _loading_progress := LoadingProgress.new()
+
 # Rudder indicator pivot tweak (debug drag on screen, not part of the animator)
 var rudder_pivot_offset: Vector3 = Vector3(0, 0, 0)
 
@@ -189,9 +194,8 @@ var _position_key_held: bool = false
 var _loading_screen: CanvasLayer = null
 var _loading_done: bool = false
 var _fly_loading: bool = false   # True while loading after user clicks Fly!
-var _fly_loading_start_msec: int = 0  # Timestamp when fly loading started (ms)
-const FLY_LOADING_MAX_MSEC: int = 45000  # Hard cap on fly loading screen (45s)
-const FLY_LOADING_NODATA_MSEC: int = 15000  # Give up faster when zero tiles load (15s — must exceed TERRAIN_INIT_FALLBACK_MSEC)
+# Fly-loading timeout safety-net state + tunables live in the C++ LoadingProgress
+# module (src/loading_progress.cpp); begin_fly_loading() arms the safety net.
 var _welcome_screen: CanvasLayer = null
 var _settings_screen: CanvasLayer = null
 
@@ -1483,6 +1487,11 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 	## throttles JPEG decode/upload (ORTHO_DECODES_PER_FRAME=3, CHUNKS_PER_FRAME=1)
 	## so the initial fly-to-airport load can take many seconds — the bar
 	## reflects that progress instead of dismissing immediately.
+	##
+	## The ring sampling stays here because it needs this node's elevation query
+	## (precise Scenery3D patch, falling back to the world3d globe). The progress
+	## blending, hard timeout safety net and completion state machine live in the
+	## C++ LoadingProgress module; it reports the bar value + status text.
 	const RING_RADIUS_M := 200.0  # Sample radius around target (≈ tile size)
 	var sample_x := 0.0
 	var sample_z := 0.0
@@ -1516,47 +1525,21 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 			var h: float = scenery3d_node.get_elevation(s.x, s.y)
 			if not is_nan(h) and h != 0.0:
 				loaded += 1
-	var p_scenery := float(loaded) / float(total)
-	var scenery_ready := loaded >= total
 
-	# Hard timeout safety net — if scenery never reports ready (e.g. over
-	# nodata territory), don't trap the user on the loading screen forever.
-	if is_fly_loading and _fly_loading_start_msec > 0:
-		var elapsed := Time.get_ticks_msec() - _fly_loading_start_msec
-		var max_msec := FLY_LOADING_NODATA_MSEC if loaded == 0 else FLY_LOADING_MAX_MSEC
-		if elapsed > max_msec:
-			scenery_ready = true
-			p_scenery = 1.0
-
-	var cooldown_pending := _terrain_elevation.get_rebase_cooldown() if is_fly_loading else 0
-	var p_cooldown := 1.0 - (float(cooldown_pending) / float(maxi(1, _terrain_elevation.get_rebase_cooldown_frames())))
-
-	# Block loading-screen completion while the deferred terrain-init handshake
-	# is still pending. Otherwise the scenery-ready timeout can fire first and
-	# we dismiss the loading screen into a void with the aircraft hanging at
-	# Y=500 m, only to slam down to ground level seconds later when JSBSim
-	# finally initialises.
+	# Progress blending + timeout safety net + completion live in the C++ module.
+	# It reports the bar value + status text; GDScript still owns the UI and the
+	# post-completion actions (intro zoom on fly-load, welcome screen on startup).
 	var terrain_init_pending := is_fly_loading and _pending_terrain_init
-
-	var progress: float
-	if is_fly_loading:
-		progress = p_scenery * 0.7 + p_cooldown * 0.3
-	else:
-		progress = p_scenery
+	var progress := _loading_progress.update(
+		loaded, total, is_fly_loading, terrain_init_pending,
+		_terrain_elevation.get_rebase_cooldown(),
+		_terrain_elevation.get_rebase_cooldown_frames())
 
 	if _loading_screen:
 		_loading_screen.set_progress(progress)
-		if not scenery_ready:
-			_loading_screen.set_status("Loading scenery... (%d/%d tiles)" % [loaded, total])
-		elif terrain_init_pending:
-			_loading_screen.set_status("Initialising flight model...")
-		elif cooldown_pending > 0:
-			_loading_screen.set_status("Stabilizing aircraft...")
-		else:
-			_loading_screen.set_status("Ready")
+		_loading_screen.set_status(_loading_progress.get_status_text())
 
-	var all_done := scenery_ready and not terrain_init_pending and cooldown_pending == 0
-	if not all_done:
+	if not _loading_progress.is_complete():
 		return
 
 	if is_fly_loading:
@@ -1675,7 +1658,7 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 
 	# Show loading screen while destination loads
 	_fly_loading = true
-	_fly_loading_start_msec = Time.get_ticks_msec()
+	_loading_progress.begin_fly_loading()
 	if _loading_screen:
 		_loading_screen.set_progress(0.0)
 		_loading_screen.set_status("Loading terrain...")
