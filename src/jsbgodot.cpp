@@ -435,10 +435,11 @@ void JSBGodot::initialize_at_terrain(double terrain_elevation_m, Vector3 godot_p
     // Apply initial conditions
     FDMExec->RunIC();
     
-    // Properly initialize engine: propulsion/set-running with value=engine_index
-    // calls InitRunning(0) which sets RPM, mixture, magnetos, and Running=true
+    // Properly initialize engine(s): propulsion/set-running = -1 runs InitRunning
+    // on EVERY engine (sets RPM, mixture, magnetos, Running=true). A value >= 0
+    // would only start that one engine — wrong for multi-engine aircraft (A-10).
     // Note: propulsion/engine[0]/set-running only sets the Running flag without RPM init!
-    FDMExec->SetPropertyValue("propulsion/set-running", 0);
+    FDMExec->SetPropertyValue("propulsion/set-running", -1);
     // Release brakes
     FDMExec->SetPropertyValue("fcs/brake-cmd-norm", 0.0);
     FDMExec->SetPropertyValue("fcs/parking-brake-cmd-norm", 0.0);
@@ -528,8 +529,8 @@ void JSBGodot::reinitialize_from_godot_position(Vector3 godot_pos, double headin
     // Apply initial conditions
     FDMExec->RunIC();
     
-    // Properly initialize engine (sets RPM, mixture, magnetos, Running=true)
-    FDMExec->SetPropertyValue("propulsion/set-running", 0);
+    // Start ALL engines (-1); >= 0 would start only that one engine.
+    FDMExec->SetPropertyValue("propulsion/set-running", -1);
     FDMExec->SetPropertyValue("fcs/mixture-cmd-norm", input_mixture);
     
     UtilityFunctions::print("JSBSim reinitialized from Godot position successfully!");
@@ -579,8 +580,8 @@ void JSBGodot::reinitialize_from_godot_position_with_speed(Vector3 godot_pos, do
     
     FDMExec->RunIC();
     
-    // Properly initialize engine (sets RPM, mixture, magnetos, Running=true)
-    FDMExec->SetPropertyValue("propulsion/set-running", 0);
+    // Start ALL engines (-1); >= 0 would start only that one engine.
+    FDMExec->SetPropertyValue("propulsion/set-running", -1);
     FDMExec->SetPropertyValue("fcs/mixture-cmd-norm", input_mixture);
     
     UtilityFunctions::print("JSBSim reinitialized with speed successfully!");
@@ -1093,7 +1094,11 @@ void JSBGodot::copy_inputs_to_JSBSim()
     FDMExec->SetPropertyValue("fcs/aileron-cmd-norm", input_aileron);
     FDMExec->SetPropertyValue("fcs/elevator-cmd-norm", input_elevator + elevator_trim);
     FDMExec->SetPropertyValue("fcs/rudder-cmd-norm", input_rudder);
-    FDMExec->SetPropertyValue("fcs/throttle-cmd-norm", input_throttle);
+    // Throttle ALL engines (-1). Setting the bare "fcs/throttle-cmd-norm" property
+    // only drives engine 0, leaving the other engine(s) at idle/zero on a twin
+    // like the A-10 (→ asymmetric thrust + yaw). SetThrottleCmd(-1) fans out to
+    // every engine; for single-engine aircraft it is identical to before.
+    FCS->SetThrottleCmd(-1, input_throttle);
 
     // Set nose wheel steering (linked to rudder, but opposite direction for ground steering)
     FDMExec->SetPropertyValue("fcs/steer-cmd-norm", -input_rudder);

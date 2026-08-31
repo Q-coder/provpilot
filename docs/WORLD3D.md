@@ -79,22 +79,55 @@ external spot view over ~6 s:
 - Ends exactly on the orbit spot offset and hands off to `CameraMode.ORBIT`
   (seamless). Skippable with **ESC** / **SPACE**.
 
-## Altitude-driven atmosphere
+## Day/night sun + atmospheric sky
 
-`_update_atmosphere()` scales the scene `Environment` by the rendering camera's
-altitude so space is clean black and near-ground keeps haze:
+The sky, sun and altitude ramps live in `provpilot/sky_atmosphere.gd` (a
+`RefCounted` owned by `node_3d.gd`), which replaces the old C++ `Atmosphere`
+module. `node_3d.gd::_setup_sky_atmosphere()` registers the scene
+`Environment`, the `Sun`/`Fill` `DirectionalLight3D`s and the globe, then
+`_process` calls `_sky.update(delta, get_viewport())` every frame.
+
+**Atmospheric sky shader** (`provpilot/shaders/atmosphere_sky.gdshader`,
+`shader_type sky`): a single-scattering Rayleigh + Mie atmosphere installed at
+runtime as the `Environment.sky` material. Because it ray-traces the planet +
+atmosphere shell from the camera position, the horizon is the *curved* Earth
+limb at altitude (fixes the old flat procedural-sky horizon that diverged from
+the globe above ~90 km) and a normal blue sky at ground level. It also draws
+the sun disk, faint stars, and a dim sun-lit **ground hemisphere** (so
+downward view directions / down-facing normals aren't pitch black), and fades
+to black in space by itself — so the background stays `BG_SKY` at all altitudes
+(the old module switched to solid black above 100 km, which hid the limb).
+
+**Day/night sun:** the sun direction is computed from the simulated time of day
+plus the observer latitude/longitude (NOAA solar position — equation of time +
+declination → hour angle), and the `Sun` `DirectionalLight3D` is swung to match
+so shadows track the sun through the day; its energy/colour ramp down to off as
+it reaches the horizon (a light pointing upward would otherwise illuminate the
+undersides of terrain/buildings at dawn/dusk).
+
+**Ambient:** a constant-colour day/night ambient floor (`AMBIENT_SOURCE_COLOR`,
+normal-independent) rather than sky-derived ambient — the atmosphere sky gives
+little usable ambient, and some imported terrain (notably the 1 m/px BW tiles)
+has normals facing away from the sun, so a normal-independent floor keeps those
+surfaces readable instead of black.
+
+**Time of day** (Settings → World): `use_system_time` (real UTC clock) or a
+manual `time_of_day_min` HH:MM slider. `set_time()` seeds the clock;
+`get_time_string()` feeds the HUD `Time:` label. Manual time can advance in real
+time via the `delta` passed to `update()` (currently held static).
 
 | Effect | Ground | Space |
 |--------|--------|-------|
 | Fog | on (density ramps 4 km→60 km) | **disabled** (`fog_enabled=false`) |
-| Background | procedural sky | **`BG_COLOR` black** (≥100 km) |
-| Ambient light energy | full (2.2) | 0.35 |
+| Background | atmospheric sky shader | same shader → **black by itself** |
+| Ambient (constant colour) | full (day) | tapered |
 | Glow | on | faded → off |
 
 > **Gotcha:** exponential fog tints the infinite-depth background to the pale
 > `fog_light_color` via `fog_sky_affect`/aerial-perspective **even at density 0**.
 > Zeroing density is not enough — fog must be fully **disabled** at altitude to get
 > true black space.
+> **Gotcha:** Godot `shader_type sky` predefines `PI` — do not redeclare it.
 
 ## Scenery3D building LOD fix
 
@@ -133,9 +166,12 @@ near the aircraft fill in within a few seconds.
 
 - The flat scenery3d patch diverges from the ellipsoid by ~`d²/2R` (~1.8 km at
   150 km from the origin) — a faint "shelf" at the far edges; fine where you fly.
-- No curved horizon below 25 km (the globe is hidden); scenery3d's own far
-  panorama fills terrain to ~200 km.
+- The curved horizon comes from the atmospheric sky shader + the globe (shown
+  above 25 km); below that the flat patch defines the near horizon and scenery3d's
+  own far panorama fills terrain to ~200 km.
 - Global terrain is coarse (60″ ETOPO, ~2 km); peaks are smoothed (Everest reads
   ~5.9 km). Fine detail is what the Swiss/BW patch adds.
 - BW terrain is 1 m/px vs CH 2 m/px with the node `tile_px = 512` — a pre-existing
-  mixed-resolution caveat (scenery library config), unrelated to world3d.
+  mixed-resolution caveat (scenery library config), unrelated to world3d. Its
+  mis-loaded normals render flat under the directional sun (lit only by the
+  ambient floor); fly in Switzerland for correct directional terrain shading.

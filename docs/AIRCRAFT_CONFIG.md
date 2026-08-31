@@ -158,3 +158,23 @@ loaded directly — no install‑root sync):
    required files) so existing installs re‑extract the new data.
 5. Validate: `./jsbsim/build/src/JSBSim --root=provpilot/aircraft/<id>/jsbsim --aircraft=<id> --catalog`
    and `./godot/bin/godot.macos.editor.double.arm64 --headless --path provpilot --quit`.
+
+## Jets & multi-engine
+
+Jets omit the `[propeller]` section (the propeller code is silent when unset).
+The C++ bridge (`src/jsbgodot.cpp`) drives **all** engines together:
+`FCS->SetThrottleCmd(-1, throttle)` and `propulsion/set-running = -1` (`-1` = all
+engines), so a twin behaves symmetrically. Single-engine airframes are
+unaffected (engine 0 == all engines).
+
+### A-10 Thunderbolt II (`aircraft/a10`)
+
+Ported from the FlightGear A-10 (its standalone JSBSim FDM: twin TF34 turbofan,
+retractable tricycle gear, flaps, speedbrake). The visual model is a
+self-contained `model/a10.glb` exported from Blender with embedded textures,
+double-sided materials, outward normals (`[model] flip_normals false`), and a
+merged `gear_cycle` retract animation (`[gear] animation "gear_cycle"`,
+`retractable true`). Registered in `welcome_screen.gd` and
+`aircraft_installer.gd` (`REQUIRED_FILES += a10/model/a10.glb`). See the
+project notes for the FlightGear → ProvPilot porting pipeline.
+

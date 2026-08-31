@@ -20,7 +20,7 @@ const LABEL_COLOR := Color(0.75, 0.78, 0.82)
 
 # Section names used inside provpilot.cfg. Each settings key is routed to one
 # of these sections by `_section_for_key()`.
-const SETTINGS_SECTIONS: PackedStringArray = ["paths", "scenery", "graphics", "sound", "realism"]
+const SETTINGS_SECTIONS: PackedStringArray = ["paths", "scenery", "graphics", "sound", "realism", "world"]
 
 # ── Settings state ─────────────────────────────────────────────────────
 var settings := {
@@ -49,6 +49,9 @@ var settings := {
 	"tree_density": 2,         # 0=off, 1=low(500 m), 2=medium(1500 m), 3=high(3000 m)
 	"vsync": true,
 	"fullscreen": true,
+	# World / environment
+	"use_system_time": false,  # false = manual time slider drives the sun; true = real UTC clock
+	"time_of_day_min": 720,    # manual local time of day, minutes past midnight
 	# Sound
 	"master_volume": 80,
 	"engine_volume": 70,
@@ -66,6 +69,9 @@ var settings := {
 
 # UI references for reading back values
 var _controls := {}
+# True while _apply_to_ui() is pushing saved values into the controls, so
+# programmatic slider changes don't trip user-interaction side effects.
+var _applying_ui := false
 var _bg: ColorRect
 var _main_panel: PanelContainer
 
@@ -159,6 +165,8 @@ func _build_ui() -> void:
 	_build_scenery_downloader_section(content)
 	content.add_child(HSeparator.new())
 	_build_graphics_section(content)
+	content.add_child(HSeparator.new())
+	_build_world_section(content)
 	content.add_child(HSeparator.new())
 	_build_sound_section(content)
 	content.add_child(HSeparator.new())
@@ -865,6 +873,58 @@ func _build_graphics_section(parent: VBoxContainer) -> void:
 	_add_check_row(parent, "fullscreen", "Fullscreen:", "Run in fullscreen mode")
 
 
+# ── Section: World ─────────────────────────────────────────────────────
+
+func _build_world_section(parent: VBoxContainer) -> void:
+	_add_section_header(parent, "World")
+	_add_check_row(parent, "use_system_time", "Use System Clock:", "Drive the sun from the real time of day")
+	_add_time_slider_row(parent, "time_of_day_min", "Time of Day:")
+
+
+## Time-of-day slider (minutes past midnight) with an HH:MM readout. Used only
+## when "Use System Clock" is off.
+func _add_time_slider_row(parent: VBoxContainer, key: String, label_text: String) -> void:
+	var hbox = HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 12)
+
+	var label = Label.new()
+	label.text = label_text
+	label.custom_minimum_size.x = 200
+	label.add_theme_font_size_override("font_size", FONT_MD)
+	label.add_theme_color_override("font_color", LABEL_COLOR)
+	hbox.add_child(label)
+
+	var slider = HSlider.new()
+	slider.min_value = 0
+	slider.max_value = 1439
+	slider.step = 15
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.custom_minimum_size = Vector2(300, 32)
+	hbox.add_child(slider)
+
+	var value_label = Label.new()
+	value_label.custom_minimum_size.x = 70
+	value_label.add_theme_font_size_override("font_size", FONT_SM)
+	value_label.add_theme_color_override("font_color", LABEL_COLOR)
+	hbox.add_child(value_label)
+
+	slider.value_changed.connect(func(val: float):
+		value_label.text = _format_hhmm(int(val))
+		# Dragging the time implies manual mode — turn off the system clock so
+		# the change actually drives the sun.
+		if not _applying_ui and _controls.has("use_system_time"):
+			_controls["use_system_time"].button_pressed = false
+	)
+
+	_controls[key] = slider
+	_controls[key + "_label"] = value_label
+	parent.add_child(hbox)
+
+
+static func _format_hhmm(minutes: int) -> String:
+	return "%02d:%02d" % [minutes / 60, minutes % 60]
+
+
 # ── Section: Sound ─────────────────────────────────────────────────────
 
 func _build_sound_section(parent: VBoxContainer) -> void:
@@ -903,6 +963,7 @@ func _build_joystick_section(parent: VBoxContainer) -> void:
 # ── Settings I/O ───────────────────────────────────────────────────────
 
 func _apply_to_ui() -> void:
+	_applying_ui = true
 	for key in settings.keys():
 		if not _controls.has(key):
 			continue
@@ -915,6 +976,9 @@ func _apply_to_ui() -> void:
 			var suffix = ""
 			if _controls.has(key + "_label"):
 				# Determine suffix from existing label text or key name
+				if key == "time_of_day_min":
+					_controls[key + "_label"].text = _format_hhmm(int(val))
+					continue
 				if "volume" in key:
 					suffix = "%"
 				elif "distance" in key:
@@ -932,6 +996,7 @@ func _apply_to_ui() -> void:
 	# Refresh scenery library table
 	if _controls.has("scenery_table"):
 		_refresh_scenery_table()
+	_applying_ui = false
 
 
 func _read_from_ui() -> void:
@@ -969,6 +1034,8 @@ static func _section_for_key(key: String) -> String:
 		return "graphics"
 	if "volume" in key:
 		return "sound"
+	if key in ["use_system_time", "time_of_day_min"]:
+		return "world"
 	return "realism"
 
 

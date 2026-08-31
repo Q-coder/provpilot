@@ -39,6 +39,7 @@ const ACCENT_HOVER := Color(0.35, 0.65, 0.95, 1.0)
 const AIRCRAFT := [
 	{"id": "c172p", "label": "Cessna 172P Skyhawk", "desc": "Single-engine piston, 4-seat trainer. 160 HP."},
 	{"id": "pc7", "label": "Pilatus PC-7 Turbo Trainer", "desc": "Single-engine turboprop military trainer. PT6A, ~650 SHP."},
+	{"id": "a10", "label": "Fairchild A-10A Thunderbolt II", "desc": "Twin-engine close air support jet. 2x GE TF34 turbofans."},
 ]
 
 # ── State ──────────────────────────────────────────────────────────────

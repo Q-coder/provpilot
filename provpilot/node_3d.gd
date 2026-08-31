@@ -34,6 +34,7 @@ var TERRAIN_CENTER_N: float = 1283072.0  # Swiss Northing at Godot Z=0
 @onready var vspeed_label: Label = $Control/BottomRow/Label3
 @onready var throttle_label: Label = $Control/BottomRow/Label4
 @onready var heading_label: Label = $Control/BottomRow/Label5
+@onready var time_label: Label = $Control/TimeLabel
 
 # Assuming your JSBGodot node is a child of the current node
 var jsb_node: Node
@@ -109,6 +110,15 @@ var _intro_zoom := IntroZoom.new()
 # Environment + globe node once the world3d globe is mounted and calls
 # update(get_viewport()) from _process.
 var _atmosphere := Atmosphere.new()
+
+# Day/night sun + atmospheric sky (sky_atmosphere.gd). Installs the
+# atmospheric-scattering sky shader so the horizon follows the world3d globe's
+# Earth curvature at every altitude, swings the scene sun/shadows through the
+# day from the simulated time of day, and applies the altitude fog/ambient
+# ramps + coarse-globe visibility gate. This replaces the C++ Atmosphere
+# module's per-frame update (which forced a flat procedural sky + a solid
+# black background above 100 km, hiding the atmospheric limb in orbit).
+var _sky := preload("res://sky_atmosphere.gd").new()
 
 # Engine-sound pitch/volume mapping (RPM -> AudioStreamPlayer pitch_scale +
 # volume_db) lives in the C++ EngineSound module (src/engine_sound.cpp).
@@ -393,6 +403,9 @@ func _ready() -> void:
 		_loading_screen.hide_loading()
 	_create_settings_screen()
 	_create_welcome_screen()
+	# Day/night sun + atmospheric sky (needs the globe mounted above and the
+	# settings screen loaded for the time-of-day config).
+	_setup_sky_atmosphere()
 	# Apply saved tree density now that _settings_screen has loaded its config.
 	_apply_tree_density()
 	# Apply scenery sources (orthophoto and terrain paths) from settings
@@ -402,6 +415,7 @@ func _ready() -> void:
 	_setup_engine_sound()
 
 	print("Node3D _ready() complete — welcome screen shown (scenery deferred)")
+
 
 
 # ── Engine Sound Setup ─────────────────────────────────────────────────────
@@ -665,6 +679,31 @@ func _setup_world3d_globe() -> void:
 		int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N), origin_lat, origin_lon])
 
 
+## Set up the day/night sun + atmospheric sky. Registers the scene Environment,
+## the Sun/Fill DirectionalLight3Ds and the coarse globe with sky_atmosphere.gd
+## (which installs the atmospheric-scattering sky shader), and pushes the
+## current time-of-day settings. Uses the LV95 origin as the observer location.
+func _setup_sky_atmosphere() -> void:
+	var we := get_node_or_null("Environment/WorldEnvironment")
+	var env: Environment = we.environment if we else null
+	var sun := get_node_or_null("Environment/Sun") as DirectionalLight3D
+	var fill := get_node_or_null("Environment/Fill") as DirectionalLight3D
+	var ll: Vector2 = Geo.lv95_to_wgs84(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
+	_sky.setup(env, sun, fill, globe_node, ll.x, ll.y)
+	_push_time_of_day_settings()
+
+
+## Push the time-of-day settings (system clock vs manual local time) into the
+## sky controller. Called at setup and whenever the settings screen closes.
+func _push_time_of_day_settings() -> void:
+	var use_system := true
+	var minutes := 720
+	if _settings_screen and "settings" in _settings_screen:
+		use_system = bool(_settings_screen.settings.get("use_system_time", true))
+		minutes = int(_settings_screen.settings.get("time_of_day_min", 720))
+	_sky.set_time(use_system, minutes)
+
+
 ## Begin the cinematic space→spot zoom (called when fly-loading completes).
 ## Animates the dedicated intro camera from high above the Earth down to the
 ## normal orbit "spot" view of the aircraft, then hands off to orbit mode. The
@@ -823,10 +862,13 @@ func _process(delta: float) -> void:
 	if _pending_terrain_init:
 		_do_deferred_terrain_init()
 
-	# Altitude-driven atmosphere ramps + coarse-globe visibility gate (C++
-	# Atmosphere module): fog fades with camera altitude so the globe is clear
-	# from space, and the coarse globe stays hidden under the detailed patch.
-	_atmosphere.update(get_viewport())
+	# Day/night sun + atmospheric sky (sky_atmosphere.gd): swings the sun and
+	# shadows through the simulated day, drives the atmospheric-scattering sky
+	# shader so the horizon matches the globe's curvature at altitude, fades fog
+	# toward space, and gates the coarse globe under the detailed patch.
+	_sky.update(delta, get_viewport())
+	if time_label:
+		time_label.text = "Time: " + _sky.get_time_string()
 
 	# While loading screen is active, update progress and wait for completion
 	if not _loading_done:
@@ -1817,6 +1859,7 @@ func _on_settings_closed() -> void:
 		_settings_screen.hide_settings()
 	_apply_tree_density()
 	_apply_scenery_sources()
+	_push_time_of_day_settings()
 	if _welcome_screen:
 		_welcome_screen.set_continue_enabled(not _first_flight)
 		_welcome_screen.visible = true

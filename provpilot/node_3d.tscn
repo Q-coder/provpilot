@@ -46,6 +46,16 @@ offset_right = 625.0
 offset_bottom = 127.0
 theme_override_font_sizes/font_size = 32
 
+[node name="TimeLabel" type="Label" parent="Control" unique_id=930621799]
+modulate = Color(0.8, 0.9, 1, 1)
+layout_mode = 0
+offset_left = 40.0
+offset_top = 247.0
+offset_right = 400.0
+offset_bottom = 287.0
+theme_override_font_sizes/font_size = 32
+text = "Time: 00:00:00"
+
 [node name="BottomRow" type="HBoxContainer" parent="Control" unique_id=765652053]
 layout_mode = 1
 anchors_preset = 12
