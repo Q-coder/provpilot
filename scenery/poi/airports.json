@@ -348,8 +348,8 @@
       "name": "Mollis",
       "type": "regional_airport",
       "elevation_m": 435,
-      "center_e": 2723540,
-      "center_n": 1215707,
+      "center_e": 2723482,
+      "center_n": 1215435,
       "area_ha": 120.0,
       "runways": [
         {
@@ -359,8 +359,8 @@
           "width_m": 40,
           "surface": "asphalt",
           "threshold_01": {
-            "e": 2723443,
-            "n": 1215246
+            "e": 2723328,
+            "n": 1214702
           },
           "threshold_19": {
             "e": 2723637,

@@ -26,6 +26,78 @@
       ]
     },
     {
+      "icao": "LSMD",
+      "name": "D\u00fcbendorf",
+      "lat": 47.39846,
+      "lon": 8.64823,
+      "elevation_m": 440,
+      "type": "regional_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "11/29", "heading_deg": 107, "length_m": 2300, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "LSME",
+      "name": "Emmen",
+      "lat": 47.09219,
+      "lon": 8.30488,
+      "elevation_m": 430,
+      "type": "regional_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "04/22", "heading_deg": 37, "length_m": 2200, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "LSMA",
+      "name": "Alpnach",
+      "lat": 46.94282,
+      "lon": 8.28384,
+      "elevation_m": 460,
+      "type": "regional_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "01/19", "heading_deg": 11, "length_m": 1500, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "LSMF",
+      "name": "Mollis",
+      "lat": 47.07842,
+      "lon": 9.06468,
+      "elevation_m": 435,
+      "type": "regional_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "01/19", "heading_deg": 12, "length_m": 1500, "surface": "asphalt" }
+      ]
+    },
+    {
+      "icao": "LSMM",
+      "name": "Meiringen",
+      "lat": 46.74234,
+      "lon": 8.10888,
+      "elevation_m": 590,
+      "type": "regional_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "10/28", "heading_deg": 96, "length_m": 2000, "surface": "concrete" }
+      ]
+    },
+    {
+      "icao": "LSMP",
+      "name": "Payerne",
+      "lat": 46.84327,
+      "lon": 6.91499,
+      "elevation_m": 465,
+      "type": "regional_airport",
+      "region": "switzerland",
+      "runways": [
+        { "designator": "05/23", "heading_deg": 49, "length_m": 3230, "surface": "asphalt" }
+      ]
+    },
+    {
       "icao": "LSZB",
       "name": "Bern-Belp",
       "lat": 46.9141,

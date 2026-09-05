@@ -273,12 +273,16 @@ MANUAL_RUNWAYS = {
             "threshold_19": {"e": 2664496, "n": 1200162},
         },
     ],
-    # LSMF Mollis: OSM way 4864907 (split way, total ~1700m)
+    # LSMF Mollis: OSM way 4864907 + displaced-threshold ways 1147955112 /
+    # 1239565756. The 01-side "displaced" segment (556 m) is actually part of
+    # the declared runway: far end (2723328, 1214702) to the 19-side junction
+    # (2723637, 1216168) = 1498 m ~ the published 1500 m. Only the 207 m
+    # segment beyond the 19 junction is a true displaced threshold.
     "LSMF": [
         {
             "designator": "01/19", "heading_deg": 12, "length_m": 1500,
             "width_m": 40, "surface": "asphalt",
-            "threshold_01": {"e": 2723443, "n": 1215246},
+            "threshold_01": {"e": 2723328, "n": 1214702},
             "threshold_19": {"e": 2723637, "n": 1216168},
         },
     ],
