@@ -111,9 +111,13 @@ func update(delta: float, viewport: Viewport) -> void:
 	# off below it — a DirectionalLight3D pointing upward would otherwise light
 	# the undersides of the terrain/buildings during dawn/dusk.
 	var day := clampf(sin_elev / 0.08, 0.0, 1.0)
-	# The sun disk in the sky lingers a hair below the horizon for a natural
-	# sunset (it only tints the sky, so it can't light geometry from below).
-	var disk := clampf((sin_elev + 0.03) / 0.06, 0.0, 1.0)
+	# Sun disk stays visible down to the altitude-adjusted horizon: climbing
+	# lowers the geometric horizon (dip angle), so the sun is still up from
+	# altitude even when it's below the sea-level horizon. Full until it reaches
+	# that horizon, then fades over the last ~1°.
+	var dip := acos(clampf(PLANET_RADIUS / (PLANET_RADIUS + maxf(alt, 0.0)), 0.0, 1.0))
+	var horizon_sin := -sin(dip) - 0.010  # extra ~0.6° for atmospheric refraction
+	var disk := clampf((sin_elev - horizon_sin) / 0.02, 0.0, 1.0)
 
 	if is_instance_valid(sun_light):
 		_orient_sun(dir_to_sun)

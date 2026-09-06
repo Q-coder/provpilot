@@ -19,8 +19,8 @@ uniform float sun_disk_energy : hint_range(0.0, 1.0) = 1.0; // 0 when the sun is
 uniform vec3 planet_center = vec3(0.0, -6371000.0, 0.0);
 uniform float planet_radius = 6371000.0;
 uniform float atmosphere_radius = 6471000.0;
-uniform vec3 rayleigh_beta = vec3(5.5e-6, 13.0e-6, 22.4e-6);
-uniform float mie_beta = 21e-6;
+uniform vec3 rayleigh_beta = vec3(5.8e-6, 13.5e-6, 33.1e-6);
+uniform float mie_beta = 3.0e-6;
 uniform float rayleigh_scale = 8000.0;
 uniform float mie_scale = 1200.0;
 uniform float mie_g : hint_range(-0.99, 0.99) = 0.76;
@@ -86,6 +86,12 @@ vec3 compute_atmosphere(vec3 ro, vec3 rd, vec3 sun_dir) {
 		float d_mie = exp(-h / mie_scale) * ray_len;
 		od_rlh += d_rlh;
 		od_mie += d_mie;
+		// Attenuate to the sample's MIDPOINT. Using the running total charges
+		// each sample its own whole step, and towards the horizon one step
+		// spans ~70 km — a blue optical depth near 2 — so the daytime horizon
+		// came out sunset-yellow at every hour.
+		float view_od_rlh = od_rlh - d_rlh * 0.5;
+		float view_od_mie = od_mie - d_mie * 0.5;
 
 		// Skip samples the planet occludes from the sun (Earth's own shadow).
 		vec2 lg = ray_sphere(pos, sun_dir, planet_radius);
@@ -104,7 +110,7 @@ vec3 compute_atmosphere(vec3 ro, vec3 rd, vec3 sun_dir) {
 				lod_mie += exp(-lh / mie_scale) * l_len;
 				lt += l_len;
 			}
-			vec3 att = exp(-(mie_beta * (od_mie + lod_mie) + rayleigh_beta * (od_rlh + lod_rlh)));
+			vec3 att = exp(-(mie_beta * (view_od_mie + lod_mie) + rayleigh_beta * (view_od_rlh + lod_rlh)));
 			total_rlh += d_rlh * att;
 			total_mie += d_mie * att;
 		}

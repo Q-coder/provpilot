@@ -105,6 +105,12 @@ so shadows track the sun through the day; its energy/colour ramp down to off as
 it reaches the horizon (a light pointing upward would otherwise illuminate the
 undersides of terrain/buildings at dawn/dusk).
 
+The sun *disk* uses an **altitude-adjusted** horizon instead of the sea-level
+one: climbing lowers the geometric horizon by the dip angle
+`acos(R / (R + alt))`, so the disk stays visible from altitude after it has set
+at ground level, and reappears when you climb. Terrain occlusion clips it near
+the ground. Lighting still follows the true horizon.
+
 **Ambient:** a constant-colour day/night ambient floor (`AMBIENT_SOURCE_COLOR`,
 normal-independent) rather than sky-derived ambient — the atmosphere sky gives
 little usable ambient, and some imported terrain (notably the 1 m/px BW tiles)
@@ -128,6 +134,26 @@ time via the `delta` passed to `update()` (currently held static).
 > Zeroing density is not enough — fog must be fully **disabled** at altitude to get
 > true black space.
 > **Gotcha:** Godot `shader_type sky` predefines `PI` — do not redeclare it.
+
+**Ray-march midpoint bias (fixed).** `compute_atmosphere` marches 16 primary
+samples along the view ray. Attenuating each sample with the *running* optical
+depth charges it its own entire step; the zenith chord is short so nothing shows,
+but a horizon chord is ~1100 km, one step spans ~70 km, and that is a blue
+optical depth near 2 — the first sample lost most of its blue before contributing
+anything. The daytime horizon therefore rendered sunset-yellow at every hour.
+Attenuating to the sample **midpoint** (`od - d * 0.5`) fixes it: measured
+through the Filmic tonemap the noon horizon goes from hue 53° / blue-red 0.37 to
+a neutral pale haze at blue-red 0.91, evening stays orange (hue 47°→50°) and the
+zenith is unchanged (hue 208°→209°).
+
+The **sun-path** optical depth (`lod_*`) deliberately keeps the running-total
+form. That bias only reddens light arriving through a long low-sun path, which is
+what gives the sunsets their colour.
+
+> To retune the sky without rendering, port `compute_atmosphere` to numpy, sweep
+> sun elevation / altitude / view pitch, apply Godot's Filmic curve and compare
+> hue and blue/red ratios. Brightness changes are easy to mistake for colour
+> fixes otherwise.
 
 ## Scenery3D building LOD fix
 

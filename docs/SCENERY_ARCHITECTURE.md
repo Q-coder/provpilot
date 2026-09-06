@@ -14,6 +14,7 @@ This document defines the scenery data strategy for ProvPilot — the directory 
 | Layer | Source | License | Format |
 |-------|--------|---------|--------|
 | Terrain elevation | [swissALTI3D](https://www.swisstopo.admin.ch/de/hoehenmodell-swissalti3d) | Open (OGD) | Cloud-Optimized GeoTIFF |
+| Lake bathymetry | [swissBATHY3D](https://www.swisstopo.admin.ch/en/height-model-swissbathy3d) | Open (OGD) | ESRI ASCII grid (3 m) |
 | Buildings | [swissBUILDINGS3D](https://www.swisstopo.admin.ch/de/gebaudemodell-swissbuildings3d) | Open (OGD) | GDB → GLB |
 | Roads & railroads | [swissTLM3D](https://www.swisstopo.admin.ch/de/landschaftsmodell-swisstlm3d) | Open (OGD) | GeoPackage → GLB |
 | Water bodies | [swissTLM3D](https://www.swisstopo.admin.ch/de/landschaftsmodell-swisstlm3d) | Open (OGD) | GeoPackage → GLB |
@@ -161,8 +162,112 @@ Same format as the current `terrain_tiles/manifest.json` — already well-struct
 }
 ```
 
-### Building Manifest (`scenery/buildings/manifest.json`)
+### Lake Bathymetry Overlay (swissBATHY3D)
 
+swissALTI3D models a lake as a flat plate at its regulated water level, so the
+terrain layer on its own has no idea how deep a lake is. swissBATHY3D adds the
+surveyed lake *bed* (3 m grid, LV95/LN02, same 1 km cell scheme as swissALTI3D)
+for 22 Swiss lakes.
+
+`scripts/swissbathy3d.py` downloads a lake from the swisstopo STAC API and
+rasterises it into an **overlay region** — ordinary Scenery3D terrain tiles
+(`tile_<E>_<N>.raw`, float32 LE, SE-corner origin, 2 m/px) that are *sparse*:
+every pixel outside the surveyed bed is 0.0.
+
+No engine change is needed for this. `S3DTileManager` reads every configured
+`data_paths` entry for a tile and merges them per pixel, with **later paths
+overriding earlier ones wherever they are non-zero**. An overlay region listed
+after Switzerland therefore replaces the flat water surface with the lake bed
+and falls through to swissALTI3D everywhere else.
+
+```bash
+python3 scripts/swissbathy3d.py --list          # 22 lakes swisstopo publishes
+
+python3 scripts/swissbathy3d.py --lakes bodensee \
+    --cache-dir /Volumes/Data1/scenery_in_bathy \
+    --base-terrain ~/provpilot/scenery/Switzerland/terrain \
+                   ~/provpilot/scenery/Germany/Baden-Wuertemberg/terrain \
+    --output ~/provpilot/scenery/Switzerland-Bathymetry/terrain
+```
+
+Adding more lakes later is the same command with different `--lakes`; the tool
+merges into the existing manifest and leaves already-built tiles alone (pass
+`--overwrite` to rebuild them).
+
+**`--base-terrain` matters.** The swissBATHY3D lake packages ship a land buffer
+around the shore taken from a coarser model. Two guards drop it: the overlay may
+only carve *downwards*, and it may only touch pixels the base terrain models as
+the flat water surface. The water level is auto-detected per lake as the modal
+base-terrain height under the surveyed bed (Bodensee → 395.6 m, Rotsee →
+419.4 m); override with `--water-level` if a lake ever fools it.
+
+**Activating it in the sim:** Settings → Scenery Library → *Scan for Scenery*.
+Newly discovered regions are appended at the end of the priority list, which is
+exactly where the overlay has to sit for its pixels to win.
+
+**Repair the water surface afterwards — mandatory.** `generate_water.py` bakes
+the large open-water tiles of swissTLM3D at nonsense heights (the middle of the
+Bodensee is one 4-vertex quad whose corners sit at 171–330 m instead of
+395.6 m). That was invisible for as long as swissALTI3D modelled every lake as a
+flat plate: `s3d_water_manager` distrusts a tile whose worst per-triangle Y span
+exceeds 50 m and redraped it from the DTM, which reproduced the right surface.
+Carve the real bed in and the same redrape drops the water 250 m. Fix the bake
+once, offline, against the un-carved terrain:
+
+```bash
+python3 scripts/fix_water_bake.py ~/provpilot/scenery/Switzerland/water \
+    --terrain ~/provpilot/scenery/Switzerland/terrain \
+              ~/provpilot/scenery/Germany/Baden-Wuertemberg/terrain \
+    --apply --backup
+```
+
+The repair works per connected water body, not per vertex — half-fixing a lake
+polygon would leave a cliff between the corrected and the untouched half. For
+each mesh island it samples the ground underneath; if that ground is level
+(`--min-flat-fraction` of it within `--flat-tol-m`) the island is a lake surface
+with one unambiguous height, and the whole island is snapped to the *modal*
+ground level plus its freeboard. Using the mode rather than the median keeps
+neighbouring tiles on exactly the same level, otherwise a flat lake picks up
+faint steps at every tile seam. Anything not sitting on level ground — a stream
+down an alpine flank — keeps its bake, because there the DTM is not a better
+source. Originals are kept in `<water_dir>/.orig`.
+
+On the Swiss set this repairs 0.5 % of water vertices, drops the tiles carrying
+a corrupt triangle from 395 to 303, and leaves the Bodensee as one continuous
+surface at 396.6 m with 0.06 % of its area still defective (was: 42 % of tiles
+sinking to the lake bed).
+
+**Side effect:** `Scenery3D.get_elevation()` — which feeds JSBSim's
+`position/terrain-elevation-asl-ft` — now returns the lake bed over covered
+lakes instead of the water surface. There is no water physics, so an aircraft
+ditching in the Bodensee falls through the water surface down to the bed.
+
+### Water Rendering
+
+`S3DWaterManager` shades the surface with a depth-aware shader
+(`depth_shading`, on by default): it reads the opaque depth buffer, measures the
+water column between the surface and the terrain behind it, and ramps colour
+from `shallow_color` to `deep_color` and opacity from `shore_alpha` to
+`deep_alpha` over `opaque_depth_m` (16 m). With a bathymetry overlay underneath
+this turns a flat blue plate into a readable depth map.
+
+It also keeps the orthophoto honest. The aerial image under a lake is a photo of
+the *water surface*, so letting it show through a fully transparent lake would
+drape a picture of water over a 250 m basin. Because opacity is driven by depth,
+the ortho is only visible in genuinely shallow water near the shore — where it
+really is a photo of a shallow bottom — and deep water is opaque.
+
+Two further water settings, both defaulting on:
+
+- `dedup_overlapping_tiles` — every water source shares one absolute 4096 m LV95
+  grid, so the same tile id in two manifests means the same ground is modelled
+  twice (the Bodensee is a complete lake in both swissTLM3D and the BW OSM set).
+  The earlier path in the Scenery Library wins.
+- `max_triangle_span_m` (50 m) — a baked triangle taller than this is a bake bug
+  ("dark wing") and is dropped. Only the offending triangles go; the rest of the
+  tile keeps its correct baked elevation.
+
+### Building Manifest (`scenery/buildings/manifest.json`)
 ```json
 {
   "format": "glb",
