@@ -260,7 +260,8 @@ def load_base_tile(base_dirs: list[Path], tile_name: str,
 
 
 def rasterise_tile(ei: int, ni: int, tile_size_m: int, tile_px: int,
-                   src_paths: list[Path], resampling_name: str) -> np.ndarray:
+                   src_paths: list[Path], resampling_name: str,
+                   min_valid_elev: float = MIN_VALID_ELEV) -> np.ndarray:
     """Resample the intersecting ASCII grids onto one Scenery3D tile buffer.
 
     Returns a `tile_px²` float32 array in Scenery3D orientation (pixel (0,0) =
@@ -292,7 +293,8 @@ def rasterise_tile(ei: int, ni: int, tile_size_m: int, tile_px: int,
         except Exception as e:  # noqa: BLE001 - one bad grid must not kill the run
             print(f"  WARN: {src_path.name}: {e}", file=sys.stderr)
             continue
-        mask = (np.isfinite(tmp) & (tmp > MIN_VALID_ELEV) & (tmp < MAX_VALID_ELEV))
+        mask = (np.isfinite(tmp) & (tmp > min_valid_elev)
+                & (tmp < MAX_VALID_ELEV))
         if mask.any():
             apply = mask & (dst == 0.0)
             dst[apply] = tmp[apply]
@@ -306,7 +308,8 @@ def process_tile(ei: int, ni: int, tile_size_m: int, tile_px: int,
                  src_paths: list[Path], out_path: Path, resampling_name: str,
                  base_dirs: list[Path], min_depth_m: float,
                  water_level_m: float | None,
-                 water_level_tol_m: float) -> tuple[int, int, float, float, int]:
+                 water_level_tol_m: float,
+                 min_valid_elev: float = MIN_VALID_ELEV) -> tuple[int, int, float, float, int]:
     """Build one sparse overlay tile.
 
     Returns (ei, ni, min_elev, max_elev, valid_px). valid_px == 0 means the tile
@@ -315,7 +318,7 @@ def process_tile(ei: int, ni: int, tile_size_m: int, tile_px: int,
     waste 1 MB and slow the tile scan down.
     """
     oriented = rasterise_tile(ei, ni, tile_size_m, tile_px, src_paths,
-                              resampling_name)
+                              resampling_name, min_valid_elev)
 
     # Two guards, both needed because the swissBATHY3D lake packages include a
     # land buffer around the shore taken from a coarser model:
@@ -477,6 +480,11 @@ def main() -> int:
     ap.add_argument("--min-depth-m", type=float, default=0.25,
                     help="Overlay pixels must be at least this far below the "
                          "base terrain to be kept.")
+    ap.add_argument("--min-valid-elev", type=float, default=MIN_VALID_ELEV,
+                    help=f"Bed elevations (m) below this are treated as nodata "
+                         f"(default {MIN_VALID_ELEV:g}). Lower it for lakes whose "
+                         "deepest bed sits below the default floor — e.g. "
+                         "lacleman (~62 m) or lagomaggiore (~0 m) need 0.")
     ap.add_argument("--water-level", type=float, default=None,
                     help="Lake surface elevation (m). Default: auto-detected "
                          "per lake as the modal base-terrain height under the "
@@ -608,7 +616,8 @@ def convert_lake(lake: str, src_dir: Path, base_dirs: list[Path],
                 continue
             jobs.append((ei, ni, ts, args.tile_px, srcs, out_path,
                          args.resampling, base_dirs, args.min_depth_m,
-                         water_level, args.water_level_tol_m))
+                         water_level, args.water_level_tol_m,
+                         args.min_valid_elev))
 
     print(f"  {len(jobs)} tile(s) to build ({skipped} already present)")
     if not jobs:

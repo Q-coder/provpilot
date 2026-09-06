@@ -194,6 +194,20 @@ Adding more lakes later is the same command with different `--lakes`; the tool
 merges into the existing manifest and leaves already-built tiles alone (pass
 `--overwrite` to rebuild them).
 
+**Deep lakes need a lower nodata floor.** The default `MIN_VALID_ELEV` of 100 m
+is a sane guard against the coarse land buffer, but two lakes have surveyed bed
+*below* it — Lac Léman reaches ~62 m and Lago Maggiore ~0 m. With the default
+floor their deepest basins are silently dropped (they fall back to the flat
+water surface). Rebuild those with `--min-valid-elev 0 --overwrite`:
+
+```bash
+python3 scripts/swissbathy3d.py --lakes lacleman lagomaggiore \
+    --no-download --overwrite --min-valid-elev 0 \
+    --cache-dir /Volumes/Data1/scenery_in_bathy \
+    --base-terrain ~/provpilot/scenery/Switzerland/terrain \
+    --output ~/provpilot/scenery/Switzerland-Bathymetry/terrain
+```
+
 **`--base-terrain` matters.** The swissBATHY3D lake packages ship a land buffer
 around the shore taken from a coarser model. Two guards drop it: the overlay may
 only carve *downwards*, and it may only touch pixels the base terrain models as
