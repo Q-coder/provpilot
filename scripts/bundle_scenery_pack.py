@@ -18,6 +18,11 @@ Examples:
 
     # Inspect what would be packed without writing the ZIP
     scripts/bundle_scenery_pack.py baden-wuerttemberg --base --dry-run
+
+Base packs also include the region's `terrain_overlays` (see
+scenery_regions.json) — e.g. Switzerland-Bathymetry lake-bed tiles — under
+their own top-level directory, so they install as a separate scenery area
+that overrides the base terrain per pixel wherever non-zero.
 """
 from __future__ import annotations
 
@@ -59,6 +64,12 @@ class Region:
     subdir: str
     bbox: tuple[int, int, int, int]
     quadrants: dict[str, Quadrant]
+    # Sparse terrain overlay regions (e.g. Switzerland-Bathymetry lake beds),
+    # as paths relative to the scenery root. Each is added to base packs as
+    # its own top-level archive directory so the runtime registers it as a
+    # separate scenery area whose tiles override the base terrain per pixel
+    # wherever they are non-zero.
+    terrain_overlays: tuple[str, ...] = ()
 
 
 def load_config(path: Path) -> tuple[dict[str, Region], dict[str, list[str]]]:
@@ -66,7 +77,8 @@ def load_config(path: Path) -> tuple[dict[str, Region], dict[str, list[str]]]:
     regions: dict[str, Region] = {}
     for r in data["regions"]:
         qs = {q["id"]: Quadrant(q["id"], q["name"], tuple(q["bbox_lv95"])) for q in r["quadrants"]}
-        regions[r["id"]] = Region(r["id"], r["name"], r["scenery_subdir"], tuple(r["bbox_lv95"]), qs)
+        overlays = tuple(r.get("terrain_overlays", []))
+        regions[r["id"]] = Region(r["id"], r["name"], r["scenery_subdir"], tuple(r["bbox_lv95"]), qs, overlays)
     return regions, data["asset_classes"]
 
 
@@ -288,6 +300,21 @@ def main() -> int:
             )
             print(f"  {asset:<18} kept {kept:>5}  skipped {skipped:>6}")
         add_files(items)
+
+    if args.base:
+        # Sparse terrain overlays (e.g. Switzerland-Bathymetry): bundled into
+        # the base pack, but kept under their own top-level directory so a
+        # fresh install exposes them as a separate scenery area that the
+        # tile manager merges after the region's own terrain.
+        for overlay in region.terrain_overlays:
+            odir = scenery / overlay / "terrain"
+            if not odir.is_dir():
+                print(f"  {overlay + '/terrain':<18} (missing, skipped)")
+                continue
+            items, kept, skipped = collect_lv95_tiles(
+                odir, bbox, f"{overlay}/terrain", args.include_mips)
+            print(f"  {overlay + '/terrain':<18} kept {kept:>5}  skipped {skipped:>6}")
+            add_files(items)
 
     print(f"\n  {len(files):,} files, {fmt_size(total)} raw")
     if not files:

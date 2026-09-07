@@ -6,6 +6,7 @@
             "name": "Switzerland",
             "scenery_subdir": "Switzerland",
             "bbox_lv95": [2484224, 1069056, 2834432, 1298432],
+            "terrain_overlays": ["Switzerland-Bathymetry"],
             "quadrants": [
                 {"id": "nw", "name": "North-West", "bbox_lv95": [2484224, 1183744, 2659328, 1298432]},
                 {"id": "ne", "name": "North-East", "bbox_lv95": [2659328, 1183744, 2834432, 1298432]},

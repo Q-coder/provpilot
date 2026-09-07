@@ -58,6 +58,15 @@ Bboxes are LV95 (EPSG:2056) meters, derived from the source terrain manifest
 as `(grid.ei_min × 1024, grid.ni_min × 1024, (grid.ei_max+1) × 1024,
 (grid.ni_max+1) × 1024)`.
 
+Optional `terrain_overlays` lists scenery-root-relative directories whose
+`terrain/` subdirectory is a sparse overlay on top of the region's base
+terrain (currently: `Switzerland-Bathymetry`, the swissBATHY3D lake beds).
+The bundler adds their tiles to **base** packs under the overlay's own
+top-level directory, so after extraction the runtime sees it as a separate
+scenery area; the tile manager merges areas in priority order with later
+paths overriding earlier ones per pixel wherever non-zero — keep the region
+itself at lower (better) priority than its overlays.
+
 ## Building Packs
 
 [scripts/bundle_scenery_pack.py](../scripts/bundle_scenery_pack.py) produces
@@ -147,22 +156,30 @@ The downloader uses `sha256` as the install-state key — bump the `--version`
 on the bundler when republishing and clients automatically see "Update
 available".
 
-## Current Inventory (v1)
+## Current Inventory (v2)
 
 | Pack                                 | Size    |
 |--------------------------------------|---------|
-| switzerland-base-v1                  | 43.7 GB |
-| switzerland-detail-nw-v1             | 12.0 GB |
-| switzerland-detail-ne-v1             | 14.6 GB |
-| switzerland-detail-sw-v1             | 11.5 GB |
-| switzerland-detail-se-v1             |  7.5 GB |
-| baden-wuerttemberg-base-v1           | 34.8 GB |
-| baden-wuerttemberg-detail-nw-v1      | 10.9 GB |
-| baden-wuerttemberg-detail-ne-v1      | 12.0 GB |
-| baden-wuerttemberg-detail-sw-v1      |  8.8 GB |
-| baden-wuerttemberg-detail-se-v1      |  9.2 GB |
+| switzerland-base-v2                  | 46.1 GB |
+| switzerland-detail-nw-v2             | 12.0 GB |
+| switzerland-detail-ne-v2             | 14.6 GB |
+| switzerland-detail-sw-v2             | 11.5 GB |
+| switzerland-detail-se-v2             |  7.5 GB |
+| baden-wuerttemberg-base-v2           | 34.9 GB |
+| baden-wuerttemberg-detail-nw-v2      | 11.0 GB |
+| baden-wuerttemberg-detail-ne-v2      | 12.0 GB |
+| baden-wuerttemberg-detail-sw-v2      | 12.2 GB |
+| baden-wuerttemberg-detail-se-v2      |  9.2 GB |
 
-Total: ~165 GB.
+Total: ~171 GB.
+
+v2 changes vs v1: `switzerland-base` now includes the **Switzerland-Bathymetry**
+lake-bed overlay (2,449 sparse terrain tiles under its own top-level directory,
+see `terrain_overlays` in the region config) plus the September 2026 water
+rebake; `baden-wuerttemberg-base` carries the updated terrain/orthophoto; BW
+detail quadrants include the June 2026 building refresh. The four
+`switzerland-detail` packs are byte-identical to v1 (unchanged data) but were
+rebumped for a uniform v2 release.
 
 ## Publishing Workflow
 
