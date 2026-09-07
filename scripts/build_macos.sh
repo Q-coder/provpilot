@@ -64,11 +64,39 @@ if [[ -d "$SCEN_SRC_DIR/src" ]]; then
 else
     echo "  - libscenery3d submodule not checked out — using existing dylib in provpilot/bin/"
 fi
+
+# 1c. libworld3d (global globe) — separate repo (gitlab.md80.ch:gery/world3d),
+# expected as a sibling checkout of this repo. The release dylib is a gitignored
+# build artifact (see docs/WORLD3D.md); without it the export's shared-object
+# copy loop fails and — because that loop breaks on the first error — can
+# silently drop libscenery3d from Contents/Frameworks as well.
+WORLD_SRC_DIR="$REPO_ROOT/../world3d"
+WORLD_BUILT="$WORLD_SRC_DIR/demo/bin/libworld3d.macos.template_release.double.arm64.dylib"
+WORLD_DYLIB="provpilot/bin/libworld3d.macos.template_release.double.arm64.dylib"
+if [[ -d "$WORLD_SRC_DIR/src" ]]; then
+    echo "  - libworld3d (sibling repo) ..."
+    ( cd "$WORLD_SRC_DIR" && scons platform=macos arch=arm64 precision=double target=template_release \
+        -j$(sysctl -n hw.ncpu) 2>&1 | tail -3 )
+    if [[ ! -f "$WORLD_BUILT" ]]; then
+        echo "ERROR: world3d release build produced no dylib at $WORLD_BUILT" >&2
+        exit 1
+    fi
+    # Copy into provpilot/bin/ (where world3d.gdextension points) only if it
+    # changed, so an unchanged source doesn't churn the signature/mtime.
+    if ! cmp -s "$WORLD_BUILT" "$REPO_ROOT/$WORLD_DYLIB"; then
+        echo "    updated → $WORLD_DYLIB"
+        cp "$WORLD_BUILT" "$REPO_ROOT/$WORLD_DYLIB"
+    else
+        echo "    unchanged (already current)"
+    fi
+else
+    echo "  - libworld3d source repo not found at $WORLD_SRC_DIR — using existing dylib in provpilot/bin/"
+fi
 echo ""
 
-# Sanity-check both extension dylibs are present.
+# Sanity-check all three extension dylibs are present.
 PROV_DYLIB="provpilot/bin/libprovpilot.macos.template_release.double.arm64.dylib"
-for f in "$PROV_DYLIB" "$SCEN_DYLIB"; do
+for f in "$PROV_DYLIB" "$SCEN_DYLIB" "$WORLD_DYLIB"; do
     if [[ ! -f "$REPO_ROOT/$f" ]]; then
         echo "ERROR: missing $f — build it first" >&2
         exit 1

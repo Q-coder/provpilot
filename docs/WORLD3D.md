@@ -186,7 +186,12 @@ near the aircraft fill in within a few seconds.
   `demo/bin/libscenery3d.*.dylib` → `provpilot/bin/`, and re-codesign.
 - **TODO (shipping):** build the `template_release` world3d dylib, wire world3d
   into `build_macos.sh` / `build_windows.ps1`, and add `faces/*` to the export
-  `include_filter`.
+  `include_filter`. — macOS done: `scripts/build_macos.sh` step 1c builds the
+  release dylib from the sibling `world3d/` checkout (and sanity-checks all three
+  extension dylibs before export), and the macOS preset's `include_filter` ships
+  `faces/*`. Windows still pending. Note: the export's shared-object copy loop
+  breaks on the first missing dylib, so a missing release build silently drops
+  later extensions (e.g. libscenery3d) from `Contents/Frameworks`.
 
 ## Known limitations
 
