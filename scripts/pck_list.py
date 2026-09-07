@@ -33,7 +33,11 @@ for i in range(count):
 exts = collections.Counter(n.rsplit('.', 1)[-1] for n, _, _ in entries)
 print('top extensions:', exts.most_common(10))
 print()
+pat = sys.argv[2] if len(sys.argv) > 2 else None
 for n, s, fl in entries:
-    if 'dylib' in n or '/faces/' in n or n.startswith('faces/') or n.endswith('.gdextension'):
+    if pat is not None:
+        if pat.lower() in n.lower():
+            print(f'{s:>12}  {n}')
+    elif 'dylib' in n or '/faces/' in n or n.startswith('faces/') or n.endswith('.gdextension'):
         print(f'{s:>12}  {n}')
 
