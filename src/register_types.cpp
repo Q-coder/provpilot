@@ -13,6 +13,7 @@
 #include "engine_sound.h"
 #include "terrain_elevation.h"
 #include "loading_progress.h"
+#include "vfr_map.h"
 
 using namespace godot;
 using namespace jsbgodot;
@@ -34,6 +35,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<EngineSound>();
 	ClassDB::register_class<TerrainElevation>();
 	ClassDB::register_class<LoadingProgress>();
+	ClassDB::register_class<VfrMap>();
 }
 
 void uninitialize_gojsb_module(ModuleInitializationLevel p_level)

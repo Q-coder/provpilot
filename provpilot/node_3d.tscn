@@ -17,6 +17,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
+[node name="VfrMap" type="VfrMap" parent="Control"]
+
 [node name="Label6" type="Label" parent="Control" unique_id=930621710]
 modulate = Color(0.8, 1, 0.8, 1)
 layout_mode = 0
