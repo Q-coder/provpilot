@@ -20,7 +20,7 @@ const LABEL_COLOR := Color(0.75, 0.78, 0.82)
 
 # Section names used inside provpilot.cfg. Each settings key is routed to one
 # of these sections by `_section_for_key()`.
-const SETTINGS_SECTIONS: PackedStringArray = ["paths", "scenery", "graphics", "sound", "realism", "world"]
+const SETTINGS_SECTIONS: PackedStringArray = ["paths", "scenery", "graphics", "sound", "realism", "world", "map"]
 
 # ── Settings state ─────────────────────────────────────────────────────
 var settings := {
@@ -52,6 +52,9 @@ var settings := {
 	# World / environment
 	"use_system_time": false,  # false = manual time slider drives the sun; true = real UTC clock
 	"time_of_day_min": 720,    # manual local time of day, minutes past midnight
+	# Map (VFR map frame — C++ VfrMap module; zoom_index is owned by the module)
+	"map_enabled": true,       # show the in-game VFR map frame (N toggles at runtime)
+	"map_frame_size": 1,       # 0=Small(240px) 1=Medium(320px) 2=Large(400px)
 	# Sound
 	"master_volume": 80,
 	"engine_volume": 70,
@@ -167,6 +170,8 @@ func _build_ui() -> void:
 	_build_graphics_section(content)
 	content.add_child(HSeparator.new())
 	_build_world_section(content)
+	content.add_child(HSeparator.new())
+	_build_map_section(content)
 	content.add_child(HSeparator.new())
 	_build_sound_section(content)
 	content.add_child(HSeparator.new())
@@ -881,6 +886,14 @@ func _build_world_section(parent: VBoxContainer) -> void:
 	_add_time_slider_row(parent, "time_of_day_min", "Time of Day:")
 
 
+## ── Section: Map ────────────────────────────────────────────────────────
+
+func _build_map_section(parent: VBoxContainer) -> void:
+	_add_section_header(parent, "VFR Map")
+	_add_check_row(parent, "map_enabled", "Show Map Frame:", "Heading-up VFR map inset (N toggles in flight)")
+	_add_option_row(parent, "map_frame_size", "Frame Size:", ["Small", "Medium", "Large"])
+
+
 ## Time-of-day slider (minutes past midnight) with an HH:MM readout. Used only
 ## when "Use System Clock" is off.
 func _add_time_slider_row(parent: VBoxContainer, key: String, label_text: String) -> void:
@@ -1036,6 +1049,8 @@ static func _section_for_key(key: String) -> String:
 		return "sound"
 	if key in ["use_system_time", "time_of_day_min"]:
 		return "world"
+	if key in ["map_enabled", "map_frame_size"]:
+		return "map"
 	return "realism"
 
 
@@ -1107,6 +1122,8 @@ func _get_defaults() -> Dictionary:
 		"turbulence": 1,
 		"wind_speed_kts": 0,
 		"wind_direction_deg": 0,
+		"map_enabled": true,
+		"map_frame_size": 1,
 	}
 
 

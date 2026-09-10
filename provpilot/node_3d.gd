@@ -35,6 +35,7 @@ var TERRAIN_CENTER_N: float = 1283072.0  # Swiss Northing at Godot Z=0
 @onready var throttle_label: Label = $Control/BottomRow/Label4
 @onready var heading_label: Label = $Control/BottomRow/Label5
 @onready var time_label: Label = $Control/TimeLabel
+@onready var _vfr_map: VfrMap = $Control/VfrMap
 
 # Assuming your JSBGodot node is a child of the current node
 var jsb_node: Node
@@ -381,6 +382,10 @@ func _ready() -> void:
 	# and the Swiss origin (must run after TERRAIN_CENTER is locked above).
 	_slew_mode.register_nodes($AC, airspeed_label, altitude_label, vspeed_label, throttle_label, heading_label, $Control/Label6, $Control/Label7, $Control/Label8)
 	_slew_mode.set_swiss_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
+
+	# VFR map frame (C++ module): one-time wiring with the Swiss origin and
+	# the portable config path. Tile paths arrive via _apply_scenery_sources().
+	_vfr_map.setup(TERRAIN_CENTER_E, TERRAIN_CENTER_N, InstallRoot.get_config_path())
 
 	# Terrain elevation (C++ module): register the session-stable AC root and push
 	# the fallback timeout GDScript still owns locally (it also gates the deferred
@@ -881,6 +886,12 @@ func _process(delta: float) -> void:
 		_process_rebase_cooldown()
 		_update_loading_progress(true)  # fly-to-destination loading
 		return
+
+	# VFR map frame (C++ module): position/heading drive + overlay gating.
+	# The map freezes under full-screen UI; input pass-through is handled in C++.
+	var _vfr_ui_up := (_welcome_screen and _welcome_screen.visible) or (_settings_screen and _settings_screen.visible)
+	if jsb_node:
+		_vfr_map.update(jsb_node.get_godot_position(), jsb_node.get_heading(), _vfr_ui_up)
 
 	# Skip all flight logic while welcome or settings overlay is visible
 	if _welcome_screen and _welcome_screen.visible:
@@ -1859,6 +1870,7 @@ func _on_settings_closed() -> void:
 		_settings_screen.hide_settings()
 	_apply_tree_density()
 	_apply_scenery_sources()
+	_vfr_map.apply_config()
 	_push_time_of_day_settings()
 	if _welcome_screen:
 		_welcome_screen.set_continue_enabled(not _first_flight)
@@ -1908,6 +1920,7 @@ func _apply_scenery_sources() -> void:
 	var water_paths := PackedStringArray()
 	var road_paths := PackedStringArray()
 	var vegetation_paths := PackedStringArray()
+	var map_paths := PackedStringArray()
 	# macOS APFS is case-insensitive by default — two areas that differ only
 	# in path case (e.g. ~/provpilot vs ~/ProvPilot) refer to the same data
 	# on disk, so dedup case-insensitively to avoid loading every tile twice.
@@ -1937,6 +1950,8 @@ func _apply_scenery_sources() -> void:
 		if DirAccess.dir_exists_absolute(r): _append_unique.call(road_paths, r)
 		var v := base.path_join("vegetation")
 		if DirAccess.dir_exists_absolute(v): _append_unique.call(vegetation_paths, v)
+		var m := base.path_join("map")
+		if DirAccess.dir_exists_absolute(m): _append_unique.call(map_paths, m)
 
 	# Always assign — even empty arrays. Otherwise stale paths baked into the
 	# scene file (.tscn) or ProjectSettings (scenery3d/*) would survive when
@@ -1946,6 +1961,7 @@ func _apply_scenery_sources() -> void:
 	# orthophoto_path) — their setters in C++ CLEAR the array first, which
 	# would silently drop all but one path. buildings_path stays as a legacy
 	# fallback for older Scenery3D builds that do not expose buildings_paths.
+	_vfr_map.set_tile_paths(map_paths)
 	scenery3d_node.data_paths = terrain_paths
 	scenery3d_node.orthophoto_paths = ortho_paths
 	if scenery3d_node.has_method("set_buildings_paths") or "buildings_paths" in scenery3d_node:
