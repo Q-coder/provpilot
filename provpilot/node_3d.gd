@@ -1982,6 +1982,7 @@ func _apply_scenery_sources() -> void:
 	print("  water_paths      = %s" % [water_paths])
 	print("  road_paths       = %s" % [road_paths])
 	print("  vegetation_paths = %s" % [vegetation_paths])
+	print("  map_paths        = %s" % [map_paths])
 
 	# White-pixel skip (border fix) — only effective once C++ side ships it.
 	var skip_white: bool = _settings_screen.settings.get("skip_white_pixels", true)
