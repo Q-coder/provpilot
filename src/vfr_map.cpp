@@ -13,6 +13,7 @@
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/theme.hpp>
 #include <godot_cpp/classes/theme_db.hpp>
+#include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/rect2.hpp>
@@ -34,7 +35,8 @@ const double VfrMap::VIEW_WIDTHS_M[5] = { 5000.0, 10000.0, 20000.0, 40000.0, 800
 const int VfrMap::FRAME_SIZES_PX[3] = { 240, 320, 400 };
 
 // Map tile pyramid (scripts/generate_vfr_map_tiles.py): same LV95 grid family
-// as the orthophoto layer — file names encode the SE corner of each cell.
+// as the orthophoto layer — file names encode the SW corner of each cell
+// (min easting / min northing).
 const VfrMap::LevelDef VfrMap::LEVELS[3] = {
     { 1024, "" },      // L0: 64x64 px, 16 m/px
     { 8192, "mip3" },  // L3: 64x64 px, 128 m/px
@@ -75,6 +77,140 @@ namespace
         while (a < -M_PI) a += 2.0 * M_PI;
         return a;
     }
+
+    // ── Map-area clipping ─────────────────────────────────────────────────
+    // CanvasItem::_draw() has no built-in scissor, so tile quads and border
+    // segments are clipped against the map rect manually to keep everything
+    // inside the frame.
+
+    // Heading-up rotation of an LV95 offset (meters) into local frame pixels.
+    // +x screen = right of the aircraft, -y screen = forward (heading).
+    void project_offset(double de, double dn, double ch, double sh, double px_per_m,
+                        const Vector2 &center_px, Vector2 &out)
+    {
+        out.x = center_px.x + (de * ch - dn * sh) * px_per_m;
+        out.y = center_px.y - (de * sh + dn * ch) * px_per_m;
+    }
+
+    // Sutherland-Hodgman clip of a convex polygon (pts/uvs parallel arrays)
+    // against an axis-aligned rect. UVs interpolate linearly along clipped
+    // edges — exact for canvas textured polygons, which rasterize per-vertex
+    // UVs. Returns false when nothing is left.
+    bool clip_polygon_to_rect(const Vector2 *pts_in, const Vector2 *uvs_in, int n_in,
+                              const Rect2 &rect,
+                              std::vector<Vector2> &out_pts, std::vector<Vector2> &out_uvs)
+    {
+        struct Edge { double limit; bool keep_min; bool is_x; };
+        const Edge edges[4] = {
+            { rect.position.x, true,  true  }, // left:   x >= min
+            { rect.get_end().x,      false, true  }, // right:  x <= max
+            { rect.position.y, true,  false }, // top:    y >= min
+            { rect.get_end().y,      false, false }, // bottom: y <= max
+        };
+        std::vector<Vector2> cur_pts;
+        std::vector<Vector2> cur_uvs;
+        for (int i = 0; i < n_in; i++)
+        {
+            cur_pts.push_back(pts_in[i]);
+            cur_uvs.push_back(uvs_in[i]);
+        }
+        for (const Edge &edge : edges)
+        {
+            std::vector<Vector2> nxt_pts;
+            std::vector<Vector2> nxt_uvs;
+            const size_t n = cur_pts.size();
+            for (size_t i = 0; i < n; i++)
+            {
+                const Vector2 &a = cur_pts[i];
+                const Vector2 &b = cur_pts[(i + 1) % n];
+                double av = edge.is_x ? a.x : a.y;
+                double bv = edge.is_x ? b.x : b.y;
+                bool a_in = edge.keep_min ? (av >= edge.limit) : (av <= edge.limit);
+                bool b_in = edge.keep_min ? (bv >= edge.limit) : (bv <= edge.limit);
+                if (a_in)
+                {
+                    nxt_pts.push_back(a);
+                    nxt_uvs.push_back(cur_uvs[i]);
+                }
+                if (a_in != b_in)
+                {
+                    double t = (edge.limit - av) / (bv - av);
+                    nxt_pts.push_back(a.lerp(b, t));
+                    nxt_uvs.push_back(cur_uvs[i].lerp(cur_uvs[(i + 1) % n], t));
+                }
+            }
+            cur_pts.swap(nxt_pts);
+            cur_uvs.swap(nxt_uvs);
+            if (cur_pts.empty())
+            {
+                return false;
+            }
+        }
+        if (cur_pts.size() < 3)
+        {
+            return false; // degenerate sliver — skip
+        }
+        out_pts = std::move(cur_pts);
+        out_uvs = std::move(cur_uvs);
+        return true;
+    }
+
+    // Liang-Barsky clip of a segment against an axis-aligned rect. Returns
+    // false when the segment is fully outside.
+    bool clip_segment_to_rect(const Vector2 &a, const Vector2 &b, const Rect2 &rect,
+                              Vector2 &out_a, Vector2 &out_b)
+    {
+        double t0 = 0.0;
+        double t1 = 1.0;
+        const double dx = b.x - a.x;
+        const double dy = b.y - a.y;
+        struct Clip { double p; double q; };
+        const Clip clips[4] = {
+            { -dx,      a.x - rect.position.x }, // left:   x >= min
+            { dx,       rect.get_end().x - a.x },      // right:  x <= max
+            { -dy,      a.y - rect.position.y }, // top:    y >= min
+            { dy,       rect.get_end().y - a.y },      // bottom: y <= max
+        };
+        for (const Clip &c : clips)
+        {
+            if (c.p == 0.0)
+            {
+                if (c.q < 0.0)
+                {
+                    return false; // parallel and outside
+                }
+            }
+            else
+            {
+                double t = c.q / c.p;
+                if (c.p < 0.0)
+                {
+                    if (t > t1)
+                    {
+                        return false;
+                    }
+                    if (t > t0)
+                    {
+                        t0 = t;
+                    }
+                }
+                else
+                {
+                    if (t < t0)
+                    {
+                        return false;
+                    }
+                    if (t < t1)
+                    {
+                        t1 = t;
+                    }
+                }
+            }
+        }
+        out_a = a.lerp(b, t0);
+        out_b = a.lerp(b, t1);
+        return true;
+    }
 } // namespace
 
 // ── Binding ─────────────────────────────────────────────────────────────────
@@ -93,6 +229,7 @@ void VfrMap::_bind_methods()
     ClassDB::bind_method(D_METHOD("zoom_in"), &VfrMap::zoom_in);
     ClassDB::bind_method(D_METHOD("zoom_out"), &VfrMap::zoom_out);
     ClassDB::bind_method(D_METHOD("get_heading_rad"), &VfrMap::get_heading_rad);
+    ClassDB::bind_method(D_METHOD("get_projected_px", "e", "n"), &VfrMap::get_projected_px);
     ClassDB::bind_method(D_METHOD("is_map_enabled"), &VfrMap::is_map_enabled);
     ClassDB::bind_method(D_METHOD("set_frame_size", "size_px"), &VfrMap::set_frame_size);
 }
@@ -137,15 +274,43 @@ void VfrMap::_notification(int what)
 
 void VfrMap::_unhandled_input(const Ref<InputEvent> &event)
 {
-    if (ui_visible || !enabled)
+    if (ui_visible)
     {
         return; // full-screen UI owns the input
     }
 
     InputEventKey *key = Object::cast_to<InputEventKey>(event.ptr());
-    if (key != nullptr && key->is_pressed() && !key->is_echo() && key->get_keycode() == KEY_N)
+    if (key == nullptr || !key->is_pressed() || key->is_echo())
     {
-        toggle_visible();
+        return;
+    }
+    switch (key->get_keycode())
+    {
+        case KEY_N:
+            // Must work while hidden too — a hidden Control still receives
+            // unhandled input, so this is the only way to re-show the frame.
+            toggle_visible();
+            get_viewport()->set_input_as_handled();
+            break;
+        case KEY_MINUS: // zoom out (wider view)
+            if (enabled)
+            {
+                zoom_out();
+                get_viewport()->set_input_as_handled();
+            }
+            break;
+        case KEY_EQUAL: // zoom in (narrower view)
+        case KEY_PLUS:  // the '+' character: Shift+=' on US layouts, Shift+1
+                        // on Swiss ones — Godot reports the produced
+                        // character as the keycode, so both must zoom in.
+            if (enabled)
+            {
+                zoom_in();
+                get_viewport()->set_input_as_handled();
+            }
+            break;
+        default:
+            break;
     }
 }
 
@@ -181,12 +346,11 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
     {
         return;
     }
-    // Only react when the pointer is over the frame.
-    Rect2 r(get_position(), get_size());
-    if (!r.has_point(btn->get_position()))
-    {
-        return;
-    }
+    // No hit-test here: the viewport's GUI router already found this control
+    // under the pointer before calling us (VfrMap has no child controls, so
+    // _gui_input only fires when the pointer is over the frame), and it has
+    // transformed the event position into *this* control's local space — a
+    // parent-space rect would never contain it.
     int step = 0;
     if (btn->get_button_index() == MOUSE_BUTTON_WHEEL_UP)
     {
@@ -199,6 +363,7 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
     if (step != 0)
     {
         zoom_step(step);
+        get_viewport()->set_input_as_handled();
     }
 }
 
@@ -337,6 +502,22 @@ void VfrMap::update(const Vector3 &godot_pos, double heading_deg, bool ui_visibl
         last_redraw_ms = now;
         queue_redraw();
     }
+}
+
+// Heading-up projection of an LV95 point into local frame pixels, using the
+// transform from the most recent _draw(). (frame_center_px/px_per_m are set
+// there; ac_e/ac_n/heading_rad are live, so this tracks update() 1:1.)
+void VfrMap::project_px(double e, double n, Vector2 &out) const
+{
+    project_offset(e - ac_e, n - ac_n, std::cos(heading_rad), std::sin(heading_rad),
+                   px_per_m, frame_center_px, out);
+}
+
+Vector2 VfrMap::get_projected_px(double e, double n) const
+{
+    Vector2 out;
+    project_px(e, n, out);
+    return out;
 }
 
 // ── Debug / test accessors ──────────────────────────────────────────────────
@@ -548,8 +729,12 @@ bool VfrMap::try_load_tile(const TileKey &key)
 {
     int cell = level_cell_m(key.level);
     String fname = String("map_") + String::num_int64((long long)(key.ei * cell)) + "_" + String::num_int64((long long)(key.ni * cell)) + ".jpg";
-    String subdir = LEVELS[std::max(0, std::min(2, key.level))].subdir;
-    String suffix = (subdir[0] == '\0') ? fname : (String("/") + subdir + "/" + fname);
+    const String subdir = LEVELS[std::max(0, std::min(2, key.level))].subdir;
+    // is_empty(), not subdir[0]: indexing an empty String goes through the
+    // engine's out-of-line operator[], which in this build resolves its
+    // _null sentinel to address 0 and segfaults (hit at L0, whose subdir
+    // is "").
+    String suffix = subdir.is_empty() ? fname : (String("/") + subdir + "/" + fname);
 
     for (int i = 0; i < tile_paths.size(); i++)
     {
@@ -569,8 +754,9 @@ bool VfrMap::try_load_tile(const TileKey &key)
         {
             return false;
         }
-        // Tile files store pixel(0,0) at the SE corner with rows S->N and
-        // cols E->W. Godot textures need top-left = NW: flip both axes.
+        // Tile files store pixel(0,0) at the SE corner (top row = south,
+        // left col = east). Godot textures need top-left = NW: flip both
+        // axes so texture UV (0,0) samples the cell's NW corner.
         img->flip_y();
         img->flip_x();
         Ref<ImageTexture> tex = ImageTexture::create_from_image(img);
@@ -628,12 +814,8 @@ void VfrMap::_draw()
     double sh = std::sin(heading_rad);
 
     auto project = [&](double e, double n, Vector2 &out) {
-        double de = e - ac_e;
-        double dn = n - ac_n;
-        // right-handed heading-up rotation: +x screen = right of aircraft,
-        // -y screen = forward (heading direction).
-        out.x = frame_center_px.x + (de * ch - dn * sh) * px_per_m;
-        out.y = frame_center_px.y - (de * sh + dn * ch) * px_per_m;
+        // Heading-up rotation (see project_offset / project_px).
+        project_offset(e - ac_e, n - ac_n, ch, sh, px_per_m, frame_center_px, out);
     };
 
     // Tiles: iterate the level's grid cells covering the view.
@@ -684,46 +866,80 @@ void VfrMap::_draw()
             project(e_east, n_north, p_ne);
             project(e_west, n_north, p_nw);
 
-            // Texture corners (after the double flip): (0,0)=NW, (w,0)=NE,
-            // (w,h)=SE, (0,h)=SW. Map them onto the projected quad with a
-            // textured polygon: uv.x = E->W fraction, uv.y = N->S fraction.
+            // After the double flip in try_load_tile() the texture's top-left
+            // is the cell's NW corner. Canvas UVs are normalized [0,1]
+            // (draw_polygon remaps 0..1 for AtlasTexture and passes plain
+            // textures straight to the rasterizer), so map the quad corners
+            // onto unit-square UVs: NW->(0,0), NE->(1,0), SE->(1,1), SW->(0,1).
+            const Vector2 quad_pts[4] = { p_nw, p_ne, p_se, p_sw };
+            const Vector2 quad_uvs[4] = {
+                Vector2(0.0, 0.0), Vector2(1.0, 0.0),
+                Vector2(1.0, 1.0), Vector2(0.0, 1.0) };
+
+            // Clip to the map area: the tile extent deliberately overshoots
+            // so rotation never exposes un-drawn edges, but without clipping
+            // tiles would bleed past the frame border. UVs interpolate
+            // linearly along clipped edges (exact for canvas polygons).
+            std::vector<Vector2> cp;
+            std::vector<Vector2> cu;
+            if (!clip_polygon_to_rect(quad_pts, quad_uvs, 4, map_area, cp, cu))
+            {
+                continue;
+            }
+
             PackedVector2Array pts;
-            pts.push_back(p_nw);
-            pts.push_back(p_ne);
-            pts.push_back(p_se);
-            pts.push_back(p_sw);
-
             PackedVector2Array uvs;
-            double w = double(tex->get_width());
-            double h = double(tex->get_height());
-            uvs.push_back(Vector2(0.0, 0.0));       // NW -> uv (0,0)
-            uvs.push_back(Vector2(w, 0.0));         // NE -> uv (w,0)
-            uvs.push_back(Vector2(w, h));           // SE -> uv (w,h)
-            uvs.push_back(Vector2(0.0, h));         // SW -> uv (0,h)
-
+            for (size_t i = 0; i < cp.size(); i++)
+            {
+                pts.push_back(cp[i]);
+                uvs.push_back(cu[i]);
+            }
             draw_colored_polygon(pts, Color(1, 1, 1, 1), uvs, tex);
             tiles_drawn++;
         }
     }
 
-    // Canton borders (rotated with the map world).
+    // Canton borders (rotated with the map world). Every segment is clipped
+    // to the map area so border lines stop at the frame edge instead of
+    // bleeding past it. Rings whose projected bbox misses the view are
+    // skipped before the per-segment clipping.
     for (const std::vector<Vector2> &ring : canton_rings)
     {
-        PackedVector2Array line;
-        bool any_in_view = false;
-        for (const Vector2 &pt : ring)
+        if (ring.size() < 2)
         {
-            Vector2 sp;
-            project(pt.x, pt.y, sp);
-            if (map_area.grow(16.0).has_point(sp))
-            {
-                any_in_view = true;
-            }
-            line.push_back(sp);
+            continue;
         }
-        if (any_in_view)
+        PackedVector2Array screen;
+        screen.resize(int(ring.size()));
+        Rect2 bbox;
+        bool bbox_valid = false;
+        for (size_t i = 0; i < ring.size(); i++)
         {
-            draw_polyline(line, C_CANTON, 1.0, false);
+            project(ring[i].x, ring[i].y, screen[i]);
+            if (!bbox_valid)
+            {
+                bbox = Rect2(screen[i], Vector2());
+                bbox_valid = true;
+            }
+            else
+            {
+                bbox = bbox.expand(screen[i]);
+            }
+        }
+        if (!bbox.intersects(map_area.grow(2.0)))
+        {
+            continue; // whole ring outside the view (exact: segments can't
+                      // cross the rect without their bbox touching it)
+        }
+        for (size_t i = 0; i < ring.size(); i++)
+        {
+            const Vector2 &a = screen[i];
+            const Vector2 &b = screen[(i + 1) % ring.size()];
+            Vector2 ca, cb;
+            if (clip_segment_to_rect(a, b, map_area, ca, cb))
+            {
+                draw_line(ca, cb, C_CANTON, 1.0, false);
+            }
         }
     }
 

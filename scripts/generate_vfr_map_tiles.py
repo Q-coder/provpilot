@@ -179,26 +179,45 @@ def process_l0_tile(args):
 def _read_cell_grid(span: int, ei0: int, ni0: int, terrain_dir: str):
     """Read a span x span block of L0 tiles; returns (stack, px0) or None.
 
+    Missing tiles (outside the elevation data extent — e.g. along the Swiss
+    border where swissALTI3D stops) are zero-filled instead of failing the
+    whole cell: no-data renders as a flat lowland tint, so boundary cells
+    still cover the area instead of dropping out. Returns None only when no
+    tile of the block exists at all.
+
     Normalizes mixed-resolution directories to the first tile's pixel size
     (2x median down or 2x nearest-neighbor up).
     """
+    tdir = Path(terrain_dir)
+    paths = [(dy, dx, tdir / f"tile_{(ei0 + dx) * TILE_M}_{(ni0 + dy) * TILE_M}.raw")
+             for dy in range(span) for dx in range(span)]
+    existing = [p for _, _, p in paths if p.exists()]
+    if not existing:
+        return None
+    _, px0 = read_heightmap(existing[0])
+
     rows = []
-    px0 = None
     for dy in range(span):
         row = []
         for dx in range(span):
-            p = Path(terrain_dir) / f"tile_{(ei0 + dx) * TILE_M}_{(ni0 + dy) * TILE_M}.raw"
-            if not p.exists():
-                return None
-            elev, px = read_heightmap(p)
-            if px0 is None:
-                px0 = px
-            elif px != px0:
-                elev = median_downsample(elev, 2) if px > px0 else \
-                    np.repeat(np.repeat(elev, 2, axis=0), 2, axis=1)
-            row.append(elev)
+            p = tdir / f"tile_{(ei0 + dx) * TILE_M}_{(ni0 + dy) * TILE_M}.raw"
+            if p.exists():
+                elev, px = read_heightmap(p)
+                if px != px0:
+                    elev = median_downsample(elev, 2) if px > px0 else \
+                        np.repeat(np.repeat(elev, 2, axis=0), 2, axis=1)
+            else:
+                elev = np.zeros((px0, px0), dtype=np.float32)
+            # Raw tiles store cols E->W, but cells are concatenated W->E.
+            # Flip each tile's columns so the assembled grid runs smoothly
+            # west->east; a plain concat leaves a one-cell jump-back at every
+            # subcell boundary (visible as vertical seams in L3/L5 imagery).
+            row.append(elev[:, ::-1])
         rows.append(row)
-    return np.concatenate([np.concatenate(r, axis=1) for r in rows], axis=0), px0
+    grid = np.concatenate([np.concatenate(r, axis=1) for r in rows], axis=0)
+    # Restore the SE-corner convention shared with L0 tiles (pixel(0,0)=SE):
+    # flip the smooth W->E grid back to E->W.
+    return grid[:, ::-1], px0
 
 
 def make_l3_cell(args):
@@ -254,6 +273,8 @@ def main():
     parser.add_argument("--e-max", type=int, default=None)
     parser.add_argument("--n-min", type=int, default=None, help="L0 tile index range (north), inclusive")
     parser.add_argument("--n-max", type=int, default=None)
+    parser.add_argument("--mips-only", action="store_true",
+                        help="Skip L0 regeneration; rebuild only mip3/mip5 from the existing terrain")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -302,15 +323,18 @@ def main():
 
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         # L0
-        futures = {pool.submit(process_l0_tile, (ei, ni, str(terrain_dir))): (ei, ni)
-                   for ei, ni in l0_tiles}
-        for fut in as_completed(futures):
-            ei, ni, status, img = fut.result()
-            if status == "ok":
-                save_level(out_dir, "", ei, ni, TILE_M, img, args.quality)
-                stats["L0"] += 1
-            else:
-                stats[status] += 1
+        if not args.mips_only:
+            futures = {pool.submit(process_l0_tile, (ei, ni, str(terrain_dir))): (ei, ni)
+                       for ei, ni in l0_tiles}
+            for fut in as_completed(futures):
+                ei, ni, status, img = fut.result()
+                if status == "ok":
+                    save_level(out_dir, "", ei, ni, TILE_M, img, args.quality)
+                    stats["L0"] += 1
+                else:
+                    stats[status] += 1
+        else:
+            print("L0 skipped (--mips-only)")
 
         # L3 (needs the full 8x8 neighborhood — read raw directly)
         futures = {pool.submit(make_l3_cell, (ei, ni, str(terrain_dir))): (ei, ni)

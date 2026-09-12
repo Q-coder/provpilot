@@ -77,6 +77,12 @@ namespace jsbgodot
         bool is_map_enabled() const;
         void set_frame_size(int size_px);
 
+        // Local frame pixels for an LV95 point under the current heading-up
+        // transform (frame center + px/m from the last _draw, live aircraft
+        // state). Used by the smoke test to verify the map world tracks the
+        // aircraft without capturing rendered pixels.
+        Vector2 get_projected_px(double e, double n) const;
+
     public:
         VfrMap();
 
@@ -177,6 +183,10 @@ namespace jsbgodot
         int pick_level() const;                        // 0/1/2 for current zoom
         double frame_size_px() const;
         void load_tile_into_cache(const TileKey &key, const Ref<ImageTexture> &tex);
+
+        // Heading-up LV95 -> local frame pixels (shared by _draw and
+        // get_projected_px).
+        void project_px(double e, double n, Vector2 &out) const;
 
         static Vector2 wgs84_to_lv95(double lat_deg, double lon_deg);
     };

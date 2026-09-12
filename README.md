@@ -43,6 +43,7 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 - **Slew Mode**: Reposition aircraft freely with airspeed preservation, then resume flight (Shift+Y)
 - **Deferred Scenery Loading**: Scenery3D starts streaming only after the user clicks Fly — instant startup
 - **HUD**: Airspeed, altitude, vertical speed, heading, throttle, Swiss/WGS84 coordinates
+- **VFR Map Frame**: Heading-up in-game map inset (C++ `VfrMap` module) with cartographic hillshade terrain, range rings, airport symbols/ICAO labels, and canton borders — toggle with N, zoom with the wheel; see [docs/VFR_MAP.md](docs/VFR_MAP.md)
 
 ## Controls
 
@@ -66,6 +67,8 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 | Magneto Clockwise | — | I |
 | Magneto Counter-CW | — | Shift+I |
 | Slew Mode | — | Shift+Y |
+| VFR Map Toggle | — | N |
+| VFR Map Zoom | Wheel over map frame | − / + (=) |
 | Flap Lever Drag | — | Mouse drag (cockpit) |
 | Return to Welcome | — | Escape |
 

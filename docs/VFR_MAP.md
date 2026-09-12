@@ -9,8 +9,8 @@ labels, and canton borders — all rotating with the aircraft heading.
 
 | Action | Input |
 |--------|-------|
-| Show / hide map | `N` (anywhere) |
-| Zoom in / out | Mouse wheel over the frame (5 → 10 → 20 → 40 → 80 km view width) |
+| Show / hide map | `N` (anywhere, works while hidden) |
+| Zoom in / out | Mouse wheel over the frame, or `−` / `+` (`=` also zooms in; on Swiss layouts `+` is Shift+1) (5 → 10 → 20 → 40 → 80 km view width) |
 
 Settings → **VFR Map**: enable/disable and frame size (Small 240 px / Medium
 320 px / Large 400 px). The zoom level is persisted automatically.
@@ -25,6 +25,7 @@ swissALTI3D elevation tiles:
 python scripts/generate_vfr_map_tiles.py            # whole installed region
 python scripts/generate_vfr_map_tiles.py --e-min 2619 --e-max 2630 \
     --n-min 1251 --n-max 1262                        # a tile index range
+python scripts/generate_vfr_map_tiles.py --mips-only # rebuild only mip3/mip5
 ```
 
 Output (per scenery area, next to `terrain/` and `orthophoto/`):
@@ -42,6 +43,11 @@ flips both axes before creating textures.
 
 The module auto-selects the finest level whose tiles still render at ≥ 40 px
 on screen, so narrow views use L0 and wide views fall back to L3/L5.
+
+L3/L5 cells that straddle the edge of the elevation data (e.g. along the
+Swiss border, where swissALTI3D stops) are zero-filled instead of being
+dropped: the no-data part renders as a flat lowland tint, so wide views keep
+full coverage to the map extent instead of showing gaps in the east.
 
 ## Runtime Behavior (`src/vfr_map.cpp`)
 
