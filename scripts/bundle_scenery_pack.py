@@ -37,7 +37,7 @@ from pathlib import Path
 
 TILE_M = 1024
 TILE_RX = re.compile(r"_(\d{7})_(\d{7})\.[A-Za-z0-9]+$")
-MIP_SUBDIRS = ["mip2", "mip3", "mip4"]
+MIP_SUBDIRS = ["mip2", "mip3", "mip4", "mip5"]
 ALWAYS_INCLUDE = {
     "terrain": ["distant_terrain*", "*.json"],
 }

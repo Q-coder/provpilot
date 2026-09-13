@@ -28,7 +28,7 @@
         }
     ],
     "asset_classes": {
-        "base":   ["terrain", "roads", "water", "trees", "airports"],
+        "base":   ["terrain", "roads", "water", "trees", "airports", "map"],
         "detail": ["buildings", "orthophoto", "vegetation"]
     }
 }
