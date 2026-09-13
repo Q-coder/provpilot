@@ -27,6 +27,12 @@ Usage:
     python scripts/generate_vfr_map_tiles.py [--workers N] [--dry-run]
     python scripts/generate_vfr_map_tiles.py --e-min 2600 --e-max 2700 \
         --n-min 1250 --n-max 1300          # L0 tile index range
+    # Multi-area: generate one area's map, merging the neighbor's elevation
+    # into border mip cells (L0 rendering still uses only --terrain-dir):
+    python scripts/generate_vfr_map_tiles.py \
+        --terrain-dir .../Germany/Baden-Wuertemberg/terrain \
+        --output .../Germany/Baden-Wuertemberg/map \
+        --merge-with .../Switzerland/terrain
 
 Requirements: numpy, Pillow
 """
@@ -176,32 +182,46 @@ def process_l0_tile(args):
     return (ei, ni, "ok", img)
 
 
-def _read_cell_grid(span: int, ei0: int, ni0: int, terrain_dir: str):
+def _resolve_subcell(tdirs, name):
+    """First terrain dir (in priority order) that contains the tile."""
+    for td in tdirs:
+        p = td / name
+        if p.exists():
+            return p
+    return None
+
+
+def _read_cell_grid(span: int, ei0: int, ni0: int, terrain_dirs):
     """Read a span x span block of L0 tiles; returns (stack, px0) or None.
 
-    Missing tiles (outside the elevation data extent — e.g. along the Swiss
-    border where swissALTI3D stops) are zero-filled instead of failing the
-    whole cell: no-data renders as a flat lowland tint, so boundary cells
-    still cover the area instead of dropping out. Returns None only when no
-    tile of the block exists at all.
+    terrain_dirs is an ordered list of directories (primary scenery area
+    first, then any --merge-with areas). Each subcell is taken from the
+    first dir that has it, so mip cells straddling the CH/BW border are
+    assembled from both areas' elevation data instead of zero-filling the
+    foreign half. Missing tiles (outside all data extents — e.g. along the
+    national borders where the heightmap coverage stops) are zero-filled
+    instead of failing the whole cell: no-data renders as a flat lowland
+    tint, so boundary cells still cover the area instead of dropping out.
+    Returns None only when no tile of the block exists at all.
 
     Normalizes mixed-resolution directories to the first tile's pixel size
     (2x median down or 2x nearest-neighbor up).
     """
-    tdir = Path(terrain_dir)
-    paths = [(dy, dx, tdir / f"tile_{(ei0 + dx) * TILE_M}_{(ni0 + dy) * TILE_M}.raw")
+    tdirs = [Path(d) for d in terrain_dirs]
+    names = [f"tile_{(ei0 + dx) * TILE_M}_{(ni0 + dy) * TILE_M}.raw"
              for dy in range(span) for dx in range(span)]
-    existing = [p for _, _, p in paths if p.exists()]
-    if not existing:
+    resolved = [_resolve_subcell(tdirs, n) for n in names]
+    first = next((p for p in resolved if p is not None), None)
+    if first is None:
         return None
-    _, px0 = read_heightmap(existing[0])
+    _, px0 = read_heightmap(first)
 
     rows = []
     for dy in range(span):
         row = []
         for dx in range(span):
-            p = tdir / f"tile_{(ei0 + dx) * TILE_M}_{(ni0 + dy) * TILE_M}.raw"
-            if p.exists():
+            p = resolved[dy * span + dx]
+            if p is not None:
                 elev, px = read_heightmap(p)
                 if px != px0:
                     elev = median_downsample(elev, 2) if px > px0 else \
@@ -222,8 +242,8 @@ def _read_cell_grid(span: int, ei0: int, ni0: int, terrain_dir: str):
 
 def make_l3_cell(args):
     """One L3 cell = 8x8 L0 tiles. Median-downsample to a 64 px elevation."""
-    ei3, ni3, terrain_dir = args
-    grid = _read_cell_grid(8, ei3 * 8, ni3 * 8, terrain_dir)
+    ei3, ni3, terrain_dirs = args
+    grid = _read_cell_grid(8, ei3 * 8, ni3 * 8, terrain_dirs)
     if grid is None:
         return (ei3, ni3, "missing", None)
     stack, px0 = grid
@@ -236,8 +256,8 @@ def make_l3_cell(args):
 
 def make_l5_cell(args):
     """One L5 cell = 32x32 L0 tiles -> 64 px elevation at 512 m/px."""
-    ei5, ni5, terrain_dir = args
-    grid = _read_cell_grid(32, ei5 * 32, ni5 * 32, terrain_dir)
+    ei5, ni5, terrain_dirs = args
+    grid = _read_cell_grid(32, ei5 * 32, ni5 * 32, terrain_dirs)
     if grid is None:
         return (ei5, ni5, "missing", None)
     stack, px0 = grid
@@ -275,11 +295,17 @@ def main():
     parser.add_argument("--n-max", type=int, default=None)
     parser.add_argument("--mips-only", action="store_true",
                         help="Skip L0 regeneration; rebuild only mip3/mip5 from the existing terrain")
+    parser.add_argument("--merge-with", nargs="*", default=[], metavar="DIR",
+                        help="extra terrain dir(s) consulted, after --terrain-dir, when "
+                             "assembling mip cells — border cells spanning multiple areas "
+                             "(e.g. CH + BW) are then rendered from both areas' data")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     terrain_dir = Path(args.terrain_dir)
     out_dir = Path(args.output)
+    # Ordered dir list for mip assembly: primary area first, merge areas after.
+    terrain_dirs = [str(terrain_dir)] + [str(Path(d)) for d in args.merge_with]
 
     # Discover L0 tiles on disk (or use the requested index range).
     if args.e_min is not None:
@@ -337,7 +363,7 @@ def main():
             print("L0 skipped (--mips-only)")
 
         # L3 (needs the full 8x8 neighborhood — read raw directly)
-        futures = {pool.submit(make_l3_cell, (ei, ni, str(terrain_dir))): (ei, ni)
+        futures = {pool.submit(make_l3_cell, (ei, ni, terrain_dirs)): (ei, ni)
                    for ei, ni in l3_cells}
         for fut in as_completed(futures):
             ei, ni, status, img = fut.result()
@@ -348,7 +374,7 @@ def main():
                 stats[status] += 1
 
         # L5
-        futures = {pool.submit(make_l5_cell, (ei, ni, str(terrain_dir))): (ei, ni)
+        futures = {pool.submit(make_l5_cell, (ei, ni, terrain_dirs)): (ei, ni)
                    for ei, ni in l5_cells}
         for fut in as_completed(futures):
             ei, ni, status, img = fut.result()

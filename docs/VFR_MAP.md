@@ -18,17 +18,27 @@ Settings → **VFR Map**: enable/disable and frame size (Small 240 px / Medium
 ## Tile Data
 
 Imagery is a cartographic hillshade (NW light, azimuth 315°, altitude 45°)
-multiplied by a VFR-sectional hypsometric tint, generated offline from the
-swissALTI3D elevation tiles:
+multiplied by a VFR-sectional hypsometric tint, generated offline from each
+scenery area's elevation tiles (swissALTI3D for Switzerland):
 
 ```bash
 python scripts/generate_vfr_map_tiles.py            # whole installed region
 python scripts/generate_vfr_map_tiles.py --e-min 2619 --e-max 2630 \
     --n-min 1251 --n-max 1262                        # a tile index range
 python scripts/generate_vfr_map_tiles.py --mips-only # rebuild only mip3/mip5
+
+# One map per scenery area (next to that area's terrain/). Areas that share
+# a border are generated with --merge-with, so the L3/L5 cells straddling it
+# are rendered from both areas' elevation data:
+python scripts/generate_vfr_map_tiles.py \
+    --terrain-dir .../Germany/Baden-Wuertemberg/terrain \
+    --output .../Germany/Baden-Wuertemberg/map \
+    --merge-with .../Switzerland/terrain
 ```
 
-Output (per scenery area, next to `terrain/` and `orthophoto/`):
+Output (per scenery area, next to `terrain/` and `orthophoto/`). The runtime
+appends every enabled area's `map/` directory in scenery-library priority
+order, so tiles are served by the highest-priority area that has them:
 
 | Level | Path | Cell | Pixels | Resolution |
 |-------|------|------|--------|------------|
@@ -45,9 +55,22 @@ The module auto-selects the finest level whose tiles still render at ≥ 40 px
 on screen, so narrow views use L0 and wide views fall back to L3/L5.
 
 L3/L5 cells that straddle the edge of the elevation data (e.g. along the
-Swiss border, where swissALTI3D stops) are zero-filled instead of being
-dropped: the no-data part renders as a flat lowland tint, so wide views keep
-full coverage to the map extent instead of showing gaps in the east.
+national borders, where the heightmap coverage stops) are zero-filled
+instead of being dropped: the no-data part renders as a flat lowland tint,
+so wide views keep full coverage to the map extent instead of showing gaps.
+Cells that span two installed areas (the CH/BW border) take each subcell
+from whichever area has it (`--merge-with`), so no foreign half is rendered
+flat. Because the higher-priority area's copy of a shared cell wins at
+runtime, regenerate **both** neighbors' mip levels after adding an area:
+
+```bash
+# 1. new area (full run, neighbor merged in)
+python scripts/generate_vfr_map_tiles.py --terrain-dir .../BW/terrain \
+    --output .../BW/map --merge-with .../CH/terrain
+# 2. existing area (mips only — fast; fixes its border cells too)
+python scripts/generate_vfr_map_tiles.py --terrain-dir .../CH/terrain \
+    --output .../CH/map --mips-only --merge-with .../BW/terrain
+```
 
 ## Runtime Behavior (`src/vfr_map.cpp`)
 
