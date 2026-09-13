@@ -1,9 +1,11 @@
 extends Node
-## Headless smoke test for the C++ VfrMap module (src/vfr_map.cpp).
-## Hermetic: no JSBSim / Scenery3D / scenery data required. Generates a small
-## synthetic tile pyramid in a temp dir, points the module at it, and drives
-## update() with known positions/headings near LSZH. Exits 0 on success,
-## 1 on any failure.
+## Headless smoke test for the C++ VfrMap module (src/vfr_map.cpp) and its
+## node_3d.gd feed path. Hermetic: no Scenery3D / scenery data required —
+## generates a small synthetic tile pyramid in a temp dir, points the module
+## at it, and drives update() with known positions/headings near LSZH. The
+## slew phase initializes JSBSim (the model ships in the repo) to mirror
+## production, where physics is always running. Exits 0 on success, 1 on any
+## failure.
 
 const TIMEOUT_FRAMES := 9000  # ~150 s at 60 fps (headless loading can be slow)
 
@@ -19,6 +21,8 @@ var phase_frame := 0
 var fails: Array[String] = []
 var tmp_dir := ""
 var zoom_before_key := 0
+var slew_p_before := Vector2.ZERO
+var slew_p_after := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -35,8 +39,10 @@ func _ready() -> void:
 
 ## Runs after every node's _process (incl. node_3d.gd's JSBSim feed), so the
 ## VfrMap state — and thus its 10 Hz redraws — always sees the LSZH position.
+## Skipped during the slew phases, where node_3d.gd must be the one driving
+## the map (from $AC while slewing) and we verify exactly that.
 func _feed_known_position() -> void:
-	if vfr_map != null and phase != "done":
+	if vfr_map != null and phase != "done" and not phase.begins_with("slew"):
 		vfr_map.update(Vector3(2682880.0 - AC_E, 500.0, AC_N - 1283072.0), 250.0, false)
 
 
@@ -282,6 +288,78 @@ func _process(_delta: float) -> void:
 			if frame - phase_frame >= 5:
 				check(vfr_map.get_zoom_index() == zoom_before_key,
 					"mouse wheel down zooms back out (got %d)" % vfr_map.get_zoom_index())
+				_enter_phase("slew_park")
+
+		# ── Slew mode ──────────────────────────────────────────────────────
+		# While slewing, JSBSim physics is paused so jsb_node.get_godot_position()
+		# stays frozen at the pre-slew state; node_3d.gd must feed the map from
+		# $AC instead (the fix for "map not moving in slew mode"). Initialize
+		# JSBSim at the park point first, mirroring production where it is always
+		# running, so the exit reinit has a live state to sync from.
+
+		"slew_park":
+			var jsb := app.get_node_or_null("AC/JSBGodot")
+			if jsb == null:
+				fail("no AC/JSBGodot node for slew test")
+			var ac := app.get_node("AC") as Node3D
+			var park := Vector3(2682880.0 - AC_E, 500.0, AC_N - 1283072.0)
+			jsb.set_godot_terrain_y_offset(-1.1)  # WHEEL_GROUND_CLEARANCE in node_3d.gd
+			jsb.initialize_at_terrain(498.0, park, 250.0)
+			ac.global_position = park
+			ac.rotation.y = -deg_to_rad(250.0)  # rotation.y = -visual heading
+			if frame - phase_frame >= 3:
+				press_key(KEY_SHIFT)
+				press_key(KEY_Y)
+				_enter_phase("slew_enter")
+
+		"slew_enter":
+			# node_3d.gd's _process runs SlewMode.update() with both keys held.
+			if frame - phase_frame >= 3:
+				check(app._slew_mode.is_enabled(), "slew mode entered via Shift+Y")
+				var ac := app.get_node("AC") as Node3D
+				# Re-park exactly (physics may have nudged AC slightly).
+				ac.global_position = Vector3(2682880.0 - AC_E, 500.0, AC_N - 1283072.0)
+				ac.rotation.y = -deg_to_rad(250.0)
+				_enter_phase("slew_move")
+
+		"slew_move":
+			var world_pt := Vector2(AC_E + 500.0, AC_N)
+			slew_p_before = vfr_map.get_projected_px(world_pt.x, world_pt.y)
+			var ac := app.get_node("AC") as Node3D
+			# Move 1 km east (LV95 east = -Godot x). JSBSim's cached position
+			# stays frozen at the park point for the rest of this phase group.
+			ac.global_position = Vector3(2682880.0 - (AC_E + 1000.0), 500.0, AC_N - 1283072.0)
+			_enter_phase("slew_moved")
+
+		"slew_moved":
+			if frame - phase_frame >= 10:
+				var world_pt := Vector2(AC_E + 500.0, AC_N)
+				slew_p_after = vfr_map.get_projected_px(world_pt.x, world_pt.y)
+				var expected := 1000.0 * (304.0 / vfr_map.get_view_width_m())
+				var got := (slew_p_after - slew_p_before).length()
+				check(absf(got - expected) < 0.5,
+					"map follows the aircraft while slewing (shift %.2f px, expected %.2f px)" % [got, expected])
+				release_key(KEY_Y)
+				release_key(KEY_SHIFT)
+				_enter_phase("slew_release")
+
+		"slew_release":
+			# Let one frame pass with the keys up so SlewMode's key_held
+			# debounce resets before the exit press.
+			if frame - phase_frame >= 3:
+				press_key(KEY_SHIFT)
+				press_key(KEY_Y)
+				_enter_phase("slew_exit")
+
+		"slew_exit":
+			# Exit reinitializes JSBSim at $AC's position, so the feed must
+			# switch back to the (now synced) JSBSim cache without a jump.
+			if frame - phase_frame >= 10:
+				check(not app._slew_mode.is_enabled(), "slew mode exited via Shift+Y")
+				var world_pt := Vector2(AC_E + 500.0, AC_N)
+				var p_now := vfr_map.get_projected_px(world_pt.x, world_pt.y)
+				var drift := (p_now - slew_p_after).length()
+				check(drift < 1.0, "no map jump on slew exit (drift %.2f px)" % drift)
 				_enter_phase("done")
 
 		"done":

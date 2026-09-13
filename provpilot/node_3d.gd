@@ -891,7 +891,20 @@ func _process(delta: float) -> void:
 	# The map freezes under full-screen UI; input pass-through is handled in C++.
 	var _vfr_ui_up := (_welcome_screen and _welcome_screen.visible) or (_settings_screen and _settings_screen.visible)
 	if jsb_node:
-		_vfr_map.update(jsb_node.get_godot_position(), jsb_node.get_heading(), _vfr_ui_up)
+		if _slew_mode.is_enabled():
+			# JSBSim physics is paused while slewing, so get_godot_position()/
+			# get_heading() stay frozen at the pre-slew state; the SlewMode
+			# module moves $AC directly. Feed the map from the AC node instead —
+			# same local space (JSBGodot writes its position to this node every
+			# physics frame) and continuous across both slew transitions. The
+			# visual heading convention is 360 - yaw, matching get_heading()
+			# (rotation.y = -visual heading, see teleport + SlewMode reinit).
+			var ac := $AC as Node3D
+			if ac:
+				var slew_heading := fmod(-rad_to_deg(ac.rotation.y) + 360.0, 360.0)
+				_vfr_map.update(ac.global_position, slew_heading, _vfr_ui_up)
+		else:
+			_vfr_map.update(jsb_node.get_godot_position(), jsb_node.get_heading(), _vfr_ui_up)
 
 	# Skip all flight logic while welcome or settings overlay is visible
 	if _welcome_screen and _welcome_screen.visible:
