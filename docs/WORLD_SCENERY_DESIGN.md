@@ -1,13 +1,15 @@
 # Worldwide & Extendable Scenery — Design
 
 Design subtask from [gerys_plan.md](gerys_plan.md) (post-1.0.10): make ProvPilot's
-scenery worldwide, extendable, and small enough to start with a "Small Ville"
-initial download. First flyable pilot region: **Norway** — data-light (no ortho),
-starting from coastlines and major airports, reachable by flight from the existing
-Swiss / Baden-Württemberg scenery.
+scenery worldwide and extendable. First flyable pilot region: **Norway** —
+data-light (no ortho), starting from coastlines and major airports, reachable by
+flight from the existing Swiss / Baden-Württemberg scenery. The "Small Ville"
+initial-download region (§4.4) is **deferred**.
 
-Status: **proposal, not yet implemented.** All external sources listed below were
-probed on 2026-09-14 unless noted otherwise.
+Status: **approved for implementation** (gery decisions 2026-09-14: Copernicus
+GLO-30 terrain, OSM water/coastline, OurAirports airports, 30 m/px default pack,
+Prime Meridian coordinate display incl. HUD, `/Volumes/Data1` build storage).
+All external sources listed below were probed on 2026-09-14 unless noted otherwise.
 
 ## 1. What we already have
 
@@ -33,12 +35,13 @@ question (§3.3).
 
 | Source | Resolution | Coverage | Access | License | Verdict |
 |--------|-----------|----------|--------|---------|---------|
-| **AWS `elevation-tiles-prod` S3** (SRTM-derived) | ~30 m effective (see note) | Global land + bathymetry (negative elevations) | Plain HTTP GET, no registration: `https://s3.amazonaws.com/elevation-tiles-prod/geotiff/{z}/{x}/{y}.tif`, XYZ slippy grid, **512×512** float32 GeoTIFF, EPSG:3857, nodata ≈ −3.4×10³⁸, **z = 0…14** (z=15 verified missing) | US public data (SRTM), de-facto free | **Recommended base source.** Verified live on 2026-09-14 (tile dims, CRS, nodata, bathymetry all measured from a downloaded z=14 tile). |
-| Copernicus GLO-30 | 30 m, better vertical accuracy in parts of Europe | Global | Copernicus Data Space STAC API, free registration | Open (Copernicus) | Strong alternative / future "quality" tier |
+| **AWS `elevation-tiles-prod` S3** (SRTM-derived) | ~30 m effective (see note) | Global land + bathymetry (negative elevations) | Plain HTTP GET, no registration: `https://s3.amazonaws.com/elevation-tiles-prod/geotiff/{z}/{x}/{y}.tif`, XYZ slippy grid, **512×512** float32 GeoTIFF, EPSG:3857, nodata ≈ −3.4×10³⁸, **z = 0…14** (z=15 verified missing) | US public data (SRTM), de-facto free | **Fallback / no-registration alternative.** Verified live on 2026-09-14 (tile dims, CRS, nodata, bathymetry all measured from a downloaded z=14 tile). Only source here with real seafloor values under the sea. |
+| **Copernicus DEM GLO-30** | 30 m global (≈15 m/px native at 60°N) | Global land (**ocean coverage unverified — see §5.3**) | Copernicus Data Space STAC, collection `cop-dem-glo-30-dged-cog`: **1°×1° COG GeoTIFF items** (`Copernicus_DSM_COG_10_N57_00_E017_00_DEM.tif`). Search is anonymous; **downloads need a free API key** (verified 2026-09-14: `s3.dataspace.copernicus.eu` → 403 unauthenticated, eox mirror unreachable) | Open (Copernicus/ESA) | **Recommended base source (gery decision 2026-09-14).** Verified live on 2026-09-14 (item list + tile naming). |
+| Copernicus DEM EEA-10 | 10 m, SAR InSAR | Europe (EEA) | Same STAC, collection `cop-dem-eea-10-laea-tif` (LAEA tiles, OData download links) | Open (Copernicus/EEA) | Future "quality" tier for CH/BW/Norway upgrade packs (§2.4) |
 | NASADEM / SRTM 1″ | ~30 m equator → **~15 m at 60°N** | Land (gaps in mountains/poles) | USGS EarthExplorer / OpenTopography, free registration | Public domain | Better native detail for high-latitude Norway |
 | National DTMs (e.g. Kartverket Norway) | 20–40 m, locally best | One country at a time | WMTS/API — **access unverified** (api.kartverket.no returned 404 on 2026-09-14) | Usually open | Per-country upgrade path (tier 2), not for the pilot |
 
-Note on the AWS product: it is *not* 30 m at z=14. A spectral analysis of a
+Note on the AWS product (fallback only): it is *not* 30 m at z=14. A spectral analysis of a
 z=14 tile over Sognefjord showed **99.2 % of the energy in wavelengths > 30 m** —
 the upper zoom levels are resamplings of ~30 m (SRTM-3″-class) data. Nominal grid
 spacing at 60°N: z=10 ≈ 38 m/px, z=12 ≈ 9.5 m/px, z=14 ≈ 2.4 m/px; usable detail
@@ -66,7 +69,9 @@ reproject to our own grid — no need to download the whole z=14 pyramid.
 
 Buildings: Esri World Buildings or OSM `building=*` per region · Roads/rail:
 OSM via the existing converter · Ortho: national programs (LGL BW already in use,
-Kartverket for Norway) · Vegetation: OSM `landuse=forest` + procedural.
+Kartverket for Norway) · Vegetation: OSM `landuse=forest` + procedural · Terrain
+upgrade tier: Copernicus EEA-10 (`cop-dem-eea-10-laea-tif`, 10 m SAR InSAR,
+Europe-wide — verified in the Data Space catalogue on 2026-09-14) or national DTMs.
 
 ## 3. Global tile & coordinate scheme
 
@@ -135,6 +140,27 @@ Until that lands, a Norway build could instead be forced to the node's `tile_px`
 — but 512 px over 1024 m is 2 m/px (1 MiB/tile → ≈ 370 GB for Norway) or we'd
 have to change the global node value and re-bake CH/BW. The per-path read is worth it.
 
+### 3.4 Prime Meridian coordinate system (WGS84) for display & global addressing
+
+LV95 stays the *runtime* frame (§3.1 — recommendation kept). On top of it we add
+the **Prime Meridian system** — plain WGS84 latitude/longitude referenced to the
+Greenwich prime meridian — as the canonical *human-facing and global* coordinate
+system:
+
+- **Global addressing:** build scripts take WGS84 bboxes (schema-v2 `bbox_wgs84`,
+  §4.2); every region's source data is fetched in WGS84 and only reprojected to
+  LV95 at the very end. No tile-naming or world-frame change.
+- **HUD display:** the position readout gains a Prime Meridian line under the
+  existing Swiss E/N, e.g. `PM: N 60°11.63′  E 011°06.42′` (degrees + decimal
+  minutes with hemisphere letters; exact format is a one-line tweak in the HUD).
+
+Implementation reuses what already exists: C++ `Geo::lv95_to_wgs84()`
+(`src/geo.h`, swisstopo polynomial, ~1 m accuracy) is already bound for GDScript
+and used by the world3d setup; the HUD update loop (`node_3d.gd`, coordinate
+block of the `_update_hud` section) converts the LV95 position it already
+computes and formats it. No new projection code, no engine change — a ~half-day
+subtask, independent of the terrain work (§7).
+
 ## 4. Extendability model
 
 The runtime is already extensible: a region is a directory with asset subdirs,
@@ -187,7 +213,11 @@ detail packs. A future third tier (`far`: Natural Earth coastline + ETOPO-only
 terrain for the whole planet) is how "worldwide" eventually gets a default look
 without per-country work — it would ship *inside* the game, not as a download.
 
-### 4.4 Small Ville (initial-download region)
+### 4.4 Small Ville (initial-download region) — *deferred*
+
+> **Deferred by gery, 2026-09-14:** dropped for now; revisit after Norway ships.
+> If a small first pack is ever needed in the meantime, the 60 m/px Norway tier
+> (§5.3, ~0.6 GB) temporarily plays that role.
 
 Goal: a new install is flyable after a **~1 GB** download instead of the 46 GB
 Switzerland base. Proposal:
@@ -201,10 +231,8 @@ Switzerland base. Proposal:
   from the existing layers; no buildings/ortho.
 - Ships as `smallville-base-v1` in the same manifest mechanism, pre-selected in
   the downloader ("Start here").
-- Open question for gery: is Schaffhausen the right "home town", or should Small
-  Ville be a purpose-built miniature world (one town + one airfield + lake) that
-  is *not* geographically real? The box proposal keeps it real; a synthetic town
-  would be smaller (~200 MB) but breaks the "fly to Norway" continuity.
+- Q1 was resolved by deferral (2026-09-14): the real-Schaffhausen-box vs
+  synthetic-town question is parked together with the section.
 
 ### 4.5 Community / third-party regions
 
@@ -226,7 +254,8 @@ manifest URL as a setting). No engine changes needed beyond §3.3.
   ENAAL, ENHB, ENML, ENHD, ENAL, … (final list = OurAirports `type` ∈
   {large_airport, medium_airport} ∩ NO, expected ~20–30).
 - **Data-light**: no orthophoto, no buildings, no roads. Target pack size
-  **≤ 4 GB** (see §5.3); stretch goal ≤ 1 GB with the 60 m/px option.
+  **≤ 4 GB** (see §5.3); default 30 m/px ≈ 2.2 GB terrain, with the 60 m/px
+  low-bandwidth tier at ≈ 0.6 GB.
 
 ### 5.2 Coverage
 
@@ -241,22 +270,43 @@ the bbox).
 1. Compute the LV95 grid cells (1024 m) intersecting *land + 5 km margin*, where
    land = Natural Earth 1:10m `ne_10m_land` polygon (+ minor islands) clipped to
    the Norway bbox. ≈ 370 k tiles (mainland 323 800 km² ≈ 309 k tiles + margin).
-2. For each cell, fetch the covering AWS XYZ GeoTIFFs at **z=10 or z=11**
-   (~38–19 m/px native), reproject WGS84→LV95 with `rasterio.warp.reproject`
-   into a `tile_px × tile_px` buffer (SE-corner convention, same as CH).
+2. Fetch the covering **Copernicus GLO-30 1° COG tiles** from the Data Space STAC
+   API (`collections=cop-dem-glo-30-dged-cog`, bbox query; items such as
+   `Copernicus_DSM_COG_10_N57_00_E017_00_DEM` — Norway spans ~28×14 degree tiles,
+   land subset far smaller) into the raw cache, then reproject each needed cell
+   WGS84→LV95 with `rasterio.warp.reproject` into a `tile_px × tile_px` buffer
+   (SE-corner convention, same as CH). GLO-30 is natively ~15 m/px at 60°N, so
+   the 30 m target is a *downsample*, not an upsample.
 3. Write `tile_{E}_{N}.raw` (float32 LE) + manifest with
    `pixels_per_tile`, `pixel_resolution_m`, per-tile min/max elevation.
 4. Build mip2/mip3/mip4 pyramids for far chunks (existing mipmap logic).
+
+Storage (gery decision 2026-09-14): all downloads and intermediate processing go
+to the external volume **`/Volumes/Data1`** (3.6 TiB, ~1.1 TiB free at design
+time), following the existing drive conventions (`scenery_in_bw`,
+`provpilot/build/bw-*`):
+
+```
+/Volumes/Data1/scenery_in_norway/          # raw inputs, versioned cache
+├── glo30/                                  # Copernicus 1° COG tiles
+├── norway-latest.osm.pbf                   # Geofabrik extract
+└── ourairports/{airports.csv,runways.csv}
+/Volumes/Data1/provpilot/build/norway/      # processing + final region dir
+└── Norway/                                 # copied to the game data root for flight tests
+```
 
 Resolution options:
 
 | Posting | tile_px | Bytes/tile | Land tiles ≈ 370 k | +mips | Pack (terrain only) |
 |---------|---------|-----------|--------------------|-------|---------------------|
-| 30 m/px | 34 | 4.6 KB | ~1.7 GB | ×1.30 | **~2.2 GB** ← recommended |
+| 30 m/px | 34 | 4.6 KB | ~1.7 GB | ×1.30 | **~2.2 GB** ← **default (gery decision 2026-09-14)** |
 | 60 m/px | 17 | 1.2 KB | ~0.45 GB | ×1.30 | **~0.6 GB** (stretch) |
 
-Bathymetry: cells that are sea but inside the margin keep their SRTM sea-floor
-values (negative), so the coast has a real shelf under the water plane.
+Bathymetry: GLO-30 is a *land* DEM — ocean coverage must be verified in P1 by
+inspecting one coastal tile (`gdalinfo` + sample values). If sea pixels are
+nodata, margin cells over open water bake as flat 0 m under the +1.5 m water
+plane (acceptable v1; the AWS SRTM fallback of §2.1 provides real seafloor if
+the hard shelf edge ever looks wrong from above).
 
 ### 5.4 Water & coastline (reuse `tools/convert_osm_bw.py`)
 
@@ -304,16 +354,18 @@ values (negative), so the coast has a real shelf under the water plane.
 
 | # | Risk / question | Impact | Mitigation / decision needed |
 |---|-----------------|--------|------------------------------|
-| R1 | AWS `elevation-tiles-prod` is an unofficial public S3 bucket (no SLA, no explicit license text — SRTM is public domain, bathymetry provenance unclear) | Build pipeline depends on it | Cache fetched GeoTIFFs in a **versioned local artifact store** (rebuildable without network); one-off fetch, not runtime. Fallback: NASADEM or GLO-30 via STAC. Add attribution strings in `licenses.json` regardless |
+| R1 | Copernicus Data Space access is free but account-gated (API key for downloads), no SLA; standard Copernicus/ESA data policy requires attribution | Build pipeline depends on it | Cache fetched 1° tiles in the versioned `/Volumes/Data1/scenery_in_norway/glo30/` store (rebuildable without network); one-off fetch, not runtime. Fallback: AWS SRTM bucket (no registration). Attribution strings in `licenses.json` regardless |
 | R2 | 30 m terrain in mountainous Norway looks "blocky" at low altitude vs CH's 1–2 m | Visual step-change when crossing into the region | Accepted for pilot (data-light); per-region tier upgrade (Kartverket DTM, §2.1) is the planned fix; horizon fog + distance reduce visibility |
 | R3 | Per-path `tile_px` C++ change touches the streaming hot path | Regression in CH/BW loading | Fallback-to-node-value keeps old regions byte-identical; validate with existing BW/CH test flights |
 | R4 | OSM water GLB size unknown until built | Pack could exceed 4 GB | Measure in P2; decimate interior polygons, keep coastal detail; worst case split into `norway-base` + `norway-water-detail` |
 | R5 | Flat-frame seam vs world3d globe at high altitude over Norway (§3.2) | Backdrop discontinuity above ~25 km | Accepted v1 (fog); long-term per-region tangent rebase |
 | R6 | LV95 distortion for future non-European regions | Coordinates grow/distort far from CH | Fine through ~80°E/40°N; beyond that, schema-v2 WGS84 grid (§3.1) — not needed for Norway |
-| Q1 | Small Ville: real Schaffhausen box vs synthetic miniature town? (§4.4) | Initial-download design | **gery to decide** before P1 build scripts |
-| Q2 | Should the 60 m/px stretch option be the default instead of 30 m/px? | Pack size 0.6 GB vs 2.2 GB | Decide after first 30 m/px test flight (visual quality check) |
+| Q1 | ~~Small Ville: real Schaffhausen box vs synthetic miniature town?~~ (§4.4) | Initial-download design | **Resolved 2026-09-14:** Small Ville deferred; revisit after Norway ships |
+| Q2 | ~~30 m/px vs 60 m/px default?~~ | Pack size 0.6 GB vs 2.2 GB | **Resolved 2026-09-14:** 30 m/px is the default; 60 m/px stays an optional low-bandwidth tier |
 | Q3 | Svalbard / Lofoten as separate regions or one Norway pack? | Region granularity | One pack for v1; split later if size demands |
-| Q4 | The repo has a self-referential symlink `scenery/scenery → …/provpilot/scenery` (should it point at the real data root `/Users/gery/provpilot/scenery`?) | Confusing layout | Verify intent when touching the Scenery Library |
+| Q4 | ~~Self-referential `scenery/scenery` symlink — keep or repoint?~~ | Confusing layout | **Resolved 2026-09-14:** deleted by gery — leftover from earlier work, no replacement needed |
+| Q5 | Does gery already have a Copernicus Data Space account (free API key for GLO-30 downloads)? | P1 terrain fetch | If not: ~2-minute registration; AWS SRTM fallback unblocks in the meantime |
+| R7 | GLO-30 ocean coverage unverified (land DEM) | Coastline shelf under the water plane | Verify one coastal tile in P1 (`gdalinfo` + sample values); flat 0 m seafloor accepted for v1 (§5.3) |
 
 ### 6.1 Review notes (remote-model review, 2026-09-14)
 
@@ -337,14 +389,17 @@ A full pass was delegated to the Windows inference server
 
 - **P0 — Engine prerequisite** (~1–2 d): per-path `pixels_per_tile` from
   `terrain/manifest.json` in `S3DTileManager`; CH/BW regression flight.
-- **P1 — Norway build pipeline** (~3–5 d): `build_world_terrain.py` (AWS SRTM →
-  LV95 tiles + mips), `build_world_airports.py` (OurAirports → airports.json),
-  generalise `convert_osm_bw.py` (baked-Y water, Norway PBF). Local test: drop
-  `Norway/` into the data root, fly LSZH→ENGM.
+- **P0b — Prime Meridian HUD display** (~0.5 d, independent of P0/P1): WGS84
+  lat/lon line in the HUD via existing `Geo::lv95_to_wgs84` (§3.4).
+- **P1 — Norway build pipeline** (~3–5 d): `build_world_terrain.py` (Copernicus
+  GLO-30 STAC → LV95 tiles + mips, storage on `/Volumes/Data1`),
+  `build_world_airports.py` (OurAirports → airports.json), generalise
+  `convert_osm_bw.py` (baked-Y water, Norway PBF). Local test: drop `Norway/`
+  into the data root, fly LSZH→ENGM.
 - **P2 — Distribution** (~1–2 d): schema-v2 region entry, single-pack bundler
-  path, downloader row, `licenses.json`, pack size measurement (revisit R4/Q2).
-- **P3 — Small Ville** (~2–3 d, after Q1 decided): origin-box re-bake at 10 m/px,
-  pre-selected initial download.
+  path, downloader row, `licenses.json`, pack size measurement (revisit R4).
+- **P3 — Small Ville (deferred)**: origin-box re-bake at 10 m/px, pre-selected
+  initial download — revisit after Norway ships (§4.4).
 - **P4 — Worldwide default** (later): in-game `far` tier (Natural Earth + ETOPO),
   per-region tangent rebase, Kartverket-quality Norway upgrade pack.
 
