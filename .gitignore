@@ -86,3 +86,6 @@ build/
 # Remote LLM delegation config (contains API key) + call log (usage/quality stats)
 scripts/.llm_remote.env
 scripts/.llm_remote.log.jsonl
+
+# Copernicus Data Space credentials (S3 keys + account login)
+scripts/.copernicus.env

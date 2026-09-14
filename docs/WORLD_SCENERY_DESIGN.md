@@ -364,8 +364,9 @@ the hard shelf edge ever looks wrong from above).
 | Q2 | ~~30 m/px vs 60 m/px default?~~ | Pack size 0.6 GB vs 2.2 GB | **Resolved 2026-09-14:** 30 m/px is the default; 60 m/px stays an optional low-bandwidth tier |
 | Q3 | Svalbard / Lofoten as separate regions or one Norway pack? | Region granularity | One pack for v1; split later if size demands |
 | Q4 | ~~Self-referential `scenery/scenery` symlink — keep or repoint?~~ | Confusing layout | **Resolved 2026-09-14:** deleted by gery — leftover from earlier work, no replacement needed |
-| Q5 | Does gery already have a Copernicus Data Space account (free API key for GLO-30 downloads)? | P1 terrain fetch | If not: ~2-minute registration; AWS SRTM fallback unblocks in the meantime |
+| Q5 | ~~Copernicus Data Space account?~~ | P1 terrain fetch | **Resolved 2026-09-14:** account `(account removed)` + temporary S3 key created (expires 2026-09-16; credentials in gitignored `scripts/.copernicus.env`). Key verified working but see R8 |
 | R7 | GLO-30 ocean coverage unverified (land DEM) | Coastline shelf under the water plane | Verify one coastal tile in P1 (`gdalinfo` + sample values); flat 0 m seafloor accepted for v1 (§5.3) |
+| R8 | S3 key appears **prefix-scoped**: verified 2026-09-14 — lists `eodata`, reads `auxdata/SRTMGL1/dem/` OK, but HEAD/GET on the exact GLO-30 path `auxdata/CopDEM_COG/copernicus-dem-30m/…` → **403** (and that prefix lists empty) | P1 terrain fetch blocked until scope fixed | Regenerate key with full public-data access in the Data Space UI, or use the UI's OData/HTTPS download; fallbacks: AWS SRTM bucket. Fetch must complete before key expiry (2026-09-16) or re-issue |
 
 ### 6.1 Review notes (remote-model review, 2026-09-14)
 
