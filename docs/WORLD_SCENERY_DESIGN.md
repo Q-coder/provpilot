@@ -6,9 +6,10 @@ data-light (no ortho), starting from coastlines and major airports, reachable by
 flight from the existing Swiss / Baden-Württemberg scenery. The "Small Ville"
 initial-download region (§4.4) is **deferred**.
 
-Status: **approved for implementation** (gery decisions 2026-09-14: Copernicus
-GLO-30 terrain, OSM water/coastline, OurAirports airports, 30 m/px default pack,
-Prime Meridian coordinate display incl. HUD, `/Volumes/Data1` build storage).
+Status: **approved for implementation** (gery decisions 2026-09-14: AWS SRTM
+terrain — Copernicus GLO-30 deferred pending manual CCM licence clearance, OSM
+water/coastline, OurAirports airports, 30 m/px default pack, Prime Meridian
+coordinate display incl. HUD, `/Volumes/Data1` build storage).
 All external sources listed below were probed on 2026-09-14 unless noted otherwise.
 
 ## 1. What we already have
@@ -35,19 +36,20 @@ question (§3.3).
 
 | Source | Resolution | Coverage | Access | License | Verdict |
 |--------|-----------|----------|--------|---------|---------|
-| **AWS `elevation-tiles-prod` S3** (SRTM-derived) | ~30 m effective (see note) | Global land + bathymetry (negative elevations) | Plain HTTP GET, no registration: `https://s3.amazonaws.com/elevation-tiles-prod/geotiff/{z}/{x}/{y}.tif`, XYZ slippy grid, **512×512** float32 GeoTIFF, EPSG:3857, nodata ≈ −3.4×10³⁸, **z = 0…14** (z=15 verified missing) | US public data (SRTM), de-facto free | **Fallback / no-registration alternative.** Verified live on 2026-09-14 (tile dims, CRS, nodata, bathymetry all measured from a downloaded z=14 tile). Only source here with real seafloor values under the sea. |
-| **Copernicus DEM GLO-30** | 30 m global (≈15 m/px native at 60°N) | Global land (**ocean coverage unverified — see §5.3**) | Copernicus Data Space STAC, collection `cop-dem-glo-30-dged-cog`: **1°×1° COG GeoTIFF items** (`Copernicus_DSM_COG_10_N57_00_E017_00_DEM.tif`). Search is anonymous; **downloads need a free API key** (verified 2026-09-14: `s3.dataspace.copernicus.eu` → 403 unauthenticated, eox mirror unreachable) | Open (Copernicus/ESA) | **Recommended base source (gery decision 2026-09-14).** Verified live on 2026-09-14 (item list + tile naming). |
+| **AWS `elevation-tiles-prod` S3** (SRTM-derived) | ~30 m effective (see note) | Global land + bathymetry (measured ≈ −84…−310 m under North Sea / Barents Sea) | Plain HTTP GET, no registration. Two layouts: **raw 1°×1° tiles** `skadi/N{lat}/N{lat}E{lon}.hgt.gz` — **big-endian int16**, 3601×3601 samples, metres, nodata −32768 (verified 2026-09-14: Oslo tile 109–779 m, Tromsø 0–1336 m, Nordkapp tile valid at 71°N); and an XYZ slippy grid `geotiff/{z}/{x}/{y}.tif` (512×512 float32, EPSG:3857, nodata ≈ −3.4×10³⁸, z = 0…14) | US public data (SRTM), de-facto free | **Primary terrain source (gery decision 2026-09-14 day 2 — Copernicus deferred).** Norway span N57..N71 × E004..E031 = **420 tiles, 1.27 GB gz** (smaller than the GLO-30 estimate). Only source here with real seafloor values under the sea. |
+| **Copernicus DEM GLO-30** | 30 m global (≈15 m/px native at 60°N) | Global land (**ocean coverage unverified — see §5.3**) | Copernicus Data Space STAC, collection `cop-dem-glo-30-dged-cog`: **1°×1° COG GeoTIFF items** (`Copernicus_DSM_COG_10_N57_00_E017_00_DEM.tif`). Search is anonymous; downloads need a Data Space account + S3 key (see R8 — the collection sits under the CCM licence, whose approval needs company/institution + usage statement) | Open (Copernicus/ESA) | **Deferred upgrade tier** (gery decision 2026-09-14): manual CCM clearance deemed too much friction for the pilot; revisit if SRTM quality disappoints in flight tests. Verified live on 2026-09-14 (item list + tile naming). |
 | Copernicus DEM EEA-10 | 10 m, SAR InSAR | Europe (EEA) | Same STAC, collection `cop-dem-eea-10-laea-tif` (LAEA tiles, OData download links) | Open (Copernicus/EEA) | Future "quality" tier for CH/BW/Norway upgrade packs (§2.4) |
 | NASADEM / SRTM 1″ | ~30 m equator → **~15 m at 60°N** | Land (gaps in mountains/poles) | USGS EarthExplorer / OpenTopography, free registration | Public domain | Better native detail for high-latitude Norway |
 | National DTMs (e.g. Kartverket Norway) | 20–40 m, locally best | One country at a time | WMTS/API — **access unverified** (api.kartverket.no returned 404 on 2026-09-14) | Usually open | Per-country upgrade path (tier 2), not for the pilot |
 
-Note on the AWS product (fallback only): it is *not* 30 m at z=14. A spectral analysis of a
-z=14 tile over Sognefjord showed **99.2 % of the energy in wavelengths > 30 m** —
-the upper zoom levels are resamplings of ~30 m (SRTM-3″-class) data. Nominal grid
-spacing at 60°N: z=10 ≈ 38 m/px, z=12 ≈ 9.5 m/px, z=14 ≈ 2.4 m/px; usable detail
-tops out around 30 m regardless of zoom. For the pilot we therefore fetch **z=10
-or z=11** (the finest that is not pure resampling at our target posting) and
-reproject to our own grid — no need to download the whole z=14 pyramid.
+Note on the AWS product (primary source): the **raw `skadi/` 1° tiles are the
+P1 fetch target** — genuine ~30 m SRTM posting, no resampling ambiguity, and
+they include bathymetry. The slippy `geotiff/` pyramid is *not* 30 m at z=14:
+a spectral analysis of a z=14 tile over Sognefjord showed **99.2 % of the
+energy in wavelengths > 30 m** — the upper zoom levels are resamplings of ~30 m
+(SRTM-3″-class) data (nominal grid spacing at 60°N: z=10 ≈ 38 m/px, z=12 ≈
+9.5 m/px, z=14 ≈ 2.4 m/px). The pyramid remains useful for quick visual
+previews and the global far layer, not for the Norway build.
 
 ### 2.2 Coastlines & water
 
@@ -270,13 +272,16 @@ the bbox).
 1. Compute the LV95 grid cells (1024 m) intersecting *land + 5 km margin*, where
    land = Natural Earth 1:10m `ne_10m_land` polygon (+ minor islands) clipped to
    the Norway bbox. ≈ 370 k tiles (mainland 323 800 km² ≈ 309 k tiles + margin).
-2. Fetch the covering **Copernicus GLO-30 1° COG tiles** from the Data Space STAC
-   API (`collections=cop-dem-glo-30-dged-cog`, bbox query; items such as
-   `Copernicus_DSM_COG_10_N57_00_E017_00_DEM` — Norway spans ~28×14 degree tiles,
-   land subset far smaller) into the raw cache, then reproject each needed cell
-   WGS84→LV95 with `rasterio.warp.reproject` into a `tile_px × tile_px` buffer
-   (SE-corner convention, same as CH). GLO-30 is natively ~15 m/px at 60°N, so
-   the 30 m target is a *downsample*, not an upsample.
+2. Fetch the covering **AWS `skadi/` SRTM 1° tiles** from
+   `https://s3.amazonaws.com/elevation-tiles-prod/skadi/N{lat}/N{lat}E{lon}.hgt.gz`
+   (anonymous HTTP GET; full Norway span = 420 tiles / 1.27 GB gz, land subset
+   far smaller) into the raw cache. Format: **big-endian int16**, 3601×3601 per
+   degree (SE-corner convention already matches ours), metres, nodata −32768;
+   ocean pixels carry real bathymetry (~−300 m). Reproject each needed cell
+   WGS84→LV95 with `rasterio.warp.reproject` into a `tile_px × tile_px` buffer.
+   SRTM is natively ~15 m/px at 60°N, so the 30 m target is a *downsample*,
+   not an upsample. (Copernicus GLO-30 via Data Space STAC remains the swap-in
+   alternative — same 1° tile addressing — if CCM clearance ever lands.)
 3. Write `tile_{E}_{N}.raw` (float32 LE) + manifest with
    `pixels_per_tile`, `pixel_resolution_m`, per-tile min/max elevation.
 4. Build mip2/mip3/mip4 pyramids for far chunks (existing mipmap logic).
@@ -288,7 +293,7 @@ time), following the existing drive conventions (`scenery_in_bw`,
 
 ```
 /Volumes/Data1/scenery_in_norway/          # raw inputs, versioned cache
-├── glo30/                                  # Copernicus 1° COG tiles
+├── srtm/                                   # AWS skadi SRTM 1° .hgt.gz tiles
 ├── norway-latest.osm.pbf                   # Geofabrik extract
 └── ourairports/{airports.csv,runways.csv}
 /Volumes/Data1/provpilot/build/norway/      # processing + final region dir
@@ -302,11 +307,12 @@ Resolution options:
 | 30 m/px | 34 | 4.6 KB | ~1.7 GB | ×1.30 | **~2.2 GB** ← **default (gery decision 2026-09-14)** |
 | 60 m/px | 17 | 1.2 KB | ~0.45 GB | ×1.30 | **~0.6 GB** (stretch) |
 
-Bathymetry: GLO-30 is a *land* DEM — ocean coverage must be verified in P1 by
-inspecting one coastal tile (`gdalinfo` + sample values). If sea pixels are
-nodata, margin cells over open water bake as flat 0 m under the +1.5 m water
-plane (acceptable v1; the AWS SRTM fallback of §2.1 provides real seafloor if
-the hard shelf edge ever looks wrong from above).
+Bathymetry: **resolved in favour of the primary source** — the AWS SRTM tiles
+carry real seafloor values (measured −84…−310 m over North Sea / Barents Sea
+tiles, 2026-09-14), so margin cells under the +1.5 m water plane get genuine
+shelf slopes instead of a flat 0 m floor. If we ever swap in GLO-30 (a land
+DEM with unverified ocean coverage), re-check one coastal tile (`gdalinfo` +
+sample values) before baking.
 
 ### 5.4 Water & coastline (reuse `tools/convert_osm_bw.py`)
 
@@ -354,7 +360,7 @@ the hard shelf edge ever looks wrong from above).
 
 | # | Risk / question | Impact | Mitigation / decision needed |
 |---|-----------------|--------|------------------------------|
-| R1 | Copernicus Data Space access is free but account-gated (API key for downloads), no SLA; standard Copernicus/ESA data policy requires attribution | Build pipeline depends on it | Cache fetched 1° tiles in the versioned `/Volumes/Data1/scenery_in_norway/glo30/` store (rebuildable without network); one-off fetch, not runtime. Fallback: AWS SRTM bucket (no registration). Attribution strings in `licenses.json` regardless |
+| R1 | Copernicus Data Space access is free but account-gated (S3 key for downloads) + CCM licence approval (see R8), no SLA; ESA data policy requires attribution. Primary pipeline (AWS SRTM bucket) has the same no-SLA character | Only gates a future GLO-30 swap-in — primary fetch is the no-registration AWS SRTM bucket | Cache fetched 1° tiles in the versioned `/Volumes/Data1/scenery_in_norway/srtm/` store (rebuildable without network); one-off fetch, not runtime. Attribution strings in `licenses.json` regardless |
 | R2 | 30 m terrain in mountainous Norway looks "blocky" at low altitude vs CH's 1–2 m | Visual step-change when crossing into the region | Accepted for pilot (data-light); per-region tier upgrade (Kartverket DTM, §2.1) is the planned fix; horizon fog + distance reduce visibility |
 | R3 | Per-path `tile_px` C++ change touches the streaming hot path | Regression in CH/BW loading | Fallback-to-node-value keeps old regions byte-identical; validate with existing BW/CH test flights |
 | R4 | OSM water GLB size unknown until built | Pack could exceed 4 GB | Measure in P2; decimate interior polygons, keep coastal detail; worst case split into `norway-base` + `norway-water-detail` |
@@ -365,8 +371,8 @@ the hard shelf edge ever looks wrong from above).
 | Q3 | Svalbard / Lofoten as separate regions or one Norway pack? | Region granularity | One pack for v1; split later if size demands |
 | Q4 | ~~Self-referential `scenery/scenery` symlink — keep or repoint?~~ | Confusing layout | **Resolved 2026-09-14:** deleted by gery — leftover from earlier work, no replacement needed |
 | Q5 | ~~Copernicus Data Space account?~~ | P1 terrain fetch | **Resolved 2026-09-14:** account `(account removed)` + temporary S3 key created (expires 2026-09-16; credentials in gitignored `scripts/.copernicus.env`). Key verified working but see R8 |
-| R7 | GLO-30 ocean coverage unverified (land DEM) | Coastline shelf under the water plane | Verify one coastal tile in P1 (`gdalinfo` + sample values); flat 0 m seafloor accepted for v1 (§5.3) |
-| R8 | GLO-30 403 **root cause identified 2026-09-14**: COP-DEM-GLO-30-R is filed under **Copernicus Contributing Missions (CCM)** in Data Space (collection provider URL `…/copernicus-contributing-missions/collections-description/COP-DEM`; license PDF `copernicus_contributing_mission_data_access_v2_cop_dem_licenses.pdf` has a dedicated "Licence for the use of Copernicus DEM instances COP-DEM-GLO-30-R" section). Account registered **without** ticking the CCM checkbox (ESA-User licence). Verified: old key *and* freshly generated keys read non-CCM data (`auxdata/SRTMGL1/`) but 403 on `auxdata/CopDEM_COG/*` → account-level licence scope, not a key problem. **Fix:** edit registration in Data Space → tick "accessing Copernicus Contributing Missions data" (Public user = auto-approved) → retest | P1 terrain fetch blocked until CCM box is ticked | Fallback if ticking doesn't grant access: browser OData/HTTPS download, or AWS SRTM. Key expiry (2026-09-16) no longer constraining — keys are regenerable via API. Also learned: official S3 endpoint is `https://eodata.dataspace.copernicus.eu` (not `s3.dataspace.copernicus.eu`); key generation is scriptable: password-grant token from `identity.dataspace.copernicus.eu/auth/realms/CDSE/…/token` (`client_id=cdse-public`) → POST `https://s3-keys-manager.cloudferro.com/api/user/credentials`; fresh keys take ~10–20 s to propagate |
+| R7 | GLO-30 ocean coverage unverified (land DEM) | Only matters if the GLO-30 swap-in is ever used | **Moot for v1:** primary AWS SRTM source has measured bathymetry (−84…−310 m, §5.3); verify a coastal tile only when/if swapping to GLO-30 |
+| R8 | GLO-30 403 **root cause identified 2026-09-14**: COP-DEM-GLO-30-R is filed under **Copernicus Contributing Missions (CCM)** in Data Space (collection provider URL `…/copernicus-contributing-missions/collections-description/COP-DEM`; license PDF `copernicus_contributing_mission_data_access_v2_cop_dem_licenses.pdf` has a dedicated "Licence for the use of Copernicus DEM instances COP-DEM-GLO-30-R" section). Account registered **without** ticking the CCM checkbox (ESA-User licence). Verified: old key *and* freshly generated keys read non-CCM data (`auxdata/SRTMGL1/`) but 403 on `auxdata/CopDEM_COG/*` → account-level licence scope, not a key problem. **Fix:** edit registration in Data Space → tick "accessing Copernicus Contributing Missions data" → retest. **Decision 2026-09-14 (gery):** ticking the box requires company/institution + a usage statement → manual clearance deemed too much friction; AWS SRTM promoted to primary (§2.1), Copernicus kept as optional swap-in (account stays valid) | **No longer blocking** — only gates a future GLO-30 quality tier | If revisiting: browser OData/HTTPS download works without S3 keys. Key expiry (2026-09-16) no longer constraining — keys are regenerable via API. Also learned: official S3 endpoint is `https://eodata.dataspace.copernicus.eu` (not `s3.dataspace.copernicus.eu`); key generation is scriptable: password-grant token from `identity.dataspace.copernicus.eu/auth/realms/CDSE/…/token` (`client_id=cdse-public`) → POST `https://s3-keys-manager.cloudferro.com/api/user/credentials`; fresh keys take ~10–20 s to propagate |
 
 ### 6.1 Review notes (remote-model review, 2026-09-14)
 
@@ -392,8 +398,8 @@ A full pass was delegated to the Windows inference server
   `terrain/manifest.json` in `S3DTileManager`; CH/BW regression flight.
 - **P0b — Prime Meridian HUD display** (~0.5 d, independent of P0/P1): WGS84
   lat/lon line in the HUD via existing `Geo::lv95_to_wgs84` (§3.4).
-- **P1 — Norway build pipeline** (~3–5 d): `build_world_terrain.py` (Copernicus
-  GLO-30 STAC → LV95 tiles + mips, storage on `/Volumes/Data1`),
+- **P1 — Norway build pipeline** (~3–5 d): `build_world_terrain.py` (AWS skadi
+  SRTM 1° tiles → LV95 tiles + mips, storage on `/Volumes/Data1`),
   `build_world_airports.py` (OurAirports → airports.json), generalise
   `convert_osm_bw.py` (baked-Y water, Norway PBF). Local test: drop `Norway/`
   into the data root, fly LSZH→ENGM.
