@@ -383,7 +383,7 @@ A full pass was delegated to the Windows inference server
   downloaded z=14 tile on 2026-09-14: 512×512 px, EPSG:3857. The reviewer
   assumed the standard 256 px slippy grid; all quoted z-level resolutions in
   §2.1 hold for this bucket. (Its side-effect suggestion — re-fetch at a higher
-  zoom if needed — is already covered by the z=10/11 fetch plan.)
+  zoom if needed — is moot for P1, which now fetches raw `skadi/` 1° tiles.)
 - **float32 position precision** — *mostly false positive* (custom double build,
   §3.1) but kept as a P0 verification item for C++ tile lookups.
 - **Inland lakes baked to sea level** — *accepted*, fixed in §5.4 (per-polygon
