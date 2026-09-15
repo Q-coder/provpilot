@@ -1026,6 +1026,9 @@ func _process(delta: float) -> void:
 		var swiss_n = TERRAIN_CENTER_N + godot_pos.z
 		$Control/Label6.text = "Godot: X=%.1f Y=%.1f Z=%.1f" % [godot_pos.x, godot_pos.y, godot_pos.z]
 		$Control/Label7.text = "Swiss E: %s, N: %s" % [format_swiss_coord(swiss_e), format_swiss_coord(swiss_n)]
+		# Prime Meridian (WGS84) display — world-scenery design §3.4
+		var ll: Vector2 = Geo.lv95_to_wgs84(swiss_e, swiss_n)
+		$Control/Label9.text = "PM: " + format_pm_coord(ll.x, true) + "  " + format_pm_coord(ll.y, false)
 	else:
 		$Label.text = "JSBGodot node not found."
 
@@ -1094,6 +1097,25 @@ func format_swiss_coord(value: float) -> String:
 		result = str_val[i] + result
 		count += 1
 	return result
+
+# Format a WGS84 coordinate as degrees + decimal minutes with hemisphere letter,
+# e.g. 60.1938 -> "N 60°11.63′", 11.1070 -> "E 011°06.42′" (design §3.4).
+func format_pm_coord(deg: float, is_lat: bool) -> String:
+	var hemi: String
+	if is_lat:
+		hemi = "N" if deg >= 0.0 else "S"
+	else:
+		hemi = "E" if deg >= 0.0 else "W"
+	var a = absf(deg)
+	var d = int(a)
+	# Round minutes to 2 decimals *before* formatting so 59.997 doesn't print as "60.00".
+	var m = round((a - float(d)) * 60.0 * 100.0) / 100.0
+	if m >= 60.0: # carry into the next degree
+		d += 1
+		m = 0.0
+	if is_lat:
+		return "%s %d°%05.2f′" % [hemi, d, m]
+	return "%s %03d°%05.2f′" % [hemi, d, m]
 
 
 # ── Aircraft definition (aircraft.cfg) ─────────────────────────────────────

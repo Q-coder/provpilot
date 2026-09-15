@@ -39,6 +39,16 @@ offset_bottom = 111.0
 theme_override_font_sizes/font_size = 32
 text = "Lat/Lon: 0.0 / 0.0"
 
+[node name="Label9" type="Label" parent="Control"]
+modulate = Color(1, 0.9, 0.6, 1)
+layout_mode = 0
+offset_left = 40.0
+offset_top = 111.0
+offset_right = 520.0
+offset_bottom = 155.0
+theme_override_font_sizes/font_size = 32
+text = "PM: N 0°00.00′ E 000°00.00′"
+
 [node name="Label8" type="Label" parent="Control" unique_id=307479243]
 modulate = Color(1, 0.9, 0.6, 1)
 layout_mode = 0
