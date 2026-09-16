@@ -137,8 +137,9 @@ func update(delta: float, viewport: Viewport) -> void:
 		# the horizon bent like an orbital limb. Tracking the centre under the
 		# camera makes the shader's altitude equal to flat-frame Y (= ASL)
 		# everywhere, so dip + horizon distance stay correct in every region
-		# (WORLD_SCENERY_DESIGN §3.2; per-region rebase remains the long-term
-		# fix for the coarse-globe seam).
+		# (WORLD_SCENERY_DESIGN §3.2). The coarse globe itself is re-based onto
+		# the active airport by node_3d.gd (_rebase_globe_to), which keeps its
+		# surface aligned with this sphere at ground level there.
 		if cam != null:
 			sky_material.set_shader_parameter(
 				"planet_center", Vector3(cam.global_position.x, -PLANET_RADIUS, cam.global_position.z))

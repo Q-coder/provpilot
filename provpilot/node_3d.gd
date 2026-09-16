@@ -637,8 +637,10 @@ func _globe_elevation_at(x: float, z: float) -> float:
 ## Mount the world3d global globe into the flat ProvPilot frame.
 ## The globe renders in ECEF (~6.4 M m); we give GlobeMount the inverse of the
 ## tangent frame at the LV95 origin so the globe's origin surface point lands at
-## the flat frame origin. The globe reads the camera via to_local(), so it still
-## computes the correct ECEF camera position for LOD/streaming internally.
+## the flat frame origin. _rebase_globe_to() later moves this tangent point onto
+## each destination airport (the flat frame itself never changes). The globe
+## reads the camera via to_local(), so it still computes the correct ECEF
+## camera position for LOD/streaming internally.
 func _setup_world3d_globe() -> void:
 	if not USE_WORLD3D_GLOBE:
 		return
@@ -682,6 +684,30 @@ func _setup_world3d_globe() -> void:
 	_intro_zoom.register_nodes(get_node_or_null("AC"), _intro_camera, camera1, camera2, _camera_rig)
 	print("World3D globe mounted: LV95 %d/%d -> lat=%.5f lon=%.5f" % [
 		int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N), origin_lat, origin_lon])
+
+
+## Move the globe tangent point under a flat-frame position so the coarse
+## globe sits beneath the aircraft instead of beneath the LV95 origin. The
+## flat frame itself stays fixed for the whole session (Scenery3D tiles,
+## JSBSim and all C++ modules use it); only the ECEF<->flat mapping moves:
+## _ecef_from_flat becomes F_a * T(-P_a) where F_a is the tangent frame at
+## (lat, lon) and P_a is that point's flat position. The mount takes the
+## inverse, so W3DGlobe's to_local(camera) LOD/streaming still sees a correct
+## ECEF camera, and _globe_elevation_at() keeps its formula unchanged.
+## lat/lon come from Geo.lv95_to_wgs84 (polynomial, ~1 km accuracy — far
+## below the ~157 km of globe sag this rebase removes at ENGM).
+func _rebase_globe_to(flat_x: float, flat_z: float, lat_deg: float, lon_deg: float) -> void:
+	# Keep the sun/observer in sync so solar elevation and local mean-solar
+	# time match the new region (sky_atmosphere.gd reads these every frame).
+	_sky.observer_lat = lat_deg
+	_sky.observer_lon = lon_deg
+	if not (USE_WORLD3D_GLOBE and is_instance_valid(globe_node) and _w3d_coords != null):
+		return
+	var f_local: Transform3D = _w3d_coords.enu_to_ecef_transform(lat_deg, lon_deg, 0.0, true)
+	_ecef_from_flat = f_local * Transform3D(Basis.IDENTITY, Vector3(-flat_x, 0.0, -flat_z))
+	_globe_mount.transform = _ecef_from_flat.affine_inverse()
+	print("World3D globe rebased to airport: flat(%.0f, %.0f) -> lat=%.5f lon=%.5f" % [
+		flat_x, flat_z, lat_deg, lon_deg])
 
 
 ## Set up the day/night sun + atmospheric sky. Registers the scene Environment,
@@ -1751,6 +1777,17 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 		_loading_screen.set_progress(0.0)
 		_loading_screen.set_status("Loading terrain...")
 		_loading_screen.show_loading()
+
+	# Rebase the coarse globe tangent point under the destination airport so
+	# the horizon/atmosphere and globe-terrain alignment stay correct in far
+	# regions (ENGM is ~1400 km from the LV95 origin, where the fixed Swiss
+	# tangent frame sags the globe ~157 km below the flat terrain). The flat
+	# frame itself is unchanged — only the ECEF<->flat mapping moves.
+	if USE_WORLD3D_GLOBE:
+		var gx := TERRAIN_CENTER_E - swiss_e
+		var gz := swiss_n - TERRAIN_CENTER_N
+		var ll: Vector2 = Geo.lv95_to_wgs84(swiss_e, swiss_n)
+		_rebase_globe_to(gx, gz, ll.x, ll.y)
 
 	if _first_flight:
 		_do_first_flight(swiss_e, swiss_n, heading_deg)
