@@ -346,9 +346,11 @@ def cmd_plan(args):
     ni_min, ni_max = south // TILE_M, (north - 1) // TILE_M
     eis = np.arange(ei_min, ei_max + 1)
     nis = np.arange(ni_min, ni_max + 1)
-    EE, NN = np.meshgrid(eis, nis)               # cell SW corners
-    ce = EE * TILE_M + TILE_M / 2                 # cell centres (LV95)
-    cn = NN * TILE_M + TILE_M / 2
+    EE, NN = np.meshgrid(eis, nis)               # cell indices
+    sw_e = EE * TILE_M                            # cell SW corners (LV95)
+    sw_n = NN * TILE_M
+    ce = sw_e + TILE_M / 2                        # cell centres — mask test only
+    cn = sw_n + TILE_M / 2
 
     lat_c, lon_c = lv95_to_wgs84_proj(ce.ravel(), cn.ravel())
     n_pts = ce.size
@@ -362,8 +364,13 @@ def cmd_plan(args):
         mask |= np.asarray(contains_xy(zone_covers[z], xs, ys),
                            dtype=bool)
 
-    cells_e = ce.ravel()[mask]
-    cells_n = cn.ravel()[mask]
+    # Store SW corners: the runtime names tile files tile_{ei*1024}_{ni*1024}.raw
+    # (C++ S3DTileManager builds the path from the tile index) and _bake_cell
+    # lays its pixel lattice out from e_sw over [e_sw, e_sw+TILE_M]. Storing
+    # centres here (the original bug) shifted every file name AND every baked
+    # tile's content by half a cell.
+    cells_e = sw_e.ravel()[mask]
+    cells_n = sw_n.ravel()[mask]
     n_cells = int(mask.sum())
     print(f"  LV95 grid: {len(eis)} × {len(nis)} cells; "
           f"land+margin selection: {n_cells} tiles")
