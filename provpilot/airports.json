@@ -10,19 +10,29 @@
       "type": "international_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "16/34", "heading_deg": 165, "length_m": 3700, "surface": "asphalt" }
+        {
+          "designator": "16/34",
+          "heading_deg": 165,
+          "length_m": 3700,
+          "surface": "asphalt"
+        }
       ]
     },
     {
       "icao": "LSGG",
       "name": "Geneva",
       "lat": 46.2381,
-      "lon": 6.1090,
+      "lon": 6.109,
       "elevation_m": 430,
       "type": "international_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "04/22", "heading_deg": 40, "length_m": 3900, "surface": "asphalt" }
+        {
+          "designator": "04/22",
+          "heading_deg": 40,
+          "length_m": 3900,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -34,7 +44,12 @@
       "type": "regional_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "11/29", "heading_deg": 107, "length_m": 2300, "surface": "asphalt" }
+        {
+          "designator": "11/29",
+          "heading_deg": 107,
+          "length_m": 2300,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -46,7 +61,12 @@
       "type": "regional_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "04/22", "heading_deg": 37, "length_m": 2200, "surface": "asphalt" }
+        {
+          "designator": "04/22",
+          "heading_deg": 37,
+          "length_m": 2200,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -58,7 +78,12 @@
       "type": "regional_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "01/19", "heading_deg": 11, "length_m": 1500, "surface": "asphalt" }
+        {
+          "designator": "01/19",
+          "heading_deg": 11,
+          "length_m": 1500,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -70,7 +95,12 @@
       "type": "regional_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "01/19", "heading_deg": 12, "length_m": 1500, "surface": "asphalt" }
+        {
+          "designator": "01/19",
+          "heading_deg": 12,
+          "length_m": 1500,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -82,7 +112,12 @@
       "type": "regional_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "10/28", "heading_deg": 96, "length_m": 2000, "surface": "concrete" }
+        {
+          "designator": "10/28",
+          "heading_deg": 96,
+          "length_m": 2000,
+          "surface": "concrete"
+        }
       ]
     },
     {
@@ -94,19 +129,29 @@
       "type": "regional_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "05/23", "heading_deg": 49, "length_m": 3230, "surface": "asphalt" }
+        {
+          "designator": "05/23",
+          "heading_deg": 49,
+          "length_m": 3230,
+          "surface": "asphalt"
+        }
       ]
     },
     {
       "icao": "LSZB",
       "name": "Bern-Belp",
       "lat": 46.9141,
-      "lon": 7.4970,
+      "lon": 7.497,
       "elevation_m": 510,
       "type": "regional_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "14/32", "heading_deg": 140, "length_m": 1730, "surface": "asphalt" }
+        {
+          "designator": "14/32",
+          "heading_deg": 140,
+          "length_m": 1730,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -118,7 +163,12 @@
       "type": "regional_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "01/19", "heading_deg": 10, "length_m": 1350, "surface": "asphalt" }
+        {
+          "designator": "01/19",
+          "heading_deg": 10,
+          "length_m": 1350,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -130,31 +180,46 @@
       "type": "regional_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "07/25", "heading_deg": 70, "length_m": 2000, "surface": "asphalt" }
+        {
+          "designator": "07/25",
+          "heading_deg": 70,
+          "length_m": 2000,
+          "surface": "asphalt"
+        }
       ]
     },
     {
       "icao": "LSZS",
       "name": "Samedan / St. Moritz",
-      "lat": 46.5340,
+      "lat": 46.534,
       "lon": 9.8839,
       "elevation_m": 1707,
       "type": "regional_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "03/21", "heading_deg": 30, "length_m": 1800, "surface": "asphalt" }
+        {
+          "designator": "03/21",
+          "heading_deg": 30,
+          "length_m": 1800,
+          "surface": "asphalt"
+        }
       ]
     },
     {
       "icao": "LSZR",
       "name": "Altenrhein (St. Gallen)",
-      "lat": 47.4850,
+      "lat": 47.485,
       "lon": 9.5608,
       "elevation_m": 398,
       "type": "regional_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "10/28", "heading_deg": 100, "length_m": 1500, "surface": "asphalt" }
+        {
+          "designator": "10/28",
+          "heading_deg": 100,
+          "length_m": 1500,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -166,7 +231,12 @@
       "type": "regional_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "06/24", "heading_deg": 60, "length_m": 1100, "surface": "asphalt" }
+        {
+          "designator": "06/24",
+          "heading_deg": 60,
+          "length_m": 1100,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -178,19 +248,29 @@
       "type": "regional_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "08/26", "heading_deg": 80, "length_m": 880, "surface": "asphalt" }
+        {
+          "designator": "08/26",
+          "heading_deg": 80,
+          "length_m": 880,
+          "surface": "asphalt"
+        }
       ]
     },
     {
       "icao": "LSZN",
       "name": "Hausen am Albis",
-      "lat": 47.2350,
-      "lon": 8.5180,
+      "lat": 47.235,
+      "lon": 8.518,
       "elevation_m": 600,
       "type": "grass_strip",
       "region": "switzerland",
       "runways": [
-        { "designator": "06/24", "heading_deg": 60, "length_m": 660, "surface": "grass" }
+        {
+          "designator": "06/24",
+          "heading_deg": 60,
+          "length_m": 660,
+          "surface": "grass"
+        }
       ]
     },
     {
@@ -204,7 +284,12 @@
       "swiss_e": 2681881.0,
       "swiss_n": 1282845.0,
       "runways": [
-        { "designator": "07/25", "heading_deg": 70, "length_m": 600, "surface": "grass" }
+        {
+          "designator": "07/25",
+          "heading_deg": 70,
+          "length_m": 600,
+          "surface": "grass"
+        }
       ]
     },
     {
@@ -216,7 +301,12 @@
       "type": "regional_airport",
       "region": "switzerland",
       "runways": [
-        { "designator": "08/26", "heading_deg": 80, "length_m": 870, "surface": "asphalt" }
+        {
+          "designator": "08/26",
+          "heading_deg": 80,
+          "length_m": 870,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -228,7 +318,12 @@
       "type": "grass_strip",
       "region": "switzerland",
       "runways": [
-        { "designator": "06/24", "heading_deg": 60, "length_m": 700, "surface": "grass" }
+        {
+          "designator": "06/24",
+          "heading_deg": 60,
+          "length_m": 700,
+          "surface": "grass"
+        }
       ]
     },
     {
@@ -240,7 +335,12 @@
       "type": "grass_strip",
       "region": "switzerland",
       "runways": [
-        { "designator": "06/24", "heading_deg": 60, "length_m": 740, "surface": "grass" }
+        {
+          "designator": "06/24",
+          "heading_deg": 60,
+          "length_m": 740,
+          "surface": "grass"
+        }
       ]
     },
     {
@@ -252,19 +352,29 @@
       "type": "grass_strip",
       "region": "switzerland",
       "runways": [
-        { "designator": "05/23", "heading_deg": 50, "length_m": 800, "surface": "grass" }
+        {
+          "designator": "05/23",
+          "heading_deg": 50,
+          "length_m": 800,
+          "surface": "grass"
+        }
       ]
     },
     {
       "icao": "EDDS",
       "name": "Stuttgart",
       "lat": 48.6899,
-      "lon": 9.2220,
+      "lon": 9.222,
       "elevation_m": 387,
       "type": "international_airport",
       "region": "baden-wuerttemberg",
       "runways": [
-        { "designator": "07/25", "heading_deg": 70, "length_m": 3345, "surface": "asphalt" }
+        {
+          "designator": "07/25",
+          "heading_deg": 70,
+          "length_m": 3345,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -276,7 +386,12 @@
       "type": "international_airport",
       "region": "baden-wuerttemberg",
       "runways": [
-        { "designator": "06/24", "heading_deg": 60, "length_m": 2356, "surface": "asphalt" }
+        {
+          "designator": "06/24",
+          "heading_deg": 60,
+          "length_m": 2356,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -288,7 +403,12 @@
       "type": "regional_airport",
       "region": "baden-wuerttemberg",
       "runways": [
-        { "designator": "03/21", "heading_deg": 30, "length_m": 2500, "surface": "asphalt" }
+        {
+          "designator": "03/21",
+          "heading_deg": 30,
+          "length_m": 2500,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -300,7 +420,12 @@
       "type": "regional_airport",
       "region": "baden-wuerttemberg",
       "runways": [
-        { "designator": "03/21", "heading_deg": 30, "length_m": 3000, "surface": "asphalt" }
+        {
+          "designator": "03/21",
+          "heading_deg": 30,
+          "length_m": 3000,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -312,7 +437,12 @@
       "type": "regional_airport",
       "region": "baden-wuerttemberg",
       "runways": [
-        { "designator": "16/34", "heading_deg": 160, "length_m": 700, "surface": "asphalt" }
+        {
+          "designator": "16/34",
+          "heading_deg": 160,
+          "length_m": 700,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -324,7 +454,12 @@
       "type": "regional_airport",
       "region": "baden-wuerttemberg",
       "runways": [
-        { "designator": "10/28", "heading_deg": 100, "length_m": 1540, "surface": "asphalt" }
+        {
+          "designator": "10/28",
+          "heading_deg": 100,
+          "length_m": 1540,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -336,7 +471,12 @@
       "type": "grass_strip",
       "region": "baden-wuerttemberg",
       "runways": [
-        { "designator": "08/26", "heading_deg": 80, "length_m": 1200, "surface": "grass" }
+        {
+          "designator": "08/26",
+          "heading_deg": 80,
+          "length_m": 1200,
+          "surface": "grass"
+        }
       ]
     },
     {
@@ -348,7 +488,12 @@
       "type": "regional_airport",
       "region": "baden-wuerttemberg",
       "runways": [
-        { "designator": "18/36", "heading_deg": 180, "length_m": 1015, "surface": "asphalt" }
+        {
+          "designator": "18/36",
+          "heading_deg": 180,
+          "length_m": 1015,
+          "surface": "asphalt"
+        }
       ]
     },
     {
@@ -360,7 +505,12 @@
       "type": "grass_strip",
       "region": "baden-wuerttemberg",
       "runways": [
-        { "designator": "08/26", "heading_deg": 80, "length_m": 770, "surface": "grass" }
+        {
+          "designator": "08/26",
+          "heading_deg": 80,
+          "length_m": 770,
+          "surface": "grass"
+        }
       ]
     },
     {
@@ -372,7 +522,761 @@
       "type": "grass_strip",
       "region": "baden-wuerttemberg",
       "runways": [
-        { "designator": "09/27", "heading_deg": 90, "length_m": 700, "surface": "grass" }
+        {
+          "designator": "09/27",
+          "heading_deg": 90,
+          "length_m": 700,
+          "surface": "grass"
+        }
+      ]
+    },
+    {
+      "icao": "ENAL",
+      "name": "\u00c5lesund Airport",
+      "lat": 62.56044,
+      "lon": 6.11085,
+      "elevation_m": 21,
+      "type": "international_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "06/24",
+          "heading_deg": 65,
+          "length_m": 2314,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENAN",
+      "name": "And\u00f8ya Airport, Andenes",
+      "lat": 69.29519,
+      "lon": 16.13938,
+      "elevation_m": 13,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "14/32",
+          "heading_deg": 150,
+          "length_m": 2468,
+          "surface": "asphalt"
+        },
+        {
+          "designator": "03/21",
+          "heading_deg": 32,
+          "length_m": 1672,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENAT",
+      "name": "Alta Airport",
+      "lat": 69.9761,
+      "lon": 23.3717,
+      "elevation_m": 3,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "11/29",
+          "heading_deg": 121,
+          "length_m": 2184,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENBN",
+      "name": "Br\u00f8nn\u00f8ysund Airport, Br\u00f8nn\u00f8y",
+      "lat": 65.4611,
+      "lon": 12.2175,
+      "elevation_m": 8,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "03/21",
+          "heading_deg": 35,
+          "length_m": 1200,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENBO",
+      "name": "Bod\u00f8 Airport",
+      "lat": 67.2692,
+      "lon": 14.3653,
+      "elevation_m": 13,
+      "type": "international_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "07/25",
+          "heading_deg": 78,
+          "length_m": 2794,
+          "surface": "concrete"
+        }
+      ]
+    },
+    {
+      "icao": "ENBR",
+      "name": "Bergen Airport, Flesland",
+      "lat": 60.2934,
+      "lon": 5.21814,
+      "elevation_m": 52,
+      "type": "international_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "17/35",
+          "heading_deg": 170,
+          "length_m": 2990,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENBS",
+      "name": "B\u00e5tsfjord Airport",
+      "lat": 70.60025,
+      "lon": 29.69261,
+      "elevation_m": 149,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "03/21",
+          "heading_deg": 44,
+          "length_m": 1000,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENBV",
+      "name": "Berlev\u00e5g Airport",
+      "lat": 70.87152,
+      "lon": 29.0341,
+      "elevation_m": 13,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "06/24",
+          "heading_deg": 62,
+          "length_m": 1028,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENCN",
+      "name": "Kristiansand Airport",
+      "lat": 58.2042,
+      "lon": 8.08537,
+      "elevation_m": 17,
+      "type": "international_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "03/21",
+          "heading_deg": 35,
+          "length_m": 2035,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENDU",
+      "name": "Bardufoss Airport",
+      "lat": 69.0558,
+      "lon": 18.5404,
+      "elevation_m": 77,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "10/28",
+          "heading_deg": 109,
+          "length_m": 2443,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENEV",
+      "name": "Harstad/Narvik Airport",
+      "lat": 68.4913,
+      "lon": 16.6781,
+      "elevation_m": 26,
+      "type": "international_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "17/35",
+          "heading_deg": 178,
+          "length_m": 2815,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENFL",
+      "name": "Flor\u00f8 Airport",
+      "lat": 61.5836,
+      "lon": 5.02472,
+      "elevation_m": 11,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "07/25",
+          "heading_deg": 71,
+          "length_m": 1263,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENGM",
+      "name": "Oslo-Gardermoen International Airport",
+      "lat": 60.1939,
+      "lon": 11.1004,
+      "elevation_m": 208,
+      "type": "international_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "01L/19R",
+          "heading_deg": 16,
+          "length_m": 3600,
+          "surface": "asphalt"
+        },
+        {
+          "designator": "01R/19L",
+          "heading_deg": 16,
+          "length_m": 2950,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENHD",
+      "name": "Haugesund Airport, Karm\u00f8y",
+      "lat": 59.3453,
+      "lon": 5.20836,
+      "elevation_m": 26,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "13/31",
+          "heading_deg": 134,
+          "length_m": 2120,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENHF",
+      "name": "Hammerfest Airport",
+      "lat": 70.6797,
+      "lon": 23.6686,
+      "elevation_m": 81,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "04/22",
+          "heading_deg": 46,
+          "length_m": 933,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENHV",
+      "name": "Honningsv\u00e5g Airport, Valan",
+      "lat": 71.0097,
+      "lon": 25.9836,
+      "elevation_m": 13,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "08/26",
+          "heading_deg": 80,
+          "length_m": 880,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENKB",
+      "name": "Kristiansund Airport, Kvernberget",
+      "lat": 63.1118,
+      "lon": 7.82452,
+      "elevation_m": 62,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "07/25",
+          "heading_deg": 72,
+          "length_m": 2390,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENKR",
+      "name": "Kirkenes Airport, H\u00f8ybuktmoen",
+      "lat": 69.7258,
+      "lon": 29.8913,
+      "elevation_m": 86,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "05/23",
+          "heading_deg": 69,
+          "length_m": 2115,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENLK",
+      "name": "Leknes Airport",
+      "lat": 68.1525,
+      "lon": 13.6094,
+      "elevation_m": 24,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "03/21",
+          "heading_deg": 24,
+          "length_m": 878,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENMH",
+      "name": "Mehamn Airport",
+      "lat": 71.0297,
+      "lon": 27.8267,
+      "elevation_m": 12,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "17/35",
+          "heading_deg": 170,
+          "length_m": 880,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENML",
+      "name": "Molde Airport, \u00c5r\u00f8",
+      "lat": 62.7447,
+      "lon": 7.2625,
+      "elevation_m": 3,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "07/25",
+          "heading_deg": 71,
+          "length_m": 2110,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENMS",
+      "name": "Mosj\u00f8en Airport, Kj\u00e6rstad",
+      "lat": 65.784,
+      "lon": 13.2149,
+      "elevation_m": 72,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "16/34",
+          "heading_deg": 160,
+          "length_m": 919,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENNA",
+      "name": "Lakselv Airport, Banak",
+      "lat": 70.0688,
+      "lon": 24.9735,
+      "elevation_m": 8,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "16/34",
+          "heading_deg": 176,
+          "length_m": 2788,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENNO",
+      "name": "Notodden Airport",
+      "lat": 59.56507,
+      "lon": 9.21315,
+      "elevation_m": 19,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "12/30",
+          "heading_deg": 127,
+          "length_m": 1751,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENOL",
+      "name": "\u00d8rland Airport",
+      "lat": 63.6989,
+      "lon": 9.604,
+      "elevation_m": 9,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "15/33",
+          "heading_deg": 154,
+          "length_m": 3278,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENOV",
+      "name": "\u00d8rsta-Volda Airport, Hovden",
+      "lat": 62.18,
+      "lon": 6.0741,
+      "elevation_m": 74,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "06/24",
+          "heading_deg": 61,
+          "length_m": 1070,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENRA",
+      "name": "Mo i Rana Airport, R\u00f8ssvoll",
+      "lat": 66.3639,
+      "lon": 14.3014,
+      "elevation_m": 70,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "13/31",
+          "heading_deg": 136,
+          "length_m": 841,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENRM",
+      "name": "R\u00f8rvik Airport, Ryum",
+      "lat": 64.8383,
+      "lon": 11.1461,
+      "elevation_m": 4,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "04/22",
+          "heading_deg": 40,
+          "length_m": 880,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENRO",
+      "name": "R\u00f8ros Airport",
+      "lat": 62.5784,
+      "lon": 11.3423,
+      "elevation_m": 626,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "13/31",
+          "heading_deg": 136,
+          "length_m": 1720,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENRY",
+      "name": "Moss Airport, Rygge",
+      "lat": 59.37882,
+      "lon": 10.78544,
+      "elevation_m": 53,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "12/30",
+          "heading_deg": 117,
+          "length_m": 2442,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENSB",
+      "name": "Svalbard Airport, Longyear",
+      "lat": 78.2461,
+      "lon": 15.4656,
+      "elevation_m": 27,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "09/27",
+          "heading_deg": 105,
+          "length_m": 2319,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENSH",
+      "name": "Svolv\u00e6r Airport, Helle",
+      "lat": 68.2433,
+      "lon": 14.6692,
+      "elevation_m": 8,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "36/18",
+          "heading_deg": 9,
+          "length_m": 946,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENSK",
+      "name": "Stokmarknes Airport, Skagen",
+      "lat": 68.57883,
+      "lon": 15.03342,
+      "elevation_m": 3,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "08/26",
+          "heading_deg": 86,
+          "length_m": 924,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENSN",
+      "name": "Skien Airport",
+      "lat": 59.185,
+      "lon": 9.56694,
+      "elevation_m": 141,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "01/19",
+          "heading_deg": 9,
+          "length_m": 1401,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENSO",
+      "name": "Stord Airport, S\u00f8rstokken",
+      "lat": 59.7919,
+      "lon": 5.34085,
+      "elevation_m": 49,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "14/32",
+          "heading_deg": 145,
+          "length_m": 1200,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENSR",
+      "name": "S\u00f8rkjosen Airport",
+      "lat": 69.7868,
+      "lon": 20.9594,
+      "elevation_m": 5,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "14/32",
+          "heading_deg": 154,
+          "length_m": 919,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENSS",
+      "name": "Vard\u00f8 Airport, Svartnes",
+      "lat": 70.3554,
+      "lon": 31.0449,
+      "elevation_m": 13,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "15/33",
+          "heading_deg": 163,
+          "length_m": 1130,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENST",
+      "name": "Sandnessj\u00f8en Airport, Stokka",
+      "lat": 65.9568,
+      "lon": 12.4689,
+      "elevation_m": 17,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "02/20",
+          "heading_deg": 25,
+          "length_m": 1408,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENTC",
+      "name": "Troms\u00f8 Airport",
+      "lat": 69.6833,
+      "lon": 18.9189,
+      "elevation_m": 9,
+      "type": "international_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "18/36",
+          "heading_deg": 193,
+          "length_m": 2451,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENTO",
+      "name": "Sandefjord Airport, Torp",
+      "lat": 59.1867,
+      "lon": 10.2586,
+      "elevation_m": 87,
+      "type": "international_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "17/35",
+          "heading_deg": 179,
+          "length_m": 2809,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENVA",
+      "name": "Trondheim Airport, V\u00e6rnes",
+      "lat": 63.4578,
+      "lon": 10.924,
+      "elevation_m": 17,
+      "type": "international_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "09/27",
+          "heading_deg": 90,
+          "length_m": 2759,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENVD",
+      "name": "Vads\u00f8 Airport",
+      "lat": 70.0653,
+      "lon": 29.8447,
+      "elevation_m": 39,
+      "type": "regional_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "07/25",
+          "heading_deg": 87,
+          "length_m": 999,
+          "surface": "asphalt"
+        }
+      ]
+    },
+    {
+      "icao": "ENZV",
+      "name": "Stavanger Airport, Sola",
+      "lat": 58.8767,
+      "lon": 5.63778,
+      "elevation_m": 9,
+      "type": "international_airport",
+      "region": "norway",
+      "runways": [
+        {
+          "designator": "18/36",
+          "heading_deg": 179,
+          "length_m": 2856,
+          "surface": "asphalt"
+        },
+        {
+          "designator": "10/28",
+          "heading_deg": 106,
+          "length_m": 2449,
+          "surface": "asphalt"
+        }
       ]
     }
   ]
