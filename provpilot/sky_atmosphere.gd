@@ -130,6 +130,18 @@ func update(delta: float, viewport: Viewport) -> void:
 	if sky_material != null:
 		sky_material.set_shader_parameter("sun_direction", dir_to_sun)
 		sky_material.set_shader_parameter("sun_disk_energy", disk)
+		# Keep the scattering sphere tangent to the local ground plane at the
+		# camera. The flat world frame is one LV95 tangent plane (Swiss origin),
+		# so a fixed centre (0, -R, 0) only matches near that origin: ~1 300 km
+		# north in Norway the plane floats ~130 km above the true sphere and
+		# the horizon bent like an orbital limb. Tracking the centre under the
+		# camera makes the shader's altitude equal to flat-frame Y (= ASL)
+		# everywhere, so dip + horizon distance stay correct in every region
+		# (WORLD_SCENERY_DESIGN §3.2; per-region rebase remains the long-term
+		# fix for the coarse-globe seam).
+		if cam != null:
+			sky_material.set_shader_parameter(
+				"planet_center", Vector3(cam.global_position.x, -PLANET_RADIUS, cam.global_position.z))
 
 	_apply_altitude(alt, day)
 

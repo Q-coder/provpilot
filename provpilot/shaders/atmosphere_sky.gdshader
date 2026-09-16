@@ -10,9 +10,11 @@ shader_type sky;
 // disk track the DirectionalLight3D that casts the scene shadows.
 //
 // EYEDIR and POSITION are world-space in ProVPilot's flat local frame
-// (+X = West, +Y = Up, +Z = North). The globe's centre sits at planet_center
-// (0, -planet_radius, 0) in that frame, so the camera's distance from the
-// centre — hence its altitude — follows POSITION.y near the origin.
+// (+X = West, +Y = Up, +Z = North). sky_atmosphere.gd keeps planet_center
+// directly under the camera (x, -planet_radius, z) every frame, so the
+// scattering sphere stays tangent to the local ground plane and the
+// camera's altitude above it is exactly POSITION.y — correct horizon dip in
+// every region, not just near the flat frame's origin.
 
 uniform vec3 sun_direction = vec3(0.0, 1.0, 0.0);        // world dir TO the sun
 uniform float sun_disk_energy : hint_range(0.0, 1.0) = 1.0; // 0 when the sun is below the horizon
