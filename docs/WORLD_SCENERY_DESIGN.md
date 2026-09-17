@@ -410,6 +410,67 @@ A full pass was delegated to the Windows inference server
 - **P4 — Worldwide default** (later): in-game `far` tier (Natural Earth + ETOPO),
   per-region tangent rebase, Kartverket-quality Norway upgrade pack.
 
+## 8. Continuation plan — decisions 2026-09-16
+
+After the Norway pilot bake, four decisions were made (gery, 2026-09-16). This
+section supersedes the parts of §5.6 / §6 / §7 it conflicts with.
+
+| # | Decision |
+|---|----------|
+| D1 | Split the combined Fennoscandia bake into **three region packs: Norway, Sweden, Finland** (supersedes §5.6 item 1 "single `norway` region, no quadrants") |
+| D2 | Worldwide strategy = **Option A**: keep the LV95 runtime frame; the world3d globe's tangent point tracks the aircraft continuously (per-frame `_rebase_globe_to`, design §3.2). True ECEF floating-origin world deferred until a non-European region demands it |
+| D3 | World3D work order: **face-grid rebake + suppression rectangle first, texture atlas next** |
+| D4 | High-res Norway terrain ships as an **opt-in addon pack** (overlay region, higher path priority than the `norway` base). Source v1: **Copernicus EEA-10** (verified 2026-09-14; covers all of Fennoscandia → Sweden/Finland addons reuse the same pipeline); Kartverket ASR stays a v2 upgrade if access is confirmed (unverified, §2.1) |
+
+### 8.1 Phase plan
+
+**Phase 1 — Pack split (D1).** Parameterize `build_world_terrain.py` with
+`--country {norway,sweden,finland}` (per-country WGS84 bbox + UTM zones; LV95
+bbox derived from the corners and rounded outward onto the 1024 m grid). Add
+`sweden` / `finland` region entries to `scenery_regions.json` (2×2 quadrants,
+uniform schema). Bake both new countries; Norway reuses its existing bake.
+Bundle three base packs + downloader rows. Verify: LSZH→ENGM, ENGM→ESSA,
+ESSA→EHTK legs; seam check at pack boundaries.
+
+**Phase 2 — Continuous rebase + suppression rectangle (D2 + D3a).** Replace the
+one-shot destination rebase (`node_3d.gd::_rebase_globe_to`) with per-frame
+tracking while the AC is >~100 m from the current tangent point — in flight
+the globe moves at aircraft speed, so there are no discrete transform events
+(the ~150 km Oslo sag corrects itself gradually). `W3DGlobe` gains a static
+suppression rectangle (union of enabled-region bboxes): chunks inside it are
+culled because the Scenery3D patch is authoritative; the globe stays visible
+over open ocean and closes the <25 km gap. Verify: 70 km pass over Oslo —
+single surface, no snap; rebase cost ≪10 µs/frame; chunk-commit counter flat.
+
+**Phase 3 — Face rebake, then atlas (D3b/c).** Faces are baked at
+`face_size=513` (~20 km grid spacing), which discards everything finer in the
+ETOPO source regardless of chunk LOD. Rebake at ≤~5 km spacing (measure bake
+time, pvpk size, `face_grid` RAM: 2049 ≈ 100 MB, 4097 ≈ 400 MB). Then replace
+the procedural elevation color ramp with a single baked face-texture **atlas**
+(UVs in `compute_chunk`, one shared material).
+
+**Phase 4 — Norway DTM addon (D4).** New `scripts/build_fenno_dtm.py`: fetch
+Copernicus EEA-10 LAEA tiles → resample onto the LV95 grid at native 10 m
+(`pixels_per_tile: 103`, `pixel_resolution_m: 10.0` — per-path resolution is
+already supported, P0/R3) → land mask + ~15 km coastal margin (ocean stays
+with globe/ETOPO) → overlay manifest following the Switzerland-Bathymetry
+precedent (`"overlay": true`, 0.0 = fall-through, listed after `norway`).
+New opt-in pack `norway-dtm-base-v1` (~20 GB est.; quadrant-split if heavy).
+Verify: low-altitude Sognefjord pass — 10 m relief beats the 30 m base; no
+JSBSim ground spike on overlay handoff (NAN-skip in
+`TerrainElevation::update_terrain_elevation`).
+
+Phases 1 and 2 are independent (data pipeline vs runtime) and can run in
+parallel, each on its own branch.
+
+### 8.2 Roadmap deltas
+
+- §7 **P4** "per-region tangent rebase" → implemented as Phase 2 continuous
+  tracking; "Kartverket-quality Norway upgrade pack" → Phase 4 (EEA-10 v1).
+- R5 (flat-frame seam above ~25 km) → mitigated by Phase 2 (rebase +
+  suppression), no longer "accepted v1".
+- R2 (blocky 30 m terrain) → fixed per-region by Phase 4.
+
 ## See also
 
 - [gerys_plan.md](gerys_plan.md) — the plan this subtask serves
