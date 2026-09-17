@@ -178,6 +178,14 @@ var _globe_mount: Node3D = null        # carries inverse-ECEF transform
 var _w3d_coords = null                 # W3DCoords instance for conversions
 # flat local (X=West, Y=Up, Z=North) at the LV95 origin -> ECEF metres.
 var _ecef_from_flat: Transform3D = Transform3D.IDENTITY
+# Continuous rebase tracking (design §8.1 Phase 2, decision D2): re-anchor
+# the globe tangent point once the AC has moved this far from it, so the
+# d²/2R sag never grows and the mount only ever moves at (quantized)
+# aircraft speed — no discrete transform events in flight. A parked AC costs
+# nothing (the distance check skips the re-anchor).
+const GLOBE_REBASE_TRACK_M := 500.0
+var _globe_anchor_flat: Vector2 = Vector2.ZERO
+var _globe_has_anchor := false
 # The altitude-driven atmosphere ramps (exponential fog fade-out toward space,
 # sky-to-black background above the atmosphere, ambient/glow taper) and the
 # coarse-globe visibility gate live in the C++ Atmosphere module
@@ -415,6 +423,10 @@ func _ready() -> void:
 	_apply_tree_density()
 	# Apply scenery sources (orthophoto and terrain paths) from settings
 	_apply_scenery_sources()
+	# Cull the coarse globe under the detailed patch regions (needs the
+	# settings screen for the enabled areas — created just above). Refreshed
+	# again on first flight and when the settings screen closes.
+	_update_globe_suppression()
 
 	# ── Engine sound ──────────────────────────────────────────────────
 	_setup_engine_sound()
@@ -694,9 +706,10 @@ func _setup_world3d_globe() -> void:
 ## (lat, lon) and P_a is that point's flat position. The mount takes the
 ## inverse, so W3DGlobe's to_local(camera) LOD/streaming still sees a correct
 ## ECEF camera, and _globe_elevation_at() keeps its formula unchanged.
-## lat/lon come from Geo.lv95_to_wgs84 (polynomial, ~1 km accuracy — far
-## below the ~157 km of globe sag this rebase removes at ENGM).
-func _rebase_globe_to(flat_x: float, flat_z: float, lat_deg: float, lon_deg: float) -> void:
+## lat/lon come from Geo.lv95_to_wgs84 (swisstopo polynomial — ~1 m near CH,
+## degrading with distance; at 70°N the anchor can be tens of km off, which
+## shifts globe terrain features but leaves the sag correction intact).
+func _rebase_globe_to(flat_x: float, flat_z: float, lat_deg: float, lon_deg: float, quiet := false) -> void:
 	# Keep the sun/observer in sync so solar elevation and local mean-solar
 	# time match the new region (sky_atmosphere.gd reads these every frame).
 	_sky.observer_lat = lat_deg
@@ -706,8 +719,80 @@ func _rebase_globe_to(flat_x: float, flat_z: float, lat_deg: float, lon_deg: flo
 	var f_local: Transform3D = _w3d_coords.enu_to_ecef_transform(lat_deg, lon_deg, 0.0, true)
 	_ecef_from_flat = f_local * Transform3D(Basis.IDENTITY, Vector3(-flat_x, 0.0, -flat_z))
 	_globe_mount.transform = _ecef_from_flat.affine_inverse()
-	print("World3D globe rebased to airport: flat(%.0f, %.0f) -> lat=%.5f lon=%.5f" % [
-		flat_x, flat_z, lat_deg, lon_deg])
+	# Bookkeeping for the continuous tracker: this is now the anchor.
+	_globe_anchor_flat = Vector2(flat_x, flat_z)
+	_globe_has_anchor = true
+	if not quiet:
+		print("World3D globe rebased to airport: flat(%.0f, %.0f) -> lat=%.5f lon=%.5f" % [
+			flat_x, flat_z, lat_deg, lon_deg])
+
+
+## Continuous globe tracking (design §8.1 Phase 2 / decision D2): keep the
+## tangent point under the aircraft so the coarse globe stays glued to the
+## flat patch everywhere instead of sagging d²/2R away from it as you fly.
+## Re-anchors at most once per GLOBE_REBASE_TRACK_M of travel, so a parked AC
+## costs nothing and in flight the mount moves at (quantized) aircraft speed —
+## no discrete transform events, and the one-shot destination rebase in
+## _on_welcome_flight_requested() remains the initial anchor under the loading
+## screen. The Geo.lv95_to_wgs84 polynomial is the only approximation in the
+## chain; its error grows with distance from CH (tens of km at 70°N), which
+## shifts globe terrain features but not the sag correction itself.
+func _track_globe_rebase() -> void:
+	if not (USE_WORLD3D_GLOBE and is_instance_valid(globe_node) and _w3d_coords != null):
+		return
+	var ac := $AC as Node3D
+	if not ac:
+		return
+	var p: Vector3 = ac.global_position
+	var q := Vector2(p.x, p.z)
+	if _globe_has_anchor and _globe_anchor_flat.distance_squared_to(q) < GLOBE_REBASE_TRACK_M * GLOBE_REBASE_TRACK_M:
+		return
+	# Flat X is West-positive around TERRAIN_CENTER_E (see the _ecef_from_flat
+	# comment), so LV95 easting = CENTER_E - x, northing = CENTER_N + z.
+	var ll: Vector2 = Geo.lv95_to_wgs84(TERRAIN_CENTER_E - p.x, TERRAIN_CENTER_N + p.z)
+	_rebase_globe_to(p.x, p.z, ll.x, ll.y, true)
+
+
+## Push the enabled regions' terrain extents into the globe as suppression
+## rectangles (design §8.1 Phase 2): inside them the Scenery3D patch is
+## authoritative, so coarse globe chunks are culled there instead of rendering
+## a second surface; over open ocean the globe stays visible and fills the
+## horizon around/below the patch. Static per session — refreshed at startup
+## (once the settings screen has loaded), on first flight, and when the
+## settings screen closes (scenery areas may have changed). One rectangle per
+## region (not a bounding box), so seas BETWEEN regions still show the globe.
+func _update_globe_suppression() -> void:
+	if not (USE_WORLD3D_GLOBE and is_instance_valid(globe_node) and globe_node.has_method("clear_suppress_rects")):
+		return
+	globe_node.clear_suppress_rects()
+	if not _settings_screen or not _settings_screen.has_method("get_enabled_scenery_areas"):
+		return
+	var added := 0
+	for a in _settings_screen.get_enabled_scenery_areas():
+		var base: String = str(a.get("path", ""))
+		var manifest_path := base.path_join("terrain/manifest.json")
+		if base.is_empty() or not FileAccess.file_exists(manifest_path):
+			continue
+		var f := FileAccess.open(manifest_path, FileAccess.READ)
+		if f == null:
+			continue
+		var data = JSON.parse_string(f.get_as_text())
+		f.close()
+		if typeof(data) != TYPE_DICTIONARY or not data.has("grid"):
+			continue
+		var g: Dictionary = data["grid"]
+		# Tile indices -> LV95 metres, then LV95 -> flat frame (X West-
+		# positive around TERRAIN_CENTER_E, Z North-positive). add_suppress_rect
+		# normalises min/max, so the sign flip on X is handled there.
+		var e0: float = float(g["ei_min"]) * 1024.0
+		var n0: float = float(g["ni_min"]) * 1024.0
+		var e1: float = (float(g["ei_max"]) + 1.0) * 1024.0
+		var n1: float = (float(g["ni_max"]) + 1.0) * 1024.0
+		globe_node.add_suppress_rect(
+			TERRAIN_CENTER_E - e1, n0 - TERRAIN_CENTER_N,
+			TERRAIN_CENTER_E - e0, n1 - TERRAIN_CENTER_N)
+		added += 1
+	print("World3D globe suppression: %d region rectangle(s)" % added)
 
 
 ## Set up the day/night sun + atmospheric sky. Registers the scene Environment,
@@ -912,6 +997,11 @@ func _process(delta: float) -> void:
 		_process_rebase_cooldown()
 		_update_loading_progress(true)  # fly-to-destination loading
 		return
+
+	# Continuous globe rebase tracking (design §8.1 Phase 2): keep the tangent
+	# point under the aircraft so the coarse globe never sags away from the
+	# flat patch. No-op while parked; runs in flight, slew and position dialog.
+	_track_globe_rebase()
 
 	# VFR map frame (C++ module): position/heading drive + overlay gating.
 	# The map freezes under full-screen UI; input pass-through is handled in C++.
@@ -1788,6 +1878,7 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 		var gz := swiss_n - TERRAIN_CENTER_N
 		var ll: Vector2 = Geo.lv95_to_wgs84(swiss_e, swiss_n)
 		_rebase_globe_to(gx, gz, ll.x, ll.y)
+		_update_globe_suppression()  # settings screen is definitely up by now
 
 	if _first_flight:
 		_do_first_flight(swiss_e, swiss_n, heading_deg)
@@ -1944,6 +2035,7 @@ func _on_settings_closed() -> void:
 	_apply_scenery_sources()
 	_vfr_map.apply_config()
 	_push_time_of_day_settings()
+	_update_globe_suppression()  # scenery areas may have changed
 	if _welcome_screen:
 		_welcome_screen.set_continue_enabled(not _first_flight)
 		_welcome_screen.visible = true

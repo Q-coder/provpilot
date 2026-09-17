@@ -442,6 +442,24 @@ culled because the Scenery3D patch is authoritative; the globe stays visible
 over open ocean and closes the <25 km gap. Verify: 70 km pass over Oslo —
 single surface, no snap; rebase cost ≪10 µs/frame; chunk-commit counter flat.
 
+*Implemented (2026-09-16, branch `globe-rebase-suppress`, both repos).*
+Tracking threshold is 500 m (`GLOBE_REBASE_TRACK_M`), not 100 m — the re-anchor
+is a quantized event at most once per 500 m of travel, and the residual sag at
+500 m is ~2 cm. The one-shot destination rebase stays as the initial anchor
+under the loading screen; `_track_globe_rebase()` in `node_3d.gd::_process`
+re-anchors quietly afterwards (the `quiet` flag suppresses the log line). The
+suppression API is `W3DGlobe::add_suppress_rect()/clear_suppress_rects()` —
+**one rectangle per enabled region's terrain-manifest grid** (not a bounding
+box, so seas between regions still show the globe); chunks whose ECEF centre
+projects into any rect via the mount transform are culled in `update_node`
+alongside horizon cull. Rectangles refresh at startup (after the settings
+screen loads), on first flight, and when the settings screen closes. Known
+approximation: the swisstopo LV95→WGS84 polynomial drifts tens of km at 70°N,
+which shifts globe terrain features there but not the sag correction. Smoke
+tests: `provpilot/tests/smoke_globe_suppress.gd` (API) and
+`smoke_globe_tracking.gd` (anchor follows a 17 km AC jump). Remaining in-game
+verification: the 70 km Oslo pass above, plus rebase cost / chunk-commit churn.
+
 **Phase 3 — Face rebake, then atlas (D3b/c).** Faces are baked at
 `face_size=513` (~20 km grid spacing), which discards everything finer in the
 ETOPO source regardless of chunk LOD. Rebake at ≤~5 km spacing (measure bake
