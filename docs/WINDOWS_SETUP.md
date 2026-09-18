@@ -100,8 +100,24 @@ instructions above patch `flags.make` after CMake configure to fix this.
 
 The SConstruct automatically handles Windows-specific settings:
 - Defines `JSBSIM_STATIC_LINK` (required for static JSBSim.lib)
+- Defines `_USE_MATH_DEFINES` (MSVC's `<cmath>` only provides `M_PI` & co. with
+  this set before any system header; without it `vfr_map.cpp` fails with
+  `error C2065: 'M_PI': undeclared identifier`). Do not rely on a per-file
+  `#define` for this — it silently stops working if an include lands above it.
 - Links `ws2_32` (Winsock, required by JSBSim)
 - Adds `#ifndef _WIN32` guard for `unistd.h`
+
+### Build environment gotchas
+
+- `scons` and `python` must be on `PATH`. If they were installed via Miniconda
+  (`C:\ProgramData\miniconda3`), a plain shell does not see them — prepend
+  `C:\ProgramData\miniconda3` and `C:\ProgramData\miniconda3\Scripts` to `PATH`
+  (or run from an Anaconda Prompt).
+- `scripts/build_windows.ps1` runs with `$ErrorActionPreference = 'Stop'`, so any
+  stderr output from `vcvars64.bat` (e.g. a harmless
+  `'vswhere.exe' is not recognized ...` line) aborts the script at its vcvars step.
+  Workaround: run `vcvars64.bat` in `cmd` first and launch the script from that
+  shell — with `cl.exe` already on `PATH` the script skips its own vcvars step.
 
 ### Performance Tuning
 

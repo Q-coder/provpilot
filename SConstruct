@@ -25,6 +25,8 @@ env.Append(LIBS=[jsb_library])
 import platform
 if platform.system() == 'Windows':
     env.Append(CPPDEFINES=['JSBSIM_STATIC_LINK'])
+    # MSVC's <cmath> only defines M_PI & co. when this is set before any system header.
+    env.Append(CPPDEFINES=['_USE_MATH_DEFINES'])
     env.Append(LIBS=['ws2_32'])  # JSBSim uses sockets on Windows
 
 #env.Append(LIBS=['JSBSim'])
