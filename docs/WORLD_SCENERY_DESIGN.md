@@ -789,6 +789,23 @@ the aileron and rudder commands are negated at the FDM boundary only, so
 input_* and the animations stay as before. (3) Coverage-mask rebuilds are
 throttled to 100 ms (the generation counter bumps every frame during heavy
 streaming; each rebuild is a 180 KB grid + texture upload).
+(4) Pre-flight NaN flood: the AC node kept the scene file's flat transform
+(~2 km from the Earth's centre in ECEF) until the first flight; every
+geodetic conversion was degenerate and the VFR map normalised NaN vectors
+each frame (5.7 M warnings per run, welcome screen unresponsive). The
+aircraft is parked on the ellipsoid at the LV95 origin in `_ready()`, VFR
+feed and sky observer skip off-planet positions, and `ecef_to_geodetic`
+returns a finite answer for degenerate input.
+(5) Thin gap lines between Scandinavian tiles (check flight): the affine tile
+placement used one grid-convergence rotation per tile centre, so shared
+edges of neighbouring 1 km tiles were computed from different frames —
+5–10 cm apart (the seam probe in `tests/smoke_scenery_ecef.tscn` measured
+0.096 m at LSZH, 0.074 m at ENGM). Tiles now project their four corners
+exactly, interpolate the interior bilinearly and lean the height direction
+to the local normal (`tilt = 1 + h/R`), so a shared edge is computed from
+the same two corner points on both sides: 0.3 mm. (A 3.2 m vertical step
+between LOD 1 and LOD 2 tiles at LSZH is Scenery3D's pre-existing edge
+sampling — reported by the probe, not asserted.)
 | C3 | Remove flat-frame code paths (rebase, TERRAIN_CENTER), per-region CRS grids with UTM support (D6), docs | smoke tests green; existing CH/BW/Norway packs unchanged |
 
 ## See also

@@ -738,6 +738,17 @@ void JSBGodot::reinitialize_from_pose(Transform3D ac_global, double airspeed_kts
     const geo::Geodetic g = geo::geodetic_of(ac_global.origin);
     const double heading = geo::true_heading_deg(ac_global.basis, g.lat, g.lon);
     const double altitude_ft = g.h * 3.28084;
+    // Diagnostic for a one-off "aircraft upside down after teleport" report
+    // (2026-09-18): the node basis handed in should be roughly upright.
+    {
+        const Vector3 up = geo::wun_basis(g.lat, g.lon).get_column(1);
+        const double updot = ac_global.basis.get_column(1).normalized().dot(up);
+        if (updot < 0.5)
+        {
+            UtilityFunctions::push_warning("reinitialize_from_pose: aircraft basis is not upright (up.n=", updot,
+                ") — JSBSim starts level anyway; if the model stays inverted, slew mode never released. basis=", ac_global.basis);
+        }
+    }
     const double terrain_m = std::isnan(terrain_elevation_m) ? (g.h - 2.0) : terrain_elevation_m;
 
     UtilityFunctions::print("Reinitializing JSBSim (ECEF) at lat=", g.lat, " lon=", g.lon, " h=", g.h,
