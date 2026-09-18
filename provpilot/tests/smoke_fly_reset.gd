@@ -32,6 +32,13 @@ func _ready() -> void:
 	jsb.set_gear_down(false)
 	# Second Fly! at another airport (teleport path).
 	_root._on_welcome_flight_requested("c172p", 2682163.0, 1282948.0, 250.0)
+	# JSBSim stays pinned until the precise tile at the destination is in;
+	# wait for the release, then give the flaps time to physically retract.
+	var pinned := 0.0
+	while jsb.is_slew_mode() and pinned < 30.0:
+		await get_tree().create_timer(0.25).timeout
+		pinned += 0.25
+	print("[reset] JSBSim released after %.2f s" % pinned)
 	await get_tree().create_timer(8.0).timeout
 	print("[reset] after: speed %.1f kts throttle %.2f flaps %.2f elevator %.2f" % [jsb.get_airspeed_knots(), jsb.get_input_throttle(), jsb.get_flaps(), jsb.get_input_elevator()])
 	if jsb.get_input_throttle() > 0.01: _fail("throttle carried over (%.2f)" % jsb.get_input_throttle())

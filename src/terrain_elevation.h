@@ -57,7 +57,15 @@ namespace jsbgodot
         // (NAN when no data there); scenery_valid is whether the precise Scenery3D
         // node is alive (gates the post-reinit elevation push). p_jsb may be null
         // (skips the JSBSim calls).
-        void process_rebase(Object *p_jsb, double terrain_height_at_ac, bool scenery_valid);
+        // precise_h is the PRECISE scenery elevation at the pin (NAN while the
+        // tile has not streamed in yet); fallback_h the coarse globe elevation
+        // (NAN if unavailable), used only once the retry window has expired —
+        // releasing JSBSim on the coarse globe and then loading a tile tens of
+        // metres higher or lower dropped/buried the aircraft (Emmen 2026-09-18).
+        // streamer_busy: the tile streamer still has pending work — the wait
+        // for the precise tile then continues (up to REBASE_HARD_CAP_MSEC);
+        // the fallback timeout only counts from the last busy moment.
+        void process_rebase(Object *p_jsb, double precise_h, double fallback_h, bool scenery_valid, bool streamer_busy);
 
         // Per-frame: push the terrain elevation under the aircraft to JSBSim's
         // ground-collision model (Godot Y + elevation_offset -> ASL). Skips until
@@ -95,9 +103,15 @@ namespace jsbgodot
         int _rebase_cooldown = 0;
         Vector3 _teleport_pin_pos;
         double _rebase_retry_start_msec = 0.0;  // 0 = not currently retrying
+        double _rebase_last_busy_msec = 0.0;
+        static constexpr double REBASE_HARD_CAP_MSEC = 90000.0;
 
         // Per-frame terrain-push stabilisation counter (monotonic from first call)
         int terrain_init_frame_count = 0;
+        // Last elevation pushed to JSBSim (NAN = none since the last release);
+        // a jump of > 1 m in one frame means a tile streamed in under the AC.
+        double _last_pushed_h = NAN;
+        int64_t _last_lift_msec = 0;
 
         Node3D *ac_node = nullptr;
     };

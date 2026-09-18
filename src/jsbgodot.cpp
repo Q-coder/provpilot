@@ -14,6 +14,7 @@
 #include <godot_cpp/core/memory.hpp>             // For Godot logging
 #include <godot_cpp/classes/scene_tree.hpp>      // Include SceneTree header
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
@@ -76,6 +77,7 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("load_aircraft", "aircraft_id", "jsbsim_model"), &JSBGodot::load_aircraft, DEFVAL("c172p"), DEFVAL("c172p"));
     ClassDB::bind_method(D_METHOD("is_initialized"), &JSBGodot::is_initialized);
     ClassDB::bind_method(D_METHOD("set_slew_mode", "enabled"), &JSBGodot::set_slew_mode);
+    ClassDB::bind_method(D_METHOD("is_slew_mode"), &JSBGodot::is_slew_mode);
     ClassDB::bind_method(D_METHOD("get_slew_mode"), &JSBGodot::get_slew_mode);
     ClassDB::bind_method(D_METHOD("set_godot_terrain_y_offset", "offset_m"), &JSBGodot::set_godot_terrain_y_offset);
     ClassDB::bind_method(D_METHOD("get_godot_terrain_y_offset"), &JSBGodot::get_godot_terrain_y_offset);
@@ -358,6 +360,7 @@ void JSBGodot::set_terrain_elevation(double elevation_m)
 {
     // Set the terrain elevation in JSBSim (convert meters to feet)
     if (FDMExec && FDMExec->GetPropagate() && FDMExec->GetPropertyManager()) {
+        last_terrain_m = elevation_m;
         double elevation_ft = elevation_m * 3.28084;  // meters to feet
         // Check if property exists before setting
         if (FDMExec->GetPropertyManager()->HasNode("position/terrain-elevation-asl-ft")) {
@@ -1255,7 +1258,28 @@ void JSBGodot::copy_outputs_from_JSBSim()
         b.set_column(0, -by * scale.x);
         b.set_column(1, -bz * scale.y);
         b.set_column(2, bx * scale.z);
-        ac->set_global_transform(Transform3D(b, pos));
+        const Transform3D xf(b, pos);
+        if (!pos.is_finite() || !bx.is_finite() || !by.is_finite() || !bz.is_finite())
+        {
+            // The FDM blew up (huge ground-contact force, etc.). Never hand a
+            // NaN pose to the scene (renderer asserts, camera/sky go NaN):
+            // restart the FDM at the last good pose, stationary.
+            const int64_t now = Time::get_singleton()->get_ticks_msec();
+            if (now - last_nan_reset_msec > 200)
+            {
+                last_nan_reset_msec = now;
+                UtilityFunctions::push_warning("JSBSim produced a non-finite state — resetting the flight model at the last good position");
+                if (has_last_good_transform)
+                {
+                    reset_controls();
+                    reinitialize_from_pose(last_good_transform, 0.0, last_terrain_m);
+                }
+            }
+            return;
+        }
+        ac->set_global_transform(xf);
+        last_good_transform = xf;
+        has_last_good_transform = true;
     }
 
     vertical_speed_fpm = -FDMExec->GetPropertyValue("velocities/v-down-fps") * 60.0;

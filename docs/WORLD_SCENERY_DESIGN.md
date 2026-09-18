@@ -855,6 +855,38 @@ lacks the key), and an unchanged path set is a no-op: 0 ms. Follow-up for
 the bake pipeline: stop writing the per-tile list into terrain manifests
 (the runtime never reads it — tiles are probed by file name).
 
+### 9.6 Teleport onto unloaded scenery (fix 2026-09-18)
+
+Teleporting from an in-flight state to a region whose tiles were not
+streamed yet (Geneva → Emmen) dropped the aircraft ~300 m and the resulting
+gear-spring blow-up produced NaN poses and a renderer crash. Three causes,
+all in the teleport path (the first-flight path already waited for the
+precise tile):
+
+1. `process_rebase` released JSBSim after a fixed 2 s / 12 s at the
+   **coarse globe** elevation (the scenery query fell back to the globe, so
+   it never returned NAN); the precise tile then arrived tens or hundreds
+   of metres away (Schaffhausen: globe 574 m vs tile 466 m). Now it waits
+   for the *precise* elevation while the tile streamer has pending work
+   (fallback to the globe only after 12 s of streamer idleness, 90 s cap).
+   The first-flight deferred init uses the same busy-aware wait.
+2. A Fly! during a running intro zoom left the intro camera parked in
+   space over the old airport while the loading screen blocked the zoom;
+   the streamer follows the viewport camera, so the destination never
+   loaded. The zoom is cancelled before a teleport
+   (`IntroZoom.cancel()`), and `_on_teleport_requested` makes sure the
+   current camera rides with the pinned aircraft.
+3. Safety nets: `TerrainElevation::update_terrain_elevation` lifts the
+   aircraft onto the ground when a tile loads *above* it (terrain jump
+   > 1 m and CG below ground; flying into a mountain is left to crash
+   detection), and `copy_outputs_from_JSBSim` never hands a non-finite
+   pose to the scene — it restarts the FDM at the last good pose instead.
+
+The teleport now spawns 0.5 m above the ground like the first flight
+(was 2.1 m, a visible plop). Test: `tests/smoke_teleport_far.tscn`
+(LSZH → Geneva mid-intro: release on the precise tile in ~2 s, ≤ 0.3 m
+bounce).
+
 ## 10. Weather model — settings only (2026-09-18)
 
 The Settings screen has a **Weather** tab: a list of layers, each spanning

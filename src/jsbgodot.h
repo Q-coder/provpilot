@@ -155,6 +155,7 @@ namespace jsbgodot
         
         // Slew mode - pauses physics and position updates
         void set_slew_mode(bool enabled);
+        bool is_slew_mode() const { return slew_mode; }
         bool get_slew_mode() const;
         
         
@@ -204,6 +205,13 @@ namespace jsbgodot
         bool has_pending_terrain = false;  // Whether we have a terrain elevation to set
         double godot_terrain_y_offset = 0.0;  // Y offset to apply (Godot terrain Y - JSBSim terrain elevation)
         std::string loaded_jsbsim_model;  // Model name currently loaded into FDMExec (empty = none)
+        // Last finite pose handed to the node + terrain: a non-finite FDM state
+        // (e.g. a gear-spring blow-up) is caught in copy_outputs_from_JSBSim and
+        // the FDM re-initialised here instead of poisoning the scene.
+        Transform3D last_good_transform;
+        bool has_last_good_transform = false;
+        double last_terrain_m = 0.0;
+        int64_t last_nan_reset_msec = 0;
 
         struct WeatherLayer
         {

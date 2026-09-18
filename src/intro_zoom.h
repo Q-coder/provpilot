@@ -64,6 +64,9 @@ namespace jsbgodot
         // STATUS_FINISHED (the handoff happened on this call).
         int update(double delta);
         bool is_playing() const;
+        // Abort a running zoom (teleport / new flight requested mid-animation):
+        // same handoff as a finished zoom, camera2 on the spot view.
+        void cancel();
 
         // ── Tunables (exposed as properties so they can be set from
         // GDScript at runtime — e.g. _intro_zoom.intro_duration = 90.0 —

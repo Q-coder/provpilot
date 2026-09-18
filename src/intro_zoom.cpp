@@ -23,6 +23,7 @@ void IntroZoom::_bind_methods()
 	ClassDB::bind_method(D_METHOD("start"), &IntroZoom::start);
 	ClassDB::bind_method(D_METHOD("update", "delta"), &IntroZoom::update);
 	ClassDB::bind_method(D_METHOD("is_playing"), &IntroZoom::is_playing);
+	ClassDB::bind_method(D_METHOD("cancel"), &IntroZoom::cancel);
 	ClassDB::bind_method(D_METHOD("set_intro_duration", "seconds"), &IntroZoom::set_intro_duration);
 	ClassDB::bind_method(D_METHOD("get_intro_duration"), &IntroZoom::get_intro_duration);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "intro_duration"), "set_intro_duration", "get_intro_duration");
@@ -140,6 +141,15 @@ bool IntroZoom::start()
 
 	UtilityFunctions::print("World3D intro zoom started (space → spot)");
 	return true;
+}
+
+void IntroZoom::cancel()
+{
+	if (!playing)
+	{
+		return;
+	}
+	finish();
 }
 
 int IntroZoom::update(double delta)

@@ -578,7 +578,9 @@ var _pending_terrain_init_start_msec: int = 0
 # If terrain elevation never streams in within this window, give up waiting
 # and initialise JSBSim at a fallback elevation so the user isn't stranded
 # on the loading screen.
-const TERRAIN_INIT_FALLBACK_MSEC: int = 12000
+const TERRAIN_INIT_FALLBACK_MSEC: int = 12000   # idle-streamer window before the globe fallback
+const TERRAIN_INIT_HARD_CAP_MSEC: int = 90000   # absolute cap on waiting for the precise tile
+var _terrain_init_last_busy_msec: int = 0
 
 # Initialize JSBSim with correct terrain elevation at startup
 # This must be called BEFORE JSBSim runs its physics, setting terrain during IC
@@ -586,6 +588,7 @@ func _initialize_jsbsim_on_terrain() -> void:
 	# Store for deferred initialization in first physics frame
 	_pending_terrain_init = true
 	_pending_terrain_init_start_msec = Time.get_ticks_msec()
+	_terrain_init_last_busy_msec = 0
 	print("=== Terrain initialization queued for first physics frame ===")
 
 
@@ -1151,8 +1154,13 @@ func _do_deferred_terrain_init() -> void:
 	# jumping ~100+ m when the fine tile loads.
 	var api_height: float = _scenery_elevation_geodetic(target_ll.x, target_ll.y)
 	if is_nan(api_height):
-		var waited := Time.get_ticks_msec() - _pending_terrain_init_start_msec
-		if waited < TERRAIN_INIT_FALLBACK_MSEC:
+		var now := Time.get_ticks_msec()
+		if _scenery_streamer_busy() or _terrain_init_last_busy_msec == 0:
+			_terrain_init_last_busy_msec = now
+		var waited := now - _pending_terrain_init_start_msec
+		# Wait while tiles are still streaming (the fallback window counts from
+		# the last busy moment), never longer than the hard cap.
+		if now - _terrain_init_last_busy_msec < TERRAIN_INIT_FALLBACK_MSEC and waited < TERRAIN_INIT_HARD_CAP_MSEC:
 			_pending_terrain_init = true
 			return
 		# No detailed patch here (outside CH/BW, or partial install): fall back to
@@ -1210,7 +1218,16 @@ func _process_rebase_cooldown() -> void:
 	if not terrain_initialized:
 		return
 	var pin := _terrain_elevation.get_teleport_pin_pos()
-	_terrain_elevation.process_rebase(jsb_node, _terrain_elevation_below(pin), is_instance_valid(scenery3d_node))
+	var g := _geodetic_of(pin)
+	_terrain_elevation.process_rebase(jsb_node, _scenery_elevation_geodetic(g.x, g.y), _globe_elevation_geodetic(g.x, g.y), is_instance_valid(scenery3d_node), _scenery_streamer_busy())
+
+
+## True while the Scenery3D tile streamer still has pending tile work.
+func _scenery_streamer_busy() -> bool:
+	var tm = _get_tile_manager()
+	if tm != null and tm.has_method("get_pending_count"):
+		return int(tm.get_pending_count()) > 0
+	return false
 
 func _update_terrain_elevation() -> void:
 	## Push the terrain elevation under the aircraft to JSBSim's ground-collision
@@ -2142,7 +2159,22 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 		_do_first_flight(swiss_e, swiss_n, heading_deg)
 		_first_flight = false
 	else:
+		# A Fly! during the previous flight's intro zoom: abort the zoom first.
+		# The loading screen blocks the zoom from advancing, and the intro
+		# camera parked in space over the OLD airport would keep the tile
+		# streamer there — the precise tile at the destination never loads.
+		_cancel_intro_zoom()
 		_on_teleport_requested(swiss_e, swiss_n, heading_deg)
+
+
+func _cancel_intro_zoom() -> void:
+	if not _intro_playing:
+		return
+	_intro_zoom.cancel()
+	_intro_playing = false
+	camera_mode = CameraMode.ORBIT
+	active_camera = camera2
+	_show_intro_hud(false)
 
 
 func _show_scenery_error_dialog(message: String) -> void:
@@ -2341,7 +2373,7 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	# Runway surface sits y_offset (0.1 m) above raw terrain;
 	# gear_height accounts for model origin being above the wheels.
 	var runway_surface_offset := 0.1
-	var gear_height := 2.0
+	var gear_height := 0.5  # same hair-above-ground spawn as the first flight
 	ac_node.global_transform = _ac_transform_at(swiss_e, swiss_n, terrain_height + runway_surface_offset + gear_height, heading_deg, ac_node.scale)
 
 	print("  New ECEF pos: ", ac_node.global_position)
@@ -2361,6 +2393,14 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 
 	# Arm the rebase cooldown (C++ module): pin the AC here while JSBSim stabilises.
 	_terrain_elevation.start_rebase(ac_node.global_position)
+	# The tile streamer follows the viewport camera: make sure it is one that
+	# rides with the pinned aircraft, or the destination tiles never load.
+	var cur := get_viewport().get_camera_3d()
+	if cur == null or not ac_node.is_ancestor_of(cur):
+		var cam: Camera3D = camera2 if camera_mode == CameraMode.ORBIT else camera1
+		if is_instance_valid(cam):
+			cam.current = true
+			active_camera = cam
 
 	print("=== TELEPORT COMPLETE ===")
 
