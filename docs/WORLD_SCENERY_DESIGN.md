@@ -750,6 +750,30 @@ ECEF → LV95 in the shader). Headless test `tests/smoke_scenery_ecef.tscn`
 grid within 1.2 mm, up axis = ellipsoid normal, chunk bases orthonormal at
 −30 m, elevation via geodetic/world entry points identical.
 | C2 | Host on ECEF: node tree, JSBSim bridge, cameras, slew, HUD, sky, VFR map, spawn/teleport, intro zoom; globe at identity | app headless: spawn LSZH, `|AC.origin|` ≈ R+h, JSBSim lat/lon == spawn, tile manager streams; check flights LSZH then ENGM (runway alignment, coastline, horizon at altitude) |
+*C2 implemented (2026-09-18, awaiting check flights).* `src/geo_frame.h`
+(ECEF ↔ geodetic, WUN basis, aircraft basis/heading helpers). JSBGodot
+`ecef_frame`: ICs via `SetGeodLatitudeDegIC`/`SetLongitudeDegIC` at the true
+location with the TRUE heading, per tick `origin = GetLocation()` (ft → m)
+and `basis = Tb2ec` columns mapped body (X fwd, Y right, Z down) → node
+(X = −right, Y = up, Z = fwd) with the node scale preserved; no fake
+location, no heading mirror; `reinitialize_from_pose(ac_global, kts,
+terrain)` replaces the flat re-inits; `get_pitch_deg/get_roll_deg` added.
+SlewMode/TerrainElevation/CameraRig/IntroZoom/Atmosphere gained `set_ecef`
+(local WUN frame per update, pin height along local up, orbit/chase in the
+local frame, intro straight up the normal with a north-up hint, geodetic
+altitude ramps); VfrMap `update_lv95`. node_3d.gd: `_ac_transform_at`,
+`_ac_true_heading`, `_geodetic_of`, `_ecef_of_lv95`; elevation queries are
+geodetic; spawn/teleport build ECEF poses; HUD shows ECEF + LV95 + true
+heading; the rebase machinery is gone and GlobeMount is the identity with
+mask frame 1. sky_atmosphere.gd derives the observer from the camera's
+geodetic position, keeps the scattering sphere tangent under the camera
+(centre = cam − n·(R+h)) and rotates the NOAA sun vector into ECEF.
+Scene: `frame_mode = 1` on Scenery3D and Vegetation; the welcome screen
+passes TRUE runway headings again (thresholds stay in the grid). Headless:
+`tests/smoke_ecef_spawn.tscn` (welcome path at LSZH: node and JSBSim agree
+on lat/lon/heading/altitude/pitch/roll to 0.01, ground creep forward only,
+3681 tiles around the ECEF camera); aircraft-swap, VFR-map, globe-mask and
+projection smokes updated/green.
 | C3 | Remove flat-frame code paths (rebase, TERRAIN_CENTER), per-region CRS grids with UTM support (D6), docs | smoke tests green; existing CH/BW/Norway packs unchanged |
 
 ## See also

@@ -37,6 +37,7 @@ namespace jsbgodot
 
     public:
         static void _bind_methods();
+        bool ecef = false;
 
         // ── Node registration (session-stable; no reset needed) ──
         // world_env = the scene WorldEnvironment's Environment resource
@@ -44,6 +45,8 @@ namespace jsbgodot
         // (a Node3D under GlobeMount). Captures the fog/background/ambient/
         // glow base values from world_env.
         void register_nodes(Environment *world_env, Node3D *globe_node);
+        // ECEF world: altitude = geodetic height of the camera.
+        void set_ecef(bool p_ecef);
 
         // ── Per-frame update ──
         // Reads the active 3D camera from the viewport and applies the

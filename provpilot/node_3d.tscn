@@ -138,6 +138,7 @@ load_radius = 8
 far_radius = 200
 origin_east = 2682880.0
 origin_north = 1283072.0
+frame_mode = 1
 data_paths = PackedStringArray()
 buildings_paths = PackedStringArray()
 water_paths = PackedStringArray()
@@ -147,6 +148,7 @@ top_level = true
 [node name="Vegetation" type="S3DVegetationManager" parent="." unique_id=147336970]
 origin_east = 2682880.0
 origin_north = 1283072.0
+frame_mode = 1
 load_radius_m = 1500
 scale_jitter = 0.15
 height_to_mesh_unit = 0.06

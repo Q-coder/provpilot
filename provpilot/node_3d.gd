@@ -176,16 +176,11 @@ const USE_WORLD3D_GLOBE := true
 var globe_node: Node = null            # W3DGlobe (under GlobeMount)
 var _globe_mount: Node3D = null        # carries inverse-ECEF transform
 var _w3d_coords = null                 # W3DCoords instance for conversions
-# flat local (X=West, Y=Up, Z=North) at the LV95 origin -> ECEF metres.
-var _ecef_from_flat: Transform3D = Transform3D.IDENTITY
-# Continuous rebase tracking (design §8.1 Phase 2, decision D2): re-anchor
-# the globe tangent point once the AC has moved this far from it, so the
-# d²/2R sag never grows and the mount only ever moves at (quantized)
-# aircraft speed — no discrete transform events in flight. A parked AC costs
-# nothing (the distance check skips the re-anchor).
-const GLOBE_REBASE_TRACK_M := 500.0
-var _globe_anchor_flat: Vector2 = Vector2.ZERO
-var _globe_has_anchor := false
+# The world is WGS84 ECEF (design §9.5, step C): the globe sits at the
+# origin, Scenery3D places tiles on the ellipsoid (frame_mode 1), the
+# aircraft node carries an ECEF position + body-to-ECEF basis. LV95 E/N is
+# only a data/grid coordinate now (spawn targets, HUD, VFR map, coverage
+# mask); see _ecef_of_lv95 / _geodetic_of.
 # Coarse-globe suppression (design §8.1 iteration 4 / §9 D8): the globe is
 # hidden PER FRAGMENT wherever Scenery3D geometry is resident. The tile
 # manager reports a per-tile coverage mask (one byte per 1 km tile around
@@ -621,50 +616,80 @@ func _flip_normals_recursive(node: Node, prefix: String) -> void:
 ## Callers that need a numeric fallback should check is_nan() explicitly —
 ## feeding 0.0 to JSBSim as ground elevation causes catastrophic ground impact
 ## spikes when the real tile (hundreds of metres ASL) finally loads.
-## Query terrain elevation at a world XZ position.
-## Prefers the precise scenery3d patch (Swiss/BW); falls back to the coarse
-## whole-planet world3d globe so the aircraft always has ground beneath it when
-## flying beyond the detailed patch. Returns NAN only if neither has data.
-func _terrain_elevation_at(x: float, z: float) -> float:
-	var h: float = _scenery_elevation_at(x, z)
+## Query terrain elevation at a WGS84 point (degrees).
+## Prefers the precise scenery3d patch (Swiss/BW/...); falls back to the
+## coarse whole-planet world3d globe so the aircraft always has ground beneath
+## it beyond the detailed patches. Returns NAN only if neither has data.
+func _terrain_elevation_geodetic(lat: float, lon: float) -> float:
+	var h: float = _scenery_elevation_geodetic(lat, lon)
 	if not is_nan(h):
 		return h
-	return _globe_elevation_at(x, z)
+	return _globe_elevation_geodetic(lat, lon)
+
+
+## Same, for a world (ECEF) position.
+func _terrain_elevation_below(world_pos: Vector3) -> float:
+	var g := _geodetic_of(world_pos)
+	return _terrain_elevation_geodetic(g.x, g.y)
 
 
 ## Precise scenery3d elevation (NAN if no node / method / data / tile not loaded).
-func _scenery_elevation_at(x: float, z: float) -> float:
+func _scenery_elevation_geodetic(lat: float, lon: float) -> float:
 	if not is_instance_valid(scenery3d_node):
 		return NAN
-	if not scenery3d_node.has_method("get_elevation"):
+	if not scenery3d_node.has_method("get_elevation_geodetic"):
 		return NAN
-	var h: float = scenery3d_node.get_elevation(x, z)
-	# Older Scenery3D builds returned 0.0 (not NaN) for unloaded tiles; Swiss/BW
-	# terrain is never at 0 m ASL, so treat 0.0 as "no data" defensively.
+	var h: float = scenery3d_node.get_elevation_geodetic(lat, lon)
+	# Swiss/BW terrain is never at exactly 0 m ASL; treat 0.0 as "no data".
 	if h == 0.0 or is_nan(h):
 		return NAN
 	return h
 
 
 ## Coarse whole-planet globe elevation (NAN if the globe is unavailable).
-func _globe_elevation_at(x: float, z: float) -> float:
-	if not (USE_WORLD3D_GLOBE and is_instance_valid(globe_node) and _w3d_coords != null):
+func _globe_elevation_geodetic(lat: float, lon: float) -> float:
+	if not (USE_WORLD3D_GLOBE and is_instance_valid(globe_node)):
 		return NAN
-	var ecef: Vector3 = _ecef_from_flat * Vector3(x, 0.0, z)
-	var geo: Vector3 = _w3d_coords.ecef_to_geodetic(ecef)  # (lat, lon, height)
-	var gh: float = globe_node.get_elevation(geo.x, geo.y)
+	var gh: float = globe_node.get_elevation(lat, lon)
 	if is_nan(gh):
 		return NAN
 	return gh
 
 
-## Mount the world3d global globe into the flat ProvPilot frame.
-## The globe renders in ECEF (~6.4 M m); we give GlobeMount the inverse of the
-## tangent frame at the LV95 origin so the globe's origin surface point lands at
-## the flat frame origin. _rebase_globe_to() later moves this tangent point onto
-## each destination airport (the flat frame itself never changes). The globe
-## reads the camera via to_local(), so it still computes the correct ECEF
-## camera position for LOD/streaming internally.
+## ── ECEF helpers (design §9.5) ──────────────────────────────────────────
+## (lat, lon, h) of a world position.
+func _geodetic_of(world_pos: Vector3) -> Vector3:
+	return W3DCoords.ecef_to_geodetic(world_pos)
+
+
+## World (ECEF) position of an LV95 point at height h (metres, ellipsoidal = ASL).
+func _ecef_of_lv95(e: float, n: float, h: float) -> Vector3:
+	var ll: Vector2 = Geo.lv95_to_wgs84(e, n)
+	return W3DCoords.geodetic_to_ecef(ll.x, ll.y, h)
+
+
+## Level aircraft transform at an LV95 point: nose (+Z local) along a TRUE
+## heading, up = ellipsoid normal, the node's scale preserved.
+func _ac_transform_at(e: float, n: float, h: float, true_heading_deg: float, scale: Vector3) -> Transform3D:
+	var ll: Vector2 = Geo.lv95_to_wgs84(e, n)
+	var wun: Transform3D = W3DCoords.enu_to_ecef_transform(ll.x, ll.y, h, true)
+	var yaw := Basis(Vector3.UP, -deg_to_rad(true_heading_deg))
+	var b: Basis = wun.basis * yaw
+	b = Basis(b.x * scale.x, b.y * scale.y, b.z * scale.z)
+	return Transform3D(b, wun.origin)
+
+
+## TRUE heading (deg) of the aircraft node from its basis (nose = local +Z).
+func _ac_true_heading(ac: Node3D) -> float:
+	var g := _geodetic_of(ac.global_position)
+	var wun: Transform3D = W3DCoords.enu_to_ecef_transform(g.x, g.y, 0.0, true)
+	var f: Vector3 = wun.basis.transposed() * ac.global_transform.basis.z.normalized()
+	return fposmod(rad_to_deg(atan2(-f.x, f.z)), 360.0)
+
+
+## Mount the world3d global globe: the world IS ECEF, so the mount is the
+## identity and the coverage mask is looked up in LV95 grid metres by the
+## globe shader (mask frame 1: fragment ECEF -> LV95).
 func _setup_world3d_globe() -> void:
 	if not USE_WORLD3D_GLOBE:
 		return
@@ -678,14 +703,17 @@ func _setup_world3d_globe() -> void:
 		globe_node = null
 		return
 	_w3d_coords = ClassDB.instantiate("W3DCoords")
-	var ll: Vector2 = Geo.lv95_to_wgs84(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
-	var origin_lat: float = ll.x
-	var origin_lon: float = ll.y
-	var origin_h: float = 0.0
-	# forward transform: flat local (X=West, Y=Up, Z=North) -> ECEF metres.
-	_ecef_from_flat = _w3d_coords.enu_to_ecef_transform(origin_lat, origin_lon, origin_h, true)
-	# Map the ECEF globe back into the flat frame.
-	_globe_mount.transform = _ecef_from_flat.affine_inverse()
+	_globe_mount.transform = Transform3D.IDENTITY
+	if globe_node.has_method("set_coverage_mask_frame"):
+		globe_node.set_coverage_mask_frame(1)
+	# Every C++ module reasons in the local West-Up-North frame now.
+	_slew_mode.set_ecef(true)
+	_terrain_elevation.set_ecef(true)
+	_camera_rig.set_ecef(true)
+	_intro_zoom.set_ecef(true)
+	_atmosphere.set_ecef(true)
+	if jsb_node:
+		jsb_node.set_ecef_frame(true)
 	# Cameras must reach the global horizon (default far was 200 km).
 	if camera1:
 		camera1.far = 12000000.0
@@ -706,61 +734,18 @@ func _setup_world3d_globe() -> void:
 	# Register the cinematic intro zoom nodes (session-stable; the dedicated
 	# intro camera was created just above).
 	_intro_zoom.register_nodes(get_node_or_null("AC"), _intro_camera, camera1, camera2, _camera_rig)
-	print("World3D globe mounted: LV95 %d/%d -> lat=%.5f lon=%.5f" % [
-		int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N), origin_lat, origin_lon])
+	print("World3D globe mounted at the ECEF origin (world frame = ECEF)")
 
 
-## Move the globe tangent point under a flat-frame position so the coarse
-## globe sits beneath the aircraft instead of beneath the LV95 origin. The
-## flat frame itself stays fixed for the whole session (Scenery3D tiles,
-## JSBSim and all C++ modules use it); only the ECEF<->flat mapping moves:
-## _ecef_from_flat becomes F_a * T(-P_a) where F_a is the tangent frame at
-## (lat, lon) and P_a is that point's flat position. The mount takes the
-## inverse, so W3DGlobe's to_local(camera) LOD/streaming still sees a correct
-## ECEF camera, and _globe_elevation_at() keeps its formula unchanged.
-## lat/lon come from Geo.lv95_to_wgs84 (rigorous LV95, design §9 D7 — the
-## anchor is exact everywhere the LV95 frame is used).
-func _rebase_globe_to(flat_x: float, flat_z: float, lat_deg: float, lon_deg: float, quiet := false) -> void:
-	# Keep the sun/observer in sync so solar elevation and local mean-solar
-	# time match the new region (sky_atmosphere.gd reads these every frame).
-	_sky.observer_lat = lat_deg
-	_sky.observer_lon = lon_deg
-	if not (USE_WORLD3D_GLOBE and is_instance_valid(globe_node) and _w3d_coords != null):
-		return
-	var f_local: Transform3D = _w3d_coords.enu_to_ecef_transform(lat_deg, lon_deg, 0.0, true)
-	_ecef_from_flat = f_local * Transform3D(Basis.IDENTITY, Vector3(-flat_x, 0.0, -flat_z))
-	_globe_mount.transform = _ecef_from_flat.affine_inverse()
-	# Bookkeeping for the continuous tracker: this is now the anchor.
-	_globe_anchor_flat = Vector2(flat_x, flat_z)
-	_globe_has_anchor = true
-	if not quiet:
-		print("World3D globe rebased to airport: flat(%.0f, %.0f) -> lat=%.5f lon=%.5f" % [
-			flat_x, flat_z, lat_deg, lon_deg])
-
-
-## Continuous globe tracking (design §8.1 Phase 2 / decision D2): keep the
-## tangent point under the aircraft so the coarse globe stays glued to the
-## flat patch everywhere instead of sagging d²/2R away from it as you fly.
-## Re-anchors at most once per GLOBE_REBASE_TRACK_M of travel, so a parked AC
-## costs nothing and in flight the mount moves at (quantized) aircraft speed —
-## no discrete transform events, and the one-shot destination rebase in
-## _on_welcome_flight_requested() remains the initial anchor under the loading
-## screen. Geo.lv95_to_wgs84 is the rigorous projection (design §9 D7), so
-## globe terrain features line up with the flat patch everywhere in Europe.
-func _track_globe_rebase() -> void:
-	if not (USE_WORLD3D_GLOBE and is_instance_valid(globe_node) and _w3d_coords != null):
-		return
+## Keep the sky's observer (sun position, local time) in sync with where
+## the aircraft is. Cheap; the sky script also derives its own from the camera.
+func _update_observer_from_ac() -> void:
 	var ac := $AC as Node3D
 	if not ac:
 		return
-	var p: Vector3 = ac.global_position
-	var q := Vector2(p.x, p.z)
-	if _globe_has_anchor and _globe_anchor_flat.distance_squared_to(q) < GLOBE_REBASE_TRACK_M * GLOBE_REBASE_TRACK_M:
-		return
-	# Flat X is West-positive around TERRAIN_CENTER_E (see the _ecef_from_flat
-	# comment), so LV95 easting = CENTER_E - x, northing = CENTER_N + z.
-	var ll: Vector2 = Geo.lv95_to_wgs84(TERRAIN_CENTER_E - p.x, TERRAIN_CENTER_N + p.z)
-	_rebase_globe_to(p.x, p.z, ll.x, ll.y, true)
+	var g := _geodetic_of(ac.global_position)
+	_sky.observer_lat = g.x
+	_sky.observer_lon = g.y
 
 
 ## Upload Scenery3D's live coverage mask to the globe as its suppression mask
@@ -782,13 +767,16 @@ func _refresh_globe_suppress_rects() -> void:
 	# viewport's current camera); fall back to the AC when none is active.
 	var c := Vector2.ZERO
 	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
+	var p3 := Vector3.ZERO
 	if cam:
-		c = Vector2(cam.global_position.x, cam.global_position.z)
+		p3 = cam.global_position
 	else:
 		var ac := $AC as Node3D
 		if not ac:
 			return
-		c = Vector2(ac.global_position.x, ac.global_position.z)
+		p3 = ac.global_position
+	# 2D proxy of the 3D position for the "moved ≥ 32 m" check.
+	c = Vector2(p3.x + p3.y, p3.z - p3.y)
 
 	var tm = _get_tile_manager()
 	var gen := -1
@@ -812,9 +800,9 @@ func _refresh_globe_suppress_rects() -> void:
 ## _refresh_globe_suppress_rects). Kept separate so the smoke test can feed a
 ## synthetic mask without data files. cells is (2*r_tiles+1)² bytes,
 ## row-major (row = north tile, column = east tile), centred on tile
-## (cam_ei, cam_ni); each cell spans tile_m metres. The mask maps flat-frame
-## XZ to cells: X = TERRAIN_CENTER_E - E runs opposite to the east index
-## (negative step), Z = N - TERRAIN_CENTER_N runs with it.
+## (cam_ei, cam_ni); each cell spans tile_m metres. The mask plane is LV95
+## grid metres (mask frame 1): origin = the SW corner of the grid, step
+## +tile_m along E and N; the globe shader projects each fragment to LV95.
 func _push_suppress_from_coverage(cells: PackedByteArray, r_tiles: int,
 		cam_ei: int, cam_ni: int, tile_m: float) -> void:
 	var n := 2 * r_tiles + 1
@@ -823,8 +811,16 @@ func _push_suppress_from_coverage(cells: PackedByteArray, r_tiles: int,
 		return
 	var e0 := float(cam_ei - r_tiles) * tile_m
 	var n0 := float(cam_ni - r_tiles) * tile_m
-	globe_node.set_coverage_mask(cells, n,
-			TERRAIN_CENTER_E - e0, n0 - TERRAIN_CENTER_N, -tile_m, tile_m)
+	globe_node.set_coverage_mask(cells, n, e0, n0, tile_m, tile_m)
+
+
+## VFR map drive: ECEF position -> LV95, true heading -> LV95 grid heading
+## (the map is drawn in the grid frame).
+func _feed_vfr_map(world_pos: Vector3, true_heading_deg: float, ui_up: bool) -> void:
+	var g := _geodetic_of(world_pos)
+	var lv: Vector2 = Geo.wgs84_to_lv95(g.x, g.y)
+	var grid_hdg := fposmod(true_heading_deg + Geo.lv95_grid_convergence_deg(g.x, g.y), 360.0)
+	_vfr_map.update_lv95(lv.x, lv.y, grid_hdg, ui_up)
 
 
 ## The Scenery3D tile manager (source of the live coverage grid), or null when
@@ -893,26 +889,29 @@ func _do_deferred_terrain_init() -> void:
 	# Use the position/heading already set by _do_first_flight on the AC node.
 	# JSBSim's _physics_process may try to overwrite ac_node.global_position
 	# from its own (default) IC before we get here, so re-apply the target.
-	var target_x: float
-	var target_z: float
+	var target_e: float
+	var target_n: float
 	var target_heading: float
-	if _first_flight_target.has("godot_x"):
-		target_x = _first_flight_target["godot_x"]
-		target_z = _first_flight_target["godot_z"]
+	if _first_flight_target.has("swiss_e"):
+		target_e = _first_flight_target["swiss_e"]
+		target_n = _first_flight_target["swiss_n"]
 		target_heading = _first_flight_target["heading_deg"]
 	else:
 		push_error("_do_deferred_terrain_init: _first_flight_target empty — using current AC position as fallback")
-		target_x = ac_node.global_position.x
-		target_z = ac_node.global_position.z
-		target_heading = -rad_to_deg(ac_node.rotation.y)
+		var g0 := _geodetic_of(ac_node.global_position)
+		var lv0: Vector2 = Geo.wgs84_to_lv95(g0.x, g0.y)
+		target_e = lv0.x
+		target_n = lv0.y
+		target_heading = _ac_true_heading(ac_node)
+	var target_ll: Vector2 = Geo.lv95_to_wgs84(target_e, target_n)
 
 	# Print the target only once per second while we wait for terrain to
 	# stream in — otherwise this fires 60×/sec and floods the log.
 	_terrain_init_print_timer -= 1
 	if _terrain_init_print_timer <= 0:
 		_terrain_init_print_timer = 60
-		print("=== _do_deferred_terrain_init target: x=%.1f z=%.1f hdg=%.1f° (dict_keys=%s) ===" % [
-			target_x, target_z, target_heading, str(_first_flight_target.keys())])
+		print("=== _do_deferred_terrain_init target: E=%.0f N=%.0f hdg=%.1f° (dict_keys=%s) ===" % [
+			target_e, target_n, target_heading, str(_first_flight_target.keys())])
 		# Diagnostic: which Camera3D is the viewport actually streaming around?
 		var vp := get_viewport()
 		var active_cam: Camera3D = vp.get_camera_3d() if vp else null
@@ -929,16 +928,10 @@ func _do_deferred_terrain_init() -> void:
 			print("    [cam diag] active=<null> cam1.current=%s cam2.current=%s AC.pos=(%.1f, %.1f, %.1f)" % [
 				str(cam1_cur), str(cam2_cur), ac_pos.x, ac_pos.y, ac_pos.z])
 
-	# Move aircraft to target position
-	ac_node.global_position.x = target_x
-	ac_node.global_position.z = target_z
-	ac_node.rotation.y = -deg_to_rad(target_heading)
-
-	var start_pos = Vector3(ac_node.global_position.x, 0, ac_node.global_position.z)
 	# Spawn on the PRECISE scenery3d patch when available: wait for the Swiss/BW
 	# tile to stream in rather than initialising on the coarse globe and then
 	# jumping ~100+ m when the fine tile loads.
-	var api_height: float = _scenery_elevation_at(start_pos.x, start_pos.z)
+	var api_height: float = _scenery_elevation_geodetic(target_ll.x, target_ll.y)
 	if is_nan(api_height):
 		var waited := Time.get_ticks_msec() - _pending_terrain_init_start_msec
 		if waited < TERRAIN_INIT_FALLBACK_MSEC:
@@ -946,20 +939,20 @@ func _do_deferred_terrain_init() -> void:
 			return
 		# No detailed patch here (outside CH/BW, or partial install): fall back to
 		# the coarse global globe so we can still spawn instead of hanging.
-		api_height = _globe_elevation_at(start_pos.x, start_pos.z)
+		api_height = _globe_elevation_geodetic(target_ll.x, target_ll.y)
 		if is_nan(api_height):
 			api_height = 0.0
-		push_warning("Scenery patch elevation unavailable at (%.0f, %.0f) after %.0fs — spawning on globe/fallback elevation %.0f m ASL" % [start_pos.x, start_pos.z, waited / 1000.0, api_height])
+		push_warning("Scenery patch elevation unavailable at E=%.0f N=%.0f after %.0fs — spawning on globe/fallback elevation %.0f m ASL" % [target_e, target_n, waited / 1000.0, api_height])
 	else:
-		print("=== Scenery3D get_elevation(%.1f, %.1f) = %.1f m ===" % [start_pos.x, start_pos.z, api_height])
+		print("=== Scenery3D elevation at E=%.0f N=%.0f = %.1f m ===" % [target_e, target_n, api_height])
 
-	# Position aircraft on the terrain (Godot Y coordinate)
+	# Place the aircraft on the terrain (ECEF pose, level, true heading).
 	# JSBSim will take over position control after initialization.
 	# Spawn just a hair above terrain so JSBSim's gear springs barely have to settle.
 	var gear_height = 0.5
 	var new_y = api_height + gear_height
-	print("=== Initial aircraft position at Godot Y: %.1f m (terrain: %.1f m) ===" % [new_y, api_height])
-	ac_node.global_position.y = new_y
+	print("=== Initial aircraft height: %.1f m ASL (terrain: %.1f m) ===" % [new_y, api_height])
+	ac_node.global_transform = _ac_transform_at(target_e, target_n, new_y, target_heading, ac_node.scale)
 
 	# For JSBSim we need real ASL elevation — Scenery3D Y is already ASL. The Godot
 	# Y -> JSBSim ASL offset is owned by the C++ TerrainElevation module (used for
@@ -997,7 +990,7 @@ func _process_rebase_cooldown() -> void:
 	if not terrain_initialized:
 		return
 	var pin := _terrain_elevation.get_teleport_pin_pos()
-	_terrain_elevation.process_rebase(jsb_node, _terrain_elevation_at(pin.x, pin.z), is_instance_valid(scenery3d_node))
+	_terrain_elevation.process_rebase(jsb_node, _terrain_elevation_below(pin), is_instance_valid(scenery3d_node))
 
 func _update_terrain_elevation() -> void:
 	## Push the terrain elevation under the aircraft to JSBSim's ground-collision
@@ -1009,7 +1002,7 @@ func _update_terrain_elevation() -> void:
 	var ac = get_node_or_null("AC")
 	if ac == null:
 		return
-	_terrain_elevation.update_terrain_elevation(jsb_node, _terrain_elevation_at(ac.global_position.x, ac.global_position.z), is_instance_valid(scenery3d_node))
+	_terrain_elevation.update_terrain_elevation(jsb_node, _terrain_elevation_below(ac.global_position), is_instance_valid(scenery3d_node))
 
 
 # Called every frame. 'delta' is the elapsed time since the previous frame.
@@ -1038,10 +1031,8 @@ func _process(delta: float) -> void:
 		_update_loading_progress(true)  # fly-to-destination loading
 		return
 
-	# Continuous globe rebase tracking (design §8.1 Phase 2): keep the tangent
-	# point under the aircraft so the coarse globe never sags away from the
-	# flat patch. No-op while parked; runs in flight, slew and position dialog.
-	_track_globe_rebase()
+	# Sun/local-time observer follows the aircraft (ECEF world: no rebase).
+	_update_observer_from_ac()
 	# Keep the coarse-globe suppression clipped to Scenery3D's live coverage
 	# square around the camera (no holes to space beyond the streaming radius).
 	_refresh_globe_suppress_rects()
@@ -1060,10 +1051,9 @@ func _process(delta: float) -> void:
 			# (rotation.y = -visual heading, see teleport + SlewMode reinit).
 			var ac := $AC as Node3D
 			if ac:
-				var slew_heading := fmod(-rad_to_deg(ac.rotation.y) + 360.0, 360.0)
-				_vfr_map.update(ac.global_position, slew_heading, _vfr_ui_up)
+				_feed_vfr_map(ac.global_position, _ac_true_heading(ac), _vfr_ui_up)
 		else:
-			_vfr_map.update(jsb_node.get_godot_position(), jsb_node.get_heading(), _vfr_ui_up)
+			_feed_vfr_map(jsb_node.get_godot_position(), jsb_node.get_heading(), _vfr_ui_up)
 
 	# Skip all flight logic while welcome or settings overlay is visible
 	if _welcome_screen and _welcome_screen.visible:
@@ -1130,7 +1120,7 @@ func _process(delta: float) -> void:
 		JoystickConfig.get_axis("slew_forward"),
 		JoystickConfig.get_axis("slew_yaw"),
 		JoystickConfig.get_axis("slew_vertical"),
-		_terrain_elevation_at($AC.global_position.x, $AC.global_position.z),
+		_terrain_elevation_below($AC.global_position),
 		JoystickConfig.get_active_device())
 	if slewing:
 		if Input.is_action_just_pressed("flip_camera"):
@@ -1176,21 +1166,15 @@ func _process(delta: float) -> void:
 		throttle_label.text = "Throttle: " +str(round(throttle_percent)) + " %"
 		
 		# Coordinate display
-		var godot_pos = jsb_node.get_godot_position()
-		# Convert Godot position to Swiss LV95 coordinates
-		# Godot X = TERRAIN_CENTER_E - Swiss_E  =>  Swiss_E = TERRAIN_CENTER_E - Godot_X
-		# Godot Z = Swiss_N - TERRAIN_CENTER_N  =>  Swiss_N = TERRAIN_CENTER_N + Godot_Z
-		var swiss_e = TERRAIN_CENTER_E - godot_pos.x
-		var swiss_n = TERRAIN_CENTER_N + godot_pos.z
-		$Control/Label6.text = "Godot: X=%.1f Y=%.1f Z=%.1f" % [godot_pos.x, godot_pos.y, godot_pos.z]
-		$Control/Label7.text = "Swiss E: %s, N: %s" % [format_swiss_coord(swiss_e), format_swiss_coord(swiss_n)]
+		var godot_pos = jsb_node.get_godot_position()  # ECEF metres
+		var g := _geodetic_of(godot_pos)
+		var lv: Vector2 = Geo.wgs84_to_lv95(g.x, g.y)
+		$Control/Label6.text = "ECEF: X=%.0f Y=%.0f Z=%.0f" % [godot_pos.x, godot_pos.y, godot_pos.z]
+		$Control/Label7.text = "Swiss E: %s, N: %s" % [format_swiss_coord(lv.x), format_swiss_coord(lv.y)]
 		# Prime Meridian (WGS84) display — world-scenery design §3.4
-		var ll: Vector2 = Geo.lv95_to_wgs84(swiss_e, swiss_n)
-		$Control/Label9.text = "PM: " + format_pm_coord(ll.x, true) + "  " + format_pm_coord(ll.y, false)
-		# JSBSim's psi is a heading in the LV95 GRID frame (grid north = +Z);
-		# show the TRUE heading a compass would read (grid - convergence).
-		var true_heading := fposmod(heading - Geo.lv95_grid_convergence_deg(ll.x, ll.y), 360.0)
-		heading_label.text = "Heading: " + str(round(true_heading))
+		$Control/Label9.text = "PM: " + format_pm_coord(g.x, true) + "  " + format_pm_coord(g.y, false)
+		# JSBSim runs at the true location: psi IS the true heading.
+		heading_label.text = "Heading: " + str(round(heading))
 	else:
 		$Label.text = "JSBGodot node not found."
 
@@ -1743,38 +1727,35 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 	## blending, hard timeout safety net and completion state machine live in the
 	## C++ LoadingProgress module; it reports the bar value + status text.
 	const RING_RADIUS_M := 200.0  # Sample radius around target (≈ tile size)
-	var sample_x := 0.0
-	var sample_z := 0.0
-	if is_fly_loading and _first_flight_target.has("godot_x"):
-		sample_x = float(_first_flight_target["godot_x"])
-		sample_z = float(_first_flight_target["godot_z"])
+	var sample_e := 0.0
+	var sample_n := 0.0
+	if is_fly_loading and _first_flight_target.has("swiss_e"):
+		sample_e = float(_first_flight_target["swiss_e"])
+		sample_n = float(_first_flight_target["swiss_n"])
 	else:
 		var ac_node := get_node_or_null("AC")
 		if ac_node:
-			sample_x = ac_node.global_position.x
-			sample_z = ac_node.global_position.z
+			var g := _geodetic_of(ac_node.global_position)
+			var lv: Vector2 = Geo.wgs84_to_lv95(g.x, g.y)
+			sample_e = lv.x
+			sample_n = lv.y
 
 	var samples := [
-		Vector2(sample_x, sample_z),
-		Vector2(sample_x + RING_RADIUS_M, sample_z),
-		Vector2(sample_x - RING_RADIUS_M, sample_z),
-		Vector2(sample_x, sample_z + RING_RADIUS_M),
-		Vector2(sample_x, sample_z - RING_RADIUS_M),
+		Vector2(sample_e, sample_n),
+		Vector2(sample_e + RING_RADIUS_M, sample_n),
+		Vector2(sample_e - RING_RADIUS_M, sample_n),
+		Vector2(sample_e, sample_n + RING_RADIUS_M),
+		Vector2(sample_e, sample_n - RING_RADIUS_M),
 	]
 	var total := samples.size()
 	var loaded := 0
-	if USE_WORLD3D_GLOBE:
+	for s in samples:
+		var ll: Vector2 = Geo.lv95_to_wgs84(s.x, s.y)
 		# The globe has whole-planet elevation immediately, so terrain is always
 		# "loaded" — this makes the fly-to-airport screen dismiss promptly.
-		for s in samples:
-			var h: float = _terrain_elevation_at(s.x, s.y)
-			if not is_nan(h):
-				loaded += 1
-	elif is_instance_valid(scenery3d_node) and scenery3d_node.has_method("get_elevation"):
-		for s in samples:
-			var h: float = scenery3d_node.get_elevation(s.x, s.y)
-			if not is_nan(h) and h != 0.0:
-				loaded += 1
+		var h: float = _terrain_elevation_geodetic(ll.x, ll.y)
+		if not is_nan(h):
+			loaded += 1
 
 	# Progress blending + timeout safety net + completion live in the C++ module.
 	# It reports the bar value + status text; GDScript still owns the UI and the
@@ -1913,16 +1894,12 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 		_loading_screen.set_status("Loading terrain...")
 		_loading_screen.show_loading()
 
-	# Rebase the coarse globe tangent point under the destination airport so
-	# the horizon/atmosphere and globe-terrain alignment stay correct in far
-	# regions (ENGM is ~1400 km from the LV95 origin, where the fixed Swiss
-	# tangent frame sags the globe ~157 km below the flat terrain). The flat
-	# frame itself is unchanged — only the ECEF<->flat mapping moves.
+	# Sun/observer to the destination now (the loading screen hides the jump);
+	# the coverage mask follows the streamer once tiles arrive.
 	if USE_WORLD3D_GLOBE:
-		var gx := TERRAIN_CENTER_E - swiss_e
-		var gz := swiss_n - TERRAIN_CENTER_N
 		var ll: Vector2 = Geo.lv95_to_wgs84(swiss_e, swiss_n)
-		_rebase_globe_to(gx, gz, ll.x, ll.y)
+		_sky.observer_lat = ll.x
+		_sky.observer_lon = ll.y
 		_suppress_dirty = true
 		_refresh_globe_suppress_rects()
 
@@ -1971,20 +1948,14 @@ func _do_first_flight(swiss_e: float, swiss_n: float, heading_deg: float) -> voi
 		push_error("_do_first_flight: missing AC node")
 		return
 
-	# TERRAIN_CENTER is fixed (matches Scenery3D's origin_east/north from
-	# ProjectSettings). Compute Godot position relative to that origin.
-	print("  Terrain center: E=%d N=%d" % [int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N)])
-	var godot_x = TERRAIN_CENTER_E - swiss_e
-	var godot_z = swiss_n - TERRAIN_CENTER_N
-
-	# 3. Position aircraft at target (Y will be corrected after terrain loads)
-	ac_node.global_position = Vector3(godot_x, 500.0, godot_z)
-	ac_node.rotation.y = -deg_to_rad(heading_deg)
+	# 3. Position aircraft at target (height is corrected after terrain loads):
+	#    ECEF pose on the ellipsoid at the LV95 target, true heading.
+	ac_node.global_transform = _ac_transform_at(swiss_e, swiss_n, 500.0, heading_deg, ac_node.scale)
 
 	# Store target for deferred JSBSim init (uses these in _do_deferred_terrain_init)
 	_first_flight_target = {
-		"godot_x": godot_x,
-		"godot_z": godot_z,
+		"swiss_e": swiss_e,
+		"swiss_n": swiss_n,
 		"heading_deg": heading_deg
 	}
 
@@ -2095,27 +2066,25 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	if jsb_node.has_method("set_slew_mode"):
 		jsb_node.set_slew_mode(true)
 
-	# TERRAIN_CENTER is fixed (matches Scenery3D origin). No rebase — just
-	# compute new Godot position relative to the fixed origin.
-	var new_godot_x = TERRAIN_CENTER_E - swiss_e
-	var new_godot_z = swiss_n - TERRAIN_CENTER_N
-
 	# 8. Get terrain height at new position — sample a grid around the
 	#    threshold and use the maximum, matching the runway mesh approach.
+	#    Offsets are along/across the runway in the LV95 grid (grid heading).
 	var terrain_height := 0.0
 	if is_instance_valid(scenery3d_node):
 		var max_h := -1e9
-		var heading_rad := deg_to_rad(heading_deg)
-		# Sample centre + 4 offsets along/across runway (±25 m each way)
+		var ll0: Vector2 = Geo.lv95_to_wgs84(swiss_e, swiss_n)
+		var heading_rad := deg_to_rad(heading_deg + Geo.lv95_grid_convergence_deg(ll0.x, ll0.y))
+		# Sample centre + 4 offsets along/across runway (±25 m each way): (dE, dN)
 		var offsets: Array = [
-			Vector3(0, 0, 0),
-			Vector3(-sin(heading_rad) * 25.0, 0, cos(heading_rad) * 25.0),
-			Vector3(sin(heading_rad) * 25.0, 0, -cos(heading_rad) * 25.0),
-			Vector3(cos(heading_rad) * 15.0, 0, sin(heading_rad) * 15.0),
-			Vector3(-cos(heading_rad) * 15.0, 0, -sin(heading_rad) * 15.0),
+			Vector2(0, 0),
+			Vector2(sin(heading_rad) * 25.0, cos(heading_rad) * 25.0),
+			Vector2(-sin(heading_rad) * 25.0, -cos(heading_rad) * 25.0),
+			Vector2(cos(heading_rad) * 15.0, -sin(heading_rad) * 15.0),
+			Vector2(-cos(heading_rad) * 15.0, sin(heading_rad) * 15.0),
 		]
 		for off in offsets:
-			var h := _terrain_elevation_at(new_godot_x + off.x, new_godot_z + off.z)
+			var ll: Vector2 = Geo.lv95_to_wgs84(swiss_e + off.x, swiss_n + off.y)
+			var h := _terrain_elevation_geodetic(ll.x, ll.y)
 			if h > max_h:
 				max_h = h
 		if max_h > -1e8:
@@ -2129,17 +2098,15 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	# gear_height accounts for model origin being above the wheels.
 	var runway_surface_offset := 0.1
 	var gear_height := 2.0
-	ac_node.global_position = Vector3(new_godot_x, terrain_height + runway_surface_offset + gear_height, new_godot_z)
-	ac_node.rotation.y = -deg_to_rad(heading_deg)
+	ac_node.global_transform = _ac_transform_at(swiss_e, swiss_n, terrain_height + runway_surface_offset + gear_height, heading_deg, ac_node.scale)
 
-	print("  New Godot pos: ", ac_node.global_position)
-	print("  New center: E=%d N=%d" % [int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N)])
+	print("  New ECEF pos: ", ac_node.global_position)
 
 	# 10. Reinitialize JSBSim at the new position but keep slew mode ON.
 	#     JSBSim stays paused during cooldown; we reinit again when terrain
 	#     has loaded and the cooldown expires (in _process).
-	if jsb_node.has_method("reinitialize_from_godot_position"):
-		jsb_node.reinitialize_from_godot_position(ac_node.global_position, ac_node.rotation.y, terrain_height)
+	if jsb_node.has_method("reinitialize_from_pose"):
+		jsb_node.reinitialize_from_pose(ac_node.global_transform, 0.0, terrain_height)
 	_update_terrain_elevation()
 
 	# 11. Keep JSBSim in slew mode — physics stays paused until cooldown expires.

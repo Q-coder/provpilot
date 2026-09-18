@@ -4,7 +4,9 @@ extends SceneTree
 ## suppress the coarse globe (unloaded cells would otherwise be holes to
 ## space during the intro zoom / after a teleport), and the coverage grid is
 ## uploaded to the globe as a per-fragment mask with no region clipping, so
-## the globe is hidden exactly under resident cells wherever they are.
+## the globe is hidden exactly under resident cells wherever they are. The
+## mask plane is LV95 grid metres (globe mask frame 1, ECEF world), so all
+## probe points below are LV95 (E, N).
 ## Run: godot --headless --path provpilot -s tests/smoke_globe_suppress_clip.gd
 
 var _frame := 0
@@ -24,11 +26,9 @@ func _fail(msg: String) -> bool:
 	quit(1)
 	return true
 
-## Tile containing a flat-frame point (same floor the tile manager uses).
-func _tile(flat: Vector2) -> Vector2i:
-	return Vector2i(
-		int(floor((float(_scene.TERRAIN_CENTER_E) - flat.x) / TILE_M)),
-		int(floor((flat.y + float(_scene.TERRAIN_CENTER_N)) / TILE_M)))
+## Tile containing an LV95 point (same floor the tile manager uses).
+func _tile(en: Vector2) -> Vector2i:
+	return Vector2i(int(floor(en.x / TILE_M)), int(floor(en.y / TILE_M)))
 
 ## Synthetic mask: every tile covered (steady state).
 func _full_mask() -> PackedByteArray:
@@ -60,15 +60,20 @@ func _process(_delta: float) -> bool:
 			if not is_instance_valid(s.globe_node):
 				return _fail("globe node missing")
 			# Camera near Schaffhausen with FULL coverage: the mask has one
-			# texel per cell and hides the globe under the camera and out to
-			# the coverage edge (25 cells = ~205 km), but not beyond.
-			_push(_full_mask(), _tile(Vector2.ZERO))
+			# texel per tile and hides the globe under the camera and out to
+			# the coverage edge (210 tiles = ~215 km), but not beyond.
+			var lspf := Vector2(2682880.0, 1283072.0)
+			_push(_full_mask(), _tile(lspf))
 			var g = s.globe_node
 			if g.get_coverage_mask_size() != N:
 				return _fail("expected mask size %d, got %d" % [N, g.get_coverage_mask_size()])
-			if not g.suppresses_world_point(0.0, 0.0):
+			if g.get_coverage_mask_frame() != 1:
+				return _fail("mask frame %d, expected 1 (LV95 plane)" % g.get_coverage_mask_frame())
+			if not g.suppresses_world_point(lspf.x, lspf.y):
 				return _fail("camera position not suppressed")
-			if g.suppresses_world_point(0.0, 300000.0):
+			if not g.suppresses_ecef_point(W3DCoords.geodetic_to_ecef(47.6930, 8.5426, 500.0)):
+				return _fail("ECEF point over Schaffhausen not suppressed through the LV95 projection")
+			if g.suppresses_world_point(lspf.x, lspf.y + 300000.0):
 				return _fail("point 300 km from camera suppressed (beyond coverage)")
 			print("frame5: full coverage hides the globe out to the coverage edge")
 		10:
@@ -77,7 +82,7 @@ func _process(_delta: float) -> bool:
 				return _fail("globe node missing")
 			# Over central Norway with FULL coverage: the mask follows the
 			# camera (no region clipping) and stops at the coverage edge.
-			var focus := Vector2(-547000.0, 1980000.0)
+			var focus := Vector2(3229880.0, 3263072.0)  # central Norway, LV95
 			_push(_full_mask(), _tile(focus))
 			var g = s.globe_node
 			if not g.suppresses_world_point(focus.x, focus.y):
@@ -94,7 +99,7 @@ func _process(_delta: float) -> bool:
 			# Mid-zoom coverage (only the central cells loaded): the globe must
 			# stay visible beyond them — this is exactly the black-square /
 			# stars-through-the-globe bug of the first iteration.
-			var focus := Vector2(-547000.0, 1980000.0)
+			var focus := Vector2(3229880.0, 3263072.0)
 			_push(_sparse_mask(), _tile(focus))
 			var g = s.globe_node
 			if not g.suppresses_world_point(focus.x, focus.y):
@@ -109,18 +114,18 @@ func _process(_delta: float) -> bool:
 			# Data edge (iteration 4b): one no-data tile next to resident
 			# tiles must show the globe on that tile only — the resident
 			# neighbours stay masked (an 8 km cell mask unmasked all of them).
-			var focus := Vector2(-547000.0, 1980000.0)
+			var focus := Vector2(3229880.0, 3263072.0)
 			var m := _full_mask()
 			var hole := _tile(focus) + Vector2i(2, 0)  # two tiles further east
 			m[R_TILES * N + (R_TILES + 2)] = 0
 			_push(m, _tile(focus))
 			var g = s.globe_node
-			var hole_x := float(s.TERRAIN_CENTER_E) - (float(hole.x) + 0.5) * TILE_M
-			var hole_z := (float(hole.y) + 0.5) * TILE_M - float(s.TERRAIN_CENTER_N)
-			if g.suppresses_world_point(hole_x, hole_z):
+			var hole_e := (float(hole.x) + 0.5) * TILE_M
+			var hole_n := (float(hole.y) + 0.5) * TILE_M
+			if g.suppresses_world_point(hole_e, hole_n):
 				return _fail("no-data tile still suppressed")
-			if not g.suppresses_world_point(hole_x + TILE_M, hole_z) \
-					or not g.suppresses_world_point(hole_x - TILE_M, hole_z):
+			if not g.suppresses_world_point(hole_e + TILE_M, hole_n) \
+					or not g.suppresses_world_point(hole_e - TILE_M, hole_n):
 				return _fail("resident tiles next to a no-data tile not suppressed")
 			print("frame20: tile-resolution mask keeps resident tiles masked next to a no-data tile")
 			print("smoke_globe_suppress_clip: OK")

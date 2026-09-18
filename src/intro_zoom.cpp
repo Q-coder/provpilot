@@ -1,4 +1,5 @@
 #include "intro_zoom.h"
+#include "geo_frame.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
@@ -20,6 +21,7 @@ void IntroZoom::_bind_methods()
 	ClassDB::bind_integer_constant("IntroZoom", "Status", "STATUS_FINISHED", STATUS_FINISHED);
 	ClassDB::bind_method(D_METHOD("register_nodes", "ac_node", "intro_camera", "camera1", "camera2", "camera_rig"), &IntroZoom::register_nodes);
 	ClassDB::bind_method(D_METHOD("start"), &IntroZoom::start);
+	ClassDB::bind_method(D_METHOD("set_ecef", "ecef"), &IntroZoom::set_ecef);
 	ClassDB::bind_method(D_METHOD("update", "delta"), &IntroZoom::update);
 	ClassDB::bind_method(D_METHOD("is_playing"), &IntroZoom::is_playing);
 	ClassDB::bind_method(D_METHOD("set_intro_duration", "seconds"), &IntroZoom::set_intro_duration);
@@ -74,10 +76,36 @@ Vector3 IntroZoom::spot_offset() const
 {
 	if (camera_rig != nullptr)
 	{
-		return camera_rig->orbit_offset();
+		return camera_rig->orbit_offset_world();
 	}
 	// Defensive fallback (GDScript always registers the rig): 6 m behind.
 	return Vector3(0.0, 0.0, -6.0);
+}
+
+void IntroZoom::set_ecef(bool p_ecef)
+{
+	ecef = p_ecef;
+}
+
+// Up hint for look_at that is never parallel to the view direction: north
+// (ECEF) / -Z (flat) while looking straight down, blending to local up as the
+// view swings toward the horizon.
+Vector3 IntroZoom::view_up_hint(const Vector3 &cam_pos, const Vector3 &target, double blend) const
+{
+	Vector3 fwd = (target - cam_pos).normalized();
+	Vector3 up = up_dir;
+	Vector3 north = Vector3(0.0, 0.0, -1.0);
+	if (ecef)
+	{
+		const geo::Geodetic g = geo::geodetic_of(target);
+		north = geo::wun_basis(g.lat, g.lon).get_column(2);
+	}
+	Vector3 hint = (north * (1.0 - blend) + up * blend).normalized();
+	if (std::abs(fwd.dot(hint)) > 0.98)
+	{
+		hint = (std::abs(fwd.dot(up)) > 0.98) ? north : up;
+	}
+	return hint;
 }
 
 bool IntroZoom::start()
@@ -93,16 +121,14 @@ bool IntroZoom::start()
 	// around the wrong spot during the descent. Straight up keeps streaming
 	// centred on the aircraft so detailed buildings load directly instead of
 	// far-first.
-	up_dir = Vector3(0.0, 1.0, 0.0);
+	up_dir = ecef ? geo::up_at(ac_node->get_global_position()) : Vector3(0.0, 1.0, 0.0);
 	start_pos = ac_node->get_global_position() + up_dir * intro_start_alt_m;
 	elapsed = 0.0;
 	playing = true;
 
 	Vector3 ac_pos = ac_node->get_global_position();
 	intro_camera->set_global_position(start_pos);
-	Vector3 fwd0 = (ac_pos - start_pos).normalized();
-	Vector3 up0 = (std::abs(fwd0.dot(Vector3(0.0, 1.0, 0.0))) > 0.98) ? Vector3(0.0, 0.0, -1.0) : Vector3(0.0, 1.0, 0.0);
-	intro_camera->look_at(ac_pos, up0);
+	intro_camera->look_at(ac_pos, view_up_hint(start_pos, ac_pos, 0.0));
 
 	// Drive the dedicated intro camera; suppress the rig's cockpit branch
 	// until the handoff back to camera2.
@@ -163,13 +189,7 @@ int IntroZoom::update(double delta)
 	intro_camera->set_global_position(cam_pos);
 
 	// Robust up vector: avoid look_at degeneracy when peering straight down.
-	Vector3 fwd = (target - cam_pos).normalized();
-	Vector3 ref_up = Vector3(0.0, 1.0, 0.0);
-	if (std::abs(fwd.dot(ref_up)) > 0.98)
-	{
-		ref_up = Vector3(0.0, 0.0, -1.0);
-	}
-	intro_camera->look_at(target, ref_up);
+	intro_camera->look_at(target, view_up_hint(cam_pos, target, pe * pe));
 
 	if (p >= 1.0)
 	{
@@ -203,7 +223,7 @@ void IntroZoom::finish()
 		camera2->set_global_position(ac_node->get_global_position() + spot);
 		if (spot.length_squared() > 0.01)
 		{
-			camera2->look_at(ac_node->get_global_position(), Vector3(0.0, 1.0, 0.0));
+			camera2->look_at(ac_node->get_global_position(), ecef ? geo::up_at(ac_node->get_global_position()) : Vector3(0.0, 1.0, 0.0));
 		}
 	}
 

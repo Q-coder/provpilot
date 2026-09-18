@@ -1,4 +1,5 @@
 #include "camera_rig.h"
+#include "geo_frame.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
@@ -13,6 +14,7 @@ namespace jsbgodot
 
 void CameraRig::_bind_methods()
 {
+	ClassDB::bind_method(D_METHOD("set_ecef", "ecef"), &CameraRig::set_ecef);
 	ClassDB::bind_method(D_METHOD("set_head_yaw_max", "deg"), &CameraRig::set_head_yaw_max);
 	ClassDB::bind_method(D_METHOD("set_head_pitch_max", "deg"), &CameraRig::set_head_pitch_max);
 	ClassDB::bind_method(D_METHOD("set_head_look_speed", "deg_per_sec"), &CameraRig::set_head_look_speed);
@@ -340,7 +342,7 @@ void CameraRig::update_orbit(double delta, int joy_device)
 	orbit_distance = Math::clamp(orbit_distance, orbit_distance_min, orbit_distance_max);
 
 	// Set camera to world position (aircraft position + world-aligned offset).
-	Vector3 world_offset = orbit_offset();
+	Vector3 world_offset = orbit_offset_world();
 	Vector3 aircraft_global_pos = ac_node->get_global_position();
 	camera2->set_global_position(aircraft_global_pos + world_offset);
 
@@ -348,7 +350,7 @@ void CameraRig::update_orbit(double delta, int joy_device)
 	// the degenerate case (zero offset → same position).
 	if (world_offset.length_squared() > 0.01)
 	{
-		camera2->look_at(aircraft_global_pos, Vector3(0, 1, 0));
+		camera2->look_at(aircraft_global_pos, ecef ? geo::up_at(aircraft_global_pos) : Vector3(0, 1, 0));
 	}
 }
 // Chase camera: follows behind the aircraft, rotating with its heading.
@@ -364,11 +366,17 @@ void CameraRig::update_chase(double delta, int joy_device)
 	int d2 = (joy_device >= 0) ? joy_device : 0;
 
 	// Get the aircraft's forward direction projected onto the horizontal plane.
+	Vector3 up = ecef ? geo::up_at(aircraft_pos) : Vector3(0, 1, 0);
 	Vector3 forward = ac_node->get_global_transform().basis.get_column(2);
-	forward.y = 0;
+	forward -= up * forward.dot(up); // project onto the local horizontal plane
 	if (forward.length_squared() > 0.001)
 	{
 		forward = forward.normalized();
+	}
+	else if (ecef)
+	{
+		const geo::Geodetic g = geo::geodetic_of(aircraft_pos);
+		forward = geo::wun_basis(g.lat, g.lon).get_column(2); // north
 	}
 	else
 	{
@@ -457,10 +465,10 @@ void CameraRig::update_chase(double delta, int joy_device)
 	}
 
 	// Rotate the "behind" direction by chase_yaw around the vertical axis.
-	Vector3 rotated_forward = forward.rotated(Vector3(0, 1, 0), Math::deg_to_rad(chase_yaw));
+	Vector3 rotated_forward = forward.rotated(up, Math::deg_to_rad(chase_yaw));
 
 	// Target position: behind and above the aircraft.
-	Vector3 target_pos = aircraft_pos - rotated_forward * chase_distance + Vector3(0, chase_height, 0);
+	Vector3 target_pos = aircraft_pos - rotated_forward * chase_distance + up * chase_height;
 
 	// Smooth follow using lerp.
 	double t = Math::clamp(chase_smooth * delta, 0.0, 1.0);
@@ -470,11 +478,27 @@ void CameraRig::update_chase(double delta, int joy_device)
 	Vector3 to_target = aircraft_pos - camera2->get_global_position();
 	if (to_target.length_squared() > 0.01)
 	{
-		camera2->look_at(aircraft_pos, Vector3(0, 1, 0));
+		camera2->look_at(aircraft_pos, up);
 	}
 }
 
 // ── Orbit state accessors (used by the GDScript intro-zoom handoff) ────────
+
+Vector3 CameraRig::orbit_offset_world() const
+{
+	Vector3 off = orbit_offset();
+	if (ecef && ac_node != nullptr)
+	{
+		const geo::Geodetic g = geo::geodetic_of(ac_node->get_global_position());
+		return geo::wun_basis(g.lat, g.lon).xform(off);
+	}
+	return off;
+}
+
+void CameraRig::set_ecef(bool p_ecef)
+{
+	ecef = p_ecef;
+}
 
 Vector3 CameraRig::orbit_offset() const
 {

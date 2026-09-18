@@ -62,6 +62,10 @@ namespace jsbgodot
         // degrees true, and whether a full-screen UI overlay is up (input
         // pass-through + frame hidden while true).
         void update(const Vector3 &godot_pos, double heading_deg, bool ui_visible);
+        // Same, with the aircraft position already in LV95 metres (ECEF
+        // world hosts convert via geodetic). heading_deg is the GRID heading
+        // the map is drawn in (true + grid convergence).
+        void update_lv95(double e, double n, double heading_deg, bool ui_visible);
 
         // ── Public actions (also used by the smoke test) ──
         void toggle_visible();

@@ -45,6 +45,7 @@ var sky_material: ShaderMaterial = null
 # the ~200 km patch so the origin is accurate enough).
 var observer_lat := 47.7
 var observer_lon := 8.6
+var _observer_up := Vector3.UP  # ellipsoid normal at the camera (ECEF world)
 
 # Time source: real system clock, or a manual local time (minutes past midnight).
 var use_system_time := true
@@ -102,11 +103,21 @@ func update(delta: float, viewport: Viewport) -> void:
 	if not use_system_time:
 		_time_seconds = fposmod(_time_seconds + delta, 86400.0)
 	var cam: Camera3D = viewport.get_camera_3d() if viewport != null else null
-	var alt: float = cam.global_position.y if cam != null else 0.0
+	# ECEF world (design §9.5): the observer is wherever the camera is —
+	# geodetic position and height from its ECEF position.
+	var alt: float = 0.0
+	var cam_normal := Vector3.UP
+	if cam != null:
+		var g: Vector3 = W3DCoords.ecef_to_geodetic(cam.global_position)  # (lat, lon, h)
+		observer_lat = g.x
+		observer_lon = g.y
+		alt = g.z
+		cam_normal = W3DCoords.geodetic_normal(g.x, g.y)
+	_observer_up = cam_normal
 
 	var when := _current_time()
 	var dir_to_sun := _solar_direction(observer_lat, observer_lon, when.x, when.y)
-	var sin_elev: float = dir_to_sun.y
+	var sin_elev: float = dir_to_sun.dot(cam_normal)
 	# Directional light fades to zero AS the sun reaches the horizon and stays
 	# off below it — a DirectionalLight3D pointing upward would otherwise light
 	# the undersides of the terrain/buildings during dawn/dusk.
@@ -140,9 +151,12 @@ func update(delta: float, viewport: Viewport) -> void:
 		# (WORLD_SCENERY_DESIGN §3.2). The coarse globe itself is re-based onto
 		# the active airport by node_3d.gd (_rebase_globe_to), which keeps its
 		# surface aligned with this sphere at ground level there.
+		# ECEF: the shader's sphere (mean radius) is kept tangent to the
+		# ellipsoid under the camera — centre = camera - normal * (R + h) —
+		# so dip and horizon distance come out right at every latitude.
 		if cam != null:
 			sky_material.set_shader_parameter(
-				"planet_center", Vector3(cam.global_position.x, -PLANET_RADIUS, cam.global_position.z))
+				"planet_center", cam.global_position - cam_normal * (PLANET_RADIUS + alt))
 
 	_apply_altitude(alt, day)
 
@@ -201,7 +215,7 @@ func _apply_altitude(alt: float, day: float) -> void:
 ## ground (local -Z = -dir_to_sun), leaving its position untouched.
 func _orient_sun(dir_to_sun: Vector3) -> void:
 	var z := dir_to_sun.normalized()       # local +Z points at the sun
-	var up_ref := Vector3.UP
+	var up_ref := _observer_up
 	if absf(z.dot(up_ref)) > 0.999:
 		up_ref = Vector3.FORWARD
 	var x := up_ref.cross(z).normalized()
@@ -231,8 +245,9 @@ func _current_time() -> Vector2:
 	return Vector2(doy, utc_hours)
 
 
-## Unit vector toward the sun in the flat frame (X=West, Y=Up, Z=North), using
-## the NOAA solar-position approximation (equation of time + declination).
+## Unit vector toward the sun in ECEF, using the NOAA solar-position
+## approximation (equation of time + declination) evaluated in the observer's
+## local ENU frame and rotated into ECEF.
 func _solar_direction(lat_deg: float, lon_deg: float, doy: float, utc_hours: float) -> Vector3:
 	var g := TAU / 365.0 * (doy - 1.0 + (utc_hours - 12.0) / 24.0)
 	var eqtime := 229.18 * (0.000075 + 0.001868 * cos(g) - 0.032077 * sin(g) \
@@ -256,8 +271,9 @@ func _solar_direction(lat_deg: float, lon_deg: float, doy: float, utc_hours: flo
 	var east := -cos_dec * sin_ha
 	var up := sin_dec * sin_lat + cos_dec * cos_ha * cos_lat
 	var north := sin_dec * cos_lat - cos_dec * cos_ha * sin_lat
-	# Flat frame: X = West = -East, Y = Up, Z = North.
-	return Vector3(-east, up, north).normalized()
+	# ENU → ECEF at the observer (W3DCoords WUN frame: +X West, +Y Up, +Z North).
+	var wun: Transform3D = W3DCoords.enu_to_ecef_transform(lat_deg, lon_deg, 0.0, true)
+	return (wun.basis * Vector3(-east, up, north)).normalized()
 
 
 static func _day_of_year(y: int, m: int, d: int) -> int:

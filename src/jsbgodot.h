@@ -4,6 +4,7 @@
 #include "FGFDMExec.h"
 
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/classes/input_event.hpp>
 #include <godot_cpp/classes/input_event_joypad_motion.hpp>
 #include <godot_cpp/classes/input_event_joypad_button.hpp>
@@ -170,6 +171,20 @@ namespace jsbgodot
         double get_latitude_deg() const;
         double get_longitude_deg() const;
         Vector3 get_godot_position() const;
+        // World frame (design §9.5): false = legacy flat frame (fake JSBSim
+        // location near 0N/0E, mirrored heading); true = the Godot world is
+        // WGS84 ECEF, JSBSim runs at the true geodetic position, the aircraft
+        // node gets position = ECEF location and basis = body-to-ECEF DCM.
+        void set_ecef_frame(bool p_ecef);
+        bool get_ecef_frame() const;
+        // Attitude readouts (degrees): JSBSim theta / phi.
+        double get_pitch_deg() const;
+        double get_roll_deg() const;
+        // ECEF mode: re-initialise JSBSim from the aircraft node's global
+        // transform (position -> geodetic, heading from the nose axis).
+        // airspeed_kts <= 0 = stationary and level; otherwise the current
+        // pitch/roll are kept and the calibrated airspeed is set.
+        void reinitialize_from_pose(Transform3D ac_global, double airspeed_kts, double terrain_elevation_m);
         
     private:
         // Cache position data for getters
@@ -177,6 +192,7 @@ namespace jsbgodot
         double cached_longitude = 0.0;
         Vector3 cached_godot_position = Vector3(0, 0, 0);
         bool jsbsim_initialized = false;  // Track if JSBSim has been properly initialized
+        bool ecef_frame = false;
         double pending_terrain_elevation = 0.0;  // Terrain elevation to use at initialization
         bool has_pending_terrain = false;  // Whether we have a terrain elevation to set
         double godot_terrain_y_offset = 0.0;  // Y offset to apply (Godot terrain Y - JSBSim terrain elevation)

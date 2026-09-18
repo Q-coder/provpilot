@@ -1,4 +1,5 @@
 #include "atmosphere.h"
+#include "geo_frame.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
@@ -12,6 +13,7 @@ namespace jsbgodot
 void Atmosphere::_bind_methods()
 {
 	ClassDB::bind_method(D_METHOD("register_nodes", "world_env", "globe_node"), &Atmosphere::register_nodes);
+	ClassDB::bind_method(D_METHOD("set_ecef", "ecef"), &Atmosphere::set_ecef);
 	ClassDB::bind_method(D_METHOD("update", "viewport"), &Atmosphere::update);
 }
 
@@ -49,7 +51,7 @@ void Atmosphere::update(Viewport *viewport)
 	}
 
 	// Flat-frame Y ≈ altitude ASL near the origin (good enough for a fog ramp).
-	double alt = cam->get_global_position().y;
+	double alt = ecef ? geo::geodetic_of(cam->get_global_position()).h : cam->get_global_position().y;
 
 	if (world_env != nullptr)
 	{
@@ -103,6 +105,11 @@ void Atmosphere::update(Viewport *viewport)
 			globe_node->set_visible(want_visible);
 		}
 	}
+}
+
+void Atmosphere::set_ecef(bool p_ecef)
+{
+	ecef = p_ecef;
 }
 
 } // namespace jsbgodot
