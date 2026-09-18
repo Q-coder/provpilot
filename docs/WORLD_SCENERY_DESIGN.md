@@ -669,6 +669,89 @@ the true bearing, and the HUD shows true heading (grid − convergence). The
 JSBSim bridge itself is unchanged: it is rewritten wholesale in step C.
 Smoke test: `provpilot/tests/smoke_geo_proj.gd`.
 
+### 9.5 Step C — ECEF world: design and milestones (2026-09-18)
+
+**Frame.** Godot world = WGS84 ECEF metres (origin Earth centre, +Z north
+pole, +X through 0°/0°), double precision, no rebasing. "Up" is the local
+ellipsoid normal; nothing global is Y-up any more. `W3DCoords`
+(`geodetic_to_ecef`, `ecef_to_geodetic`, `enu_to_ecef_transform(lat, lon, h,
+x_axis_west=true)`) provides the local **WUN** frame (+X West, +Y Up, +Z
+North — the existing Scenery3D tile convention) at any point.
+
+**Scenery3D placement (engine).** A `frame_mode` property on `Scenery3D`
+(`flat` = today, `ecef` = new) keeps the flat path as a fallback during the
+migration. In `ecef` mode:
+- Tiles, chunks and every GLB/MultiMesh tile keep their tile-local mesh
+  coordinates; the node transform becomes `WUN(lat_c, lon_c, 0) × A`, where
+  (lat_c, lon_c) is the tile centre through the region CRS inverse and `A`
+  is the 2×2 Jacobian of the CRS inverse at the centre (grid E/N → local
+  metres east/north; carries the LV95 scale and grid convergence, so a tile
+  is rotated by −convergence relative to true north). Vertices also get a
+  curvature sag `y -= (dx² + dz²) / 2R` about the tile centre in
+  `generate_mesh` — 2 cm at a 1 km tile corner (skipped for GLBs), 1.25 m at
+  an 8 km chunk corner (kept). Neighbouring tiles compute their shared edge
+  from different centres; the mismatch is second order (mm at 1 km, cm at
+  8 km), below the existing 30 m chunk bias and ETOPO error.
+- Streaming: camera ECEF → geodetic → CRS forward → tile index, once per
+  update. Load/far radii stay in tiles.
+- Elevation DB stays in grid E/N; hosts convert ECEF → geodetic → E/N
+  (`S3DElevationDB::get_elevation_ecef` helper) — one projection per query.
+- Chunk Y bias and water/road vertical offsets move along the node's local
+  up (they are inside the node transform, so nothing changes in the meshes).
+- Region CRS (D6): `terrain/manifest.json` may carry `"crs": "EPSG:2056"`
+  (default) or a UTM code; the tile grid of a region is expressed in its
+  CRS. Milestone 1 keeps one grid CRS for all paths (LV95); per-region grids
+  are milestone 3.
+
+**world3d.** `GlobeMount` becomes identity (globe at the ECEF origin);
+`_rebase_globe_to` / `_track_globe_rebase` / `_ecef_from_flat` go away. The
+coverage-mask shader maps a fragment's ECEF position → geodetic → grid E/N
+in GLSL (rigorous LV95 forward, ~60 flops; UTM later) instead of the affine
+world-XZ mapping; the mask itself (tile-resolution bytes in grid E/N) is
+unchanged.
+
+**JSBSim bridge.** JSBSim runs at the TRUE location: ICs via
+`SetGeodLatitudeDegIC` / `SetLongitudeDegIC` / `SetAltitudeASLFtIC` /
+`SetPsiDegIC` (true heading). Each tick the aircraft node gets
+`origin = GetLocation()` (ECEF, ft → m) and `basis = Tb2ec × M`, where `M`
+maps JSBSim body axes (X fwd, Y right, Z down) onto the model's Godot axes
+(−Z fwd, +X right, +Y up). No fake location, no heading mirror, no
+equirectangular reference; gravity/Coriolis at the real latitude. Slew mode
+edits the node transform in the aircraft's local WUN frame and re-inits
+JSBSim from geodetic(pose) + heading = yaw of the basis in the local frame.
+Terrain feed: `set_terrain_elevation(h)` unchanged (ellipsoidal, D9).
+
+**Host.** Cameras stay parented to the aircraft (they inherit the local
+frame); the intro-zoom camera already works in ECEF. Sky: `planet_center =
+(0,0,0)` constant, sun direction = ECEF unit vector from the ephemeris,
+altitude ramps from `|p| − R(lat)` (geodetic h). HUD: geodetic from ECEF,
+LV95 from `Geo`. VFR map: fed lat/lon → LV95. Spawn/teleport: airport
+LV95 → geodetic → ECEF. `TERRAIN_CENTER_E/N` disappears from the runtime
+(kept only as the default grid origin inside Scenery3D flat mode).
+
+**Milestones** (each: headless smoke test, then one check flight).
+
+| # | Scope | Test |
+|---|-------|------|
+| C1 | Scenery3D `ecef` mode: tile/chunk/GLB/vegetation placement, sag, streaming index, elevation helper; world3d mask shader in ECEF | scenery3d headless: stream at LSZH in ecef mode, tile transforms match `WUN(centre)`, elevation query round-trips; world3d demo shot with a mask |
+*C1 implemented (2026-09-18).* scenery3d: `S3DFrame` (`s3d_frame.h`, held by
+value in every manager; `frame_mode` property on `Scenery3D` fans out, the
+host-wired vegetation manager has its own). `S3DTile::set_placement()`
+replaces every `set_position`: 1 km tiles and all GLB/MultiMesh tiles are
+affine (`WUN(centre) × grid-Jacobian × translate(anchor − centre)`), terrain
+tiles subtract the sag in `generate_mesh`, 8 km chunks are placed **exactly**
+(each vertex projected; an affine 8 km chunk would mismatch ~1 m at seams
+1400 km from Bern where the LV95 scale is 1.024). Water/road draping samples
+the DTM in grid E/N (`S3DElevationDB::get_elevation_grid`) and applies the
+sag; `Scenery3D` gains `get_elevation_grid/geodetic/world`, `S3DCoords`
+gains `frame_mode` and `wgs84_to_world_h`. world3d: mask frame 1 (fragment
+ECEF → LV95 in the shader). Headless test `tests/smoke_scenery_ecef.tscn`
+(standalone Scenery3D in ECEF over LSZH): tile corners back on the LV95
+grid within 1.2 mm, up axis = ellipsoid normal, chunk bases orthonormal at
+−30 m, elevation via geodetic/world entry points identical.
+| C2 | Host on ECEF: node tree, JSBSim bridge, cameras, slew, HUD, sky, VFR map, spawn/teleport, intro zoom; globe at identity | app headless: spawn LSZH, `|AC.origin|` ≈ R+h, JSBSim lat/lon == spawn, tile manager streams; check flights LSZH then ENGM (runway alignment, coastline, horizon at altitude) |
+| C3 | Remove flat-frame code paths (rebase, TERRAIN_CENTER), per-region CRS grids with UTM support (D6), docs | smoke tests green; existing CH/BW/Norway packs unchanged |
+
 ## See also
 
 - [gerys_plan.md](gerys_plan.md) — the plan this subtask serves
