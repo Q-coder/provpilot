@@ -806,6 +806,16 @@ to the local normal (`tilt = 1 + h/R`), so a shared edge is computed from
 the same two corner points on both sides: 0.3 mm. (A 3.2 m vertical step
 between LOD 1 and LOD 2 tiles at LSZH is Scenery3D's pre-existing edge
 sampling — reported by the probe, not asserted.)
+(6) Remaining thin lines over Norway at 7.6 km were T-junction cracks between
+LOD rings (the finer tile's intermediate edge vertices lie above/below the
+coarser neighbour's straight edge; in the ECEF world the sky shows through
+because the globe is discarded under resident tiles). Every terrain tile and
+chunk now carries **skirts** (mesh surface 1: a vertical strip hanging from
+each border edge, depth = max(20 m, 0.3 × vertex spacing), both windings),
+the standard remedy; the LOD edge sampling itself is unchanged. Fog probe
+(`tests/probe_fog.gd`) confirms the altitude ramps are unchanged by the ECEF
+move: density 5.0e-5 at 500 m, 4.7e-5 at 7.6 km, 2.7e-5 at 30 km, off at
+62 km.
 | C3 | Remove flat-frame code paths (rebase, TERRAIN_CENTER), per-region CRS grids with UTM support (D6), docs | smoke tests green; existing CH/BW/Norway packs unchanged |
 
 ## See also
