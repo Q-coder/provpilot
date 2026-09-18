@@ -8,6 +8,33 @@ the CH/DE border) as solid white pixels (RGB 255, 255, 255). Up to 43 % of a
 white pixels show through as visible stripes even when a German DOP20 source
 covering the same area is configured at a lower priority.
 
+## Update 2026-09-18 — black no-data, soft blend, far chunks
+
+Three gaps found on a flight along the Schaffhausen border:
+
+1. **Black no-data.** Around the Jestetten enclave (Rafz / Wil ZH) SWISSIMAGE
+   encodes German territory as solid *black*, not white (78–90 % of some
+   tiles). Those tiles rendered as dark squares although BW DOP20 covers
+   every one of them. `ortho_is_nodata()` now treats near-black (≤ 6) like
+   near-white (≥ 250); the tolerances also remove the thin white line that
+   survived the exact `== 255` test (JPEG ringing at the border).
+2. **Light staircase at distance.** The on-disk mips (`mip2` for LOD ≥ 7,
+   `mip3` for the 8 km far chunks) were downsampled from tiles with white
+   margins, so along the outer edge of the Swiss tile set their edge pixels
+   are light averages of white and ground — not "white", yet a visible
+   staircase from > 20 km. `ortho_nodata_weight()` blends pixels with
+   min channel ≥ 200 (or max ≤ 14) toward the next source in proportion;
+   both orthophotos show the same ground, so the blend is invisible where
+   the pixel was real.
+3. **Far chunks were first-hit-wins.** The mip3 chunk tiles now go through
+   the same merge in the worker (`LoadResult::chunk_ortho_rgb`, raw RGB,
+   consumed on the main thread next to the plain JPEG path).
+
+Diagnostics: `provpilot/tests/probe_ortho_coverage.gd` prints, for a LV95
+window, which sources have each tile and how much no-data the composite
+would still contain; `probe_space_view.tscn` (`PROBE_LV95`, `PROBE_HIDE`)
+takes screenshots from set altitudes over a point.
+
 ## Solution
 
 When `skip_white_pixels` is enabled (default **true**) and two or more
