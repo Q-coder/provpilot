@@ -274,15 +274,15 @@ void SlewMode::handle_movement(double delta, double ax_strafe, double ax_forward
 	}
 	if (altitude_label != nullptr)
 	{
-		altitude_label->set_text(String("Height AGL: ") + String::num_real(pos.y - terrain_h, 1) + " m");
+		altitude_label->set_text(String("Height AGL: ") + String::num(pos.y - terrain_h, 2) + " m");
 	}
 	if (vspeed_label != nullptr)
 	{
-		vspeed_label->set_text(String("Terrain: ") + String::num_real(terrain_h, 1) + " m ASL");
+		vspeed_label->set_text(String("Terrain: ") + String::num(terrain_h, 2) + " m ASL");
 	}
 	if (throttle_label != nullptr)
 	{
-		throttle_label->set_text(String("Aircraft: ") + String::num_real(pos.y, 1) + " m ASL");
+		throttle_label->set_text(String("Aircraft: ") + String::num(pos.y, 2) + " m ASL");
 	}
 	if (heading_label != nullptr)
 	{
@@ -290,7 +290,7 @@ void SlewMode::handle_movement(double delta, double ax_strafe, double ax_forward
 	}
 	if (godot_pos_label != nullptr)
 	{
-		godot_pos_label->set_text(String("Godot: X=") + String::num_real(pos.x, 1) + " Y=" + String::num_real(pos.y, 1) + " Z=" + String::num_real(pos.z, 1));
+		godot_pos_label->set_text(String("Godot: X=") + String::num(pos.x, 2) + " Y=" + String::num(pos.y, 2) + " Z=" + String::num(pos.z, 2));
 	}
 	if (swiss_label != nullptr)
 	{
@@ -298,7 +298,9 @@ void SlewMode::handle_movement(double delta, double ax_strafe, double ax_forward
 	}
 	if (heading_deg_label != nullptr)
 	{
-		heading_deg_label->set_text(String("Heading: ") + String::num_real(heading_deg, 0) + "\u00B0");
+		// \xC2\xB0 is U+00B0 (°) as UTF-8 bytes; String(const char*) parses
+		// Latin-1, so go through String::utf8() or the label shows "Â°".
+		heading_deg_label->set_text(String("Heading: ") + String::num(heading_deg, 2) + String::utf8("\xC2\xB0"));
 	}
 }
 

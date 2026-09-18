@@ -22,6 +22,12 @@ void IntroZoom::_bind_methods()
 	ClassDB::bind_method(D_METHOD("start"), &IntroZoom::start);
 	ClassDB::bind_method(D_METHOD("update", "delta"), &IntroZoom::update);
 	ClassDB::bind_method(D_METHOD("is_playing"), &IntroZoom::is_playing);
+	ClassDB::bind_method(D_METHOD("set_intro_duration", "seconds"), &IntroZoom::set_intro_duration);
+	ClassDB::bind_method(D_METHOD("get_intro_duration"), &IntroZoom::get_intro_duration);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "intro_duration"), "set_intro_duration", "get_intro_duration");
+	ClassDB::bind_method(D_METHOD("set_intro_start_alt_m", "metres"), &IntroZoom::set_intro_start_alt_m);
+	ClassDB::bind_method(D_METHOD("get_intro_start_alt_m"), &IntroZoom::get_intro_start_alt_m);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "intro_start_alt_m"), "set_intro_start_alt_m", "get_intro_start_alt_m");
 }
 
 IntroZoom::IntroZoom()
@@ -42,6 +48,26 @@ void IntroZoom::register_nodes(Node3D *p_ac_node, Camera3D *p_intro_camera,
 bool IntroZoom::is_playing() const
 {
 	return playing;
+}
+
+void IntroZoom::set_intro_duration(double p_seconds)
+{
+	intro_duration = MAX(0.1, p_seconds);
+}
+
+double IntroZoom::get_intro_duration() const
+{
+	return intro_duration;
+}
+
+void IntroZoom::set_intro_start_alt_m(double p_metres)
+{
+	intro_start_alt_m = MAX(1000.0, p_metres);
+}
+
+double IntroZoom::get_intro_start_alt_m() const
+{
+	return intro_start_alt_m;
 }
 
 Vector3 IntroZoom::spot_offset() const

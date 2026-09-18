@@ -63,11 +63,19 @@ namespace jsbgodot
         int update(double delta);
         bool is_playing() const;
 
+        // ── Tunables (exposed as properties so they can be set from
+        // GDScript at runtime — e.g. _intro_zoom.intro_duration = 90.0 —
+        // without a C++ rebuild) ──
+        void set_intro_duration(double seconds);
+        double get_intro_duration() const;
+        void set_intro_start_alt_m(double metres);
+        double get_intro_start_alt_m() const;
+
     protected:
         IntroZoom();
 
         // Tunables (defaults = historical GDScript constants)
-        double intro_duration = 6.0;      // seconds
+        double intro_duration = 60.0;      // seconds
         double intro_start_alt_m = 1.6e7; // metres above the aircraft (space view)
 
         bool playing = false;

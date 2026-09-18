@@ -128,7 +128,9 @@ namespace jsbgodot
         int magneto_default_position = 3; // Blender rest pose = BOTH
         bool gear_retractable = false;
         std::vector<double> flap_positions = {0.0, 0.333, 0.667, 1.0};
-        PackedStringArray flap_names = {"UP", "10°", "20°", "30°"};
+        // \xC2\xB0 = U+00B0 (°) as UTF-8 bytes; String(const char*) parses
+        // Latin-1, so build the non-ASCII names via String::utf8().
+        PackedStringArray flap_names = {String("UP"), String::utf8("10\xC2\xB0"), String::utf8("20\xC2\xB0"), String::utf8("30\xC2\xB0")};
 
         // Lever state (defaults = historical initial values)
         double mixture_value = 1.0; // 0.0 = cutoff, 1.0 = full rich
