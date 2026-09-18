@@ -71,7 +71,9 @@ var _intro_hud: CanvasLayer = null
 var _intro_dist_label: Label = null
 var _intro_bar_bg: ColorRect = null
 var _intro_bar: ColorRect = null
-var _intro_pending_max := 0
+var _intro_pending_prev := -1   # pending count last frame (-1 = none yet)
+var _intro_done := 0            # completed tile/chunk loads since the intro started
+var _intro_shown := 0.0         # displayed bar fraction (monotonic)
 
 # Spot/orbit and chase camera state (angles, distances, smoothing) lives in the
 # C++ CameraRig module (src/camera_rig.cpp); the C++ IntroZoom handoff reads
@@ -397,6 +399,7 @@ func _ready() -> void:
 
 	# Slew mode (C++ module): register the session-stable AC root + HUD labels.
 	_slew_mode.register_nodes($AC, airspeed_label, altitude_label, vspeed_label, throttle_label, heading_label, $Control/Label6, $Control/Label7, $Control/Label8)
+	_outline_hud_labels($Control)
 
 	# VFR map frame (C++ module): one-time wiring with the portable config
 	# path. Tile paths arrive via _apply_scenery_sources().
@@ -872,7 +875,9 @@ func _start_intro_zoom() -> void:
 	if _intro_zoom.start():
 		_intro_playing = true
 		active_camera = _intro_camera
-		_intro_pending_max = 0
+		_intro_pending_prev = -1
+		_intro_done = 0
+		_intro_shown = 0.0
 		_show_intro_hud(true)
 
 
@@ -897,7 +902,15 @@ func _show_intro_hud(show: bool) -> void:
 		_intro_dist_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_intro_dist_label.add_theme_font_size_override("font_size", 24)
 		_intro_dist_label.add_theme_color_override("font_color", Color(0.35, 0.9, 1.0))
+		_outline_label(_intro_dist_label)
 		box.add_child(_intro_dist_label)
+		var bar_title := Label.new()
+		bar_title.text = "Loading scenery"
+		bar_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		bar_title.add_theme_font_size_override("font_size", 18)
+		bar_title.add_theme_color_override("font_color", Color(0.85, 0.9, 0.95))
+		_outline_label(bar_title)
+		box.add_child(bar_title)
 		_intro_bar_bg = ColorRect.new()
 		_intro_bar_bg.color = Color(0.12, 0.14, 0.18, 0.85)
 		_intro_bar_bg.custom_minimum_size = Vector2(600, 12)
@@ -909,8 +922,9 @@ func _show_intro_hud(show: bool) -> void:
 		var hint := Label.new()
 		hint.text = "Press any key to skip animation"
 		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		hint.add_theme_font_size_override("font_size", 18)
-		hint.add_theme_color_override("font_color", Color(0.75, 0.8, 0.85))
+		hint.add_theme_font_size_override("font_size", 28)
+		hint.add_theme_color_override("font_color", Color(0.95, 0.95, 0.9))
+		_outline_label(hint)
 		box.add_child(hint)
 	_intro_hud.visible = show
 	var hud := get_node_or_null("Control")
@@ -919,7 +933,22 @@ func _show_intro_hud(show: bool) -> void:
 
 
 ## Per-frame intro HUD: camera distance to the aircraft and how much of the
-## tile manager's queued work is done (monotonic max of the pending count).
+## tile manager's work since the intro started is done (monotonic display).
+
+
+## Black outline so HUD text stays readable over bright or similar-coloured
+## terrain and sky.
+func _outline_label(l: Label, px: int = 4) -> void:
+	l.add_theme_constant_override("outline_size", px)
+	l.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
+
+
+## Apply the outline to every Label under the flight HUD root.
+func _outline_hud_labels(node: Node) -> void:
+	if node is Label:
+		_outline_label(node as Label, 3)
+	for c in node.get_children():
+		_outline_hud_labels(c)
 func _update_intro_hud() -> void:
 	if _intro_hud == null or not _intro_hud.visible:
 		return
@@ -932,10 +961,17 @@ func _update_intro_hud() -> void:
 			_intro_dist_label.text = "Distance to aircraft: %.0f m" % d
 	var tm = _get_tile_manager()
 	if tm != null and tm.has_method("get_pending_count"):
+		# Completed work = decreases of the pending count; new requests (the
+		# descending camera keeps asking for finer rings) only add to the
+		# denominator. The shown fraction never goes back, it just pauses.
 		var pending: int = tm.get_pending_count()
-		_intro_pending_max = maxi(_intro_pending_max, pending)
-		var frac: float = 1.0 if _intro_pending_max == 0 else 1.0 - float(pending) / float(_intro_pending_max)
-		_intro_bar.custom_minimum_size.x = _intro_bar_bg.size.x * clampf(frac, 0.0, 1.0)
+		if _intro_pending_prev >= 0 and pending < _intro_pending_prev:
+			_intro_done += _intro_pending_prev - pending
+		_intro_pending_prev = pending
+		var total: int = _intro_done + pending
+		var frac: float = 1.0 if total == 0 else float(_intro_done) / float(total)
+		_intro_shown = maxf(_intro_shown, clampf(frac, 0.0, 1.0))
+		_intro_bar.custom_minimum_size.x = _intro_bar_bg.size.x * _intro_shown
 		_intro_bar.size.x = _intro_bar.custom_minimum_size.x
 
 
