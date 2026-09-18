@@ -12,8 +12,9 @@ extends RefCounted
 ##   * keeps the altitude ramps the C++ module used (fog fades toward space,
 ##     ambient/glow taper) but leaves the background on the sky shader so the
 ##     atmospheric limb stays visible in orbit;
-##   * gates the coarse globe's visibility so its ~2 km ETOPO surface stays
-##     hidden under the fine Swiss/BW scenery patch at low altitude.
+##   * leaves the coarse globe visible at every altitude as the fallback
+##     surface where Scenery3D has no resident geometry yet (node_3d.gd's
+##     coverage-driven suppression culls it under loaded detailed tiles).
 ##
 ## Owned by node_3d.gd: setup() once the world3d globe is mounted, set_time()
 ## when the time-of-day settings change, update(get_viewport()) every frame.
@@ -26,7 +27,6 @@ const FOG_FULL_ALT_M := 4000.0        # full fog at/below this camera altitude
 const FOG_ZERO_ALT_M := 60000.0       # no fog at/above this altitude
 const SKY_FULL_ALT_M := 12000.0       # full ambient/glow at/below this altitude
 const SKY_TAPER_ALT_M := 100000.0     # ambient/glow fully tapered at/above this
-const GLOBE_SHOW_ALT_M := 25000.0     # show the coarse globe only above this
 
 # Constant-colour ambient floor (day/night scaled). Normal-independent so it
 # also lights terrain whose imported normals face away from the sun.
@@ -146,10 +146,14 @@ func update(delta: float, viewport: Viewport) -> void:
 
 	_apply_altitude(alt, day)
 
-	if is_instance_valid(globe_node):
-		var want := alt > GLOBE_SHOW_ALT_M
-		if globe_node.visible != want:
-			globe_node.set_visible(want)
+	# The coarse globe stays visible at ALL altitudes (no more 25 km gate): it
+	# is the fallback surface wherever Scenery3D has no resident geometry yet —
+	# intro zoom, seconds after a teleport, beyond the streaming square. With
+	# the gate on, any tile gap below 25 km showed space and stars straight
+	# through the ground. node_3d.gd's coverage-driven suppression rectangles
+	# cull the globe cell-by-cell under loaded detailed tiles instead, so no
+	# double surface remains where geometry exists (globe_node kept for future
+	# altitude gating).
 
 
 # ── Internals ──────────────────────────────────────────────────────────

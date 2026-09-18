@@ -460,6 +460,74 @@ tests: `provpilot/tests/smoke_globe_suppress.gd` (API) and
 `smoke_globe_tracking.gd` (anchor follows a 17 km AC jump). Remaining in-game
 verification: the 70 km Oslo pass above, plus rebase cost / chunk-commit churn.
 
+*Hole fix (2026-09-17, same branch).* First test flight showed holes to space
+at altitude: the static full-extent rects (each country ~1500×1700 km) culled
+the coarse globe across all of Fennoscandia, but Scenery3D only **streams**
+detailed terrain inside a Chebyshev square of `far_radius` tiles (~205 km
+half-side) around the **active camera** — beyond that square there were no
+detailed tiles yet, so suppression left gaps that "filled in" on approach.
+Fix: `_load_globe_suppress_regions()` caches the region extents once;
+`_refresh_globe_suppress_rects()` (per frame from `_process`) clips each to a
+square of `far_radius·1024 − GLOBE_SUPPRESS_MARGIN_M` (75 km = max-level chunk
+half-edge ~58 km + LV95-drift pad) around the viewport's current camera — the
+same centre Scenery3D streams from. Every culled chunk now sits fully inside
+loaded coverage; at the streaming edge a double-surface sliver remains
+(pre-Phase-2 look), which is cheaper than a hole. Companion world3d change:
+the suppression test moved **after** the split decision in `update_node`, so
+suppressed chunks near the camera still subdivide and only leaf-size pieces
+are culled (a coarse parent culled by centre alone could hide up to a full
+chunk edge past the coverage). Smoke test: `tests/smoke_globe_suppress_clip.gd`
+(rects follow the camera, clip at the coverage radius).
+
+*Hole fix, iteration 2 (2026-09-17, same branch).* The Fennoscandia test
+flight still showed dark squares and stars seen through the globe during the
+intro zoom: clipping to the streaming square assumed everything inside it was
+**loaded**, but Scenery3D fills the far zone with chunks at
+`CHUNKS_PER_FRAME = 1` (close-ring tiles at `load_budget`/frame), so for a
+while after any teleport most of the square has no geometry yet — and the
+old `GLOBE_SHOW_ALT_M = 25 km` gate in sky_atmosphere.gd hid the coarse globe
+entirely below 25 km, removing even the fallback. Fix: suppression now
+follows **live coverage**. `S3DTileManager::get_coverage_grid()` reports a
+per-cell (chunk-aligned) resident-geometry mask around the camera plus a
+`get_coverage_generation()` counter; `_refresh_globe_suppress_rects()` merges
+covered cells into maximal rectangles, clips them to each region's terrain
+extent, insets by `GLOBE_SUPPRESS_MARGIN_M` and pushes them — refreshed only
+when the camera moves ≥32 m or the generation changes. The 25 km visibility
+gate is gone: the coarse globe is the fallback surface at every altitude and
+is culled cell-by-cell as detailed geometry arrives, so a hole to space can
+no longer exist (unloaded cells simply show the globe). Smoke test updated:
+`tests/smoke_globe_suppress_clip.gd` now feeds synthetic coverage grids
+(full / sparse) through the production conversion path.
+
+*Hole fix, iteration 3 (2026-09-17, same branch).* BW test flight over the
+Lake Constance area at ~7.5 km: the coarse globe **poked through** the local
+near/far terrain in dendritic light-green patches (the zero-crossing contours
+of ETOPO − local DEM; in flat lowlands the two differ by only a few metres, so
+whichever is higher wins the depth test). Root cause: culling was
+**centre-based** with a 75 km inset — built to keep centre-culled max-level
+chunks (half-edge ~58 km) inside coverage. BW's data band is only ~170 km
+wide, so after the 2×75 km inset only a ~20 km core actually suppressed the
+globe; everywhere else both surfaces rendered and the globe won wherever
+ETOPO ≥ local DEM. Fix (world3d + node_3d.gd): culling is now
+**containment-based** — `W3DGlobe::chunk_fully_suppressed()` culls a chunk
+only when ALL FOUR ground corners (`ecef_at` at the face-space corners,
+mapped through the mount) lie inside ONE suppression rectangle (centre test
+kept as a cheap early-out; rectangles are convex so it is necessary). A culled
+chunk therefore always sits fully under resident geometry and no large inset
+is needed: `GLOBE_SUPPRESS_MARGIN_M` drops 75 km → **10 km**, now covering
+only the measured LV95-linear-vs-ECEF-tangent misalignment (≤ ~3.3 km over
+the BW grid, grows with distance from TERRAIN_CENTER) plus tile-edge
+quantization. Chunks straddling the coverage edge stay visible as fallback;
+the double-surface sliver is bounded by ~half a max-level chunk edge instead
+of 75 km. Containment is tested in FLAT coordinates (the frame Scenery3D
+places meshes in), so hole-safety holds even where the globe's geographic
+features are offset from local terrain — measured 24 km at 59°N rising to
+~207 km at 71°N/25°E (swisstopo anchor polynomial vs the pyproj CH1903+
+mapping `build_world_terrain.py` bakes with; that feature misalignment is a
+pre-existing Phase 3 concern, and suppression now covers MORE of Fennoscandia
+than before, not less). Smoke test unchanged (its +120/+300 km assertions
+still hold).
+
 **Phase 3 — Face rebake, then atlas (D3b/c).** Faces are baked at
 `face_size=513` (~20 km grid spacing), which discards everything finer in the
 ETOPO source regardless of chunk LOD. Rebake at ≤~5 km spacing (measure bake
