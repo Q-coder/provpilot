@@ -107,7 +107,7 @@ func update(delta: float, viewport: Viewport) -> void:
 	# geodetic position and height from its ECEF position.
 	var alt: float = 0.0
 	var cam_normal := Vector3.UP
-	if cam != null:
+	if cam != null and cam.global_position.is_finite() and cam.global_position.length() > 1.0e6:
 		var g: Vector3 = W3DCoords.ecef_to_geodetic(cam.global_position)  # (lat, lon, h)
 		observer_lat = g.x
 		observer_lon = g.y

@@ -416,6 +416,13 @@ func _ready() -> void:
 	# Mount the world3d global globe at the LV95 origin. Must run after
 	# TERRAIN_CENTER_E/N are final so the tangent frame matches the flat frame.
 	_setup_world3d_globe()
+	# Park the aircraft (and its cameras) on the ellipsoid at the LV95 origin
+	# until the first flight: the scene file's transform is a flat-frame
+	# position, i.e. a point near the Earth's centre in the ECEF world, and
+	# every geodetic conversion of it would be degenerate.
+	var ac0 := $AC as Node3D
+	if ac0:
+		ac0.global_transform = _ac_transform_at(TERRAIN_CENTER_E, TERRAIN_CENTER_N, 600.0, 0.0, ac0.scale)
 
 	# Print the aircraft model hierarchy to find control surfaces
 	print("=== Aircraft Node Hierarchy ===")
@@ -825,6 +832,10 @@ func _push_suppress_from_coverage(cells: PackedByteArray, r_tiles: int,
 ## VFR map drive: ECEF position -> LV95, true heading -> LV95 grid heading
 ## (the map is drawn in the grid frame).
 func _feed_vfr_map(world_pos: Vector3, true_heading_deg: float, ui_up: bool) -> void:
+	# JSBSim's cached position is (0,0,0) until the first initialisation —
+	# not a place on the planet; leave the map where it was.
+	if not world_pos.is_finite() or world_pos.length() < 1.0e6:
+		return
 	var g := _geodetic_of(world_pos)
 	var lv: Vector2 = Geo.wgs84_to_lv95(g.x, g.y)
 	var grid_hdg := fposmod(true_heading_deg + Geo.lv95_grid_convergence_deg(g.x, g.y), 360.0)
