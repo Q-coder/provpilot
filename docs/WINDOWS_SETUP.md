@@ -73,6 +73,22 @@ Guide for building and running ProvPilot on Windows (tested on Windows 11, MSVC 
    assets. Scenery (terrain, buildings, roads, water) streams at runtime
    through Scenery3D and does **not** go through Godot's import pipeline.
 
+## world3d (global globe) — sibling repo
+
+Since step C of the worldwide-scenery design the game world is ECEF and the
+**world3d** GDExtension is required at startup (`W3DGlobe`, `W3DCoords`). It
+is a separate repo, expected next to this one:
+
+```powershell
+cd ..
+git clone git@gitlab.md80.ch:gery/world3d.git
+cd world3d; git checkout globe-rebase-suppress; git submodule update --init --recursive
+```
+
+`scripts\build_windows.ps1` builds it in step 5b (`-SkipWorld3D` to skip) and
+copies `libworld3d.windows.*.double.x86_64.dll` into `provpilot\bin\`; after a
+`git pull` here, also pull `..\world3d` before building.
+
 ## Cross-Platform Notes
 
 ### Symlinks / Directory Junctions

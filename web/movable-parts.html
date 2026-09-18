@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ProVPilot &mdash; Making Movable Parts in Blender 5</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Step-by-step guide: separate vertices from a 3D model in Blender 5, turn them into their own named part, set the pivot/origin onto the hinge line, and rotate the pivot axes so control surfaces animate correctly in ProVPilot / Godot.">
+<style>
+  :root {
+    --bg: #0f1115;
+    --bg-2: #1a1d24;
+    --bg-3: #232732;
+    --border: #2a2f3a;
+    --fg: #e6e6e6;
+    --fg-dim: #8a93a3;
+    --accent: #2563eb;
+    --accent-2: #0e7490;
+    --ok: #22c55e;
+    --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.55; }
+  a { color: #7dd3fc; }
+  a:hover { color: #bae6fd; }
+  code { background: #0a0c10; padding: 1px 5px; border-radius: 3px; font-size: 0.92em; }
+  kbd {
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 7px;
+    font-size: 0.85em;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #fff;
+    white-space: nowrap;
+  }
+  pre { background: #0a0c10; padding: 14px 16px; border-radius: 6px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  pre code { background: transparent; padding: 0; }
+  h2 { font-size: 26px; margin: 0 0 18px; color: #fff; letter-spacing: -0.01em; }
+  h3 { font-size: 18px; margin: 22px 0 10px; color: #fff; }
+  p { margin: 0 0 14px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  .section { padding: 56px 0; border-bottom: 1px solid var(--border); }
+  .section:last-child { border-bottom: 0; }
+  ol, ul { padding-left: 22px; margin: 0 0 14px; }
+  li { margin-bottom: 8px; }
+
+  /* ── Header ──────────────────────────────────────────────────── */
+  header.top {
+    padding: 14px 24px;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+  }
+  header.top h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+  header.top h1 a { color: #fff; text-decoration: none; }
+  header.top .sub { color: var(--fg-dim); font-size: 13px; }
+  header.top nav { margin-left: auto; display: flex; gap: 18px; }
+  header.top nav a { color: var(--fg-dim); text-decoration: none; font-size: 13px; }
+  header.top nav a:hover { color: var(--fg); }
+  .dl-btn {
+    background: var(--accent);
+    color: #fff;
+    padding: 8px 14px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .dl-btn:hover { background: #1d4ed8; color: #fff; }
+
+  /* ── Hero ────────────────────────────────────────────────────── */
+  .hero {
+    padding: 60px 0 44px;
+    background: linear-gradient(180deg, #131722 0%, var(--bg) 100%);
+    border-bottom: 1px solid var(--border);
+  }
+  .hero h2 { font-size: 38px; line-height: 1.15; margin: 0 0 18px; letter-spacing: -0.02em; }
+  .hero .tagline { font-size: 18px; color: var(--fg-dim); max-width: 760px; margin: 0; }
+  .crumb { color: var(--fg-dim); font-size: 13px; margin: 0 0 18px; }
+  .crumb a { color: var(--fg-dim); text-decoration: none; }
+  .crumb a:hover { color: var(--fg); }
+
+  /* ── Step blocks ─────────────────────────────────────────────── */
+  .step {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px 26px;
+    margin: 0 0 26px;
+  }
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+  .step h3 { display: inline; margin: 0; font-size: 19px; vertical-align: middle; }
+  .step .body { margin-top: 16px; }
+
+  /* ── Figures / screenshots ──────────────────────────────────── */
+  figure { margin: 18px 0; }
+  figure a {
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg);
+    line-height: 0;
+  }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { color: var(--fg-dim); font-size: 13px; margin-top: 8px; line-height: 1.5; }
+
+  .note {
+    border-left: 3px solid var(--accent-2);
+    background: rgba(14,116,144,0.08);
+    padding: 12px 16px;
+    border-radius: 0 6px 6px 0;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  .tip {
+    border-left: 3px solid var(--ok);
+    background: rgba(34,197,94,0.07);
+    padding: 12px 16px;
+    border-radius: 0 6px 6px 0;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  .warn {
+    border-left: 3px solid var(--warn);
+    background: rgba(245,158,11,0.07);
+    padding: 12px 16px;
+    border-radius: 0 6px 6px 0;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  .note strong, .tip strong, .warn strong { color: #fff; }
+
+  /* ── On-this-page nav ────────────────────────────────────────── */
+  .toc {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin: 0 0 30px;
+  }
+  .toc h3 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-dim); }
+  .toc ol { margin: 0; padding-left: 20px; }
+  .toc li { margin-bottom: 4px; }
+  .toc a { text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  footer {
+    background: var(--bg-2);
+    border-top: 1px solid var(--border);
+    padding: 32px 0;
+    color: var(--fg-dim);
+    font-size: 13px;
+    text-align: center;
+  }
+  footer a { color: var(--fg-dim); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1><a href="index.html">ProVPilot</a></h1>
+  <span class="sub">Modding &mdash; Movable Parts</span>
+  <nav>
+    <a href="index.html#about">About</a>
+    <a href="index.html#install">Install</a>
+    <a href="index.html#scenery">Scenery</a>
+    <a href="#steps">Guide</a>
+  </nav>
+  <a class="dl-btn" href="index.html">&larr; Back to ProVPilot</a>
+</header>
+
+<!-- ── Hero ─────────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="wrap">
+    <p class="crumb"><a href="index.html">ProVPilot</a> &rsaquo; Modding &rsaquo; Movable Parts</p>
+    <h2>Making movable parts in Blender&nbsp;5</h2>
+    <p class="tagline">
+      How to separate vertices out of a single merged 3D model, turn them into their
+      own named part, move the pivot (origin) onto the hinge line, and &mdash; when
+      needed &mdash; rotate the pivot axes so control surfaces such as ailerons,
+      elevators and rudders deflect correctly in ProVPilot and Godot.
+    </p>
+  </div>
+</section>
+
+<!-- ── Intro / why ──────────────────────────────────────────────── -->
+<section class="section">
+  <div class="wrap">
+    <h2>Why this matters</h2>
+    <p>
+      Many downloaded aircraft models arrive as one big merged mesh &mdash; the
+      ailerons, elevator and rudder are baked into the airframe and can't move on
+      their own. ProVPilot animates a control surface by rotating <em>its node</em>
+      about the node's <strong>local origin</strong>. If the origin sits at the model
+      centre instead of on the hinge, the part swings around the fuselage centerline
+      instead of hinging at the wing.
+    </p>
+    <p>
+      So the job has three parts: <strong>(1)</strong> split the surface off into its
+      own object, <strong>(2)</strong> give it a clear name, and <strong>(3)</strong>
+      move the origin onto the hinge line (and rotate the origin axes if the hinge
+      doesn't run along a world axis). After that, ProVPilot's animation code does the
+      rest.
+    </p>
+
+    <div class="toc">
+      <h3>On this page</h3>
+      <ol>
+        <li><a href="#enter-edit">Enter Edit Mode &amp; isolate the surface</a></li>
+        <li><a href="#select-verts">Select the vertices of the part</a></li>
+        <li><a href="#separate">Separate them into a new object</a></li>
+        <li><a href="#rename">Rename the new part</a></li>
+        <li><a href="#hinge-edge">Find &amp; select the hinge edge</a></li>
+        <li><a href="#cursor">Snap the 3D cursor to the hinge</a></li>
+        <li><a href="#set-origin">Set the origin to the 3D cursor</a></li>
+        <li><a href="#rotate-pivot">Rotate the pivot axes (if needed)</a></li>
+        <li><a href="#export">Export &amp; verify</a></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ── Steps ────────────────────────────────────────────────────── -->
+<section class="section" id="steps">
+  <div class="wrap">
+    <h2>Step-by-step</h2>
+
+    <!-- Step 1 -->
+    <div class="step" id="enter-edit">
+      <span class="step-num">1</span><h3>Enter Edit Mode &amp; isolate the surface</h3>
+      <div class="body">
+        <p>
+          Select the merged airframe object in the viewport, then press
+          <kbd>Tab</kbd> to enter <strong>Edit Mode</strong>. To see through the model
+          while selecting, toggle <strong>X-ray</strong> with <kbd>Alt</kbd>&nbsp;+&nbsp;<kbd>Z</kbd>
+          so you can box-select both the top and bottom skins of the surface at once.
+        </p>
+        <figure>
+          
+          <figcaption>Edit Mode on the merged model. Turn on X-ray to select through the mesh.</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step" id="select-verts">
+      <span class="step-num">2</span><h3>Select the vertices of the part</h3>
+      <div class="body">
+        <p>
+          Switch to <strong>Vertex select</strong> (<kbd>1</kbd>). If the surface is a
+          separate connected island, hover over it and press <kbd>L</kbd> to
+          <em>select linked</em> &mdash; this grabs the whole island in one go.
+          Otherwise box-select (<kbd>B</kbd>) around the front and back faces with
+          X-ray on.
+        </p>
+        <figure>
+          <a href="images/select_the_vertices_of_the_part.png" target="_blank" rel="noopener">
+            <img src="images/select_the_vertices_of_the_part-thumb.jpg" alt="Selecting the vertices that make up the control surface" loading="lazy">
+          </a>
+          <figcaption>The control surface vertices selected (highlighted) and ready to separate.</figcaption>
+        </figure>
+        <div class="tip">
+          <strong>Tip:</strong> <kbd>L</kbd> (select linked under cursor) and
+          <kbd>Ctrl</kbd>&nbsp;+&nbsp;<kbd>L</kbd> (select linked from current
+          selection) are the fastest way to grab a clean island without catching
+          neighbouring geometry.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step" id="separate">
+      <span class="step-num">3</span><h3>Separate them into a new object</h3>
+      <div class="body">
+        <p>
+          With the vertices selected, press <kbd>P</kbd> to open the
+          <strong>Separate</strong> menu and choose <strong>Selection</strong>.
+          Blender pulls those vertices out into a brand-new object while leaving the
+          rest of the airframe intact.
+        </p>
+        <figure>
+          <a href="images/separate_into_new_object.jpg" target="_blank" rel="noopener">
+            <img src="images/separate_into_new_object-thumb.jpg" alt="The Separate menu with Selection chosen" loading="lazy">
+          </a>
+          <figcaption><kbd>P</kbd> &rarr; <strong>Selection</strong> splits the surface into its own object.</figcaption>
+        </figure>
+        <p>
+          Press <kbd>Tab</kbd> to return to <strong>Object Mode</strong>. The new part
+          now appears as a separate entry in the Outliner.
+        </p>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step" id="rename">
+      <span class="step-num">4</span><h3>Rename the new part</h3>
+      <div class="body">
+        <p>
+          In the <strong>Outliner</strong>, double-click the freshly created object
+          (it'll be named something like <code>Airframe.001</code>) and give it a clear,
+          stable name &mdash; e.g. <code>Aileron_R</code>, <code>Aileron_L</code>,
+          <code>Elevator</code> or <code>Rudder</code>. ProVPilot's aircraft config
+          references parts by this node name, so keep it consistent.
+        </p>
+        <figure>
+          <figcaption>Rename the part in the Outliner &mdash; this name is the node path ProVPilot animates.</figcaption>
+        </figure>
+        <div class="warn">
+          <strong>Naming matters:</strong> avoid spaces and keep the exact spelling
+          you'll use in <code>aircraft.cfg</code>. After the model is loaded the node
+          path looks like
+          <code>Sketchfab_model/&hellip;/Aileron_R</code> &mdash; the last segment is
+          the name you set here.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step" id="hinge-edge">
+      <span class="step-num">5</span><h3>Find &amp; select the hinge edge</h3>
+      <div class="body">
+        <p>
+          Now move the origin onto the hinge line. Select the new part, enter
+          <strong>Edit Mode</strong> (<kbd>Tab</kbd>) and switch to
+          <strong>Edge select</strong> (<kbd>2</kbd>). The hinge is the
+          <em>leading edge</em> of the surface &mdash; the row of vertices nearest the
+          wing (for an aileron) or the fixed structure.
+        </p>
+        <figure>
+            <a href="images/snap_the_3d_curtos_to_the_hinge.png" target="_blank" rel="noopener">
+            <img src="images/snap_the_3d_curtos_to_the_hinge-thumb.jpg" alt="Snap pie menu — Cursor to Selected" loading="lazy">
+          </a>
+          <figcaption>Alt-click the hinge edge loop to grab the whole spanwise line at once.</figcaption>
+        </figure>
+        <div class="note">
+          <strong>How to spot the hinge:</strong> check the part bounds. For a typical
+          right aileron the hinge runs spanwise (along the wing) and sits at the
+          most-negative&nbsp;X edge (the edge nearest the wing root/leading edge).
+          <kbd>Alt</kbd>&nbsp;+&nbsp;click an edge selects the entire loop along that line.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 6 -->
+    <div class="step" id="cursor">
+      <span class="step-num">6</span><h3>Snap the 3D cursor to the hinge</h3>
+      <div class="body">
+        <p>
+          With the hinge edge loop selected, press
+          <kbd>Shift</kbd>&nbsp;+&nbsp;<kbd>S</kbd> to open the <strong>Snap</strong>
+          pie menu and choose <strong>Cursor to Selected</strong>. The 3D cursor jumps
+          to the midpoint of those vertices &mdash; exactly where the hinge axis runs.
+        </p>
+        <figure>
+            <a href="images/set_the_origin_to_the_3d_cursor.png" target="_blank" rel="noopener">
+            <img src="images/set_the_origin_to_the_3d_cursor-thumb.jpg" alt="Selecting the hinge edge loop along the leading edge" loading="lazy">
+          </a>
+          <figcaption><kbd>Shift</kbd>&nbsp;+&nbsp;<kbd>S</kbd> &rarr; <strong>Cursor to Selected</strong> places the 3D cursor on the hinge line.</figcaption>
+        </figure>
+        <p>
+          Return to <strong>Object Mode</strong> with <kbd>Tab</kbd>.
+        </p>
+      </div>
+    </div>
+
+    <!-- Step 7 -->
+    <div class="step" id="set-origin">
+      <span class="step-num">7</span><h3>Set the origin to the 3D cursor</h3>
+      <div class="body">
+        <p>
+          In Object Mode, go to <strong>Object &rarr; Set Origin &rarr; Origin to 3D
+          Cursor</strong>. The part's origin (its little orange dot) snaps onto the
+          hinge line. This is the pivot ProVPilot rotates around &mdash; now it hinges
+          at the wing instead of swinging around the fuselage centerline.
+        </p>
+        <figure>
+          <a href="images/set_the_origin_to_the_3d_cursor-2.png" target="_blank" rel="noopener">
+            <img src="images/set_the_origin_to_the_3d_cursor-2-thumb.jpg" alt="Object menu — Set Origin — Origin to 3D Cursor" loading="lazy">
+          </a>
+          <figcaption><strong>Object &rarr; Set Origin &rarr; Origin to 3D Cursor</strong> moves the pivot onto the hinge.</figcaption>
+        </figure>
+        <div class="tip">
+          <strong>Reset the cursor</strong> afterwards with
+          <kbd>Shift</kbd>&nbsp;+&nbsp;<kbd>C</kbd> so it returns to the world origin
+          and doesn't interfere with later snaps.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 8 -->
+    <div class="step" id="rotate-pivot">
+      <span class="step-num">8</span><h3>Rotate the pivot axes (only if needed)</h3>
+      <div class="body">
+        <p>
+          A control surface hinges about <em>one</em> axis &mdash; an aileron sweeps
+          about the span axis so the trailing edge moves up and down. If your hinge
+          line doesn't run cleanly along a local axis, you can rotate the origin's
+          axes (without moving the geometry) so one local axis lines up with the hinge
+          sweep.
+        </p>
+        <p>
+          Open the <strong>Options</strong> dropdown (top-right of the viewport) and
+          enable <strong>Affect Only &rarr; Origins</strong>. Then press <kbd>R</kbd>
+          and rotate so the chosen local axis matches the hinge sweep. Turn
+          <strong>Affect Only Origins</strong> back off when you're done.
+        </p>
+        <figure>
+          <a href="images/rotate_the_pivot_axes-1.png" target="_blank" rel="noopener">
+            <img src="images/rotate_the_pivot_axes-1-thumb.jpg" alt="Affect Only Origins option enabled while rotating the pivot" loading="lazy">
+          </a>
+          <figcaption>Enable <strong>Options &rarr; Affect Only &rarr; Origins</strong>, then <kbd>R</kbd> to align an axis with the hinge.</figcaption>
+        </figure>
+        <figure>
+          <figcaption>The finished part: origin on the hinge line, local axis aligned with the hinge sweep.</figcaption>
+        </figure>
+        <div class="note">
+          <strong>Don't have to be perfect:</strong> ProVPilot applies the deflection
+          about the node's local axis. As long as the origin is on the hinge and the
+          part keeps its native orientation, it rotates correctly. If a surface ends up
+          hinging about the wrong axis in-sim, that's a one-line config tweak
+          (<code>aileron_hinge_axis</code> / <code>elevator_hinge_axis</code> /
+          <code>rudder_hinge_axis</code> in <code>aircraft.cfg</code>) &mdash; no
+          re-export needed.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 9 -->
+    <div class="step" id="export">
+      <span class="step-num">9</span><h3>Export &amp; verify</h3>
+      <div class="body">
+        <p>
+          Re-export the model to glTF (e.g. <code>pc7_edited.gltf</code>). The new part
+          should carry a <em>translation</em> equal to the hinge position &mdash; proof
+          the origin moved. You can verify on the <code>.gltf</code> alone before
+          regenerating the runtime <code>.glb</code>: inspect the node and confirm the
+          surface node now has the expected hinge translation.
+        </p>
+        <pre><code># Inspect the exported node translation (proof the origin moved)
+# Each separated surface should report a translation on its hinge line.</code></pre>
+        <div class="warn">
+          <strong>Texture reminder:</strong> if your <code>.gltf</code> references
+          external textures by URI, keep those image files next to the
+          <code>.gltf</code> when regenerating the <code>.glb</code>, or the rebuilt
+          model comes out untextured.
+        </div>
+        <p>
+          Once the pivot is set, a single <code>[animation]</code> entry pointing at
+          the new node path lets you watch the surface deflect in-sim.
+        </p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── Recap ────────────────────────────────────────────────────── -->
+<section class="section">
+  <div class="wrap">
+    <h2>Quick recap</h2>
+    <ol>
+      <li><strong>Edit Mode</strong> (<kbd>Tab</kbd>) on the merged model, X-ray
+          (<kbd>Alt</kbd>&nbsp;+&nbsp;<kbd>Z</kbd>) to select through it.</li>
+      <li>Select the surface vertices &mdash; <kbd>L</kbd> for a linked island.</li>
+      <li><kbd>P</kbd> &rarr; <strong>Selection</strong> to separate into a new object.</li>
+      <li>Rename it in the Outliner to a clean, stable name.</li>
+      <li>Edit Mode &rarr; Edge select (<kbd>2</kbd>) &rarr; Alt-click the hinge edge loop.</li>
+      <li><kbd>Shift</kbd>&nbsp;+&nbsp;<kbd>S</kbd> &rarr; <strong>Cursor to Selected</strong>.</li>
+      <li>Object Mode &rarr; <strong>Object &rarr; Set Origin &rarr; Origin to 3D Cursor</strong>.</li>
+      <li><em>(If needed)</em> <strong>Affect Only Origins</strong> + <kbd>R</kbd> to align an axis with the hinge.</li>
+      <li>Re-export and verify the surface node carries the hinge translation.</li>
+    </ol>
+    <p style="color: var(--fg-dim); font-size: 14px;">
+      Source &amp; aircraft configs live on
+      <a href="https://gitlab.md80.ch/gery/provpilot">gitlab.md80.ch</a>.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    ProVPilot &copy; 2025&ndash;2026 Gerhard Gubler &middot;
+    MIT licensed &middot;
+    <a href="https://gitlab.md80.ch/gery/provpilot">Source on GitLab</a> &middot;
+    <a href="index.html">Back to ProVPilot</a>
+    <br><br>
+    <em>For entertainment and educational use only. Not certified for flight training
+    or real-world navigation.</em>
+  </div>
+</footer>
+
+</body>
+</html>

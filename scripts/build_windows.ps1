@@ -6,6 +6,9 @@
 #   2. Godot     (editor + template_release, double precision)
 #   3. godot-cpp (double precision, generates extension_api.json)
 #   4. ProvPilot GDExtension DLL
+#   5. Scenery3D GDExtension DLL (submodule provpilot\addons\scenery3d)
+#   5b. world3d GDExtension DLL (sibling checkout ..\world3d — clone
+#       git@gitlab.md80.ch:gery/world3d.git next to this repo first)
 #
 # Prerequisites (must be on PATH):
 #   - Visual Studio 2019+ (run from a VS Developer Command Prompt, or let this
@@ -28,6 +31,7 @@ param(
     [switch]$SkipGodot,
     [switch]$SkipGodotCpp,
     [switch]$SkipScenery3D,
+    [switch]$SkipWorld3D,
     [ValidateSet('editor','template_release','both')]
     [string]$Target = 'both',
     [int]$Jobs = [Environment]::ProcessorCount
@@ -40,6 +44,7 @@ $jsbsimDir  = Join-Path $repoRoot 'jsbsim'
 $godotDir   = Join-Path $repoRoot 'godot'
 $godotCppDir  = Join-Path $repoRoot 'godot-cpp'
 $scenery3dDir  = Join-Path $repoRoot 'provpilot\addons\scenery3d'
+$world3dDir    = Join-Path (Split-Path $repoRoot -Parent) 'world3d'
 
 # The double-precision editor binary name Godot produces
 $godotExe   = Join-Path $godotDir 'bin\godot.windows.editor.double.x86_64.exe'
@@ -376,6 +381,47 @@ if (-not $SkipScenery3D) {
 }
 
 # ---------------------------------------------------------------------------
+# Step 5b - Build world3d (global globe) GDExtension DLL
+# ---------------------------------------------------------------------------
+# world3d is a separate repo (gitlab.md80.ch:gery/world3d), expected as a
+# sibling checkout of this repo (..\world3d). The game cannot start without
+# it since step C (the world is ECEF; W3DCoords/W3DGlobe are used everywhere).
+if (-not $SkipWorld3D) {
+    Write-Host ''
+    Write-Host '[5b] Building world3d GDExtension DLL (precision=double)...' -ForegroundColor Yellow
+    if (-not (Test-Path (Join-Path $world3dDir 'SConstruct'))) {
+        throw "world3d checkout not found at $world3dDir - clone git@gitlab.md80.ch:gery/world3d.git next to this repo (branch globe-rebase-suppress) or pass -SkipWorld3D"
+    }
+    Invoke-VcVars
+    # world3d's SConstruct defaults to its own double-precision API file when
+    # precision=double, so no extension_api seeding is needed.
+    $w3dTargets = if ($Target -eq 'both') { @('template_debug','template_release') } else { @($Target) }
+    Write-Host "  world3d dir : $world3dDir" -ForegroundColor DarkGray
+    Push-Location $world3dDir
+    try {
+        foreach ($t in $w3dTargets) {
+            Write-Host "  --- scons target=$t ---" -ForegroundColor Cyan
+            cmd /c "scons platform=windows arch=x86_64 target=$t precision=double -j$Jobs 2>&1"
+            if ($LASTEXITCODE -ne 0) { throw "world3d scons target=$t failed (exit $LASTEXITCODE)" }
+            $dll = Join-Path $world3dDir "demo\bin\libworld3d.windows.$t.double.x86_64.dll"
+            if (Test-Path $dll) {
+                Write-Host "  [OK] $dll" -ForegroundColor Green
+            } else {
+                Write-Host "  [WARN] Could not locate $dll" -ForegroundColor Yellow
+            }
+        }
+        # Copy DLL(s) from world3d/demo/bin/ -> provpilot/bin/ (world3d.gdextension
+        # there already lists the Windows entries).
+        $provpilotBinW = Join-Path $repoRoot 'provpilot\bin'
+        Get-ChildItem (Join-Path $world3dDir 'demo\bin') -Filter 'libworld3d.windows*.dll' | ForEach-Object {
+            Copy-Item $_.FullName $provpilotBinW -Force
+            Write-Host "  [OK] Copied $($_.Name) -> provpilot\bin\" -ForegroundColor Green
+        }
+    }
+    finally { Pop-Location }
+}
+
+# ---------------------------------------------------------------------------
 # Step 6 - Export project (headless)
 # ---------------------------------------------------------------------------
 Write-Host ''
@@ -459,6 +505,7 @@ Write-Host '  ProvPilot.pck' -ForegroundColor DarkGray
 Write-Host '  README.txt' -ForegroundColor DarkGray
 Write-Host '  bin\libprovpilot.windows.template_release.double.x86_64.dll' -ForegroundColor DarkGray
 Write-Host '  bin\libscenery3d.windows.template_release.double.x86_64.dll' -ForegroundColor DarkGray
+Write-Host '  bin\libworld3d.windows.template_release.double.x86_64.dll' -ForegroundColor DarkGray
 Write-Host ''
 Write-Host 'Users must keep this folder structure intact: the DLLs must stay in bin\' -ForegroundColor Yellow
 Write-Host ''
