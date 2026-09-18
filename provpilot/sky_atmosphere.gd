@@ -23,13 +23,23 @@ const PLANET_RADIUS := 6371000.0      # mean Earth radius (m)
 const ATMOSPHERE_HEIGHT := 100000.0   # scattering shell thickness (m)
 
 # Altitude ramps (m ASL, mirror the old C++ Atmosphere defaults).
-const FOG_FULL_ALT_M := 4000.0        # full fog at/below this camera altitude
-const FOG_ZERO_ALT_M := 60000.0       # no fog at/above this altitude
+# Haze lives in the boundary layer: from a camera above it the light path to
+# the ground crosses only HAZE_LAYER_M of haze, so the uniform fog density
+# is scaled by HAZE_LAYER_M / altitude (a 40 km camera sees 1/16 of the
+# ground density along a 40 km path = the same optical depth as at the
+# ground). The old linear 4..60 km ramp kept ~1/3 density at 40 km and
+# washed the ground out from 50 down to 30 km.
+const HAZE_LAYER_M := 2500.0          # boundary-layer thickness
+const FOG_ZERO_ALT_M := 120000.0      # fog off above this camera altitude
 const SKY_FULL_ALT_M := 12000.0       # full ambient/glow at/below this altitude
 const SKY_TAPER_ALT_M := 100000.0     # ambient/glow fully tapered at/above this
 
-# Constant-colour ambient floor (day/night scaled). Normal-independent so it
-# also lights terrain whose imported normals face away from the sun.
+# Constant-colour ambient floor (day/night scaled), normal-independent. Until
+# 2026-09-18 this floor was the ONLY light on the terrain: the tiles were
+# wound counter-clockwise (Godot front faces are clockwise), so the
+# double-sided material flipped their normals and the sun never lit them —
+# hence the "normals face away from the sun" impression, and the black patch
+# from space where this floor is dimmed. Fixed in S3DTile (winding).
 const AMBIENT_COLOR := Color(0.52, 0.58, 0.68)
 const AMBIENT_DAY_ENERGY := 0.7
 const AMBIENT_NIGHT_ENERGY := 0.04
@@ -216,7 +226,9 @@ func _install_sky_material() -> void:
 ## surfaces readable instead of rendering black. The background stays on the sky
 ## shader (which renders space black + the atmospheric limb by itself).
 func _apply_altitude(alt: float, day: float, space: float = 0.0) -> void:
-	var t := clampf((FOG_ZERO_ALT_M - alt) / (FOG_ZERO_ALT_M - FOG_FULL_ALT_M), 0.0, 1.0)
+	var t := clampf(HAZE_LAYER_M / maxf(alt, HAZE_LAYER_M), 0.0, 1.0)
+	if alt >= FOG_ZERO_ALT_M:
+		t = 0.0
 	environment.fog_density = _base_fog_density * t
 	environment.fog_enabled = t > 0.0
 

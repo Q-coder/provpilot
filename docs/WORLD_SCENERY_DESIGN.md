@@ -896,6 +896,31 @@ The teleport now spawns 0.5 m above the ground like the first flight
 (LSZH → Geneva mid-intro: release on the precise tile in ~2 s, ≤ 0.3 m
 bounce).
 
+### 9.7 Terrain unlit by the sun / black patch from space (fix 2026-09-18)
+
+From orbit the detailed patch rendered black until ~300 km, and the haze
+between 50 and 30 km was far too dense.
+
+- **Winding.** Godot's front faces are *clockwise*; `S3DTile` wound its
+  triangles counter-clockwise. With the double-sided terrain material the
+  renderer flipped the normals (normal buffer: terrain normals pointed away
+  from the camera, the globe's toward it), so the DirectionalLight never lit
+  the terrain — only the normal-independent ambient floor did, and the
+  pre-lit orthophotos hid it. From space the ambient is dimmed to night
+  level, hence black. Fixed by winding the tiles clockwise (scenery3d
+  submodule); the terrain now has real relief shading. Diagnosed with
+  `tests/probe_space_view.tscn` (`PROBE_DEBUG_DRAW=lighting|normals`) and
+  `tests/probe_tile_normals.tscn`.
+- **Haze.** The fog density used a linear 4..60 km altitude ramp, i.e. a
+  40 km camera still had a third of the ground density along a 40 km path.
+  Haze lives in the boundary layer, so `sky_atmosphere.gd` now scales the
+  density by `HAZE_LAYER_M / altitude` (2.5 km layer): the optical depth to
+  the ground stays what it is at ground level, and fog is off above 120 km.
+
+Known, pre-existing: a white staircase along the Swiss/Baden-Württemberg
+data border seen from > 40 km (skirts/seam at the boundary of the two
+tile sets).
+
 ## 10. Weather model — settings only (2026-09-18)
 
 The Settings screen has a **Weather** tab: a list of layers, each spanning
