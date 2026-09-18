@@ -2,57 +2,59 @@
 
 ProVPilot renders the whole Earth using the **world3d** GDExtension
 (`gitlab.md80.ch:gery/world3d`, `namespace world3d`) as the far/low-detail base,
-with the detailed Swiss (LV95) and Baden-Württemberg scenery3d patch mounted on
-top near the origin. This document describes how world3d is wired into ProVPilot.
+with the detailed Scenery3D regions (Switzerland, Baden-Württemberg,
+Scandinavia, …) placed on top. This document describes how world3d is wired
+into ProVPilot after step C of the worldwide-scenery design
+(`WORLD_SCENERY_DESIGN.md` §9.5).
 
 ## Overview
 
-- **world3d** renders a cube-sphere Earth from 60″ ETOPO in **ECEF**
-  (Earth-Centred Earth-Fixed) double-precision metres (~6.4 M m at the surface).
-- ProVPilot's aircraft, JSBSim bridge (`jsbgodot`) and `node_3d.gd` all live in a
-  **flat local LV95 frame** (`+X = West`, `+Y = Up`, `+Z = North`; origin
-  `E 2682880 / N 1283072`, ≈ Schaffhausen).
-- Rather than move the whole flight model into ECEF, the globe is **mapped into
-  the existing flat frame** so the aircraft/JSBSim/cameras keep working unchanged.
-
-## How the globe is mounted (`GlobeMount`)
-
-`W3DGlobe` reads the camera for LOD via `to_local(camera.global_position)` and
-stores its chunks in its own local (ECEF) space. So mounting the globe under a
-node whose transform is the **inverse** of the tangent frame at the LV95 origin
-maps the entire ECEF globe into ProVPilot's flat frame, while the globe still
-computes the correct ECEF camera position internally.
+- The Godot world **is WGS84 ECEF** (Earth-Centred Earth-Fixed) in
+  double-precision metres: origin at the Earth's centre, +Z through the north
+  pole. There is no flat frame, no floating origin and no rebasing.
+- **world3d** renders a cube-sphere Earth from 60″ ETOPO directly in that
+  frame; `GlobeMount` is the identity.
+- **Scenery3D** runs in `frame_mode = 1`: each tile, chunk and GLB tile is
+  placed with its local West-Up-North frame at its tile centre on the
+  ellipsoid (see the scenery3d README, *World Frame*). Its data grid is still
+  LV95 — that is a data coordinate now, not a world frame.
+- The aircraft node carries an ECEF position and a body-to-ECEF basis straight
+  from JSBSim, which runs at the true geodetic location with true headings
+  (`src/jsbgodot.cpp`). Cameras, slew mode and the intro zoom reason in the
+  local West-Up-North frame at the aircraft (`src/geo_frame.h`).
 
 Scene (`node_3d.tscn`):
 
 ```
 node_3d
-├── GlobeMount (Node3D)      # transform = enu_to_ecef(origin).affine_inverse()
-│   └── Globe (W3DGlobe)     # faces_path = res://faces
-├── Scenery3D                # flat LV95 patch (terrain/buildings/roads/water)
-├── Vegetation
-└── AC …                     # aircraft, cameras (flat frame, unchanged)
+├── GlobeMount (Node3D, identity)
+│   └── Globe (W3DGlobe)     # faces_path = res://faces, coverage mask frame 1 (LV95)
+├── Scenery3D (frame_mode = 1)   # regions on the ellipsoid
+├── Vegetation (frame_mode = 1)
+└── AC …                     # aircraft (ECEF pose), cameras as children
 ```
 
-`node_3d.gd::_setup_world3d_globe()`:
-- Converts the LV95 origin → WGS84 via `_lv95_to_wgs84()` (CH1903+ approximation).
-- `_ecef_from_flat = W3DCoords.enu_to_ecef_transform(lat, lon, 0, x_axis_west=true)`
-  (the `x_axis_west` convention exactly matches scenery3d's `+X = West / +Z = North`).
-- `GlobeMount.transform = _ecef_from_flat.affine_inverse()`.
-- Bumps camera far planes so the globe horizon is reachable.
+`node_3d.gd` helpers: `_geodetic_of(ecef)`, `_ecef_of_lv95(e, n, h)`,
+`_ac_transform_at(e, n, h, true_heading, scale)`, `_ac_true_heading(ac)`.
+Before the first flight the aircraft is parked on the ellipsoid at the LV95
+home point (`TERRAIN_CENTER_E/N`, Schaffhausen) so every geodetic conversion
+is well defined.
+
+Pitfall: `Node3D.look_at()` and `is_equal_approx()` use a relative epsilon,
+~64 m at ECEF magnitudes — never use them on world positions; aim cameras
+with `jsbgodot::geo::aim()`.
 
 ## Terrain elevation (ground contact)
 
 `node_3d.gd` queries terrain **patch-first, globe-fallback** so the aircraft has
-ground everywhere on the planet while keeping Swiss/BW precision where available:
+ground everywhere on the planet while keeping regional precision where available:
 
-- `_scenery_elevation_at(x, z)` — precise scenery3d value (`NAN` if no data).
-- `_globe_elevation_at(x, z)` — coarse whole-planet ETOPO (flat → ECEF → geodetic
-  → `globe.get_elevation(lat, lon)`).
-- `_terrain_elevation_at(x, z)` — scenery first, else globe.
+- `_scenery_elevation_geodetic(lat, lon)` — precise Scenery3D value (`NAN` if no data).
+- `_globe_elevation_geodetic(lat, lon)` — coarse whole-planet ETOPO.
+- `_terrain_elevation_geodetic(lat, lon)` / `_terrain_elevation_below(ecef)` — scenery first, else globe.
 - Spawn (`_do_deferred_terrain_init`) waits for the **precise** scenery value
   (avoids a ~100 m jump from initialising on the coarse globe), falling back to
-  the globe only after a timeout / outside the patch.
+  the globe only after a timeout / outside the regions.
 
 ## Globe visibility under the patch
 

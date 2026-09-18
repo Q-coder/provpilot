@@ -137,8 +137,9 @@ namespace jsbgodot
         // Set terrain elevation for ground collision (meters)
         void set_terrain_elevation(double elevation_m);
         
-        // Initialize aircraft at specific terrain elevation (meters) and Godot position
-        // This must be called before the first physics step for proper ground collision
+        // Initialise JSBSim resting on the terrain (metres ASL) at the aircraft
+        // node's ECEF position with a TRUE compass heading (degrees). Must be
+        // called before the first physics step for proper ground collision.
         void initialize_at_terrain(double terrain_elevation_m, Vector3 godot_pos, double heading_deg);
         
         // Set Godot world Y offset for terrain (transforms JSBSim altitude to Godot Y)
@@ -153,35 +154,20 @@ namespace jsbgodot
         void set_slew_mode(bool enabled);
         bool get_slew_mode() const;
         
-        // Reinitialize JSBSim from current Godot position (used after slew mode).
-        // terrain_elevation_m is the ground elevation under the aircraft, in meters ASL.
-        // Pass NaN if unknown — the function will fall back to (altitude - 2 m).
-        void reinitialize_from_godot_position(Vector3 godot_pos, double heading_rad, double terrain_elevation_m);
         
-        // Reinitialize with airspeed preservation (used when exiting slew mode).
-        // terrain_elevation_m is the ground elevation under the aircraft, in meters ASL.
-        void reinitialize_from_godot_position_with_speed(Vector3 godot_pos, double heading_rad, double airspeed_kts, double terrain_elevation_m);
-        
-        // Floating origin: shift the lat_lon_alt_to_local reference by godot_shift
-        // so all Godot positions shift by that amount.  Must match the terrain
-        // center change to keep C++ and Swiss→Godot mappings in sync.
-        void adjust_origin(Vector3 godot_shift);
-        
-        // Get current position data
+        // Current geodetic position (degrees) and ECEF position (metres).
         double get_latitude_deg() const;
         double get_longitude_deg() const;
         Vector3 get_godot_position() const;
-        // World frame (design §9.5): false = legacy flat frame (fake JSBSim
-        // location near 0N/0E, mirrored heading); true = the Godot world is
-        // WGS84 ECEF, JSBSim runs at the true geodetic position, the aircraft
-        // node gets position = ECEF location and basis = body-to-ECEF DCM.
-        void set_ecef_frame(bool p_ecef);
-        bool get_ecef_frame() const;
+        // The Godot world is WGS84 ECEF (design §9.5): JSBSim runs at the true
+        // geodetic position; each tick the aircraft node gets position = ECEF
+        // location and basis = body-to-ECEF DCM.
         // Attitude readouts (degrees): JSBSim theta / phi.
         double get_pitch_deg() const;
         double get_roll_deg() const;
-        // ECEF mode: re-initialise JSBSim from the aircraft node's global
-        // transform (position -> geodetic, heading from the nose axis).
+        // Re-initialise JSBSim from the aircraft node's global transform
+        // (position -> geodetic, heading from the nose axis); used after slew
+        // mode and teleports.
         // airspeed_kts <= 0 = stationary and level; otherwise the current
         // pitch/roll are kept and the calibrated airspeed is set.
         void reinitialize_from_pose(Transform3D ac_global, double airspeed_kts, double terrain_elevation_m);
@@ -192,7 +178,6 @@ namespace jsbgodot
         double cached_longitude = 0.0;
         Vector3 cached_godot_position = Vector3(0, 0, 0);
         bool jsbsim_initialized = false;  // Track if JSBSim has been properly initialized
-        bool ecef_frame = false;
         double pending_terrain_elevation = 0.0;  // Terrain elevation to use at initialization
         bool has_pending_terrain = false;  // Whether we have a terrain elevation to set
         double godot_terrain_y_offset = 0.0;  // Y offset to apply (Godot terrain Y - JSBSim terrain elevation)

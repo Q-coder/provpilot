@@ -47,9 +47,8 @@ namespace jsbgodot
         static void _bind_methods();
 
         // One-time wiring from node_3d.gd (after TERRAIN_CENTER is locked):
-        // Swiss LV95 origin for Godot<->LV95 conversion and the portable
-        // provpilot.cfg path ([map] section). Loads airports + cantons.
-        void setup(double swiss_e, double swiss_n, const String &config_path);
+        // Portable provpilot.cfg path ([map] section). Loads airports + cantons.
+        void setup(const String &config_path);
 
         // Scenery area roots (priority order) that may contain a map/ subdir.
         // Tile lookup tries each root in order, like the orthophoto fallback.
@@ -58,13 +57,10 @@ namespace jsbgodot
         // Re-read [map] from provpilot.cfg after a settings save.
         void apply_config();
 
-        // Per-frame drive: Godot-space aircraft position (m), heading in
-        // degrees true, and whether a full-screen UI overlay is up (input
-        // pass-through + frame hidden while true).
-        void update(const Vector3 &godot_pos, double heading_deg, bool ui_visible);
-        // Same, with the aircraft position already in LV95 metres (ECEF
-        // world hosts convert via geodetic). heading_deg is the GRID heading
-        // the map is drawn in (true + grid convergence).
+        // Per-frame drive: aircraft position in LV95 metres (the host converts
+        // its ECEF position via geodetic), heading_deg = the GRID heading the
+        // map is drawn in (true + grid convergence), and whether a full-screen
+        // UI overlay is up (input pass-through + frame hidden while true).
         void update_lv95(double e, double n, double heading_deg, bool ui_visible);
 
         // ── Public actions (also used by the smoke test) ──
@@ -116,8 +112,6 @@ namespace jsbgodot
         static const int FRAME_SIZES_PX[3];            // {240, 320, 400}
 
         // ── Config / state ──
-        double swiss_center_e = 0.0;
-        double swiss_center_n = 0.0;
         String config_path;
         PackedStringArray tile_paths;                  // map/ dirs, priority order
 

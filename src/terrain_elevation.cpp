@@ -18,7 +18,6 @@ void TerrainElevation::_bind_methods()
 {
 	ClassDB::bind_method(D_METHOD("register_nodes", "ac"), &TerrainElevation::register_nodes);
 	ClassDB::bind_method(D_METHOD("start_rebase", "pin_pos"), &TerrainElevation::start_rebase);
-	ClassDB::bind_method(D_METHOD("set_ecef", "ecef"), &TerrainElevation::set_ecef);
 	ClassDB::bind_method(D_METHOD("process_rebase", "jsb", "terrain_height_at_ac", "scenery_valid"), &TerrainElevation::process_rebase);
 	ClassDB::bind_method(D_METHOD("update_terrain_elevation", "jsb", "terrain_height_at_ac", "scenery_valid"), &TerrainElevation::update_terrain_elevation);
 	ClassDB::bind_method(D_METHOD("get_rebase_cooldown"), &TerrainElevation::get_rebase_cooldown);
@@ -40,10 +39,6 @@ void TerrainElevation::register_nodes(Node3D *p_ac)
 	ac_node = p_ac;
 }
 
-void TerrainElevation::set_ecef(bool p_ecef)
-{
-	ecef = p_ecef;
-}
 
 void TerrainElevation::start_rebase(const Vector3 &pin_pos)
 {
@@ -91,15 +86,8 @@ void TerrainElevation::process_rebase(Object *p_jsb, double terrain_height_at_ac
 
 	if (h > 0.1)
 	{
-		if (ecef)
-		{
-			const geo::Geodetic g = geo::geodetic_of(_teleport_pin_pos);
-			_teleport_pin_pos = geo::ecef_of(g.lat, g.lon, h + 2.1); // terrain + gear clearance, along local up
-		}
-		else
-		{
-			_teleport_pin_pos.y = h + 2.1; // terrain + gear clearance
-		}
+		const geo::Geodetic g = geo::geodetic_of(_teleport_pin_pos);
+		_teleport_pin_pos = geo::ecef_of(g.lat, g.lon, h + 2.1); // terrain + gear clearance, along local up
 		ac_node->set_global_position(_teleport_pin_pos);
 		UtilityFunctions::print("Teleport: updated terrain height to " + String::num_real(h, 1) + "m");
 	}
@@ -108,18 +96,7 @@ void TerrainElevation::process_rebase(Object *p_jsb, double terrain_height_at_ac
 	JSBGodot *fdm = Object::cast_to<JSBGodot>(p_jsb);
 	if (fdm != nullptr)
 	{
-		if (ecef)
-		{
-			fdm->reinitialize_from_pose(ac_node->get_global_transform(), 0.0, h);
-		}
-		else
-		{
-			Vector3 final_pos = ac_node->get_global_position();
-			double heading = ac_node->get_rotation().y;
-			// h is already NAN-resolved and was queried at the same XZ as the AC, so it
-			// stands in for the historical separate re-query of the ground height here.
-			fdm->reinitialize_from_godot_position(final_pos, heading, h);
-		}
+		fdm->reinitialize_from_pose(ac_node->get_global_transform(), 0.0, h);
 		update_terrain_elevation(p_jsb, terrain_height_at_ac, scenery_valid);
 		fdm->set_slew_mode(false);
 	}

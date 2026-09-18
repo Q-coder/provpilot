@@ -25,8 +25,12 @@ var _model_root_path: String = "AC/Node3D2/C172P_1"
 # ProjectSettings in _ready), otherwise the HUD, teleport, and JSBSim will
 # disagree with the tiles that Scenery3D actually places. Scenery3D's origin
 # is fixed at startup, so there is no runtime floating-origin rebase.
-var TERRAIN_CENTER_E: float = 2682880.0  # Swiss Easting at Godot X=0
-var TERRAIN_CENTER_N: float = 1283072.0  # Swiss Northing at Godot Z=0
+# Home point in LV95 (Schaffhausen LSPF area): where the aircraft is parked
+# before the first flight and the initial sky observer. NOT a frame origin —
+# the Godot world is ECEF (design §9.5); this mirrors Scenery3D's origin_east/
+# north only so its flat-mode data grid and the home point agree.
+var TERRAIN_CENTER_E: float = 2682880.0
+var TERRAIN_CENTER_N: float = 1283072.0
 
 # User edit. Get the new organized labels.
 @onready var airspeed_label: Label = $Control/BottomRow/Label
@@ -105,20 +109,11 @@ var _slew_mode := SlewMode.new()
 # STATUS_FINISHED.
 var _intro_zoom := IntroZoom.new()
 
-# Altitude-driven atmosphere (fog fade-out toward space, sky-to-black
-# background, ambient/glow taper) + coarse-globe visibility gate live in the
-# C++ Atmosphere module (src/atmosphere.cpp). GDScript registers the scene
-# Environment + globe node once the world3d globe is mounted and calls
-# update(get_viewport()) from _process.
-var _atmosphere := Atmosphere.new()
-
 # Day/night sun + atmospheric sky (sky_atmosphere.gd). Installs the
 # atmospheric-scattering sky shader so the horizon follows the world3d globe's
 # Earth curvature at every altitude, swings the scene sun/shadows through the
 # day from the simulated time of day, and applies the altitude fog/ambient
-# ramps + coarse-globe visibility gate. This replaces the C++ Atmosphere
-# module's per-frame update (which forced a flat procedural sky + a solid
-# black background above 100 km, hiding the atmospheric limb in orbit).
+# ramps. (The former C++ Atmosphere module was removed in step C3.)
 var _sky := preload("res://sky_atmosphere.gd").new()
 
 # Engine-sound pitch/volume mapping (RPM -> AudioStreamPlayer pitch_scale +
@@ -198,11 +193,6 @@ var _suppress_cov_gen := -1
 # upload; during heavy streaming the coverage generation bumps every frame).
 const SUPPRESS_REFRESH_MS := 100
 var _suppress_last_ms := 0
-# The altitude-driven atmosphere ramps (exponential fog fade-out toward space,
-# sky-to-black background above the atmosphere, ambient/glow taper) and the
-# coarse-globe visibility gate live in the C++ Atmosphere module
-# (src/atmosphere.cpp); it captures the scene Environment's base values when
-# registered (see _setup_world3d_globe).
 
 # Tree density mapping (tree_density index -> density fraction / load radius)
 # lives in the C++ SettingsStore (apply_tree_density).
@@ -398,14 +388,12 @@ func _ready() -> void:
 		TERRAIN_CENTER_N = float(ProjectSettings.get_setting("scenery3d/origin_north"))
 	print("TERRAIN_CENTER locked to Scenery3D origin: E=%d N=%d" % [int(TERRAIN_CENTER_E), int(TERRAIN_CENTER_N)])
 
-	# Slew mode (C++ module): register the session-stable AC root + HUD labels
-	# and the Swiss origin (must run after TERRAIN_CENTER is locked above).
+	# Slew mode (C++ module): register the session-stable AC root + HUD labels.
 	_slew_mode.register_nodes($AC, airspeed_label, altitude_label, vspeed_label, throttle_label, heading_label, $Control/Label6, $Control/Label7, $Control/Label8)
-	_slew_mode.set_swiss_center(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
 
-	# VFR map frame (C++ module): one-time wiring with the Swiss origin and
-	# the portable config path. Tile paths arrive via _apply_scenery_sources().
-	_vfr_map.setup(TERRAIN_CENTER_E, TERRAIN_CENTER_N, InstallRoot.get_config_path())
+	# VFR map frame (C++ module): one-time wiring with the portable config
+	# path. Tile paths arrive via _apply_scenery_sources().
+	_vfr_map.setup(InstallRoot.get_config_path())
 
 	# Terrain elevation (C++ module): register the session-stable AC root and push
 	# the fallback timeout GDScript still owns locally (it also gates the deferred
@@ -717,14 +705,6 @@ func _setup_world3d_globe() -> void:
 	_globe_mount.transform = Transform3D.IDENTITY
 	if globe_node.has_method("set_coverage_mask_frame"):
 		globe_node.set_coverage_mask_frame(1)
-	# Every C++ module reasons in the local West-Up-North frame now.
-	_slew_mode.set_ecef(true)
-	_terrain_elevation.set_ecef(true)
-	_camera_rig.set_ecef(true)
-	_intro_zoom.set_ecef(true)
-	_atmosphere.set_ecef(true)
-	if jsb_node:
-		jsb_node.set_ecef_frame(true)
 	# Cameras must reach the global horizon (default far was 200 km).
 	if camera1:
 		camera1.far = 12000000.0
@@ -737,11 +717,6 @@ func _setup_world3d_globe() -> void:
 		_intro_camera.far = 4.0e7
 		_intro_camera.fov = 70.0
 		add_child(_intro_camera)
-	# Register the altitude-driven atmosphere ramps + coarse-globe visibility
-	# gate with the C++ module (it captures the Environment's base values now,
-	# so the globe doesn't wash out to the fog colour when seen from space).
-	var we := get_node_or_null("Environment/WorldEnvironment")
-	_atmosphere.register_nodes(we.environment if we else null, globe_node)
 	# Register the cinematic intro zoom nodes (session-stable; the dedicated
 	# intro camera was created just above).
 	_intro_zoom.register_nodes(get_node_or_null("AC"), _intro_camera, camera1, camera2, _camera_rig)

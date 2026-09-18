@@ -49,14 +49,21 @@ are aligned to.
 
 ## Coordinate System
 
+The tile **data** grid is LV95 (tile files are named by their LV95 corner).
+Since step C (design §9.5) the Godot **world** is WGS84 ECEF and Scenery3D
+runs in `frame_mode = 1`: each tile is placed with its local West-Up-North
+frame at its centre on the ellipsoid, so tile meshes stay in their flat
+tile-local layout:
+
 ```
-Godot X = origin_east  − LV95_East     (+X = West)
-Godot Z = LV95_North   − origin_north  (+Z = North)
-Godot Y = Elevation (meters ASL)
+tile-local X = tile_east_edge − LV95_East   (+X = West)
+tile-local Z = LV95_North − tile_south_edge  (+Z = North)
+tile-local Y = Elevation (metres ASL, treated as ellipsoidal)
 ```
 
-Default origin E=2,682,880 / N=1,283,072 puts the Schaffhausen area near the
-world origin.
+`origin_east/north` (E=2,682,880 / N=1,283,072, Schaffhausen) only matters in
+the legacy flat mode (`frame_mode = 0`, the scenery3d demo) and as ProVPilot's
+home point before the first flight.
 
 ## Elevation Queries
 

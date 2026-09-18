@@ -44,7 +44,6 @@ namespace jsbgodot
         };
 
         static void _bind_methods();
-        bool ecef = false;
 
         // ── Tunables (defaults match the historical GDScript constants) ──
         void set_head_yaw_max(double deg);
@@ -85,11 +84,8 @@ namespace jsbgodot
         // spherical→cartesian conversion of the orbit state. Used by GDScript's
         // intro-zoom handoff so both paths share one implementation.
         Vector3 orbit_offset() const;
-        // orbit_offset() expressed in world space: identical in the flat frame,
-        // rotated into the local West-Up-North frame at the aircraft in ECEF.
+        // orbit_offset() rotated into the local West-Up-North frame at the aircraft.
         Vector3 orbit_offset_world() const;
-        // ECEF world: camera up = local ellipsoid normal, horizontal = local plane.
-        void set_ecef(bool p_ecef);
 
         double get_orbit_yaw() const;     // degrees
         double get_orbit_pitch() const;   // degrees

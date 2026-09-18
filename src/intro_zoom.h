@@ -43,7 +43,6 @@ namespace jsbgodot
         };
 
         static void _bind_methods();
-        bool ecef = false;
         Vector3 view_up_hint(const Vector3 &cam_pos, const Vector3 &target, double blend) const;
 
         // ── Node registration (session-stable; no reset needed) ──
@@ -59,8 +58,6 @@ namespace jsbgodot
         // Begin the zoom (called when fly-loading completes). Returns false
         // when ac_node or intro_camera is missing (nothing started).
         bool start();
-        // ECEF world: start straight up along the ellipsoid normal, north-up view.
-        void set_ecef(bool p_ecef);
 
         // Per-frame update while playing. Reads Escape/Space from Godot's
         // Input singleton for the skip. Returns STATUS_RUNNING or

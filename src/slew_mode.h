@@ -39,7 +39,6 @@ namespace jsbgodot
 
     public:
         static void _bind_methods();
-        bool ecef = false;  // world is ECEF (design §9.5): local WUN frame per update
 
         // ── Node registration (session-stable; no reset needed) ──
         // ac_node = aircraft root ($AC). The eight labels are the normal HUD
@@ -52,10 +51,6 @@ namespace jsbgodot
                             Label *heading_label, Label *godot_pos_label,
                             Label *swiss_label, Label *heading_deg_label);
         // Swiss LV95 origin (TERRAIN_CENTER_E/N) for the coordinate readout.
-        void set_swiss_center(double easting, double northing);
-        // ECEF world: movement/yaw in the local West-Up-North frame at the
-        // aircraft, HUD coordinates from geodetic position.
-        void set_ecef(bool p_ecef);
 
         // ── Per-frame update ──
         // Handles the Shift+Y toggle and, while active, the free movement +
@@ -101,8 +96,6 @@ namespace jsbgodot
         Label *godot_pos_label = nullptr;
         Label *swiss_label = nullptr;
         Label *heading_deg_label = nullptr;
-        double swiss_center_e = 0.0;
-        double swiss_center_n = 0.0;
 
         // Terrain height under the aircraft from the last update() call —
         // used for the gear-clearance lift when exiting slew mode (same

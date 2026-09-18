@@ -186,12 +186,13 @@ func _process(_delta: float) -> void:
 			var pos: Vector3 = app.get_node("AC").global_position
 			var moved: float = (pos - pos_before_move).length()
 			check(moved > 1.0, "W moves the aircraft forward while slewing (got %.1f m)" % moved)
-			y_before_climb = pos.y
+			y_before_climb = W3DCoords.ecef_to_geodetic(pos).z  # geodetic height (ECEF world)
 			run_steps([{"press": [KEY_Q], "frames": 8}], "check_move_up")
 
 		"check_move_up":
-			var pos: Vector3 = app.get_node("AC").global_position
-			check(pos.y - y_before_climb > 1.0, "Q raises the aircraft while slewing (got %.1f m)" % (pos.y - y_before_climb))
+			# ECEF world: "up" is the geodetic height, not world Y.
+			var h_now: float = W3DCoords.ecef_to_geodetic(app.get_node("AC").global_position).z
+			check(h_now - y_before_climb > 1.0, "Q raises the aircraft while slewing (got %.1f m)" % (h_now - y_before_climb))
 			run_steps([{"press": [KEY_SHIFT, KEY_Y], "frames": 4}], "check_exit")
 
 		"check_exit":

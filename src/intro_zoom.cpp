@@ -21,7 +21,6 @@ void IntroZoom::_bind_methods()
 	ClassDB::bind_integer_constant("IntroZoom", "Status", "STATUS_FINISHED", STATUS_FINISHED);
 	ClassDB::bind_method(D_METHOD("register_nodes", "ac_node", "intro_camera", "camera1", "camera2", "camera_rig"), &IntroZoom::register_nodes);
 	ClassDB::bind_method(D_METHOD("start"), &IntroZoom::start);
-	ClassDB::bind_method(D_METHOD("set_ecef", "ecef"), &IntroZoom::set_ecef);
 	ClassDB::bind_method(D_METHOD("update", "delta"), &IntroZoom::update);
 	ClassDB::bind_method(D_METHOD("is_playing"), &IntroZoom::is_playing);
 	ClassDB::bind_method(D_METHOD("set_intro_duration", "seconds"), &IntroZoom::set_intro_duration);
@@ -82,24 +81,16 @@ Vector3 IntroZoom::spot_offset() const
 	return Vector3(0.0, 0.0, -6.0);
 }
 
-void IntroZoom::set_ecef(bool p_ecef)
-{
-	ecef = p_ecef;
-}
 
-// Up hint for look_at that is never parallel to the view direction: north
-// (ECEF) / -Z (flat) while looking straight down, blending to local up as the
-// view swings toward the horizon.
+// Up hint for the camera aim that is never parallel to the view direction:
+// north while looking straight down, blending to local up as the view swings
+// toward the horizon.
 Vector3 IntroZoom::view_up_hint(const Vector3 &cam_pos, const Vector3 &target, double blend) const
 {
 	Vector3 fwd = (target - cam_pos).normalized();
 	Vector3 up = up_dir;
-	Vector3 north = Vector3(0.0, 0.0, -1.0);
-	if (ecef)
-	{
-		const geo::Geodetic g = geo::geodetic_of(target);
-		north = geo::wun_basis(g.lat, g.lon).get_column(2);
-	}
+	const geo::Geodetic g = geo::geodetic_of(target);
+	const Vector3 north = geo::wun_basis(g.lat, g.lon).get_column(2);
 	Vector3 hint = (north * (1.0 - blend) + up * blend).normalized();
 	if (std::abs(fwd.dot(hint)) > 0.98)
 	{
@@ -121,7 +112,7 @@ bool IntroZoom::start()
 	// around the wrong spot during the descent. Straight up keeps streaming
 	// centred on the aircraft so detailed buildings load directly instead of
 	// far-first.
-	up_dir = ecef ? geo::up_at(ac_node->get_global_position()) : Vector3(0.0, 1.0, 0.0);
+	up_dir = geo::up_at(ac_node->get_global_position());
 	start_pos = ac_node->get_global_position() + up_dir * intro_start_alt_m;
 	elapsed = 0.0;
 	playing = true;
@@ -223,7 +214,7 @@ void IntroZoom::finish()
 		camera2->set_global_position(ac_node->get_global_position() + spot);
 		if (spot.length_squared() > 0.01)
 		{
-			geo::aim(camera2, ac_node->get_global_position(), ecef ? geo::up_at(ac_node->get_global_position()) : Vector3(0.0, 1.0, 0.0));
+			geo::aim(camera2, ac_node->get_global_position(), geo::up_at(ac_node->get_global_position()));
 		}
 	}
 

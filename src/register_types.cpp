@@ -9,7 +9,6 @@
 #include "cockpit_controls.h"
 #include "slew_mode.h"
 #include "intro_zoom.h"
-#include "atmosphere.h"
 #include "engine_sound.h"
 #include "terrain_elevation.h"
 #include "loading_progress.h"
@@ -34,7 +33,6 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<CockpitControls>();
 	ClassDB::register_class<SlewMode>();
 	ClassDB::register_class<IntroZoom>();
-	ClassDB::register_class<Atmosphere>();
 	ClassDB::register_class<EngineSound>();
 	ClassDB::register_class<TerrainElevation>();
 	ClassDB::register_class<LoadingProgress>();

@@ -39,7 +39,6 @@ namespace jsbgodot
 
     public:
         static void _bind_methods();
-        bool ecef = false;
 
         // ── Node registration (session-stable; no reset needed) ──
         // ac_node = aircraft root ($AC). The module pins it during the rebase
@@ -50,8 +49,6 @@ namespace jsbgodot
         // Arm the post-teleport cooldown: pin the AC at pin_pos for
         // rebase_cooldown_frames frames while terrain settles.
         void start_rebase(const Vector3 &pin_pos);
-        // ECEF world: pin height along local up, re-init JSBSim from the pose.
-        void set_ecef(bool p_ecef);
 
         // Per-frame: pin the AC while the countdown runs; on expiry, finalise the
         // ground height (with NAN retry up to terrain_init_fallback_msec), lift

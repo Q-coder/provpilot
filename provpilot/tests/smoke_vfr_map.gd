@@ -43,7 +43,7 @@ func _ready() -> void:
 ## the map (from $AC while slewing) and we verify exactly that.
 func _feed_known_position() -> void:
 	if vfr_map != null and phase != "done" and not phase.begins_with("slew"):
-		vfr_map.update(Vector3(2682880.0 - AC_E, 500.0, AC_N - 1283072.0), 250.0, false)
+		vfr_map.update_lv95(AC_E, AC_N, 250.0, false)
 
 
 func check(cond: bool, msg: String) -> void:
@@ -157,15 +157,14 @@ func _process(_delta: float) -> void:
 			else:
 				_make_tiles()
 				# One-time wiring exactly as node_3d.gd does it.
-				vfr_map.setup(2682880.0, 1283072.0, "/tmp/vfr_map_smoke/no_cfg.cfg")
+				vfr_map.setup("/tmp/vfr_map_smoke/no_cfg.cfg")
 				vfr_map.set_tile_paths(PackedStringArray([tmp_dir]))
 				_enter_phase("drive")
 
 		"drive":
 			# Drive the module like node_3d.gd does: Godot-space position for
 			# AC_E/AC_N (swiss_e = center_e - x  =>  x = center_e - swiss_e).
-			var godot_pos := Vector3(2682880.0 - AC_E, 500.0, AC_N - 1283072.0)
-			vfr_map.update(godot_pos, 250.0, false)
+			vfr_map.update_lv95(AC_E, AC_N, 250.0, false)
 			if frame - phase_frame >= 30:
 				_enter_phase("check_tiles")
 
@@ -176,8 +175,7 @@ func _process(_delta: float) -> void:
 				"in-view airports detected near LSZH (got %d)" % vfr_map.get_visible_airport_count())
 			# Re-issue a known state synchronously: node_3d.gd's own _process
 			# overwrites position/heading with JSBSim's every frame.
-			var godot_pos := Vector3(2682880.0 - AC_E, 500.0, AC_N - 1283072.0)
-			vfr_map.update(godot_pos, 250.0, false)
+			vfr_map.update_lv95(AC_E, AC_N, 250.0, false)
 			check(absf(vfr_map.get_heading_rad() - deg_to_rad(250.0)) < 0.01,
 				"heading was propagated to the module")
 			var z_before := vfr_map.get_zoom_index()
@@ -195,13 +193,13 @@ func _process(_delta: float) -> void:
 			# in screen space (rotation-invariant). Default frame is 320 px;
 			# map_area width = 320 - 2*8 margin = 304 px.
 			var center := Vector2(2682880.0, 1283072.0)  # setup() LV95 origin
-			vfr_map.update(Vector3(center.x - AC_E, 500.0, AC_N - center.y), 250.0, false)
+			vfr_map.update_lv95(AC_E, AC_N, 250.0, false)
 			var ac_px := vfr_map.get_projected_px(AC_E, AC_N)
 			check(absf(ac_px.x - 160.0) < 0.5 and absf(ac_px.y - 171.0) < 0.5,
 				"aircraft projects to the map-area center (got %.2f, %.2f)" % [ac_px.x, ac_px.y])
 			var world_pt := Vector2(AC_E + 500.0, AC_N)
 			var p0 := vfr_map.get_projected_px(world_pt.x, world_pt.y)
-			vfr_map.update(Vector3(center.x - (AC_E + 1000.0), 500.0, AC_N - center.y), 250.0, false)
+			vfr_map.update_lv95(AC_E + 1000.0, AC_N, 250.0, false)
 			var p1 := vfr_map.get_projected_px(world_pt.x, world_pt.y)
 			var expected := 1000.0 * (304.0 / vfr_map.get_view_width_m())
 			var got := (p1 - p0).length()

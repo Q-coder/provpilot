@@ -818,6 +818,23 @@ move: density 5.0e-5 at 500 m, 4.7e-5 at 7.6 km, 2.7e-5 at 30 km, off at
 62 km.
 | C3 | Remove flat-frame code paths (rebase, TERRAIN_CENTER), per-region CRS grids with UTM support (D6), docs | smoke tests green; existing CH/BW/Norway packs unchanged |
 
+*C3 implemented (2026-09-18).* Host: the JSBSim bridge lost its flat branch
+(fake location, equirectangular reference, heading mirror, `adjust_origin`,
+the two flat re-inits; 1438 → 1085 lines), SlewMode/TerrainElevation/
+CameraRig/IntroZoom lost their `set_ecef` switches (ECEF only), the dead C++
+`Atmosphere` module (never updated since sky_atmosphere.gd took over) is
+deleted, `VfrMap` keeps only `update_lv95` and `setup(config_path)`;
+`TERRAIN_CENTER_E/N` survives solely as the LV95 home point (park position,
+initial sky observer). Scenery3D keeps `frame_mode 0` for its own demo.
+**Per-region CRS (D6):** the terrain manifest `"crs"` field is now read and
+enforced — this build streams a single LV95 grid, and a path declaring
+another CRS is skipped with a clear warning instead of being placed on the
+wrong grid. Full multi-CRS streaming (per-region tile keys/rings/chunks,
+per-CRS coverage masks and a UTM branch in the globe mask shader) is
+deferred until the first non-LV95 pack exists; the projection library
+already has the UTM maths and `Crs::from_epsg()`. Docs updated:
+`WORLD3D.md`, `TERRAIN_SETUP.md`, scenery3d and world3d READMEs.
+
 ## See also
 
 - [gerys_plan.md](gerys_plan.md) — the plan this subtask serves

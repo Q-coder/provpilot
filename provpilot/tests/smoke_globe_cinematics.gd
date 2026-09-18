@@ -3,10 +3,10 @@
 ## Boots the real main scene, starts a first flight to an airport with a runway
 ## threshold, then verifies:
 ##   1. the intro zoom is playing from space (intro camera current, fog off,
-##      black background, coarse globe visible) and
+##      sky-shader background, coarse globe visible) and
 ##   2. pressing SPACE skips it and hands off seamlessly to orbit mode
 ##      (camera_mode/active_camera mirrors synced, CameraRig in MODE_ORBIT,
-##      fog back on, coarse globe hidden under the detailed patch).
+##      fog back on, coarse globe masked under the detailed patch).
 ##
 ## Run: godot --headless res://tests/smoke_globe_cinematics.tscn
 extends Node
@@ -197,8 +197,8 @@ func _process(_delta: float) -> void:
 			if env != null:
 				check(not env.fog_enabled, "fog disabled at space altitude (16000 km)")
 				check(
-					env.background_mode == Environment.BG_COLOR,
-					"background is solid black (BG_COLOR) at space altitude")
+					env.background_mode == Environment.BG_SKY,
+					"background is the atmosphere sky shader (renders black space + limb) at space altitude")
 			check(
 				app_ref.globe_node != null and app_ref.globe_node.visible,
 				"coarse globe visible from space")
@@ -218,8 +218,8 @@ func _process(_delta: float) -> void:
 			if env != null:
 				check(env.fog_enabled, "fog re-enabled at ground altitude after handoff")
 			check(
-				app_ref.globe_node == null or not app_ref.globe_node.visible,
-				"coarse globe hidden under the detailed patch at low altitude")
+				app_ref.globe_node != null and app_ref.globe_node.visible and app_ref.globe_node.get_coverage_mask_size() > 0,
+				"coarse globe stays visible as the fallback and is masked per fragment under the detailed patch (mask uploaded)")
 			_enter_phase("done")
 
 		"steps":

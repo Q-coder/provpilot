@@ -218,10 +218,9 @@ namespace
 
 void VfrMap::_bind_methods()
 {
-    ClassDB::bind_method(D_METHOD("setup", "swiss_e", "swiss_n", "config_path"), &VfrMap::setup);
+    ClassDB::bind_method(D_METHOD("setup", "config_path"), &VfrMap::setup);
     ClassDB::bind_method(D_METHOD("set_tile_paths", "map_dirs"), &VfrMap::set_tile_paths);
     ClassDB::bind_method(D_METHOD("apply_config"), &VfrMap::apply_config);
-    ClassDB::bind_method(D_METHOD("update", "godot_pos", "heading_deg", "ui_visible"), &VfrMap::update);
     ClassDB::bind_method(D_METHOD("update_lv95", "e", "n", "heading_deg", "ui_visible"), &VfrMap::update_lv95);
     ClassDB::bind_method(D_METHOD("get_cached_tile_count"), &VfrMap::get_cached_tile_count);
     ClassDB::bind_method(D_METHOD("get_visible_airport_count"), &VfrMap::get_visible_airport_count);
@@ -382,10 +381,8 @@ void VfrMap::zoom_step(int step)
 
 // ── Setup / config ──────────────────────────────────────────────────────────
 
-void VfrMap::setup(double swiss_e, double swiss_n, const String &config_path_in)
+void VfrMap::setup(const String &config_path_in)
 {
-    swiss_center_e = swiss_e;
-    swiss_center_n = swiss_n;
     config_path = config_path_in;
     load_config();
     set_visible(enabled);
@@ -484,11 +481,6 @@ int VfrMap::pick_level() const
 
 // ── Per-frame drive ─────────────────────────────────────────────────────────
 
-void VfrMap::update(const Vector3 &godot_pos, double heading_deg, bool ui_visible_in)
-{
-    // Godot (flat) -> Swiss LV95 (same convention as the HUD coordinate readout).
-    update_lv95(swiss_center_e - double(godot_pos.x), swiss_center_n + double(godot_pos.z), heading_deg, ui_visible_in);
-}
 
 void VfrMap::update_lv95(double e, double n, double heading_deg, bool ui_visible_in)
 {

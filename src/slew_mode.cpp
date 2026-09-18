@@ -22,8 +22,6 @@ namespace jsbgodot
 void SlewMode::_bind_methods()
 {
 	ClassDB::bind_method(D_METHOD("register_nodes", "ac_node", "airspeed_label", "altitude_label", "vspeed_label", "throttle_label", "heading_label", "godot_pos_label", "swiss_label", "heading_deg_label"), &SlewMode::register_nodes);
-	ClassDB::bind_method(D_METHOD("set_swiss_center", "easting", "northand"), &SlewMode::set_swiss_center);
-	ClassDB::bind_method(D_METHOD("set_ecef", "ecef"), &SlewMode::set_ecef);
 	ClassDB::bind_method(D_METHOD("update", "delta", "jsb_node", "axis_strafe", "axis_forward", "axis_yaw", "axis_vertical", "terrain_height_at_ac", "joy_device"), &SlewMode::update);
 	ClassDB::bind_method(D_METHOD("is_enabled"), &SlewMode::is_enabled);
 	ClassDB::bind_method(D_METHOD("get_preserved_airspeed_kts"), &SlewMode::get_preserved_airspeed_kts);
@@ -51,16 +49,7 @@ void SlewMode::register_nodes(Node3D *p_ac_node,
 	heading_deg_label = p_heading_deg_label;
 }
 
-void SlewMode::set_swiss_center(double easting, double northing)
-{
-	swiss_center_e = easting;
-	swiss_center_n = northing;
-}
 
-void SlewMode::set_ecef(bool p_ecef)
-{
-	ecef = p_ecef;
-}
 
 bool SlewMode::is_enabled() const
 {
@@ -173,9 +162,9 @@ void SlewMode::toggle(JSBGodot *fdm, int joy_device)
 			heading_deg_label->set_text("");
 		}
 		// Re-initialize JSBSim at the new position with the saved airspeed.
-		if (ac_node != nullptr && fdm != nullptr && ecef)
+		if (ac_node != nullptr && fdm != nullptr)
 		{
-			// ECEF: lift above ground along local up if we sank, then re-init
+			// Lift above ground along local up if we sank, then re-init
 			// JSBSim straight from the node's global pose.
 			Transform3D xf = ac_node->get_global_transform();
 			double terr_h = last_terrain_height;
@@ -186,34 +175,6 @@ void SlewMode::toggle(JSBGodot *fdm, int joy_device)
 				ac_node->set_global_transform(xf);
 			}
 			fdm->reinitialize_from_pose(xf, pre_slew_airspeed_kts, terr_h);
-		}
-		else if (ac_node != nullptr && fdm != nullptr)
-		{
-			Vector3 pos = ac_node->get_global_position();
-			double heading = ac_node->get_rotation().y;
-			// Lift above ground if the aircraft sank below the surface during
-			// slew. Without this, ic->RunIC() fires gear-collision forces for
-			// the first frame and the aircraft bounces.
-			double terr_h = last_terrain_height;
-			if (!std::isnan(terr_h))
-			{
-				double min_y = terr_h + 2.0; // 2 m gear clearance
-				if (pos.y < min_y)
-				{
-					pos.y = min_y;
-					ac_node->set_global_position(pos);
-				}
-			}
-			UtilityFunctions::print(String("  Reinitializing JSBSim at Godot position: X=") + String::num_real(pos.x) + " Y=" + String::num_real(pos.y) + " Z=" + String::num_real(pos.z));
-			char buf[96];
-			snprintf(buf, sizeof(buf), "  Heading: %.1f degrees", Math::rad_to_deg(heading));
-			UtilityFunctions::print(buf);
-			snprintf(buf, sizeof(buf), "  Restoring airspeed: %.1f kts", pre_slew_airspeed_kts);
-			UtilityFunctions::print(buf);
-
-			// Reinitialize with preserved airspeed (JSBSim falls back to a
-			// plain reinit when NAN terrain is passed).
-			fdm->reinitialize_from_godot_position_with_speed(pos, heading, pre_slew_airspeed_kts, terr_h);
 		}
 	}
 }
@@ -267,10 +228,9 @@ void SlewMode::handle_movement(double delta, double ax_strafe, double ax_forward
 	Vector3 pos;
 	double swiss_e, swiss_n, heading_deg;
 	double alt_asl;
-	if (ecef)
 	{
-		// ECEF world: build the local frame at the aircraft; "forward" is the
-		// nose projected onto the local horizontal plane, vertical is local up.
+		// Build the local frame at the aircraft; "forward" is the nose
+		// projected onto the local horizontal plane, vertical is local up.
 		Transform3D xf = ac_node->get_global_transform();
 		geo::Geodetic g = geo::geodetic_of(xf.origin);
 		Basis w = geo::wun_basis(g.lat, g.lon);
@@ -302,37 +262,6 @@ void SlewMode::handle_movement(double delta, double ax_strafe, double ax_forward
 		swiss_n = lv.y;
 		heading_deg = geo::true_heading_deg(xf.basis, g.lat, g.lon);
 		alt_asl = g.h;
-	}
-	else
-	{
-	// Calculate movement in world space based on aircraft heading.
-	double current_rotation = ac_node->get_rotation().y;
-	Vector3 forward(std::sin(current_rotation), 0.0, std::cos(current_rotation));
-	Vector3 right(std::cos(current_rotation), 0.0, -std::sin(current_rotation));
-
-	// Calculate velocity (negate move_x to fix left/right direction).
-	Vector3 velocity = forward * (-move_z) * slew_speed * speed_mult;
-	velocity += right * (-move_x) * slew_speed * speed_mult;
-	velocity.y = move_y * slew_vertical_speed * speed_mult;
-
-	// Apply movement.
-	pos = ac_node->get_global_position();
-	pos += velocity * delta;
-	ac_node->set_global_position(pos);
-
-	// Apply rotation (yaw).
-	if (std::abs(rotate_y) > yaw_deadzone)
-	{
-		Vector3 eul = ac_node->get_rotation();
-		eul.y -= rotate_y * yaw_rate * delta; // 2 rad/s rotation speed
-		ac_node->set_rotation(eul);
-	}
-
-	// Update HUD with current position.
-	swiss_e = swiss_center_e - pos.x;
-	swiss_n = swiss_center_n + pos.z;
-	heading_deg = std::fmod(Math::rad_to_deg(-ac_node->get_rotation().y) + 360.0, 360.0);
-	alt_asl = pos.y;
 	}
 
 	if (airspeed_label != nullptr)
