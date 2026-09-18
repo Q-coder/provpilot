@@ -30,6 +30,18 @@ Three gaps found on a flight along the Schaffhausen border:
    the same merge in the worker (`LoadResult::chunk_ortho_rgb`, raw RGB,
    consumed on the main thread next to the plain JPEG path).
 
+4. **Beyond the last source** (Austria, Liechtenstein, the German side of
+   Lake Constance) nothing could fill the margins, so white/black squares
+   lined those borders. `ortho_fill_nodata()` now fills whatever no-data is
+   left from the tile's own real pixels (nearest valid colour, fading to
+   the tile's mean colour over ~1/32 of the tile so large areas become a
+   flat neutral instead of streaks); this also runs for single-source
+   tiles and for the 8 km chunk composites (missing member tiles included).
+   A tile or chunk with fewer than 10 % real pixels lies outside every
+   source and is dropped (`no_data`), so the coarse globe shows there.
+   Follow-up: the German part of Lake Constance has no water polygon, so
+   those tiles get a flat grey-blue fill rather than water.
+
 Diagnostics: `provpilot/tests/probe_ortho_coverage.gd` prints, for a LV95
 window, which sources have each tile and how much no-data the composite
 would still contain; `probe_space_view.tscn` (`PROBE_LV95`, `PROBE_HIDE`)
