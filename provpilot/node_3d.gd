@@ -186,27 +186,17 @@ var _ecef_from_flat: Transform3D = Transform3D.IDENTITY
 const GLOBE_REBASE_TRACK_M := 500.0
 var _globe_anchor_flat: Vector2 = Vector2.ZERO
 var _globe_has_anchor := false
-# Suppression inset (Phase 2 hole fix, iteration 3): the globe culls chunks by
-# CONTAINMENT — a chunk is culled only when all four of its ground corners lie
-# inside a suppression rectangle — so a culled chunk always sits fully under
-# resident detailed geometry and no large inset is needed to avoid holes to
-# space (chunks straddling the coverage edge simply stay visible as fallback).
-# Containment is tested in FLAT coordinates, the same frame Scenery3D places
-# its meshes in, so hole-safety holds even where the globe's geographic
-# features are offset from local terrain (up to ~200 km at 71°N — the
-# swisstopo anchor polynomial vs pyproj CH1903+ content mapping; a Phase 3
-# concern). The margin covers tile-edge quantization, one-frame coverage lag
-# and flat-frame projection skew near the rectangle edge. Keep it ≥ ~5 km.
-const GLOBE_SUPPRESS_MARGIN_M := 10000.0
-# Enabled regions' terrain extents in the flat frame (X West-positive around
-# TERRAIN_CENTER_E, Z North-positive), one entry per region:
-# {x_min, z_min, x_max, z_max}. Parsed once per region-list change; the
-# per-frame push intersects each extent with Scenery3D's LIVE tile/chunk
-# coverage (only cells whose geometry is actually resident) before pushing.
-var _globe_suppress_regions: Array = []
+# Coarse-globe suppression (design §8.1 iteration 4 / §9 D8): the globe is
+# hidden PER FRAGMENT wherever Scenery3D geometry is resident. The tile
+# manager reports a per-tile coverage mask (one byte per 1 km tile around
+# the camera); it is uploaded verbatim as a mask texture to W3DGlobe,
+# whose chunk shader discards fragments in covered cells. No region extents,
+# no margin, no rectangle merging: the globe ends exactly at the resident
+# far-chunk boundary and stays visible as the fallback in unloaded / no-data
+# cells (sea, gaps), so a hole to space cannot exist.
 var _suppress_last_center: Vector2 = Vector2.ZERO
 var _suppress_dirty := true
-# Last tile-manager coverage generation the pushed rects were built from —
+# Last tile-manager coverage generation the pushed mask was built from —
 # refresh only when it changes (a tile/chunk appeared or disappeared).
 var _suppress_cov_gen := -1
 # The altitude-driven atmosphere ramps (exponential fog fade-out toward space,
@@ -446,11 +436,8 @@ func _ready() -> void:
 	_apply_tree_density()
 	# Apply scenery sources (orthophoto and terrain paths) from settings
 	_apply_scenery_sources()
-	# Cull the coarse globe under the detailed patch regions (needs the
-	# settings screen for the enabled areas — created just above). Refreshed
-	# again on first flight and when the settings screen closes; the per-frame
-	# push in _process keeps the clip square centred on the camera.
-	_load_globe_suppress_regions()
+	# Hide the coarse globe under resident detailed scenery (coverage mask);
+	# the per-frame push in _process follows the streamer.
 	_refresh_globe_suppress_rects()
 
 	# ── Engine sound ──────────────────────────────────────────────────
@@ -778,63 +765,20 @@ func _track_globe_rebase() -> void:
 	_rebase_globe_to(p.x, p.z, ll.x, ll.y, true)
 
 
-## Parse the enabled regions' terrain extents (flat-frame rectangles) into
-## _globe_suppress_regions (design §8.1 Phase 2). One rectangle per region's
-## terrain-manifest grid (not a bounding box), so seas BETWEEN regions still
-## show the globe. Called at startup (once the settings screen has loaded), on
-## first flight, and when the settings screen closes — whenever the enabled
-## area list may have changed. The per-frame push is
-## _refresh_globe_suppress_rects().
-func _load_globe_suppress_regions() -> void:
-	_globe_suppress_regions.clear()
-	if not _settings:
-		_suppress_dirty = true
-		return
-	for a in _settings.get_enabled_scenery_areas():
-		var base: String = str(a.get("path", ""))
-		var manifest_path := base.path_join("terrain/manifest.json")
-		if base.is_empty() or not FileAccess.file_exists(manifest_path):
-			continue
-		var f := FileAccess.open(manifest_path, FileAccess.READ)
-		if f == null:
-			continue
-		var data = JSON.parse_string(f.get_as_text())
-		f.close()
-		if typeof(data) != TYPE_DICTIONARY or not data.has("grid"):
-			continue
-		var g: Dictionary = data["grid"]
-		# Tile indices -> LV95 metres, then LV95 -> flat frame (X West-
-		# positive around TERRAIN_CENTER_E, Z North-positive).
-		var e0: float = float(g["ei_min"]) * 1024.0
-		var n0: float = float(g["ni_min"]) * 1024.0
-		var e1: float = (float(g["ei_max"]) + 1.0) * 1024.0
-		var n1: float = (float(g["ni_max"]) + 1.0) * 1024.0
-		_globe_suppress_regions.append({
-			"x_min": TERRAIN_CENTER_E - e1, "z_min": n0 - TERRAIN_CENTER_N,
-			"x_max": TERRAIN_CENTER_E - e0, "z_max": n1 - TERRAIN_CENTER_N})
-	_suppress_dirty = true
-	print("World3D globe suppression: %d region extent(s)" % _globe_suppress_regions.size())
-
-
-## Push coverage-driven suppression rectangles to the globe (design §8.1
-## Phase 2 hole fix, iteration 3). The coarse globe is culled only where
-## Scenery3D geometry is actually RESIDENT: the tile manager reports a
-## per-cell coverage grid (one bit per chunk-aligned cell around the camera;
-## a cell counts as covered when its far-zone chunk has loaded or every
-## close-ring tile in it does). Covered cells are merged into maximal
-## rectangles, clipped to each enabled region's terrain extent and inset by
-## GLOBE_SUPPRESS_MARGIN_M. The globe culls a chunk only when ALL FOUR of its
-## ground corners lie inside one rectangle (containment), so the small margin
-## suffices — no holes to space, and the double-surface sliver stays within
-## ~half a max-level chunk edge of the coverage boundary. Where coverage is
-## missing — the first seconds after a teleport or during the intro zoom, when
-## far-zone chunks stream in one per frame — the coarse globe stays visible
-## instead of leaving holes to space (dark squares / stars seen through the
-## globe at altitude). Runs every frame from _process; skips work while
-## nothing moved and no tile/chunk has appeared or disappeared (coverage
-## generation unchanged).
+## Upload Scenery3D's live coverage mask to the globe as its suppression mask
+## (design §8.1 iteration 4). The tile manager reports one byte per tile
+## around the camera: covered when a loaded far-zone chunk spans it or the
+## tile itself has a mesh. The globe's chunk shader
+## discards fragments in covered cells, so suppression is exact per fragment
+## regardless of globe chunk size (a max-level chunk is 130-170 km wide;
+## containment culling could never fit one inside a 220 km region). The
+## mask is TILE resolution (1 km): at a region's data edge a resident tile
+## next to a no-data tile is still masked, while the no-data tile shows the
+## globe (an 8 km chunk-cell mask left such edge cells unmasked). Runs
+## every frame from _process; skips work while nothing moved and no tile or
+## chunk appeared or disappeared (coverage generation unchanged).
 func _refresh_globe_suppress_rects() -> void:
-	if not (USE_WORLD3D_GLOBE and is_instance_valid(globe_node) and globe_node.has_method("clear_suppress_rects")):
+	if not (USE_WORLD3D_GLOBE and is_instance_valid(globe_node) and globe_node.has_method("set_coverage_mask")):
 		return
 	# Same centre Scenery3D streams around (its update_tiles reads the
 	# viewport's current camera); fall back to the AC when none is active.
@@ -856,78 +800,33 @@ func _refresh_globe_suppress_rects() -> void:
 			and _suppress_last_center.distance_squared_to(c) < 1024.0:
 		return  # nothing moved, no tile/chunk appeared or disappeared
 
-	globe_node.clear_suppress_rects()
-	if tm != null and not _globe_suppress_regions.is_empty():
-		var chunk_tiles := int(tm.get_chunk_size())
-		var far_tiles := int(tm.get_far_radius())
-		if chunk_tiles > 0:
-			var r_cells := (far_tiles + chunk_tiles - 1) / chunk_tiles
-			var grid: PackedInt32Array = tm.get_coverage_grid(r_cells)
-			_push_suppress_from_coverage(grid, r_cells,
-					int(tm.get_cam_chunk_ei()), int(tm.get_cam_chunk_ni()), chunk_tiles)
+	if tm != null:
+		_push_suppress_from_coverage(tm.get_coverage_mask(), int(tm.get_coverage_mask_radius()),
+				int(tm.get_cam_tile_ei()), int(tm.get_cam_tile_ni()), float(tm.get_tile_size()))
+	else:
+		globe_node.clear_coverage_mask()
 	_suppress_cov_gen = gen
 	_suppress_last_center = c
 	_suppress_dirty = false
 
 
-## Merge the covered cells of a tile-manager coverage grid into flat-frame
-## suppression rectangles and push them to the globe (see
+## Hand a tile-manager coverage mask to the globe (see
 ## _refresh_globe_suppress_rects). Kept separate so the smoke test can feed a
-## synthetic grid without data files. grid is (2*r_cells+1)² 0/1 values,
-## row-major, centred on chunk cell (cam_cg_ei, cam_cg_ni); each cell spans
-## chunk_tiles tiles of 1024 m.
-func _push_suppress_from_coverage(grid: PackedInt32Array, r_cells: int,
-		cam_cg_ei: int, cam_cg_ni: int, chunk_tiles: int) -> void:
-	var n := 2 * r_cells + 1
-	if grid.size() != n * n or _globe_suppress_regions.is_empty():
+## synthetic mask without data files. cells is (2*r_tiles+1)² bytes,
+## row-major (row = north tile, column = east tile), centred on tile
+## (cam_ei, cam_ni); each cell spans tile_m metres. The mask maps flat-frame
+## XZ to cells: X = TERRAIN_CENTER_E - E runs opposite to the east index
+## (negative step), Z = N - TERRAIN_CENTER_N runs with it.
+func _push_suppress_from_coverage(cells: PackedByteArray, r_tiles: int,
+		cam_ei: int, cam_ni: int, tile_m: float) -> void:
+	var n := 2 * r_tiles + 1
+	if cells.size() != n * n or tile_m <= 0.0:
+		globe_node.clear_coverage_mask()
 		return
-	# 1) Merge covered cells into maximal rectangles: run-length-encode each
-	# row, then extend runs of identical (x0,x1) across consecutive rows.
-	var merged: Array = []  # [eg0, eg1, ng0, ng1] inclusive cell coords
-	var active := {}        # "eg0,eg1" -> index into merged while still open
-	for ng in range(n):
-		var seen := {}
-		var eg := 0
-		while eg < n:
-			if grid[ng * n + eg] == 0:
-				eg += 1
-				continue
-			var eg0 := eg
-			while eg < n and grid[ng * n + eg] == 1:
-				eg += 1
-			var k := "%d,%d" % [eg0, eg - 1]
-			seen[k] = true
-			if active.has(k):
-				merged[active[k]][3] = ng  # extend the open rectangle's bottom
-			else:
-				active[k] = merged.size()
-				merged.append([eg0, eg - 1, ng, ng])
-		for k in active.keys():
-			if not seen.has(k):
-				active.erase(k)  # run ended — rect keeps its final extent
-	# 2) Cell rects -> flat frame (X West-positive around TERRAIN_CENTER_E),
-	# clip to each region's terrain extent, inset by the margin, push.
-	for m in merged:
-		var e0 := (cam_cg_ei + int(m[0]) - r_cells) * chunk_tiles * 1024
-		var e1 := (cam_cg_ei + int(m[1]) - r_cells + 1) * chunk_tiles * 1024
-		var n0 := (cam_cg_ni + int(m[2]) - r_cells) * chunk_tiles * 1024
-		var n1 := (cam_cg_ni + int(m[3]) - r_cells + 1) * chunk_tiles * 1024
-		var cx0: float = TERRAIN_CENTER_E - e1
-		var cx1: float = TERRAIN_CENTER_E - e0
-		var cz0: float = n0 - TERRAIN_CENTER_N
-		var cz1: float = n1 - TERRAIN_CENTER_N
-		for r in _globe_suppress_regions:
-			var x0 := maxf(cx0, float(r["x_min"]))
-			var x1 := minf(cx1, float(r["x_max"]))
-			if x1 <= x0 + 2.0 * GLOBE_SUPPRESS_MARGIN_M:
-				continue  # too thin to survive the inset on both sides
-			var z0 := maxf(cz0, float(r["z_min"]))
-			var z1 := minf(cz1, float(r["z_max"]))
-			if z1 <= z0 + 2.0 * GLOBE_SUPPRESS_MARGIN_M:
-				continue
-			globe_node.add_suppress_rect(
-					x0 + GLOBE_SUPPRESS_MARGIN_M, z0 + GLOBE_SUPPRESS_MARGIN_M,
-					x1 - GLOBE_SUPPRESS_MARGIN_M, z1 - GLOBE_SUPPRESS_MARGIN_M)
+	var e0 := float(cam_ei - r_tiles) * tile_m
+	var n0 := float(cam_ni - r_tiles) * tile_m
+	globe_node.set_coverage_mask(cells, n,
+			TERRAIN_CENTER_E - e0, n0 - TERRAIN_CENTER_N, -tile_m, tile_m)
 
 
 ## The Scenery3D tile manager (source of the live coverage grid), or null when
@@ -2023,7 +1922,7 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 		var gz := swiss_n - TERRAIN_CENTER_N
 		var ll: Vector2 = Geo.lv95_to_wgs84(swiss_e, swiss_n)
 		_rebase_globe_to(gx, gz, ll.x, ll.y)
-		_load_globe_suppress_regions()  # settings screen is definitely up by now
+		_suppress_dirty = true
 		_refresh_globe_suppress_rects()
 
 	if _first_flight:
@@ -2147,7 +2046,7 @@ func _on_settings_closed() -> void:
 	_apply_scenery_sources()
 	_vfr_map.apply_config()
 	_push_time_of_day_settings()
-	_load_globe_suppress_regions()  # scenery areas may have changed
+	_suppress_dirty = true  # scenery areas may have changed
 	_refresh_globe_suppress_rects()
 	if _welcome_screen:
 		_welcome_screen.set_continue_enabled(not _first_flight)

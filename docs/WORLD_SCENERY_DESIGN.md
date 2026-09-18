@@ -528,6 +528,37 @@ pre-existing Phase 3 concern, and suppression now covers MORE of Fennoscandia
 than before, not less). Smoke test unchanged (its +120/+300 km assertions
 still hold).
 
+*Hole fix, iteration 4 (2026-09-18, branch `settings-cpp`).* Stuttgart test
+flight at 460 m AGL: the coarse globe still poked through in dendritic
+light-green patches across the whole mid-distance. Root cause is geometric:
+containment culls per **globe chunk**, and the max-level-6 leaf over
+Stuttgart spans LV95 E 2651–2822 km × N 1361–1488 km (171 × 127 km), while
+the BW rectangle after the 10 km inset ends at E 2816 km — the chunk
+overshoots by ~6 km, is never culled, and wins the depth test wherever
+ETOPO ≥ local DEM. Whether a chunk fits is luck of the cube-face grid, and a
+chunk spanning two regions (CH/BW at Lake Constance) can never fit because
+rectangles are clipped per region. Fix: suppression moved from **per chunk**
+to **per fragment**. `W3DGlobe` renders with a ShaderMaterial that samples a
+coverage-mask texture (one texel per Scenery3D chunk cell, world-XZ → cell via
+an origin/step uniform pair) and `discard`s fragments in covered cells; the
+host uploads the tile manager's live coverage grid straight into that mask
+(`set_coverage_mask()`), with no region clipping, no margin and no rectangle
+merging. Chunk size, region extents and the containment test are gone. The
+globe ends exactly at the resident far-chunk boundary; unloaded and no-data
+cells (sea, gaps) keep showing it as the fallback. This is step A of §9 and
+is frame-independent: only the world-XZ → cell mapping changes in step C.
+
+*Iteration 4b (same day).* Check flight Stuttgart → Lake Constance was clean,
+but at the eastern data edge near Lindau the globe showed under resident
+tiles in a band along the edge: the mask was one cell per 8 km chunk cell,
+and inside the close ring a cell counted as covered only when all 64 tiles
+had a mesh — an edge cell with one no-data tile left its 63 resident tiles
+unmasked. The mask is now **tile resolution** (1 km): `S3DTileManager::
+get_coverage_mask()` stamps every loaded far-zone chunk's footprint and every
+resident individual tile into a (2r+1)² byte grid (r = far_radius +
+unload_margin + chunk_size = 210 tiles, ~180 KB), built in C++ so the host
+just uploads it. A no-data tile shows the globe on that tile only.
+
 **Phase 3 — Face rebake, then atlas (D3b/c).** Faces are baked at
 `face_size=513` (~20 km grid spacing), which discards everything finer in the
 ETOPO source regardless of chunk LOD. Rebake at ≤~5 km spacing (measure bake
@@ -556,6 +587,51 @@ parallel, each on its own branch.
 - R5 (flat-frame seam above ~25 km) → mitigated by Phase 2 (rebase +
   suppression), no longer "accepted v1".
 - R2 (blocky 30 m terrain) → fixed per-region by Phase 4.
+
+## 9. Worldwide frame — decision 2026-09-18
+
+Asked while reviewing the iteration-4 poke-through: *"for a world wide
+scenery, does the centre need to be the Earth's core?"* Answer: **yes for the
+runtime frame, no for the data.** This supersedes D2 (Option A).
+
+### 9.1 Why the LV95 flat frame cannot scale
+
+Three coordinate frames are in play today and they only agree near Switzerland:
+
+| Frame | Where | Limit |
+|-------|-------|-------|
+| LV95 flat plane (X = West, Z = North, Y = ASL) | Scenery3D tile placement, `TERRAIN_CENTER_E/N` | Oblique Mercator tangent at Bern: fine across Europe, scale unbounded with distance, undefined a quarter-Earth away. No Americas, no Asia. |
+| swisstopo approximation polynomial | `src/geo.cpp`, `s3d_coords.cpp`, globe mount, HUD, airports | Valid inside CH only. Measured globe-feature misplacement 24 km at 59°N, 207 km at 71°N (§8.1 iter 3) — the Norway bake used the rigorous projection, the runtime does not. |
+| Equirectangular offset around the last spawn | `src/jsbgodot.cpp` `lat_lon_alt_to_local()` | Ignores LV95 grid convergence (~3° at Oslo): JSBSim's true north ≠ scenery grid north, so a 100 km leg drifts several km against the terrain. |
+
+The flat plane also puts Scandinavian tiles 150–500 km above the ellipsoid,
+which is what forces the per-500 m globe rebase (Phase 2).
+
+### 9.2 Target architecture
+
+| # | Decision |
+|---|----------|
+| D5 | **Runtime world = ECEF** (origin at Earth centre, +Z north pole, double precision). Aircraft, cameras, sky live there; no rebasing, no floating origin. "Up" is the ellipsoid normal; Y-up code gets a per-frame east-north-up basis at the aircraft. JSBSim is native ECEF, so the bridge simplifies. Sky shader `planet_center` becomes a constant 0. |
+| D6 | **Region packs stay projected and declare their CRS** (`"crs": "EPSG:2056"` in the terrain manifest; CH/BW unchanged, no rebake). Scenery3D builds each tile mesh through the region's rigorous projection → geodetic → ECEF relative to the tile's own centre (like world3d chunks). 1 km GLB tiles (buildings/water/roads/vegetation) are placed with the tile's ENU transform (2 cm curvature per tile, no re-export). Streaming/LOD keep tile indices; only camera → tile-index conversion changes. Any region anywhere uses its local UTM zone. |
+| D7 | **One shared rigorous projection library** (exact LV95 Hotine oblique Mercator, transverse Mercator/UTM, WGS84 ↔ ECEF) replaces the polynomial and the equirectangular bridge in `geo.cpp`, `s3d_coords.cpp`, `W3DCoords`, `jsbgodot.cpp`. Fixes the Norway misalignment and JSBSim drift independently of D5. |
+| D8 | **Globe suppression is per fragment** (§8.1 iter 4), written in cell space so it survives D5 unchanged. |
+| D9 | **Heights**: ASL is treated as height above the ellipsoid everywhere (as the globe mount already does). The geoid offset is consistent across terrain, globe and aircraft. |
+
+Rebake is **optional**: Scandinavia already uses the rigorous LV95 projection
+and lines up once the runtime does too (D7). If rebaked with the 10 m EEA data
+(Phase 4), use EPSG:25833 (Norway's national grid). ETOPO faces unchanged.
+
+### 9.3 Order of work
+
+| Step | Scope | Verification |
+|------|-------|--------------|
+| A. Fragment mask | world3d ShaderMaterial + `set_coverage_mask()`; `node_3d.gd` uploads the live coverage grid | headless `smoke_globe_suppress*.gd`; check flight Stuttgart + Lake Constance |
+| B. Projection library | `geo.cpp`, `s3d_coords.cpp`, `W3DCoords`, JSBSim bridge | offline against pyproj; flight to ENGM (globe and scenery aligned, heading vs runway) |
+| C. ECEF world | Scenery3D on the ellipsoid; host: cameras, slew, HUD, VFR map, intro zoom, atmosphere | one headless smoke per milestone + a check flight each |
+| D. Optional Scandinavia rebake (UTM 33, 10 m) | `build_world_terrain.py --crs` | with Phase 4 |
+
+A and B are safe on their own. C is the answer to the question and is the
+prerequisite for any non-European region.
 
 ## See also
 

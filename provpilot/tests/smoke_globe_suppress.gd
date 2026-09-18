@@ -1,35 +1,50 @@
 extends SceneTree
-## Smoke test: W3DGlobe suppression-rect API (Phase 2, decision D3a).
+## Smoke test: W3DGlobe coverage-mask API (design §8.1 iteration 4 / §9 D8).
 ## Run: godot --headless --path provpilot -s tests/smoke_globe_suppress.gd
-## Exercises the pure-data side of the new C++ bindings (no tree needed —
-## the LOD-traversal use of to_global() is covered by in-game flight).
+## Exercises the pure-data side of the C++ bindings (no tree needed — the
+## shader-side discard is covered by in-game flight). The CPU mirror
+## suppresses_world_point() must agree with the mask + origin/step mapping,
+## including a NEGATIVE step (ProVPilot's +X = West runs opposite to the
+## east cell index).
+
+func _fail(msg: String) -> void:
+	printerr("FAIL: " + msg)
+	quit(1)
 
 func _initialize() -> void:
 	var g := W3DGlobe.new()
-	g.clear_suppress_rects()
-	if g.get_suppress_rect_count() != 0:
-		printerr("FAIL: expected 0 rects after clear")
-		quit(1)
-		return
-	g.add_suppress_rect(-100.0, -50.0, 100.0, 50.0)  # reversed min/max
-	g.add_suppress_rect(200.0, 300.0, 400.0, 600.0)  # normal order
-	if g.get_suppress_rect_count() != 2:
-		printerr("FAIL: expected 2 rects")
-		quit(1)
-		return
+	if g.get_coverage_mask_size() != 0:
+		_fail("expected no mask initially"); return
+	# 3x3 cells of 100 m. Row = Z cell (step +100 from z=0), column = X cell
+	# (step -100 from x=0, i.e. column 0 spans x in (-100, 0]).
+	# Covered: (col 0,row 0), (col 2,row 1), (col 1,row 2).
+	var cells := PackedByteArray([255, 0, 0,  0, 0, 255,  0, 255, 0])
+	g.set_coverage_mask(cells, 3, 0.0, 0.0, -100.0, 100.0)
+	if g.get_coverage_mask_size() != 3:
+		_fail("expected mask size 3"); return
 	var checks: Array = [
-		[0.0, 0.0, true],          # centre of rect 1
-		[-100.0, 50.0, true],      # corner (boundaries inclusive, normalised)
-		[101.0, 0.0, false],       # just outside rect 1
-		[350.0, 450.0, true],      # inside rect 2
-		[150.0, 450.0, false],     # gap between the two rects
+		[-50.0, 50.0, true],     # col 0, row 0
+		[-150.0, 50.0, false],   # col 1, row 0
+		[-250.0, 150.0, true],   # col 2, row 1
+		[-150.0, 250.0, true],   # col 1, row 2
+		[-50.0, 250.0, false],   # col 0, row 2
+		[50.0, 50.0, false],     # x > origin: outside (negative cell)
+		[-350.0, 50.0, false],   # beyond column 2
+		[-50.0, -10.0, false],   # z < origin
+		[-50.0, 350.0, false],   # beyond row 2
 	]
 	for c in checks:
-		var got: bool = g.suppresses_flat_point(c[0], c[1])
+		var got: bool = g.suppresses_world_point(c[0], c[1])
 		if got != c[2]:
-			printerr("FAIL: point (%f, %f) -> %s, expected %s" % [c[0], c[1], str(got), str(c[2])])
-			quit(1)
-			return
+			_fail("point (%f, %f) -> %s, expected %s" % [c[0], c[1], str(got), str(c[2])]); return
+	# Wrong-sized data must clear the mask rather than index out of range.
+	g.set_coverage_mask(PackedByteArray([255, 255]), 3, 0.0, 0.0, -100.0, 100.0)
+	if g.get_coverage_mask_size() != 0 or g.suppresses_world_point(-50.0, 50.0):
+		_fail("malformed mask should clear"); return
+	g.set_coverage_mask(cells, 3, 0.0, 0.0, -100.0, 100.0)
+	g.clear_coverage_mask()
+	if g.get_coverage_mask_size() != 0 or g.suppresses_world_point(-50.0, 50.0):
+		_fail("clear_coverage_mask did not clear"); return
 	g.free()
 	print("smoke_globe_suppress: OK")
 	quit(0)
