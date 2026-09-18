@@ -641,6 +641,22 @@ void JSBGodot::reset_controls()
         FDMExec->SetPropertyValue("fcs/throttle-cmd-norm", 0.0);
         FDMExec->SetPropertyValue("fcs/flap-cmd-norm", 0.0);
         FDMExec->SetPropertyValue("fcs/gear-cmd-norm", 1.0);
+        // Snap the actuated POSITIONS too, not just the commands: a retractable
+        // airframe's gear kinematic (A-10: 5 s) re-reads its output property
+        // each step, and JSBSim computes no ground contact while the gear is
+        // in transit — the aircraft fell through the runway and bounced on
+        // a Fly! after a gear-up flight (Dübendorf 2026-09-18).
+        static const char *snap_one[] = { "gear/gear-pos-norm", "gear/gear-cmd-norm" };
+        static const char *snap_zero[] = { "fcs/flap-pos-norm", "fcs/flap-pos-deg", "fcs/speedbrake-pos-norm", "fcs/speedbrake-cmd-norm" };
+        JSBSim::FGPropertyManager *pm = FDMExec->GetPropertyManager().get();
+        for (const char *name : snap_one)
+        {
+            if (pm->HasNode(name)) FDMExec->SetPropertyValue(name, 1.0);
+        }
+        for (const char *name : snap_zero)
+        {
+            if (pm->HasNode(name)) FDMExec->SetPropertyValue(name, 0.0);
+        }
         FDMExec->SetPropertyValue("fcs/left-brake-cmd-norm", 0.0);
         FDMExec->SetPropertyValue("fcs/right-brake-cmd-norm", 0.0);
         FDMExec->SetPropertyValue("fcs/pitch-trim-cmd-norm", 0.0);

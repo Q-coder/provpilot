@@ -882,6 +882,15 @@ precise tile):
    detection), and `copy_outputs_from_JSBSim` never hands a non-finite
    pose to the scene — it restarts the FDM at the last good pose instead.
 
+4. Retractable gear: JSBSim computes **no ground contact while the gear is
+   in transit** (`FGLGear`: contact only for gear-pos-norm > 0.99) and the
+   A-10's gear kinematic takes 5 s, so a Fly! after a gear-up flight only
+   *commanded* gear down: the aircraft fell through the runway for 5 s and
+   bounced (Dübendorf). `reset_controls()` now snaps the actuated positions
+   (`gear/gear-pos-norm` = 1, flap / speedbrake positions = 0) — the
+   kinematic re-reads its output property each step, so the snap sticks.
+   Test: `tests/smoke_teleport_gear.tscn` (A-10, gear in transit → Fly!).
+
 The teleport now spawns 0.5 m above the ground like the first flight
 (was 2.1 m, a visible plop). Test: `tests/smoke_teleport_far.tscn`
 (LSZH → Geneva mid-intro: release on the precise tile in ~2 s, ≤ 0.3 m
