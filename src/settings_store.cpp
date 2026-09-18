@@ -110,9 +110,23 @@ Dictionary SettingsStore::get_defaults()
     d["auto_carb_heat"] = true;
     d["unlimited_fuel"] = true;
     d["crash_detection"] = false;
-    d["turbulence"] = 1;          // 0=none, 1=light, 2=moderate, 3=severe
-    d["wind_speed_kts"] = 0;
-    d["wind_direction_deg"] = 0;
+    // Weather (UI model only for now — see design doc; the JSBSim hookup
+    // for wind/turbulence/QNH and the visual clouds/visibility come later).
+    // Layers are stacked from the ground up; each covers up to "top_m".
+    {
+        Array layers;
+        Dictionary l;
+        l["top_m"] = 3000;
+        l["wind_dir_deg"] = 0;     // direction the wind blows FROM
+        l["wind_speed_kts"] = 0;
+        l["turbulence"] = 0;       // 0=none 1=light 2=moderate 3=severe
+        l["cloud_type"] = 0;       // index into WEATHER_CLOUD_TYPES (0 = none)
+        l["coverage_oktas"] = 0;   // 0/8 .. 8/8
+        layers.push_back(l);
+        d["weather_layers"] = layers;
+    }
+    d["visibility_km"] = 50;      // 0 .. 200 km
+    d["qnh_hpa"] = 1013;          // sea-level pressure, hPa (mb)
     return d;
 }
 
@@ -137,6 +151,10 @@ String SettingsStore::section_for_key(const String &key)
     if (key == "map_enabled" || key == "map_frame_size")
     {
         return "map";
+    }
+    if (key == "weather_layers" || key == "visibility_km" || key == "qnh_hpa")
+    {
+        return "weather";
     }
     return "realism";
 }

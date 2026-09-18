@@ -116,7 +116,13 @@ func _test_store() -> void:
 	check(SettingsStore.section_for_key("engine_volume") == "sound", "volume keys route to [sound]")
 	check(SettingsStore.section_for_key("scenery_areas") == "scenery", "scenery_areas routes to [scenery]")
 	check(SettingsStore.section_for_key("time_of_day_min") == "world", "time_of_day_min routes to [world]")
-	check(SettingsStore.section_for_key("turbulence") == "realism", "turbulence routes to [realism]")
+	check(SettingsStore.section_for_key("crash_detection") == "realism", "crash_detection routes to [realism]")
+	check(SettingsStore.section_for_key("weather_layers") == "weather", "weather_layers routes to [weather]")
+	check(SettingsStore.section_for_key("qnh_hpa") == "weather", "qnh_hpa routes to [weather]")
+	check(int(s.get_setting("qnh_hpa")) == 1013, "default QNH is 1013 hPa")
+	check(int(s.get_setting("visibility_km")) == 50, "default visibility is 50 km")
+	var wl: Array = s.get_setting("weather_layers")
+	check(wl.size() == 1 and int(wl[0].get("top_m")) == 3000, "default weather has one layer to 3000 m")
 	check(SettingsStore.format_hhmm(725) == "12:05", "format_hhmm(725) == 12:05")
 	var home := OS.get_environment("HOME")
 	check(SettingsStore.format_path_for_display(home.path_join("x"), 60) == "~/x", "format_path collapses $HOME to ~")
@@ -213,7 +219,7 @@ func _test_screen() -> void:
 	var titles := PackedStringArray()
 	for i in range(tabs.get_tab_count()):
 		titles.append(tabs.get_tab_title(i))
-	check(titles == PackedStringArray(["Scenery", "Downloads", "Graphics", "World", "Map", "Sound", "Realism", "Joystick"]), "8 subject tabs: %s" % [titles])
+	check(titles == PackedStringArray(["Scenery", "Downloads", "Graphics", "World", "Weather", "Map", "Sound", "Realism", "Joystick"]), "9 subject tabs: %s" % [titles])
 
 	# GDScript panels mounted as tabs.
 	check(_find_first(screen, "SceneryDownloaderPanel") != null or _find_script(screen, "scenery_downloader.gd") != null, "Downloads tab hosts scenery_downloader.gd")
@@ -224,7 +230,7 @@ func _test_screen() -> void:
 	screen.show_settings()
 	check(screen.visible, "show_settings() makes it visible")
 	var sound_sliders: Array = []
-	_collect(tabs.get_child(5), "HSlider", sound_sliders)   # Sound tab
+	_collect(tabs.get_child(6), "HSlider", sound_sliders)   # Sound tab
 	var world_sliders: Array = []
 	_collect(tabs.get_child(3), "HSlider", world_sliders)   # World tab
 	check(sound_sliders.size() == 4, "Sound tab has 4 sliders (got %d)" % sound_sliders.size())
@@ -250,6 +256,59 @@ func _test_screen() -> void:
 			check(not sys_clock.button_pressed, "moving the time slider unchecks Use System Clock")
 			screen.commit()
 			check(int(store.get_setting("time_of_day_min")) == 600 and not bool(store.get_setting("use_system_time")), "time slider + system clock committed")
+
+	# Weather tab: layer table round trip (add / edit / remove).
+	var weather_tab: Control = tabs.get_child(4)
+	var w_spins: Array = []
+	_collect(weather_tab, "SpinBox", w_spins)
+	check(w_spins.size() == 3, "Weather tab shows one default layer (3 spin boxes, got %d)" % w_spins.size())
+	var w_buttons: Array = []
+	_collect(weather_tab, "Button", w_buttons)
+	var add_btn: Button = null
+	for b in w_buttons:
+		if b.text == "Add Layer":
+			add_btn = b
+	check(add_btn != null, "Weather tab has an Add Layer button")
+	if add_btn:
+		add_btn.pressed.emit()
+		w_spins.clear()
+		_collect(weather_tab, "SpinBox", w_spins)
+		check(w_spins.size() == 6, "Add Layer appends a second layer row")
+		var layers: Array = store.get_setting("weather_layers")
+		check(layers.size() == 2 and int(layers[1].get("top_m")) == 5000, "second layer tops out 2000 m above the first")
+		if w_spins.size() == 6:
+			w_spins[4].value = 25  # layer 2 wind direction spin (top, dir, speed per row)
+			w_spins[5].value = 12  # layer 2 wind speed
+			layers = store.get_setting("weather_layers")
+			check(int(layers[1].get("wind_dir_deg")) == 25 and int(layers[1].get("wind_speed_kts")) == 12, "editing a layer spin updates the store")
+		w_buttons.clear()
+		_collect(weather_tab, "Button", w_buttons)
+		var removes: Array = []
+		for b in w_buttons:
+			if b.text == "Remove":
+				removes.append(b)
+		check(removes.size() == 2, "each layer has a Remove button")
+		if removes.size() == 2:
+			removes[0].pressed.emit()
+			layers = store.get_setting("weather_layers")
+			check(layers.size() == 1 and int(layers[0].get("wind_dir_deg")) == 25, "removing layer 1 keeps the edited layer 2")
+			removes.clear()
+			w_buttons.clear()
+			_collect(weather_tab, "Button", w_buttons)
+			for b in w_buttons:
+				if b.text == "Remove":
+					removes.append(b)
+			if removes.size() == 1:
+				removes[0].pressed.emit()
+				layers = store.get_setting("weather_layers")
+				check(layers.size() == 1, "the last layer cannot be removed")
+	var w_sliders: Array = []
+	_collect(weather_tab, "HSlider", w_sliders)
+	check(w_sliders.size() == 2, "Weather tab has visibility + QNH sliders (got %d)" % w_sliders.size())
+	if w_sliders.size() == 2:
+		w_sliders[1].value = 1020
+		screen.commit()
+		check(int(store.get_setting("qnh_hpa")) == 1020, "QNH slider commits to the store")
 
 	# Restore Defaults resets the UI, keeps the library.
 	var areas_before: int = store.get_scenery_areas().size()

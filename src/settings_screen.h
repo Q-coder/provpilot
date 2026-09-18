@@ -3,6 +3,8 @@
 
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
+#include <godot_cpp/classes/spin_box.hpp>
+#include <godot_cpp/classes/option_button.hpp>
 #include <godot_cpp/classes/control.hpp>
 #include <godot_cpp/classes/input_event.hpp>
 #include <godot_cpp/classes/label.hpp>
@@ -68,6 +70,11 @@ namespace jsbgodot
         void _on_area_toggled(bool enabled, int idx);
         void _on_area_priority_changed(double value, int idx);
         void _on_area_row_gui_input(const Ref<InputEvent> &event, int idx);
+        // Weather-layer table actions.
+        void _on_weather_add_layer();
+        void _on_weather_remove_layer(int idx);
+        void _on_weather_spin_changed(double value, int idx);
+        void _on_weather_option_changed(int value, int idx);
 
         // Generic row callbacks (row index bound at connect time).
         void _on_slider_value_changed(double value, int row);
@@ -113,6 +120,18 @@ namespace jsbgodot
         Ref<SettingsStore> store;
         TabContainer *tabs = nullptr;
         VBoxContainer *scenery_table = nullptr;
+        VBoxContainer *weather_table = nullptr;
+        // Per-layer controls in table order (rebuilt by _refresh_weather_table).
+        struct WeatherRow
+        {
+            SpinBox *top = nullptr;
+            SpinBox *wind_dir = nullptr;
+            SpinBox *wind_speed = nullptr;
+            OptionButton *turbulence = nullptr;
+            OptionButton *cloud_type = nullptr;
+            OptionButton *coverage = nullptr;
+        };
+        std::vector<WeatherRow> weather_rows;
         Node *joystick_panel = nullptr;
         Node *downloader_panel = nullptr;
         Node *area_dialog = nullptr;    // live "Add Area..." FileDialog, if any
@@ -128,6 +147,7 @@ namespace jsbgodot
         void _build_downloads_tab();
         void _build_graphics_tab();
         void _build_world_tab();
+        void _build_weather_tab();
         void _build_map_tab();
         void _build_sound_tab();
         void _build_realism_tab();
@@ -148,6 +168,9 @@ namespace jsbgodot
         void _apply_to_ui();
         void _read_from_ui();
         void _refresh_scenery_table();
+        void _refresh_weather_table();
+        // Read the layer controls back into the store's weather_layers array.
+        void _read_weather_table();
         void _select_area(int idx);
         Row *_find_row(const String &key);
         Node *_joystick_config() const;

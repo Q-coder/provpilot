@@ -855,6 +855,46 @@ lacks the key), and an unchanged path set is a no-op: 0 ms. Follow-up for
 the bake pipeline: stop writing the per-tile list into terrain manifests
 (the runtime never reads it — tiles are probed by file name).
 
+## 10. Weather model — settings only (2026-09-18)
+
+The Settings screen has a **Weather** tab: a stack of layers (each reaches
+up to its *Top* altitude) with wind direction/speed, turbulence and cloud
+type + coverage in oktas, plus global visibility (km) and QNH (hPa). Keys
+live in the `[weather]` section of `provpilot.cfg`: `weather_layers` (Array
+of Dictionaries: `top_m`, `wind_dir_deg`, `wind_speed_kts`, `turbulence`,
+`cloud_type`, `coverage_oktas`), `visibility_km`, `qnh_hpa`. Nothing reads
+them yet. The old Realism `turbulence` / `wind_*` keys are gone.
+
+### 10.1 How it maps onto JSBSim (for the implementation step)
+
+JSBSim has no layered atmosphere: the host sets *one* wind vector and one
+turbulence setting per tick, so the bridge interpolates the layer stack at
+the aircraft's current altitude every frame.
+
+- **Wind** — `FGWinds`, properties `atmosphere/wind-north-fps`,
+  `wind-east-fps`, `wind-down-fps` (or `psiw-rad` + `wind-mag-fps`: psiw is
+  the direction the wind blows *from*, like METAR). Meteorological
+  direction *d*, speed *v*: north = −v·cos d, east = −v·sin d (kts → fps
+  ×1.68781). Wind is applied in the NED frame at the aircraft — no
+  altitude dependence inside JSBSim, hence the host-side interpolation.
+- **Turbulence** — `atmosphere/turb-type` (0 none, 1 standard, 2 culp,
+  3 milspec, 4 tustin). The MIL-F-8785C model (3) is driven by
+  `atmosphere/turbulence/milspec/windspeed_at_20ft_AGL-fps` and
+  `.../severity` (0..7). Mapping: None → type 0; Light/Moderate/Severe →
+  type 3 with severity 2/4/6 and the 20 ft wind = the ground layer's wind
+  speed (min ~15 fps so the model produces something). Gusts
+  (`atmosphere/gust-*`, `cosine-gust/*`) can be layered on later.
+- **Pressure** — QNH is `FGStandardAtmosphere::SetPressureSL(eHPa|eMillibar, qnh)`
+  (property `atmosphere/P-sl-psf`, 1 hPa = 2.08854 psf). It rescales the
+  whole pressure column so density, indicated airspeed and the pressure
+  altimeter all react; `atmosphere/delta-T` shifts the temperature profile
+  if we ever add a temperature field. Both are cheap to set every tick.
+- **Clouds / visibility** — purely host-side: fog distance + sky/cloud
+  rendering. Not a JSBSim input.
+
+Frame note: JSBSim's wind NED frame is local to the aircraft's geodetic
+position, so the ECEF world frame needs no conversion here.
+
 ## See also
 
 - [gerys_plan.md](gerys_plan.md) — the plan this subtask serves

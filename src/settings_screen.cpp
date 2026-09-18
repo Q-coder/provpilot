@@ -69,6 +69,10 @@ void SettingsScreen::_bind_methods()
     ClassDB::bind_method(D_METHOD("_on_area_toggled", "enabled", "idx"), &SettingsScreen::_on_area_toggled);
     ClassDB::bind_method(D_METHOD("_on_area_priority_changed", "value", "idx"), &SettingsScreen::_on_area_priority_changed);
     ClassDB::bind_method(D_METHOD("_on_area_row_gui_input", "event", "idx"), &SettingsScreen::_on_area_row_gui_input);
+    ClassDB::bind_method(D_METHOD("_on_weather_add_layer"), &SettingsScreen::_on_weather_add_layer);
+    ClassDB::bind_method(D_METHOD("_on_weather_remove_layer", "idx"), &SettingsScreen::_on_weather_remove_layer);
+    ClassDB::bind_method(D_METHOD("_on_weather_spin_changed", "value", "idx"), &SettingsScreen::_on_weather_spin_changed);
+    ClassDB::bind_method(D_METHOD("_on_weather_option_changed", "value", "idx"), &SettingsScreen::_on_weather_option_changed);
     ClassDB::bind_method(D_METHOD("_on_slider_value_changed", "value", "row"), &SettingsScreen::_on_slider_value_changed);
     ClassDB::bind_method(D_METHOD("_on_time_slider_value_changed", "value", "row"), &SettingsScreen::_on_time_slider_value_changed);
     ClassDB::bind_method(D_METHOD("_downloader_get_state"), &SettingsScreen::_downloader_get_state);
@@ -189,6 +193,7 @@ void SettingsScreen::_build_ui()
     _build_downloads_tab();
     _build_graphics_tab();
     _build_world_tab();
+    _build_weather_tab();
     _build_map_tab();
     _build_sound_tab();
     _build_realism_tab();
@@ -739,9 +744,178 @@ void SettingsScreen::_build_realism_tab()
     _add_check_row(content, "auto_carb_heat", "Auto Carb Heat:", "Automatically manage carburetor heat");
     _add_check_row(content, "unlimited_fuel", "Unlimited Fuel:", "Fuel never runs out");
     _add_check_row(content, "crash_detection", "Crash Detection:", "Enable crash on hard impact");
-    _add_option_row(content, "turbulence", "Turbulence:", PackedStringArray{ "None", "Light", "Moderate", "Severe" });
-    _add_slider_row(content, "wind_speed_kts", "Wind Speed:", 0, 50, 1, " kts");
-    _add_slider_row(content, "wind_direction_deg", "Wind Direction:", 0, 360, 10, String::utf8("°"));
+    _add_hint(content, "Wind and turbulence moved to the Weather tab.");
+}
+
+// ── Tab: Weather ─────────────────────────────────────────────────────────────
+//
+// A stack of weather layers from the ground up (each layer reaches up to its
+// "Top" altitude), plus global visibility and QNH. Model only for now: the
+// values are persisted and editable, the JSBSim/visual hookup follows
+// (design doc §10 in WORLD_SCENERY_DESIGN.md).
+
+static const char *WEATHER_CLOUD_TYPES[] = { "None", "Cumulus", "Stratus", "Stratocumulus", "Cumulonimbus", "Altostratus", "Altocumulus", "Cirrus" };
+static const int WEATHER_CLOUD_TYPE_COUNT = 8;
+static const char *WEATHER_TURBULENCE[] = { "None", "Light", "Moderate", "Severe" };
+
+void SettingsScreen::_build_weather_tab()
+{
+    VBoxContainer *content = _add_tab("Weather");
+    _add_section_header(content, "Weather Layers");
+    _add_hint(content, "Layers stack from the ground up; each one applies up to its Top altitude.");
+
+    // Column headers.
+    HBoxContainer *head = memnew(HBoxContainer);
+    head->add_theme_constant_override("separation", 8);
+    const char *cols[] = { "Layer", "Top (m)", "Wind from", "Speed (kt)", "Turbulence", "Clouds", "Coverage", "" };
+    const int widths[] = { 80, 110, 110, 110, 150, 170, 100, 110 };
+    for (int i = 0; i < 8; i++)
+    {
+        head->add_child(_make_label(cols[i], FONT_SM, HINT_COLOR, widths[i]));
+    }
+    content->add_child(head);
+
+    weather_table = memnew(VBoxContainer);
+    weather_table->add_theme_constant_override("separation", 6);
+    content->add_child(weather_table);
+
+    HBoxContainer *btn_row = memnew(HBoxContainer);
+    btn_row->add_theme_constant_override("separation", 12);
+    btn_row->add_child(_make_button("Add Layer", 160, FONT_SM, Callable(this, "_on_weather_add_layer")));
+    content->add_child(btn_row);
+
+    _add_section_header(content, "Global");
+    _add_slider_row(content, "visibility_km", "Visibility:", 0, 200, 1, " km");
+    _add_slider_row(content, "qnh_hpa", "Pressure (QNH):", 900, 1100, 1, " hPa");
+    _add_hint(content, "Standard atmosphere: 1013 hPa. Wind and turbulence per layer; clouds are visual only.");
+    _refresh_weather_table();
+}
+
+void SettingsScreen::_refresh_weather_table()
+{
+    if (weather_table == nullptr)
+    {
+        return;
+    }
+    for (int i = weather_table->get_child_count() - 1; i >= 0; i--)
+    {
+        Node *c = weather_table->get_child(i);
+        weather_table->remove_child(c);
+        c->queue_free();
+    }
+    weather_rows.clear();
+
+    Array layers = store->get_setting("weather_layers");
+    for (int i = 0; i < layers.size(); i++)
+    {
+        Dictionary l = layers[i];
+        HBoxContainer *row = memnew(HBoxContainer);
+        row->add_theme_constant_override("separation", 8);
+        row->add_child(_make_label(vformat("%d", i + 1), FONT_SM, LABEL_COLOR, 80));
+
+        WeatherRow wr;
+        auto make_spin = [&](double min_v, double max_v, double step, double value, int min_w) -> SpinBox * {
+            SpinBox *sb = memnew(SpinBox);
+            sb->set_min(min_v);
+            sb->set_max(max_v);
+            sb->set_step(step);
+            sb->set_value(value);
+            sb->set_custom_minimum_size(Vector2(min_w, 36));
+            sb->add_theme_font_size_override("font_size", FONT_SM);
+            sb->connect("value_changed", Callable(this, "_on_weather_spin_changed").bind(i));
+            row->add_child(sb);
+            return sb;
+        };
+        auto make_option = [&](const char *const *names, int count, int selected, int min_w) -> OptionButton * {
+            OptionButton *ob = memnew(OptionButton);
+            ob->add_theme_font_size_override("font_size", FONT_SM);
+            ob->get_popup()->add_theme_font_size_override("font_size", FONT_SM);
+            ob->set_custom_minimum_size(Vector2(min_w, 36));
+            for (int k = 0; k < count; k++)
+            {
+                ob->add_item(names[k]);
+            }
+            ob->select(CLAMP(selected, 0, count - 1));
+            ob->connect("item_selected", Callable(this, "_on_weather_option_changed").bind(i));
+            row->add_child(ob);
+            return ob;
+        };
+        wr.top = make_spin(100, 20000, 100, double(l.get("top_m", 3000)), 110);
+        wr.wind_dir = make_spin(0, 359, 5, double(l.get("wind_dir_deg", 0)), 110);
+        wr.wind_speed = make_spin(0, 150, 1, double(l.get("wind_speed_kts", 0)), 110);
+        wr.turbulence = make_option(WEATHER_TURBULENCE, 4, int(l.get("turbulence", 0)), 150);
+        wr.cloud_type = make_option(WEATHER_CLOUD_TYPES, WEATHER_CLOUD_TYPE_COUNT, int(l.get("cloud_type", 0)), 170);
+        static const char *oktas[] = { "0/8", "1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8", "8/8" };
+        wr.coverage = make_option(oktas, 9, int(l.get("coverage_oktas", 0)), 100);
+        row->add_child(_make_button("Remove", 110, FONT_SM, Callable(this, "_on_weather_remove_layer").bind(i)));
+        weather_table->add_child(row);
+        weather_rows.push_back(wr);
+    }
+}
+
+void SettingsScreen::_read_weather_table()
+{
+    if (applying_ui)
+    {
+        return;
+    }
+    Array layers;
+    for (const WeatherRow &wr : weather_rows)
+    {
+        Dictionary l;
+        l["top_m"] = int(wr.top->get_value());
+        l["wind_dir_deg"] = int(wr.wind_dir->get_value());
+        l["wind_speed_kts"] = int(wr.wind_speed->get_value());
+        l["turbulence"] = wr.turbulence->get_selected();
+        l["cloud_type"] = wr.cloud_type->get_selected();
+        l["coverage_oktas"] = wr.coverage->get_selected();
+        layers.push_back(l);
+    }
+    store->set_setting("weather_layers", layers);
+}
+
+void SettingsScreen::_on_weather_add_layer()
+{
+    _read_weather_table();
+    Array layers = store->get_setting("weather_layers");
+    Dictionary l;
+    int top = 3000;
+    if (layers.size() > 0)
+    {
+        Dictionary last = layers[layers.size() - 1];
+        top = int(last.get("top_m", 3000)) + 2000;
+    }
+    l["top_m"] = MIN(top, 20000);
+    l["wind_dir_deg"] = 0;
+    l["wind_speed_kts"] = 0;
+    l["turbulence"] = 0;
+    l["cloud_type"] = 0;
+    l["coverage_oktas"] = 0;
+    layers.push_back(l);
+    store->set_setting("weather_layers", layers);
+    _refresh_weather_table();
+}
+
+void SettingsScreen::_on_weather_remove_layer(int idx)
+{
+    _read_weather_table();
+    Array layers = store->get_setting("weather_layers");
+    if (idx >= 0 && idx < layers.size() && layers.size() > 1)
+    {
+        layers.remove_at(idx);
+        store->set_setting("weather_layers", layers);
+    }
+    _refresh_weather_table();
+}
+
+void SettingsScreen::_on_weather_spin_changed(double, int)
+{
+    _read_weather_table();
+}
+
+void SettingsScreen::_on_weather_option_changed(int, int)
+{
+    _read_weather_table();
 }
 
 // ── Tab: Joystick (joystick_settings_panel.gd) ──────────────────────────────
@@ -816,6 +990,7 @@ void SettingsScreen::_apply_to_ui()
         }
     }
     _refresh_scenery_table();
+    _refresh_weather_table();
     applying_ui = false;
 }
 
