@@ -65,6 +65,13 @@ var _intro_playing: bool = false
 # Dedicated camera for the intro, parented to the ROOT (not the aircraft) so its
 # space position is not dragged around by JSBSim's per-frame AC transform writes.
 var _intro_camera: Camera3D = null
+# Intro-zoom HUD (replaces the flight HUD while the cinematic plays):
+# distance to the aircraft, a tile-loading bar and the skip hint.
+var _intro_hud: CanvasLayer = null
+var _intro_dist_label: Label = null
+var _intro_bar_bg: ColorRect = null
+var _intro_bar: ColorRect = null
+var _intro_pending_max := 0
 
 # Spot/orbit and chase camera state (angles, distances, smoothing) lives in the
 # C++ CameraRig module (src/camera_rig.cpp); the C++ IntroZoom handoff reads
@@ -865,6 +872,71 @@ func _start_intro_zoom() -> void:
 	if _intro_zoom.start():
 		_intro_playing = true
 		active_camera = _intro_camera
+		_intro_pending_max = 0
+		_show_intro_hud(true)
+
+
+## Build (once) and show/hide the intro HUD; the flight HUD is hidden while
+## the intro plays because its readouts mean nothing from space.
+func _show_intro_hud(show: bool) -> void:
+	if _intro_hud == null:
+		_intro_hud = CanvasLayer.new()
+		_intro_hud.name = "IntroHud"
+		_intro_hud.layer = 5
+		add_child(_intro_hud)
+		var box := VBoxContainer.new()
+		box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+		box.offset_top = -150.0
+		box.offset_bottom = -40.0
+		box.offset_left = -320.0
+		box.offset_right = 320.0
+		box.alignment = BoxContainer.ALIGNMENT_END
+		box.add_theme_constant_override("separation", 12)
+		_intro_hud.add_child(box)
+		_intro_dist_label = Label.new()
+		_intro_dist_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_intro_dist_label.add_theme_font_size_override("font_size", 24)
+		_intro_dist_label.add_theme_color_override("font_color", Color(0.35, 0.9, 1.0))
+		box.add_child(_intro_dist_label)
+		_intro_bar_bg = ColorRect.new()
+		_intro_bar_bg.color = Color(0.12, 0.14, 0.18, 0.85)
+		_intro_bar_bg.custom_minimum_size = Vector2(600, 12)
+		box.add_child(_intro_bar_bg)
+		_intro_bar = ColorRect.new()
+		_intro_bar.color = Color(0.35, 0.9, 1.0)
+		_intro_bar.custom_minimum_size = Vector2(0, 12)
+		_intro_bar_bg.add_child(_intro_bar)
+		var hint := Label.new()
+		hint.text = "Press any key to skip animation"
+		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		hint.add_theme_font_size_override("font_size", 18)
+		hint.add_theme_color_override("font_color", Color(0.75, 0.8, 0.85))
+		box.add_child(hint)
+	_intro_hud.visible = show
+	var hud := get_node_or_null("Control")
+	if hud:
+		hud.visible = not show
+
+
+## Per-frame intro HUD: camera distance to the aircraft and how much of the
+## tile manager's queued work is done (monotonic max of the pending count).
+func _update_intro_hud() -> void:
+	if _intro_hud == null or not _intro_hud.visible:
+		return
+	var ac := get_node_or_null("AC") as Node3D
+	if ac and is_instance_valid(_intro_camera):
+		var d: float = _intro_camera.global_position.distance_to(ac.global_position)
+		if d >= 10000.0:
+			_intro_dist_label.text = "Distance to aircraft: %.0f km" % (d / 1000.0)
+		else:
+			_intro_dist_label.text = "Distance to aircraft: %.0f m" % d
+	var tm = _get_tile_manager()
+	if tm != null and tm.has_method("get_pending_count"):
+		var pending: int = tm.get_pending_count()
+		_intro_pending_max = maxi(_intro_pending_max, pending)
+		var frac: float = 1.0 if _intro_pending_max == 0 else 1.0 - float(pending) / float(_intro_pending_max)
+		_intro_bar.custom_minimum_size.x = _intro_bar_bg.size.x * clampf(frac, 0.0, 1.0)
+		_intro_bar.size.x = _intro_bar.custom_minimum_size.x
 
 
 
@@ -1059,10 +1131,12 @@ func _process(delta: float) -> void:
 	# IntroZoom module owns the animation + the CameraRig orbit handoff; sync
 	# the camera_mode/active_camera mirrors when it reports the handoff.
 	if _intro_playing:
+		_update_intro_hud()
 		if _intro_zoom.update(delta) == IntroZoom.STATUS_FINISHED:
 			_intro_playing = false
 			camera_mode = CameraMode.ORBIT
 			active_camera = camera2
+			_show_intro_hud(false)
 		return
 
 	# Escape key: return to welcome screen

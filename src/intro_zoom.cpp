@@ -116,6 +116,7 @@ bool IntroZoom::start()
 	start_pos = ac_node->get_global_position() + up_dir * intro_start_alt_m;
 	elapsed = 0.0;
 	playing = true;
+	skip_armed = false;
 
 	Vector3 ac_pos = ac_node->get_global_position();
 	intro_camera->set_global_position(start_pos);
@@ -149,9 +150,18 @@ int IntroZoom::update(double delta)
 		return STATUS_FINISHED;
 	}
 
-	// Allow the user to skip the cinematic.
+	// Allow the user to skip the cinematic with any key / button. Arm the
+	// skip only once everything has been released after the start (the Fly!
+	// click or Enter that started the flight must not skip it immediately).
 	Input *input = Input::get_singleton();
-	if (input->is_key_pressed(KEY_ESCAPE) || input->is_key_pressed(KEY_SPACE))
+	if (!skip_armed)
+	{
+		if (!input->is_anything_pressed())
+		{
+			skip_armed = true;
+		}
+	}
+	else if (input->is_anything_pressed())
 	{
 		finish();
 		return STATUS_FINISHED;

@@ -202,6 +202,9 @@ func _process(_delta: float) -> void:
 			check(
 				app_ref.globe_node != null and app_ref.globe_node.visible,
 				"coarse globe visible from space")
+			check(app_ref._intro_hud != null and app_ref._intro_hud.visible and app_ref._intro_dist_label.text.begins_with("Distance to aircraft:"),
+				"intro HUD shown with the distance readout (%s)" % (app_ref._intro_dist_label.text if app_ref._intro_dist_label else "<none>"))
+			check(app_ref.get_node("Control").visible == false, "flight HUD hidden during the intro")
 			_start_steps([{"press": [KEY_SPACE], "frames": 4}], "check_handoff")
 
 		"check_handoff":
@@ -220,6 +223,8 @@ func _process(_delta: float) -> void:
 			check(
 				app_ref.globe_node != null and app_ref.globe_node.visible and app_ref.globe_node.get_coverage_mask_size() > 0,
 				"coarse globe stays visible as the fallback and is masked per fragment under the detailed patch (mask uploaded)")
+			check(app_ref._intro_hud != null and not app_ref._intro_hud.visible and app_ref.get_node("Control").visible,
+				"intro HUD hidden and flight HUD back after the handoff")
 			_enter_phase("done")
 
 		"steps":
