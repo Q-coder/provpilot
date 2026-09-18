@@ -228,6 +228,8 @@ var _welcome_screen: CanvasLayer = null
 # scenery-library logic and pushes paths/density into Scenery3D + Vegetation.
 var _settings_screen: SettingsScreen = null
 var _settings: SettingsStore = null
+const LiveWeatherScript := preload("res://live_weather.gd")
+var _live_weather: Node = null  # LiveWeather (live_weather.gd)
 
 # Deferred scenery loading: skip all heavy loading at startup, load on first Fly!
 var _first_flight: bool = true
@@ -854,14 +856,48 @@ func _setup_sky_atmosphere() -> void:
 ## sky controller. Called at setup and whenever the settings screen closes.
 ## Static weather (Settings > Weather): the layer stack + QNH go to the JSBSim
 ## bridge (sampled at the aircraft's altitude each tick), visibility to the fog.
+## With Live Weather on, the static values apply until the first report
+## arrives (LiveWeather then calls _on_live_weather_updated).
 func _push_weather_settings() -> void:
 	if not _settings:
 		return
-	var layers: Array = _settings.get_setting("weather_layers")
-	var qnh := float(_settings.get_setting("qnh_hpa"))
+	var live := bool(_settings.get_setting("live_weather"))
+	if _live_weather:
+		_live_weather.enabled = live
+		if not live:
+			_settings_screen.clear_live_weather()
+	if live and _live_weather and not _live_weather.last_weather.is_empty():
+		_apply_weather(_live_weather.last_weather["layers"], float(_live_weather.last_weather["qnh_hpa"]), float(_live_weather.last_weather["visibility_km"]))
+	else:
+		_apply_weather(_settings.get_setting("weather_layers"), float(_settings.get_setting("qnh_hpa")), float(_settings.get_setting("visibility_km")))
+	if live and _live_weather:
+		_live_weather.refresh()
+
+
+func _apply_weather(layers: Array, qnh_hpa: float, visibility_km: float) -> void:
 	if jsb_node and jsb_node.has_method("set_weather"):
-		jsb_node.set_weather(layers, qnh)
-	_sky.set_visibility_km(float(_settings.get_setting("visibility_km")))
+		jsb_node.set_weather(layers, qnh_hpa)
+	_sky.set_visibility_km(visibility_km)
+
+
+func _aircraft_latlon() -> Vector2:
+	var ac := get_node_or_null("AC") as Node3D
+	if ac == null:
+		return Vector2.ZERO
+	var g := _geodetic_of(ac.global_position)
+	return Vector2(g.x, g.y)
+
+
+func _on_live_weather_updated(wx: Dictionary) -> void:
+	_apply_weather(wx["layers"], float(wx["qnh_hpa"]), float(wx["visibility_km"]))
+	if _settings_screen:
+		_settings_screen.set_live_weather(wx["layers"], str(wx["status"]))
+
+
+func _on_live_weather_failed(reason: String) -> void:
+	push_warning("Live weather: %s (keeping the current weather)" % reason)
+	if _settings_screen and _live_weather and _live_weather.last_weather.is_empty():
+		_settings_screen.set_live_weather([], "no report (%s)" % reason)
 
 
 func _push_time_of_day_settings() -> void:
@@ -1088,6 +1124,8 @@ func _do_deferred_terrain_init() -> void:
 
 	terrain_initialized = true
 	print("=== JSBSim terrain initialization complete ===")
+	if _live_weather and _live_weather.enabled:
+		_live_weather.refresh()  # new flight, maybe a new region
 
 
 # Update terrain elevation for JSBSim ground collision (per-frame, after init)
@@ -1947,6 +1985,11 @@ func _create_settings_screen() -> void:
 	add_child(_settings_screen)  # loads provpilot.cfg in its _ready
 	_settings = _settings_screen.get_store()
 	_settings_screen.closed.connect(_on_settings_closed)
+	_live_weather = LiveWeatherScript.new()
+	_live_weather.latlon_provider = _aircraft_latlon
+	_live_weather.weather_updated.connect(_on_live_weather_updated)
+	_live_weather.weather_failed.connect(_on_live_weather_failed)
+	add_child(_live_weather)
 
 
 ## Per-second snapshot of scene-graph / renderer counters. Lets us spot

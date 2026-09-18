@@ -5,6 +5,8 @@
 #include <godot_cpp/classes/canvas_layer.hpp>
 #include <godot_cpp/classes/spin_box.hpp>
 #include <godot_cpp/classes/option_button.hpp>
+#include <godot_cpp/classes/check_box.hpp>
+#include <godot_cpp/classes/button.hpp>
 #include <godot_cpp/classes/control.hpp>
 #include <godot_cpp/classes/input_event.hpp>
 #include <godot_cpp/classes/label.hpp>
@@ -47,6 +49,12 @@ namespace jsbgodot
 
         void show_settings();
         void hide_settings();
+        // Live weather display: while the Live Weather box is ticked the
+        // Weather tab shows these derived layers read-only (plus a status
+        // line) instead of the editable static ones. Empty layers + status
+        // = no report yet. The store's static layers are never touched.
+        void set_live_weather(const Array &layers, const String &status);
+        void clear_live_weather();
         Ref<SettingsStore> get_store() const;
         Variant get_setting(const String &key) const;
         // Re-push store values into every control (after external changes).
@@ -72,6 +80,7 @@ namespace jsbgodot
         void _on_area_row_gui_input(const Ref<InputEvent> &event, int idx);
         // Weather-layer table actions.
         void _on_weather_add_layer();
+        void _on_live_weather_toggled(bool pressed);
         void _on_weather_remove_layer(int idx);
         void _on_weather_spin_changed(double value, int idx);
         void _on_weather_option_changed(int value, int idx);
@@ -133,6 +142,12 @@ namespace jsbgodot
             OptionButton *coverage = nullptr;
         };
         std::vector<WeatherRow> weather_rows;
+        CheckBox *live_weather_check = nullptr;
+        Label *weather_status = nullptr;
+        Button *weather_add_button = nullptr;
+        Array live_weather_layers;
+        String live_weather_status;
+        bool _live_weather_shown() const;
         Node *joystick_panel = nullptr;
         Node *downloader_panel = nullptr;
         Node *area_dialog = nullptr;    // live "Add Area..." FileDialog, if any

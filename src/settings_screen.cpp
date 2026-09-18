@@ -70,6 +70,9 @@ void SettingsScreen::_bind_methods()
     ClassDB::bind_method(D_METHOD("_on_area_priority_changed", "value", "idx"), &SettingsScreen::_on_area_priority_changed);
     ClassDB::bind_method(D_METHOD("_on_area_row_gui_input", "event", "idx"), &SettingsScreen::_on_area_row_gui_input);
     ClassDB::bind_method(D_METHOD("_on_weather_add_layer"), &SettingsScreen::_on_weather_add_layer);
+    ClassDB::bind_method(D_METHOD("_on_live_weather_toggled", "pressed"), &SettingsScreen::_on_live_weather_toggled);
+    ClassDB::bind_method(D_METHOD("set_live_weather", "layers", "status"), &SettingsScreen::set_live_weather);
+    ClassDB::bind_method(D_METHOD("clear_live_weather"), &SettingsScreen::clear_live_weather);
     ClassDB::bind_method(D_METHOD("_on_weather_remove_layer", "idx"), &SettingsScreen::_on_weather_remove_layer);
     ClassDB::bind_method(D_METHOD("_on_weather_spin_changed", "value", "idx"), &SettingsScreen::_on_weather_spin_changed);
     ClassDB::bind_method(D_METHOD("_on_weather_option_changed", "value", "idx"), &SettingsScreen::_on_weather_option_changed);
@@ -762,8 +765,13 @@ void SettingsScreen::_build_weather_tab()
 {
     VBoxContainer *content = _add_tab("Weather");
     _add_section_header(content, "Source");
-    _add_check_row(content, "live_weather", "Live Weather:", "Real-world METAR / forecast feed (not available yet)");
-    Object::cast_to<CheckBox>(rows.back().control)->set_disabled(true);
+    _add_check_row(content, "live_weather", "Live Weather:", "Nearest METAR (aviationweather.gov), refreshed every 10 min");
+    live_weather_check = Object::cast_to<CheckBox>(rows.back().control);
+    live_weather_check->connect("toggled", Callable(this, "_on_live_weather_toggled"));
+    weather_status = _make_label("", FONT_SM, HINT_COLOR);
+    weather_status->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+    weather_status->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+    content->add_child(weather_status);
     _add_section_header(content, "Weather Layers");
     _add_hint(content, "Each layer spans Base to Top (wind and clouds); the air between layers is clear.");
 
@@ -784,7 +792,8 @@ void SettingsScreen::_build_weather_tab()
 
     HBoxContainer *btn_row = memnew(HBoxContainer);
     btn_row->add_theme_constant_override("separation", 12);
-    btn_row->add_child(_make_button("Add Layer", 160, FONT_SM, Callable(this, "_on_weather_add_layer")));
+    weather_add_button = Object::cast_to<Button>(_make_button("Add Layer", 160, FONT_SM, Callable(this, "_on_weather_add_layer")));
+    btn_row->add_child(weather_add_button);
     content->add_child(btn_row);
 
     _add_section_header(content, "Global");
@@ -808,7 +817,24 @@ void SettingsScreen::_refresh_weather_table()
     }
     weather_rows.clear();
 
-    Array layers = store->get_setting("weather_layers");
+    const bool live = _live_weather_shown();
+    if (weather_status != nullptr)
+    {
+        if (live_weather_check != nullptr && live_weather_check->is_pressed())
+        {
+            weather_status->set_text(live_weather_status.is_empty() ? String("Live weather: waiting for a report… (static layers shown until it arrives)") : "Live: " + live_weather_status);
+        }
+        else
+        {
+            weather_status->set_text("Static weather: edit the layers below.");
+        }
+    }
+    if (weather_add_button != nullptr)
+    {
+        weather_add_button->set_disabled(live);
+    }
+
+    Array layers = live ? live_weather_layers : Array(store->get_setting("weather_layers"));
     for (int i = 0; i < layers.size(); i++)
     {
         Dictionary l = layers[i];
@@ -826,6 +852,7 @@ void SettingsScreen::_refresh_weather_table()
             sb->set_custom_minimum_size(Vector2(min_w, 36));
             sb->add_theme_font_size_override("font_size", FONT_SM);
             sb->connect("value_changed", Callable(this, "_on_weather_spin_changed").bind(i));
+            sb->set_editable(!live);
             row->add_child(sb);
             return sb;
         };
@@ -840,6 +867,7 @@ void SettingsScreen::_refresh_weather_table()
             }
             ob->select(CLAMP(selected, 0, count - 1));
             ob->connect("item_selected", Callable(this, "_on_weather_option_changed").bind(i));
+            ob->set_disabled(live);
             row->add_child(ob);
             return ob;
         };
@@ -851,15 +879,41 @@ void SettingsScreen::_refresh_weather_table()
         wr.cloud_type = make_option(WEATHER_CLOUD_TYPES, WEATHER_CLOUD_TYPE_COUNT, int(l.get("cloud_type", 0)), 170);
         static const char *oktas[] = { "0/8", "1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8", "8/8" };
         wr.coverage = make_option(oktas, 9, int(l.get("coverage_oktas", 0)), 100);
-        row->add_child(_make_button("Remove", 110, FONT_SM, Callable(this, "_on_weather_remove_layer").bind(i)));
+        Button *remove = Object::cast_to<Button>(_make_button("Remove", 110, FONT_SM, Callable(this, "_on_weather_remove_layer").bind(i)));
+        remove->set_disabled(live);
+        row->add_child(remove);
         weather_table->add_child(row);
         weather_rows.push_back(wr);
     }
 }
 
+bool SettingsScreen::_live_weather_shown() const
+{
+    return live_weather_check != nullptr && live_weather_check->is_pressed() && live_weather_layers.size() > 0;
+}
+
+void SettingsScreen::set_live_weather(const Array &layers, const String &status)
+{
+    live_weather_layers = layers;
+    live_weather_status = status;
+    _refresh_weather_table();
+}
+
+void SettingsScreen::clear_live_weather()
+{
+    live_weather_layers = Array();
+    live_weather_status = String();
+    _refresh_weather_table();
+}
+
+void SettingsScreen::_on_live_weather_toggled(bool)
+{
+    _refresh_weather_table();
+}
+
 void SettingsScreen::_read_weather_table()
 {
-    if (applying_ui)
+    if (applying_ui || _live_weather_shown())
     {
         return;
     }

@@ -876,9 +876,31 @@ and QNH into the atmosphere's sea-level pressure. `_push_weather_settings()`
 in `node_3d.gd` feeds it at start-up and on Settings close, and turns
 visibility into the fog density via Koschmieder (3.912 / V), which the
 altitude ramp still fades toward space. Clouds are stored but not rendered.
-Test: `tests/smoke_weather.tscn`. Next steps, in order: METAR fetch for the
-departure field (QNH + surface wind), Open-Meteo for regional winds/cloud
-layers, then cloud rendering.
+Test: `tests/smoke_weather.tscn`.
+
+**Implemented (live weather, METAR):** `provpilot/live_weather.gd`
+(`LiveWeather` node) fetches the nearest METAR from the Aviation Weather
+Center data API (`aviationweather.gov/api/data/metar?format=json&bbox=…`,
+decoded JSON, no key) in a ±1° × ±1.5° box around the aircraft, picks the
+nearest station and translates the report into the layer model: surface
+layer 0..1500 m AGL (capped 100 m under the lowest cloud base) with the
+reported wind, gust factor → turbulence (≥5/10/20 kt = light/moderate/
+severe); one layer per cloud group (base = station elevation + AGL base,
+thickness by type; type from CB/TCU in the raw text, else by base height
+and cover: stratus/stratocumulus/cumulus below 2000 m AGL, alto* to
+6000 m, cirrus above); visibility (statute miles → km, "6+"/"9999" →
+40 km) and QNH pass through. Refreshed every 10 min, on Settings close and
+at each flight start; failures keep the current weather and show a
+message in the Weather tab. The store's static layers are never modified;
+while the box is ticked the tab shows the live layers read-only with a
+status line. Sources are pluggable via `LiveWeather.source` (only `awc`
+so far). Tests: `tests/smoke_live_weather.gd` (canned JSON, plus a real
+fetch with `PROVPILOT_NET=1`) and `tests/smoke_live_weather_scene.tscn`
+(network, skipped without `PROVPILOT_NET=1`).
+
+Next steps, in order: cloud rendering (the METAR layers already carry
+type/coverage/base), then Open-Meteo as a second source for winds aloft
+and regional variation.
 
 ### 10.1 How it maps onto JSBSim
 
