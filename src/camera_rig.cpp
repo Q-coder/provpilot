@@ -350,7 +350,7 @@ void CameraRig::update_orbit(double delta, int joy_device)
 	// the degenerate case (zero offset → same position).
 	if (world_offset.length_squared() > 0.01)
 	{
-		camera2->look_at(aircraft_global_pos, ecef ? geo::up_at(aircraft_global_pos) : Vector3(0, 1, 0));
+		geo::aim(camera2, aircraft_global_pos, ecef ? geo::up_at(aircraft_global_pos) : Vector3(0, 1, 0));
 	}
 }
 // Chase camera: follows behind the aircraft, rotating with its heading.
@@ -478,7 +478,7 @@ void CameraRig::update_chase(double delta, int joy_device)
 	Vector3 to_target = aircraft_pos - camera2->get_global_position();
 	if (to_target.length_squared() > 0.01)
 	{
-		camera2->look_at(aircraft_pos, up);
+		geo::aim(camera2, aircraft_pos, up);
 	}
 }
 

@@ -774,6 +774,21 @@ passes TRUE runway headings again (thresholds stay in the grid). Headless:
 on lat/lon/heading/altitude/pitch/roll to 0.01, ground creep forward only,
 3681 tiles around the ECEF camera); aircraft-swap, VFR-map, globe-mask and
 projection smokes updated/green.
+
+*C2 check-flight fixes (2026-09-18).* (1) Orbit/chase cameras drifted and
+rolled: `Node3D::look_at()` rejects a target within `CMP_EPSILON·|position|`
+of the node as "the same position" — 64 m at ECEF magnitudes — so every
+close aim silently failed and the camera kept the aircraft-relative basis.
+`geo::aim()` (Basis::looking_at + set_global_transform, scale preserved)
+replaces every look_at in CameraRig and IntroZoom; `tests/smoke_ecef_camera.
+tscn` drives both modes headlessly (0° roll, 0° look-off). Rule: never call
+look_at / rely on is_equal_approx on world positions in the ECEF world.
+(2) Roll and yaw reversed: the flat frame ran JSBSim mirrored and all input
+paths + control-surface animations were tuned to the mirror; in ECEF mode
+the aileron and rudder commands are negated at the FDM boundary only, so
+input_* and the animations stay as before. (3) Coverage-mask rebuilds are
+throttled to 100 ms (the generation counter bumps every frame during heavy
+streaming; each rebuild is a 180 KB grid + texture upload).
 | C3 | Remove flat-frame code paths (rebase, TERRAIN_CENTER), per-region CRS grids with UTM support (D6), docs | smoke tests green; existing CH/BW/Norway packs unchanged |
 
 ## See also

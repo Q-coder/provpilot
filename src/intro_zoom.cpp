@@ -128,7 +128,7 @@ bool IntroZoom::start()
 
 	Vector3 ac_pos = ac_node->get_global_position();
 	intro_camera->set_global_position(start_pos);
-	intro_camera->look_at(ac_pos, view_up_hint(start_pos, ac_pos, 0.0));
+	geo::aim(intro_camera, ac_pos, view_up_hint(start_pos, ac_pos, 0.0));
 
 	// Drive the dedicated intro camera; suppress the rig's cockpit branch
 	// until the handoff back to camera2.
@@ -189,7 +189,7 @@ int IntroZoom::update(double delta)
 	intro_camera->set_global_position(cam_pos);
 
 	// Robust up vector: avoid look_at degeneracy when peering straight down.
-	intro_camera->look_at(target, view_up_hint(cam_pos, target, pe * pe));
+	geo::aim(intro_camera, target, view_up_hint(cam_pos, target, pe * pe));
 
 	if (p >= 1.0)
 	{
@@ -223,7 +223,7 @@ void IntroZoom::finish()
 		camera2->set_global_position(ac_node->get_global_position() + spot);
 		if (spot.length_squared() > 0.01)
 		{
-			camera2->look_at(ac_node->get_global_position(), ecef ? geo::up_at(ac_node->get_global_position()) : Vector3(0.0, 1.0, 0.0));
+			geo::aim(camera2, ac_node->get_global_position(), ecef ? geo::up_at(ac_node->get_global_position()) : Vector3(0.0, 1.0, 0.0));
 		}
 	}
 

@@ -194,6 +194,10 @@ var _suppress_dirty := true
 # Last tile-manager coverage generation the pushed mask was built from —
 # refresh only when it changes (a tile/chunk appeared or disappeared).
 var _suppress_cov_gen := -1
+# Minimum interval between mask rebuilds (each is a ~180 KB grid + texture
+# upload; during heavy streaming the coverage generation bumps every frame).
+const SUPPRESS_REFRESH_MS := 100
+var _suppress_last_ms := 0
 # The altitude-driven atmosphere ramps (exponential fog fade-out toward space,
 # sky-to-black background above the atmosphere, ambient/glow taper) and the
 # coarse-globe visibility gate live in the C++ Atmosphere module
@@ -785,6 +789,10 @@ func _refresh_globe_suppress_rects() -> void:
 	if not _suppress_dirty and gen == _suppress_cov_gen \
 			and _suppress_last_center.distance_squared_to(c) < 1024.0:
 		return  # nothing moved, no tile/chunk appeared or disappeared
+	var now_ms := Time.get_ticks_msec()
+	if not _suppress_dirty and now_ms - _suppress_last_ms < SUPPRESS_REFRESH_MS:
+		return  # throttle: the globe stays visible as fallback in the meantime
+	_suppress_last_ms = now_ms
 
 	if tm != null:
 		_push_suppress_from_coverage(tm.get_coverage_mask(), int(tm.get_coverage_mask_radius()),

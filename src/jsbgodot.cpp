@@ -1190,9 +1190,16 @@ void JSBGodot::copy_inputs_to_JSBSim()
     //    printf("Inputs copied to JSBSim FCS. Throttle: %f\n", input_throttle);
 
     // Set control surface deflections via the property tree
-    FDMExec->SetPropertyValue("fcs/aileron-cmd-norm", input_aileron);
+    // The legacy flat frame ran JSBSim in a mirrored world (see
+    // initialize_at_terrain), and every input path plus the control-surface
+    // animations were tuned against that mirror. In the ECEF world the
+    // aircraft is no longer mirrored, so the lateral commands are flipped
+    // here, at the FDM boundary only, keeping input_* (and the animations
+    // that read them) exactly as before. Pitch is unaffected by the mirror.
+    const float lateral_sign = ecef_frame ? -1.0f : 1.0f;
+    FDMExec->SetPropertyValue("fcs/aileron-cmd-norm", lateral_sign * input_aileron);
     FDMExec->SetPropertyValue("fcs/elevator-cmd-norm", input_elevator + elevator_trim);
-    FDMExec->SetPropertyValue("fcs/rudder-cmd-norm", input_rudder);
+    FDMExec->SetPropertyValue("fcs/rudder-cmd-norm", lateral_sign * input_rudder);
     // Throttle ALL engines (-1). Setting the bare "fcs/throttle-cmd-norm" property
     // only drives engine 0, leaving the other engine(s) at idle/zero on a twin
     // like the A-10 (→ asymmetric thrust + yaw). SetThrottleCmd(-1) fans out to

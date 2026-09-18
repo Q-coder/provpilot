@@ -10,6 +10,7 @@
 #include <godot_cpp/variant/vector3.hpp>
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
+#include <godot_cpp/classes/node3d.hpp>
 #include <cmath>
 #include "s3d_proj.h"
 
@@ -71,6 +72,24 @@ namespace geo
 		double hdg = s3d::proj::rad2deg(std::atan2(-f.x, f.z));            // east = -X
 		if (hdg < 0.0) hdg += 360.0;
 		return hdg;
+	}
+
+	// Point a node's -Z at a target with the given up hint, keeping its scale.
+	// Node3D::look_at() cannot be used in the ECEF world: it rejects targets
+	// within CMP_EPSILON * |position| (~64 m at 6.4e6 m) as "the same
+	// position", so every close camera aim silently failed.
+	inline void aim(godot::Node3D *node, const Vector3 &target, const Vector3 &up)
+	{
+		if (node == nullptr) return;
+		const Vector3 pos = node->get_global_position();
+		const Vector3 fwd = target - pos;
+		if (fwd.length_squared() < 1e-8 || up.length_squared() < 1e-12) return;
+		const Vector3 f = fwd.normalized();
+		if (std::abs(f.dot(up.normalized())) > 0.9999) return; // degenerate hint
+		const Basis b = Basis::looking_at(f, up.normalized());
+		const Vector3 scale = node->get_scale();
+		node->set_global_transform(godot::Transform3D(b, pos));
+		node->set_scale(scale);
 	}
 
 	// Level aircraft basis at (lat, lon) pointing along a true heading, with
