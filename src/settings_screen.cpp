@@ -761,6 +761,9 @@ static const char *WEATHER_TURBULENCE[] = { "None", "Light", "Moderate", "Severe
 void SettingsScreen::_build_weather_tab()
 {
     VBoxContainer *content = _add_tab("Weather");
+    _add_section_header(content, "Source");
+    _add_check_row(content, "live_weather", "Live Weather:", "Real-world METAR / forecast feed (not available yet)");
+    Object::cast_to<CheckBox>(rows.back().control)->set_disabled(true);
     _add_section_header(content, "Weather Layers");
     _add_hint(content, "Each layer spans Base to Top (wind and clouds); the air between layers is clear.");
 
@@ -787,7 +790,7 @@ void SettingsScreen::_build_weather_tab()
     _add_section_header(content, "Global");
     _add_slider_row(content, "visibility_km", "Visibility:", 0, 200, 1, " km");
     _add_slider_row(content, "qnh_hpa", "Pressure (QNH):", 900, 1100, 1, " hPa");
-    _add_hint(content, "Standard atmosphere: 1013 hPa. Wind and turbulence per layer; clouds are visual only.");
+    _add_hint(content, "Standard atmosphere: 1013 hPa. Wind, turbulence and QNH feed the flight model; visibility sets the haze. Clouds are not rendered yet.");
     _refresh_weather_table();
 }
 

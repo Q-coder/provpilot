@@ -85,6 +85,13 @@ func setup(env: Environment, sun: DirectionalLight3D, fill: DirectionalLight3D, 
 		_base_fill_energy = fill_light.light_energy
 
 
+## Meteorological visibility -> exponential fog density (Koschmieder: the 5 %
+## contrast threshold sits at 3.912 / beta). Replaces the authored baseline;
+## the altitude ramp in _apply_altitude still fades it out toward space.
+func set_visibility_km(km: float) -> void:
+	_base_fog_density = 3.912 / (maxf(km, 0.1) * 1000.0)
+
+
 ## Choose the time source: real UTC clock, or a manual local time-of-day.
 func set_time(use_system: bool, local_minutes: int) -> void:
 	use_system_time = use_system

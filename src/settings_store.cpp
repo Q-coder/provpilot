@@ -127,7 +127,8 @@ Dictionary SettingsStore::get_defaults()
         layers.push_back(l);
         d["weather_layers"] = layers;
     }
-    d["visibility_km"] = 50;      // 0 .. 200 km
+    d["live_weather"] = false;    // real-world weather feed (not implemented yet)
+    d["visibility_km"] = 80;      // 0 .. 200 km (80 km ~ the authored fog density)
     d["qnh_hpa"] = 1013;          // sea-level pressure, hPa (mb)
     return d;
 }
@@ -154,7 +155,7 @@ String SettingsStore::section_for_key(const String &key)
     {
         return "map";
     }
-    if (key == "weather_layers" || key == "visibility_km" || key == "qnh_hpa")
+    if (key == "weather_layers" || key == "visibility_km" || key == "qnh_hpa" || key == "live_weather")
     {
         return "weather";
     }

@@ -5,6 +5,9 @@
 #include "initialization/FGInitialCondition.h"
 #include "models/FGPropulsion.h"
 #include "models/propulsion/FGThruster.h"
+#include "models/FGAtmosphere.h"
+#include "models/atmosphere/FGWinds.h"
+#include <algorithm>
 
 #include <godot_cpp/classes/input_event.hpp>     // Ensure InputEvent is fully included
 #include <godot_cpp/classes/input_event_key.hpp> // If you need specific event handling
@@ -84,6 +87,10 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_roll_deg"), &JSBGodot::get_roll_deg);
     ClassDB::bind_method(D_METHOD("reinitialize_from_pose", "ac_global", "airspeed_kts", "terrain_elevation_m"), &JSBGodot::reinitialize_from_pose);
     ClassDB::bind_method(D_METHOD("reset_controls"), &JSBGodot::reset_controls);
+    ClassDB::bind_method(D_METHOD("set_weather", "layers", "qnh_hpa"), &JSBGodot::set_weather);
+    ClassDB::bind_method(D_METHOD("get_weather_wind_ned_kts", "alt_m"), &JSBGodot::get_weather_wind_ned_kts);
+    ClassDB::bind_method(D_METHOD("get_weather_turbulence", "alt_m"), &JSBGodot::get_weather_turbulence);
+    ClassDB::bind_method(D_METHOD("get_weather_qnh_hpa"), &JSBGodot::get_weather_qnh_hpa);
 
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "input_pitch"), "set_input_pitch", "get_input_pitch");
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "input_roll"), "set_input_roll", "get_input_roll");
@@ -481,6 +488,132 @@ double JSBGodot::get_roll_deg() const
     return FDMExec ? Math::rad_to_deg(FDMExec->GetPropagate()->GetEuler(1)) : 0.0;
 }
 
+// ── Weather ──────────────────────────────────────────────────────────────────
+
+void JSBGodot::set_weather(const Array &layers, double qnh_hpa)
+{
+    weather_layers.clear();
+    for (int i = 0; i < layers.size(); i++)
+    {
+        Dictionary d = layers[i];
+        WeatherLayer l;
+        l.base_m = double(d.get("base_m", 0.0));
+        l.top_m = std::max(double(d.get("top_m", 0.0)), l.base_m);
+        const double dir = Math::deg_to_rad(double(d.get("wind_dir_deg", 0.0)));
+        const double spd = std::max(0.0, double(d.get("wind_speed_kts", 0.0)));
+        // Meteorological direction = where the wind blows FROM.
+        l.wind_n_kts = -spd * std::cos(dir);
+        l.wind_e_kts = -spd * std::sin(dir);
+        l.turbulence = std::clamp(int(d.get("turbulence", 0)), 0, 3);
+        weather_layers.push_back(l);
+    }
+    std::stable_sort(weather_layers.begin(), weather_layers.end(),
+                     [](const WeatherLayer &a, const WeatherLayer &b) { return a.base_m < b.base_m; });
+    weather_qnh_hpa = std::clamp(qnh_hpa, 800.0, 1100.0);
+}
+
+// Wind inside a layer is that layer's wind; between two layers it blends
+// linearly (as a vector) across the gap; below the lowest layer the lowest
+// applies, above the highest the highest. Turbulence is discrete: the nearer
+// layer's level.
+JSBGodot::WeatherSample JSBGodot::sample_weather(double alt_m) const
+{
+    WeatherSample s;
+    const size_t n = weather_layers.size();
+    if (n == 0)
+    {
+        return s;
+    }
+    auto from = [&](const WeatherLayer &l) {
+        s.wind_n_kts = l.wind_n_kts;
+        s.wind_e_kts = l.wind_e_kts;
+        s.turbulence = l.turbulence;
+    };
+    if (alt_m <= weather_layers[0].base_m)
+    {
+        from(weather_layers[0]);
+        return s;
+    }
+    for (size_t i = 0; i < n; i++)
+    {
+        const WeatherLayer &l = weather_layers[i];
+        if (alt_m >= l.base_m && alt_m <= l.top_m)
+        {
+            from(l);
+            return s;
+        }
+        if (i + 1 < n && alt_m > l.top_m && alt_m < weather_layers[i + 1].base_m)
+        {
+            const WeatherLayer &u = weather_layers[i + 1];
+            const double f = (alt_m - l.top_m) / (u.base_m - l.top_m);
+            s.wind_n_kts = l.wind_n_kts + (u.wind_n_kts - l.wind_n_kts) * f;
+            s.wind_e_kts = l.wind_e_kts + (u.wind_e_kts - l.wind_e_kts) * f;
+            s.turbulence = f < 0.5 ? l.turbulence : u.turbulence;
+            return s;
+        }
+    }
+    from(weather_layers[n - 1]);
+    return s;
+}
+
+Vector3 JSBGodot::get_weather_wind_ned_kts(double alt_m) const
+{
+    const WeatherSample s = sample_weather(alt_m);
+    return Vector3(s.wind_n_kts, s.wind_e_kts, 0.0);
+}
+
+int JSBGodot::get_weather_turbulence(double alt_m) const
+{
+    return sample_weather(alt_m).turbulence;
+}
+
+double JSBGodot::get_weather_qnh_hpa() const
+{
+    return weather_qnh_hpa;
+}
+
+void JSBGodot::apply_weather_to_fdm()
+{
+    if (!FDMExec)
+    {
+        return;
+    }
+    static const double KTS_TO_FPS = 1.6878098571;
+    const double alt_m = FDMExec->GetPropagate()->GetAltitudeASL() * 0.3048;
+    const WeatherSample s = sample_weather(alt_m);
+
+    std::shared_ptr<JSBSim::FGWinds> winds = FDMExec->GetWinds();
+    if (winds)
+    {
+        winds->SetWindNED(s.wind_n_kts * KTS_TO_FPS, s.wind_e_kts * KTS_TO_FPS, 0.0);
+        if (s.turbulence <= 0)
+        {
+            winds->SetTurbType(JSBSim::FGWinds::ttNone);
+            winds->SetProbabilityOfExceedence(0);
+        }
+        else
+        {
+            // MIL-F-8785C: severity = probability-of-exceedance index (1..7),
+            // low-altitude intensity from the 20 ft AGL wind. Use the ground
+            // layer's wind but at least the spec's light/moderate/severe
+            // reference speeds (15/30/45 kt) so still air still shakes.
+            static const int severity[4] = { 0, 2, 4, 6 };
+            static const double floor_kts[4] = { 0.0, 15.0, 30.0, 45.0 };
+            const WeatherLayer &g = weather_layers.front();
+            const double ground_kts = std::hypot(g.wind_n_kts, g.wind_e_kts);
+            winds->SetTurbType(JSBSim::FGWinds::ttMilspec);
+            winds->SetProbabilityOfExceedence(severity[s.turbulence]);
+            winds->SetWindspeed20ft(std::max(ground_kts, floor_kts[s.turbulence]) * KTS_TO_FPS);
+        }
+    }
+
+    std::shared_ptr<JSBSim::FGAtmosphere> atm = FDMExec->GetAtmosphere();
+    if (atm && std::fabs(atm->GetPressureSL(JSBSim::FGAtmosphere::eMillibars) - weather_qnh_hpa) > 0.01)
+    {
+        atm->SetPressureSL(JSBSim::FGAtmosphere::eMillibars, weather_qnh_hpa);
+    }
+}
+
 void JSBGodot::reset_controls()
 {
     input_pitch = 0.0f;
@@ -776,6 +909,7 @@ void JSBGodot::_physics_process(const real_t delta)
         }
         
         copy_inputs_to_JSBSim();
+        apply_weather_to_fdm();
         FDMExec->Run();
         copy_outputs_from_JSBSim();
     }

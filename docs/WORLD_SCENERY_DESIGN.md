@@ -863,10 +863,24 @@ coverage in oktas, plus global visibility (km) and QNH (hPa). Wind and
 clouds share the slab; the air between layers is clear, with wind
 interpolated across the gap. Keys live in the `[weather]` section of
 `provpilot.cfg`: `weather_layers` (Array of Dictionaries: `base_m`, `top_m`, `wind_dir_deg`, `wind_speed_kts`, `turbulence`,
-`cloud_type`, `coverage_oktas`), `visibility_km`, `qnh_hpa`. Nothing reads
-them yet. The old Realism `turbulence` / `wind_*` keys are gone.
+`cloud_type`, `coverage_oktas`), `visibility_km`, `qnh_hpa`, `live_weather`
+(placeholder checkbox, disabled). The old Realism `turbulence` / `wind_*`
+keys are gone.
 
-### 10.1 How it maps onto JSBSim (for the implementation step)
+**Implemented (static weather):** `JSBGodot::set_weather(layers, qnh)` keeps
+the sorted layer stack; every physics tick `apply_weather_to_fdm()` samples
+it at the aircraft's altitude (inside a layer: that layer; in a gap: linear
+vector blend, nearer layer's turbulence; below/above the stack: the lowest /
+highest layer) and pushes wind NED + MIL-F-8785C turbulence into `FGWinds`
+and QNH into the atmosphere's sea-level pressure. `_push_weather_settings()`
+in `node_3d.gd` feeds it at start-up and on Settings close, and turns
+visibility into the fog density via Koschmieder (3.912 / V), which the
+altitude ramp still fades toward space. Clouds are stored but not rendered.
+Test: `tests/smoke_weather.tscn`. Next steps, in order: METAR fetch for the
+departure field (QNH + surface wind), Open-Meteo for regional winds/cloud
+layers, then cloud rendering.
+
+### 10.1 How it maps onto JSBSim
 
 JSBSim has no layered atmosphere: the host sets *one* wind vector and one
 turbulence setting per tick, so the bridge interpolates the layer stack at
@@ -883,7 +897,8 @@ the aircraft's current altitude every frame.
   `atmosphere/turbulence/milspec/windspeed_at_20ft_AGL-fps` and
   `.../severity` (0..7). Mapping: None → type 0; Light/Moderate/Severe →
   type 3 with severity 2/4/6 and the 20 ft wind = the ground layer's wind
-  speed (min ~15 fps so the model produces something). Gusts
+  speed, but at least the spec's 15/30/45 kt reference so still air still
+  shakes (the low-altitude sigma is 0.1 × that wind). Gusts
   (`atmosphere/gust-*`, `cosine-gust/*`) can be layered on later.
 - **Pressure** — QNH is `FGStandardAtmosphere::SetPressureSL(eHPa|eMillibar, qnh)`
   (property `atmosphere/P-sl-psf`, 1 hPa = 2.08854 psf). It rescales the

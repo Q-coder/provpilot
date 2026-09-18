@@ -847,10 +847,23 @@ func _setup_sky_atmosphere() -> void:
 	var ll: Vector2 = Geo.lv95_to_wgs84(TERRAIN_CENTER_E, TERRAIN_CENTER_N)
 	_sky.setup(env, sun, fill, globe_node, ll.x, ll.y)
 	_push_time_of_day_settings()
+	_push_weather_settings()
 
 
 ## Push the time-of-day settings (system clock vs manual local time) into the
 ## sky controller. Called at setup and whenever the settings screen closes.
+## Static weather (Settings > Weather): the layer stack + QNH go to the JSBSim
+## bridge (sampled at the aircraft's altitude each tick), visibility to the fog.
+func _push_weather_settings() -> void:
+	if not _settings:
+		return
+	var layers: Array = _settings.get_setting("weather_layers")
+	var qnh := float(_settings.get_setting("qnh_hpa"))
+	if jsb_node and jsb_node.has_method("set_weather"):
+		jsb_node.set_weather(layers, qnh)
+	_sky.set_visibility_km(float(_settings.get_setting("visibility_km")))
+
+
 func _push_time_of_day_settings() -> void:
 	var use_system := true
 	var minutes := 720
@@ -2122,6 +2135,7 @@ func _on_settings_closed() -> void:
 	_apply_scenery_sources()
 	_vfr_map.apply_config()
 	_push_time_of_day_settings()
+	_push_weather_settings()
 	_suppress_dirty = true  # scenery areas may have changed
 	_refresh_globe_suppress_rects()
 	if _welcome_screen:

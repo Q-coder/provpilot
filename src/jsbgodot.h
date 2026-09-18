@@ -8,6 +8,9 @@
 #include <godot_cpp/classes/input_event.hpp>
 #include <godot_cpp/classes/input_event_joypad_motion.hpp>
 #include <godot_cpp/classes/input_event_joypad_button.hpp>
+#include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/vector3.hpp>
+#include <vector>
 
 using namespace godot;
 
@@ -177,6 +180,19 @@ namespace jsbgodot
         // airspeed_kts <= 0 = stationary and level; otherwise the current
         // pitch/roll are kept and the calibrated airspeed is set.
         void reinitialize_from_pose(Transform3D ac_global, double airspeed_kts, double terrain_elevation_m);
+
+        // ── Weather (design doc §10) ───────────────────────────────────────
+        // Static weather layers from the Settings store: an Array of
+        // Dictionaries {base_m, top_m, wind_dir_deg (from), wind_speed_kts,
+        // turbulence 0..3, ...}. Sampled at the aircraft's altitude every
+        // physics tick and pushed into JSBSim's FGWinds (wind NED + MIL-F-8785C
+        // turbulence); qnh_hpa goes to the atmosphere's sea-level pressure.
+        void set_weather(const Array &layers, double qnh_hpa);
+        // Diagnostics: the sampled wind (north, east, down) in knots and the
+        // turbulence level (0..3) at a geodetic altitude.
+        Vector3 get_weather_wind_ned_kts(double alt_m) const;
+        int get_weather_turbulence(double alt_m) const;
+        double get_weather_qnh_hpa() const;
         
     private:
         // Cache position data for getters
@@ -188,6 +204,25 @@ namespace jsbgodot
         bool has_pending_terrain = false;  // Whether we have a terrain elevation to set
         double godot_terrain_y_offset = 0.0;  // Y offset to apply (Godot terrain Y - JSBSim terrain elevation)
         std::string loaded_jsbsim_model;  // Model name currently loaded into FDMExec (empty = none)
+
+        struct WeatherLayer
+        {
+            double base_m = 0.0;
+            double top_m = 0.0;
+            double wind_n_kts = 0.0;  // wind vector the air moves TOWARD
+            double wind_e_kts = 0.0;
+            int turbulence = 0;
+        };
+        struct WeatherSample
+        {
+            double wind_n_kts = 0.0;
+            double wind_e_kts = 0.0;
+            int turbulence = 0;
+        };
+        std::vector<WeatherLayer> weather_layers;  // sorted by base_m
+        double weather_qnh_hpa = 1013.25;
+        WeatherSample sample_weather(double alt_m) const;
+        void apply_weather_to_fdm();
     };
 
 }
