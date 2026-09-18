@@ -3,6 +3,8 @@ extends Node
 ## (wind vector, gap blending, turbulence pick) on a bare JSBGodot node; part 2
 ## flies briefly and reads the FDM's wind / turbulence / QNH properties back.
 ## Run: godot --headless --path provpilot res://tests/smoke_weather.tscn
+const LiveWeatherScript := preload("res://live_weather.gd")
+const CANNED := '[{"icaoId":"LSZH","obsTime":1789748400,"wdir":290,"wspd":8,"wgst":null,"visib":"6+","altim":1018,"clouds":[{"cover":"FEW","base":7400}],"elev":424,"lat":47.48,"lon":8.536,"rawOb":"METAR LSZH 181620Z 29008KT 9999 FEW074 20/08 Q1018 NOSIG","name":"Zürich Intl Arpt"}]'
 var _root: Node = null
 var _fails: Array[String] = []
 func _fail(m: String) -> void:
@@ -71,6 +73,30 @@ func _ready() -> void:
 		_fail("moderate turbulence should select milspec (3) severity 4, got type %d severity %d" % [int(tt), int(sev)])
 	if not _near(w20, 30.0 * 1.6878098571, 0.01):
 		_fail("20 ft wind should be the 30 kt moderate floor, got %.2f fps" % w20)
+	# Ctrl+I overlay: static text lists the store's layers.
+	_root._settings.set_setting("live_weather", false)
+	_root._settings.set_setting("weather_layers", [_layer(0, 3000, 270, 20, 2), _layer(4000, 5000, 200, 35, 0)])
+	_root._settings.set_setting("qnh_hpa", 990)
+	_root._set_weather_overlay(true)
+	var txt: String = _root._wx_label.text
+	print("[weather] overlay:\n" + txt)
+	if not _root._wx_label.visible or not txt.contains("270°/20 kt") or not txt.contains("moderate turb") or not txt.contains("QNH 990") or not txt.contains("4000–5000 m"):
+		_fail("static overlay text incomplete: " + txt)
+	_root._set_weather_overlay(false)
+	if _root._wx_label.visible:
+		_fail("overlay did not hide")
+	# Live text from a canned report.
+	_root._settings.set_setting("live_weather", true)
+	var rep := LiveWeatherScript.parse_response("awc", CANNED, 47.5, 8.5)
+	_root._live_weather.last_weather = LiveWeatherScript.report_to_weather(rep)
+	_root._set_weather_overlay(true)
+	txt = _root._wx_label.text
+	print("[weather] live overlay:\n" + txt)
+	if not txt.begins_with("METAR LSZH 181620Z") or not txt.contains("Wind 290°/8 kt") or not txt.contains("QNH 1018") or not txt.contains("2/8 Altocumulus at 2680 m") or not txt.contains("29008KT"):
+		_fail("live overlay text incomplete: " + txt)
+	_root._settings.set_setting("live_weather", false)
+	_root._set_weather_overlay(false)
+
 	# Switching turbulence off again clears the model.
 	jsb.set_weather([_layer(0, 3000, 0, 0, 0)], 1013.25)
 	await get_tree().create_timer(0.5).timeout

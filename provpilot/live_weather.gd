@@ -280,4 +280,4 @@ static func report_to_weather(rep: Dictionary) -> Dictionary:
 			parts.append("%d/8 at %d m" % [int(cl["coverage_oktas"]), int(cl["base_m"])])
 		cloud_txt = ", ".join(parts)
 	var status := "%s %s: wind %s, vis %.0f km, QNH %.0f, %s" % [str(rep.get("station", "?")), when, wind_txt, vis_km, qnh, cloud_txt]
-	return {"layers": layers, "visibility_km": vis_km, "qnh_hpa": qnh, "status": status, "station": str(rep.get("station", "")), "obs_time": obs}
+	return {"layers": layers, "visibility_km": vis_km, "qnh_hpa": qnh, "status": status, "station": str(rep.get("station", "")), "name": str(rep.get("name", "")), "obs_time": obs, "when": when, "wind_txt": wind_txt, "raw": str(rep.get("raw", ""))}

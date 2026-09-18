@@ -282,6 +282,13 @@ var ENGINE_SOUND_PATH: String = "res://sounds/c172_engine_inflight.ogg"  # cfg s
 var _fps_label: Label = null
 var _fps_visible: bool = false
 var _fps_key_held: bool = false
+# Ctrl+I: weather overlay (top centre) — METAR station + wind / QNH / clouds,
+# or the static layers when live weather is off.
+var _wx_label: Label = null
+var _wx_visible: bool = false
+var _wx_key_held: bool = false
+const WEATHER_CLOUD_NAMES := ["", "Cumulus", "Stratus", "Stratocumulus", "Cumulonimbus", "Altostratus", "Altocumulus", "Cirrus"]
+const WEATHER_TURB_NAMES := ["", "light turb", "moderate turb", "severe turb"]
 
 # Per-second resource/leak diagnostic (helps track down post-multi-jump stalls)
 var _diag_last_msec: int = 0
@@ -309,6 +316,17 @@ func _ready() -> void:
 	_fps_label.offset_top = 10
 	_fps_label.visible = false
 	fps_layer.add_child(_fps_label)
+	_wx_label = Label.new()
+	_wx_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_wx_label.add_theme_font_size_override("font_size", 20)
+	_wx_label.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0))
+	_outline_label(_wx_label, 4)
+	_wx_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_wx_label.offset_left = -500
+	_wx_label.offset_right = 500
+	_wx_label.offset_top = 12
+	_wx_label.visible = false
+	fps_layer.add_child(_wx_label)
 
 	# Show a lightweight loading screen immediately, before any heavy work.
 	_create_loading_screen()
@@ -872,12 +890,60 @@ func _push_weather_settings() -> void:
 		_apply_weather(_settings.get_setting("weather_layers"), float(_settings.get_setting("qnh_hpa")), float(_settings.get_setting("visibility_km")))
 	if live and _live_weather:
 		_live_weather.refresh()
+	_refresh_weather_overlay()
 
 
 func _apply_weather(layers: Array, qnh_hpa: float, visibility_km: float) -> void:
 	if jsb_node and jsb_node.has_method("set_weather"):
 		jsb_node.set_weather(layers, qnh_hpa)
 	_sky.set_visibility_km(visibility_km)
+
+
+func _set_weather_overlay(show: bool) -> void:
+	_wx_visible = show
+	if _wx_label:
+		_wx_label.visible = show
+		_refresh_weather_overlay()
+
+
+func _refresh_weather_overlay() -> void:
+	if _wx_label == null or not _wx_visible:
+		return
+	_wx_label.text = _weather_overlay_text()
+
+
+## Text for the Ctrl+I overlay: the METAR (station, wind, QNH, visibility,
+## cloud layers, raw report) when live weather has one, else the static
+## layer stack from the settings.
+func _weather_overlay_text() -> String:
+	var live := _settings != null and bool(_settings.get_setting("live_weather"))
+	var lines: PackedStringArray = []
+	if live and _live_weather and not _live_weather.last_weather.is_empty():
+		var wx: Dictionary = _live_weather.last_weather
+		lines.append("METAR %s %s   %s" % [wx.get("station", "?"), wx.get("when", ""), wx.get("name", "")])
+		lines.append("Wind %s   QNH %.0f hPa   Visibility %.0f km" % [wx.get("wind_txt", ""), float(wx["qnh_hpa"]), float(wx["visibility_km"])])
+		var clouds: PackedStringArray = []
+		for l in wx["layers"]:
+			if int(l["coverage_oktas"]) > 0:
+				clouds.append("%d/8 %s at %d m" % [int(l["coverage_oktas"]), WEATHER_CLOUD_NAMES[int(l["cloud_type"])], int(l["base_m"])])
+		lines.append("Clouds: " + (", ".join(clouds) if not clouds.is_empty() else "sky clear"))
+		if str(wx.get("raw", "")) != "":
+			lines.append(str(wx["raw"]))
+		return "\n".join(lines)
+	if live:
+		lines.append("Live weather: waiting for a METAR…")
+	else:
+		lines.append("Static weather (Settings > Weather)")
+	if _settings:
+		lines.append("QNH %.0f hPa   Visibility %.0f km" % [float(_settings.get_setting("qnh_hpa")), float(_settings.get_setting("visibility_km"))])
+		for l in _settings.get_setting("weather_layers"):
+			var parts: PackedStringArray = ["%d–%d m: wind %03d°/%d kt" % [int(l["base_m"]), int(l["top_m"]), int(l["wind_dir_deg"]), int(l["wind_speed_kts"])]]
+			if int(l["turbulence"]) > 0:
+				parts.append(WEATHER_TURB_NAMES[int(l["turbulence"])])
+			if int(l["coverage_oktas"]) > 0:
+				parts.append("%d/8 %s" % [int(l["coverage_oktas"]), WEATHER_CLOUD_NAMES[int(l["cloud_type"])]])
+			lines.append(", ".join(parts))
+	return "\n".join(lines)
 
 
 func _aircraft_latlon() -> Vector2:
@@ -892,6 +958,7 @@ func _on_live_weather_updated(wx: Dictionary) -> void:
 	_apply_weather(wx["layers"], float(wx["qnh_hpa"]), float(wx["visibility_km"]))
 	if _settings_screen:
 		_settings_screen.set_live_weather(wx["layers"], str(wx["status"]))
+	_refresh_weather_overlay()
 
 
 func _on_live_weather_failed(reason: String) -> void:
@@ -1248,6 +1315,14 @@ func _process(delta: float) -> void:
 				_fps_label.visible = _fps_visible
 	else:
 		_fps_key_held = false
+
+	# Toggle the weather overlay with Ctrl+I
+	if Input.is_key_pressed(KEY_CTRL) and Input.is_key_pressed(KEY_I):
+		if not _wx_key_held:
+			_wx_key_held = true
+			_set_weather_overlay(not _wx_visible)
+	else:
+		_wx_key_held = false
 
 	# --- Post-teleport position guard ---
 	_process_rebase_cooldown()

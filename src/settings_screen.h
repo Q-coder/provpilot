@@ -6,6 +6,7 @@
 #include <godot_cpp/classes/spin_box.hpp>
 #include <godot_cpp/classes/option_button.hpp>
 #include <godot_cpp/classes/check_box.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/button.hpp>
 #include <godot_cpp/classes/control.hpp>
 #include <godot_cpp/classes/input_event.hpp>
@@ -170,6 +171,7 @@ namespace jsbgodot
         void _build_joystick_tab();
 
         Label *_make_label(const String &text, int font_size, const Color &color, int min_w = 0);
+        static Ref<ImageTexture> _check_icon(bool checked, bool disabled);
         void _add_section_header(VBoxContainer *parent, const String &text);
         void _add_hint(VBoxContainer *parent, const String &text);
         void _add_slider_row(VBoxContainer *parent, const String &key, const String &label, double min_v, double max_v, double step, const String &suffix);

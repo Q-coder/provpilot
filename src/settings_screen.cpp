@@ -21,6 +21,8 @@
 #include <godot_cpp/classes/style_box_empty.hpp>
 #include <godot_cpp/classes/style_box_flat.hpp>
 #include <godot_cpp/classes/text_server.hpp>
+#include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/variant/callable.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
@@ -252,6 +254,49 @@ VBoxContainer *SettingsScreen::_add_tab(const String &title)
     return content;
 }
 
+Ref<ImageTexture> SettingsScreen::_check_icon(bool checked, bool disabled)
+{
+    const int S = 26;
+    Ref<Image> img = Image::create(S, S, false, Image::FORMAT_RGBA8);
+    const Color border = disabled ? Color(0.45, 0.47, 0.5) : Color(0.8, 0.82, 0.85);
+    const Color fill = checked ? (disabled ? Color(0.3, 0.42, 0.55) : Color(0.24, 0.55, 0.9)) : Color(0.16, 0.18, 0.22);
+    for (int y = 0; y < S; y++)
+    {
+        for (int x = 0; x < S; x++)
+        {
+            const bool edge = x < 2 || y < 2 || x >= S - 2 || y >= S - 2;
+            img->set_pixel(x, y, edge ? border : fill);
+        }
+    }
+    if (checked)
+    {
+        // Tick: two thick segments (6,13)->(11,18) and (11,18)->(20,8).
+        const Color ink = Color(1, 1, 1);
+        auto seg = [&](int x0, int y0, int x1, int y1) {
+            const int n = MAX(abs(x1 - x0), abs(y1 - y0));
+            for (int i = 0; i <= n; i++)
+            {
+                const int x = x0 + (x1 - x0) * i / n;
+                const int y = y0 + (y1 - y0) * i / n;
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        const int px = x + dx, py = y + dy;
+                        if (px >= 0 && py >= 0 && px < S && py < S)
+                        {
+                            img->set_pixel(px, py, ink);
+                        }
+                    }
+                }
+            }
+        };
+        seg(6, 13, 11, 18);
+        seg(11, 18, 20, 8);
+    }
+    return ImageTexture::create_from_image(img);
+}
+
 Label *SettingsScreen::_make_label(const String &text, int font_size, const Color &color, int min_w)
 {
     Label *l = memnew(Label);
@@ -350,6 +395,12 @@ void SettingsScreen::_add_check_row(VBoxContainer *parent, const String &key, co
 
     CheckBox *check = memnew(CheckBox);
     check->add_theme_font_size_override("font_size", FONT_MD);
+    // The default theme's check icons are a small dark square that all but
+    // vanishes on the dark panel: draw our own 26 px box + tick.
+    check->add_theme_icon_override("unchecked", _check_icon(false, false));
+    check->add_theme_icon_override("checked", _check_icon(true, false));
+    check->add_theme_icon_override("unchecked_disabled", _check_icon(false, true));
+    check->add_theme_icon_override("checked_disabled", _check_icon(true, true));
     hbox->add_child(check);
 
     if (!description.is_empty())
@@ -822,7 +873,7 @@ void SettingsScreen::_refresh_weather_table()
     {
         if (live_weather_check != nullptr && live_weather_check->is_pressed())
         {
-            weather_status->set_text(live_weather_status.is_empty() ? String("Live weather: waiting for a report… (static layers shown until it arrives)") : "Live: " + live_weather_status);
+            weather_status->set_text(live_weather_status.is_empty() ? String("Live weather: waiting for a report... (static layers shown until it arrives)") : "Live: " + live_weather_status);
         }
         else
         {
