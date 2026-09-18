@@ -96,6 +96,9 @@ namespace jsbgodot
         int get_magneto_position() const;   // 0=OFF, 1=R, 2=L, 3=BOTH, 4=START
         int get_flap_position() const;      // notch index into flap_positions
         bool is_gear_down() const;
+        // Set the commanded gear state without touching JSBSim / the visual
+        // (used by the Fly! session reset, which resets those itself).
+        void set_gear_down(bool down);
         void set_dragging(int lever, bool dragging);
 
         // Value setters used by the mouse drag: assign + apply visual + JSBSim.

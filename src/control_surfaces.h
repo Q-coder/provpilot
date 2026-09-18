@@ -129,6 +129,10 @@ namespace jsbgodot
 
         // ── Landing gear command (mirrors JSBSim fcs/gear-cmd-norm) ──
         void set_gear_down(bool down);
+        // Fresh session: command + visual snap to the given state (no retract
+        // animation), e.g. Fly! after a flight with the gear up.
+        void reset_gear(bool down);
+        double get_gear_visual_pos() const; // 0 = up, 1 = down (animated)
 
         // ── Per-frame animation. `jsb` is the JSBGodot node (may be null). ──
         void update(Object *jsb, double delta);

@@ -25,11 +25,18 @@ func _ready() -> void:
 	print("[reset] before: speed %.1f kts throttle %.2f flaps %.2f" % [jsb.get_airspeed_knots(), jsb.get_input_throttle(), jsb.get_flaps()])
 	if jsb.get_airspeed_knots() < 5.0:
 		_fail("aircraft did not accelerate before the second Fly! (%.1f kts)" % jsb.get_airspeed_knots())
+	# Gear up, as a retractable airframe would leave it (the c172 has no legs
+	# to animate, so snap the visual state directly).
+	_root._control_surfaces.reset_gear(false)
+	_root._cockpit_controls.set_gear_down(false)
+	jsb.set_gear_down(false)
 	# Second Fly! at another airport (teleport path).
 	_root._on_welcome_flight_requested("c172p", 2682163.0, 1282948.0, 250.0)
 	await get_tree().create_timer(8.0).timeout
 	print("[reset] after: speed %.1f kts throttle %.2f flaps %.2f elevator %.2f" % [jsb.get_airspeed_knots(), jsb.get_input_throttle(), jsb.get_flaps(), jsb.get_input_elevator()])
 	if jsb.get_input_throttle() > 0.01: _fail("throttle carried over (%.2f)" % jsb.get_input_throttle())
+	if not _root._cockpit_controls.is_gear_down() or _root._control_surfaces.get_gear_visual_pos() < 0.99 or not jsb.get_gear_down():
+		_fail("gear not down after Fly! (cockpit %s visual %.2f fdm %s)" % [_root._cockpit_controls.is_gear_down(), _root._control_surfaces.get_gear_visual_pos(), jsb.get_gear_down()])
 	if jsb.get_flap_cmd() > 0.01 or jsb.get_flaps() > 0.2: _fail("flaps carried over (cmd %.2f pos %.2f)" % [jsb.get_flap_cmd(), jsb.get_flaps()])
 	if absf(jsb.get_input_elevator()) > 0.01: _fail("elevator carried over (%.2f)" % jsb.get_input_elevator())
 	if jsb.get_airspeed_knots() > 15.0: _fail("speed carried over (%.1f kts)" % jsb.get_airspeed_knots())

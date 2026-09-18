@@ -1192,7 +1192,7 @@ func _do_deferred_terrain_init() -> void:
 	terrain_initialized = true
 	print("=== JSBSim terrain initialization complete ===")
 	if _live_weather and _live_weather.enabled:
-		_live_weather.refresh()  # new flight, maybe a new region
+		_live_weather.refresh(true)  # new flight, maybe a new region
 
 
 # Update terrain elevation for JSBSim ground collision (per-frame, after init)
@@ -2305,6 +2305,10 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	# over from the previous flight ("Continue Flight" keeps everything).
 	if jsb_node.has_method("reset_controls"):
 		jsb_node.reset_controls()
+	# reset_controls() puts JSBSim's gear down; mirror that in the cockpit
+	# command and snap the visual (legs / imported clip) to down as well.
+	_cockpit_controls.set_gear_down(true)
+	_control_surfaces.reset_gear(true)
 
 	# 8. Get terrain height at new position — sample a grid around the
 	#    threshold and use the maximum, matching the runway mesh approach.
@@ -2347,6 +2351,8 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	#     has loaded and the cooldown expires (in _process).
 	if jsb_node.has_method("reinitialize_from_pose"):
 		jsb_node.reinitialize_from_pose(ac_node.global_transform, 0.0, terrain_height)
+	if _live_weather and _live_weather.enabled:
+		_live_weather.refresh(true)  # new region: fetch the METAR there now
 	_update_terrain_elevation()
 
 	# 11. Keep JSBSim in slew mode — physics stays paused until cooldown expires.

@@ -45,6 +45,8 @@ void ControlSurfaces::_bind_methods()
 	ClassDB::bind_method(D_METHOD("add_gear_leg", "wheel", "strut", "pivot", "axis", "retract_deg", "steer", "steer_axis", "steer_max_deg", "steer_pivot", "roll", "roll_axis", "radius_m"), &ControlSurfaces::add_gear_leg);
 	ClassDB::bind_method(D_METHOD("set_gear_anim", "player", "length"), &ControlSurfaces::set_gear_anim);
 	ClassDB::bind_method(D_METHOD("set_gear_down", "down"), &ControlSurfaces::set_gear_down);
+	ClassDB::bind_method(D_METHOD("reset_gear", "down"), &ControlSurfaces::reset_gear);
+	ClassDB::bind_method(D_METHOD("get_gear_visual_pos"), &ControlSurfaces::get_gear_visual_pos);
 	ClassDB::bind_method(D_METHOD("update", "jsb", "delta"), &ControlSurfaces::update);
 	ClassDB::bind_method(D_METHOD("get_visual_rpm"), &ControlSurfaces::get_visual_rpm);
 }
@@ -228,6 +230,14 @@ void ControlSurfaces::set_gear_anim(AnimationPlayer *player, double length)
 }
 
 // ── Gear command ────────────────────────────────────────────────────────────
+
+void ControlSurfaces::reset_gear(bool down)
+{
+	gear_down = down;
+	gear_visual_pos = down ? 1.0 : 0.0;
+}
+
+double ControlSurfaces::get_gear_visual_pos() const { return gear_visual_pos; }
 
 void ControlSurfaces::set_gear_down(bool down)
 {

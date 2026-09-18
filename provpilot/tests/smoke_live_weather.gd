@@ -69,6 +69,17 @@ func _initialize() -> void:
 	var empty := LiveWeather.report_to_weather({})
 	check((empty["layers"] as Array).size() == 1 and absf(float(empty["qnh_hpa"]) - 1013.25) < 0.01, "empty report -> one calm surface layer, standard QNH")
 
+	# Refetch policy: distance and age.
+	check(absf(LiveWeather.distance_km(Vector2(47.48, 8.54), Vector2(60.19, 11.10)) - 1414.0) < 30.0, "LSZH-ENGM distance ~1414 km")
+	var lw2 := LiveWeather.new()
+	check(lw2.needs_refetch(Vector2(47.5, 8.5), 0), "first fetch is always due")
+	lw2._last_fetch_latlon = Vector2(47.5, 8.5)
+	lw2._last_fetch_msec = 1000
+	check(not lw2.needs_refetch(Vector2(47.6, 8.6), 60000), "no refetch after 1 min / 13 km")
+	check(lw2.needs_refetch(Vector2(48.1, 8.5), 60000), "refetch after moving 67 km")
+	check(lw2.needs_refetch(Vector2(47.5, 8.5), 1000 + 600000), "refetch after 10 min")
+	lw2.free()
+
 	if OS.get_environment("PROVPILOT_NET") == "1":
 		_net_check()
 		return

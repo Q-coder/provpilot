@@ -53,6 +53,7 @@ void CockpitControls::_bind_methods()
 	ClassDB::bind_method(D_METHOD("get_magneto_position"), &CockpitControls::get_magneto_position);
 	ClassDB::bind_method(D_METHOD("get_flap_position"), &CockpitControls::get_flap_position);
 	ClassDB::bind_method(D_METHOD("is_gear_down"), &CockpitControls::is_gear_down);
+	ClassDB::bind_method(D_METHOD("set_gear_down", "down"), &CockpitControls::set_gear_down);
 	ClassDB::bind_method(D_METHOD("set_dragging", "lever", "dragging"), &CockpitControls::set_dragging);
 
 	ClassDB::bind_method(D_METHOD("set_mixture_value", "value", "jsb"), &CockpitControls::set_mixture_value);
@@ -352,6 +353,7 @@ double CockpitControls::get_mixture_value() const { return mixture_value; }
 int CockpitControls::get_magneto_position() const { return magneto_position; }
 int CockpitControls::get_flap_position() const { return flap_position; }
 bool CockpitControls::is_gear_down() const { return gear_down; }
+void CockpitControls::set_gear_down(bool down) { gear_down = down; }
 
 void CockpitControls::set_dragging(int lever, bool p_dragging)
 {

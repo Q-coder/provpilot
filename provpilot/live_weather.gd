@@ -11,6 +11,8 @@ signal weather_failed(reason: String)
 
 const SOURCE_AWC := "awc"
 const REFRESH_SEC := 600.0          # METARs are half-hourly; 10 min keeps us fresh
+const CHECK_SEC := 20.0             # how often the timer looks at age + distance
+const MOVE_REFETCH_KM := 50.0       # refetch sooner when the aircraft moved this far
 const SEARCH_DLAT := 1.0            # bbox half-size, degrees (~110 km N-S)
 const SEARCH_DLON := 1.5            # (~110 km E-W at 47°)
 const UNLIMITED_VIS_KM := 40.0      # "9999" / "6+" / "10+" -> a clear day
@@ -42,6 +44,8 @@ var last_weather: Dictionary = {}
 var _http: HTTPRequest
 var _timer: Timer
 var _busy := false
+var _last_fetch_latlon := Vector2.INF
+var _last_fetch_msec := -1
 
 
 func _init() -> void:
@@ -51,24 +55,28 @@ func _init() -> void:
 	_http.request_completed.connect(_on_request_completed)
 	add_child(_http)
 	_timer = Timer.new()
-	_timer.wait_time = REFRESH_SEC
+	_timer.wait_time = CHECK_SEC
 	_timer.one_shot = false
-	_timer.timeout.connect(refresh)
+	_timer.timeout.connect(_on_check_tick)
 	add_child(_timer)
 
 
-## Fetch now (if enabled) and (re)start the periodic refresh.
-func refresh() -> void:
+## Fetch (if enabled) and (re)start the periodic check. Without `force` the
+## fetch only happens when the last one is older than REFRESH_SEC or the
+## aircraft moved MOVE_REFETCH_KM since; a teleport / new flight forces it.
+func refresh(force: bool = true) -> void:
 	if not enabled:
 		return
 	if not is_inside_tree():
-		call_deferred("refresh")  # HTTPRequest / Timer need the tree
+		call_deferred("refresh", force)  # HTTPRequest / Timer need the tree
 		return
 	if _timer.is_stopped():
 		_timer.start()
 	if _busy or not latlon_provider.is_valid():
 		return
 	var ll: Vector2 = latlon_provider.call()
+	if not force and not needs_refetch(ll, Time.get_ticks_msec()):
+		return
 	var url := build_url(source, ll.x, ll.y)
 	if url.is_empty():
 		weather_failed.emit("unknown weather source '%s'" % source)
@@ -78,7 +86,29 @@ func refresh() -> void:
 		weather_failed.emit("request error %d" % err)
 		return
 	_busy = true
+	_last_fetch_latlon = ll
+	_last_fetch_msec = Time.get_ticks_msec()
 	print("LiveWeather: requesting %s" % url)
+
+
+func _on_check_tick() -> void:
+	refresh(false)
+
+
+## True when a fetch is due: none yet, older than REFRESH_SEC, or the
+## aircraft is MOVE_REFETCH_KM from where the last one was made.
+func needs_refetch(ll: Vector2, now_msec: int) -> bool:
+	if _last_fetch_msec < 0 or _last_fetch_latlon == Vector2.INF:
+		return true
+	if now_msec - _last_fetch_msec >= int(REFRESH_SEC * 1000.0):
+		return true
+	return distance_km(ll, _last_fetch_latlon) >= MOVE_REFETCH_KM
+
+
+static func distance_km(a: Vector2, b: Vector2) -> float:
+	var dlat := deg_to_rad(b.x - a.x)
+	var dlon := deg_to_rad(b.y - a.y) * cos(deg_to_rad((a.x + b.x) * 0.5))
+	return 6371.0 * sqrt(dlat * dlat + dlon * dlon)
 
 
 func _on_request_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
