@@ -124,6 +124,7 @@ namespace jsbgodot
         // Per-layer controls in table order (rebuilt by _refresh_weather_table).
         struct WeatherRow
         {
+            SpinBox *base = nullptr;
             SpinBox *top = nullptr;
             SpinBox *wind_dir = nullptr;
             SpinBox *wind_speed = nullptr;

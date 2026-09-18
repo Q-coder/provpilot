@@ -857,11 +857,12 @@ the bake pipeline: stop writing the per-tile list into terrain manifests
 
 ## 10. Weather model — settings only (2026-09-18)
 
-The Settings screen has a **Weather** tab: a stack of layers (each reaches
-up to its *Top* altitude) with wind direction/speed, turbulence and cloud
-type + coverage in oktas, plus global visibility (km) and QNH (hPa). Keys
-live in the `[weather]` section of `provpilot.cfg`: `weather_layers` (Array
-of Dictionaries: `top_m`, `wind_dir_deg`, `wind_speed_kts`, `turbulence`,
+The Settings screen has a **Weather** tab: a list of layers, each spanning
+*Base*..*Top*, with wind direction/speed, turbulence and cloud type +
+coverage in oktas, plus global visibility (km) and QNH (hPa). Wind and
+clouds share the slab; the air between layers is clear, with wind
+interpolated across the gap. Keys live in the `[weather]` section of
+`provpilot.cfg`: `weather_layers` (Array of Dictionaries: `base_m`, `top_m`, `wind_dir_deg`, `wind_speed_kts`, `turbulence`,
 `cloud_type`, `coverage_oktas`), `visibility_km`, `qnh_hpa`. Nothing reads
 them yet. The old Realism `turbulence` / `wind_*` keys are gone.
 

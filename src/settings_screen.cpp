@@ -749,8 +749,8 @@ void SettingsScreen::_build_realism_tab()
 
 // ── Tab: Weather ─────────────────────────────────────────────────────────────
 //
-// A stack of weather layers from the ground up (each layer reaches up to its
-// "Top" altitude), plus global visibility and QNH. Model only for now: the
+// A list of weather layers, each spanning Base..Top (wind and clouds alike;
+// gaps between layers are clear air), plus global visibility and QNH. Model only for now: the
 // values are persisted and editable, the JSBSim/visual hookup follows
 // (design doc §10 in WORLD_SCENERY_DESIGN.md).
 
@@ -762,14 +762,14 @@ void SettingsScreen::_build_weather_tab()
 {
     VBoxContainer *content = _add_tab("Weather");
     _add_section_header(content, "Weather Layers");
-    _add_hint(content, "Layers stack from the ground up; each one applies up to its Top altitude.");
+    _add_hint(content, "Each layer spans Base to Top (wind and clouds); the air between layers is clear.");
 
     // Column headers.
     HBoxContainer *head = memnew(HBoxContainer);
     head->add_theme_constant_override("separation", 8);
-    const char *cols[] = { "Layer", "Top (m)", "Wind from", "Speed (kt)", "Turbulence", "Clouds", "Coverage", "" };
-    const int widths[] = { 80, 110, 110, 110, 150, 170, 100, 110 };
-    for (int i = 0; i < 8; i++)
+    const char *cols[] = { "Layer", "Base (m)", "Top (m)", "Wind from", "Speed (kt)", "Turbulence", "Clouds", "Coverage", "" };
+    const int widths[] = { 60, 110, 110, 110, 110, 150, 170, 100, 110 };
+    for (int i = 0; i < 9; i++)
     {
         head->add_child(_make_label(cols[i], FONT_SM, HINT_COLOR, widths[i]));
     }
@@ -811,7 +811,7 @@ void SettingsScreen::_refresh_weather_table()
         Dictionary l = layers[i];
         HBoxContainer *row = memnew(HBoxContainer);
         row->add_theme_constant_override("separation", 8);
-        row->add_child(_make_label(vformat("%d", i + 1), FONT_SM, LABEL_COLOR, 80));
+        row->add_child(_make_label(vformat("%d", i + 1), FONT_SM, LABEL_COLOR, 60));
 
         WeatherRow wr;
         auto make_spin = [&](double min_v, double max_v, double step, double value, int min_w) -> SpinBox * {
@@ -840,6 +840,7 @@ void SettingsScreen::_refresh_weather_table()
             row->add_child(ob);
             return ob;
         };
+        wr.base = make_spin(0, 20000, 100, double(l.get("base_m", 0)), 110);
         wr.top = make_spin(100, 20000, 100, double(l.get("top_m", 3000)), 110);
         wr.wind_dir = make_spin(0, 359, 5, double(l.get("wind_dir_deg", 0)), 110);
         wr.wind_speed = make_spin(0, 150, 1, double(l.get("wind_speed_kts", 0)), 110);
@@ -863,7 +864,10 @@ void SettingsScreen::_read_weather_table()
     for (const WeatherRow &wr : weather_rows)
     {
         Dictionary l;
-        l["top_m"] = int(wr.top->get_value());
+        int base = int(wr.base->get_value());
+        int top = int(wr.top->get_value());
+        l["base_m"] = base;
+        l["top_m"] = MAX(top, base + 100);  // keep the slab non-empty
         l["wind_dir_deg"] = int(wr.wind_dir->get_value());
         l["wind_speed_kts"] = int(wr.wind_speed->get_value());
         l["turbulence"] = wr.turbulence->get_selected();
@@ -879,13 +883,14 @@ void SettingsScreen::_on_weather_add_layer()
     _read_weather_table();
     Array layers = store->get_setting("weather_layers");
     Dictionary l;
-    int top = 3000;
+    int base = 0;
     if (layers.size() > 0)
     {
         Dictionary last = layers[layers.size() - 1];
-        top = int(last.get("top_m", 3000)) + 2000;
+        base = MIN(int(last.get("top_m", 3000)), 18000);
     }
-    l["top_m"] = MIN(top, 20000);
+    l["base_m"] = base;
+    l["top_m"] = MIN(base + 2000, 20000);
     l["wind_dir_deg"] = 0;
     l["wind_speed_kts"] = 0;
     l["turbulence"] = 0;

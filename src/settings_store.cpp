@@ -112,10 +112,12 @@ Dictionary SettingsStore::get_defaults()
     d["crash_detection"] = false;
     // Weather (UI model only for now — see design doc; the JSBSim hookup
     // for wind/turbulence/QNH and the visual clouds/visibility come later).
-    // Layers are stacked from the ground up; each covers up to "top_m".
+    // Each layer spans base_m..top_m (wind and clouds alike); the gaps in
+    // between are clear air with wind interpolated across them.
     {
         Array layers;
         Dictionary l;
+        l["base_m"] = 0;
         l["top_m"] = 3000;
         l["wind_dir_deg"] = 0;     // direction the wind blows FROM
         l["wind_speed_kts"] = 0;

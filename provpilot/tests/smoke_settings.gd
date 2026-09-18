@@ -261,7 +261,7 @@ func _test_screen() -> void:
 	var weather_tab: Control = tabs.get_child(4)
 	var w_spins: Array = []
 	_collect(weather_tab, "SpinBox", w_spins)
-	check(w_spins.size() == 3, "Weather tab shows one default layer (3 spin boxes, got %d)" % w_spins.size())
+	check(w_spins.size() == 4, "Weather tab shows one default layer (4 spin boxes, got %d)" % w_spins.size())
 	var w_buttons: Array = []
 	_collect(weather_tab, "Button", w_buttons)
 	var add_btn: Button = null
@@ -273,14 +273,20 @@ func _test_screen() -> void:
 		add_btn.pressed.emit()
 		w_spins.clear()
 		_collect(weather_tab, "SpinBox", w_spins)
-		check(w_spins.size() == 6, "Add Layer appends a second layer row")
+		check(w_spins.size() == 8, "Add Layer appends a second layer row")
 		var layers: Array = store.get_setting("weather_layers")
-		check(layers.size() == 2 and int(layers[1].get("top_m")) == 5000, "second layer tops out 2000 m above the first")
-		if w_spins.size() == 6:
-			w_spins[4].value = 25  # layer 2 wind direction spin (top, dir, speed per row)
-			w_spins[5].value = 12  # layer 2 wind speed
+		check(layers.size() == 2 and int(layers[1].get("base_m")) == 3000 and int(layers[1].get("top_m")) == 5000, "second layer starts at the first one's top and is 2000 m thick")
+		if w_spins.size() == 8:
+			w_spins[6].value = 25  # layer 2 wind direction spin (base, top, dir, speed per row)
+			w_spins[7].value = 12  # layer 2 wind speed
+			w_spins[4].value = 1500  # layer 2 cloud base
+			w_spins[5].value = 2500
+			layers = store.get_setting("weather_layers")
+			check(int(layers[1].get("base_m")) == 1500 and int(layers[1].get("top_m")) == 2500, "base/top edits update the store")
+			w_spins[5].value = 1200  # top below base -> clamped to a non-empty slab
 			layers = store.get_setting("weather_layers")
 			check(int(layers[1].get("wind_dir_deg")) == 25 and int(layers[1].get("wind_speed_kts")) == 12, "editing a layer spin updates the store")
+			check(int(layers[1].get("top_m")) == 1600, "a top below the base is clamped to base + 100 m")
 		w_buttons.clear()
 		_collect(weather_tab, "Button", w_buttons)
 		var removes: Array = []
