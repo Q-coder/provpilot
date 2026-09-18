@@ -83,6 +83,7 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_pitch_deg"), &JSBGodot::get_pitch_deg);
     ClassDB::bind_method(D_METHOD("get_roll_deg"), &JSBGodot::get_roll_deg);
     ClassDB::bind_method(D_METHOD("reinitialize_from_pose", "ac_global", "airspeed_kts", "terrain_elevation_m"), &JSBGodot::reinitialize_from_pose);
+    ClassDB::bind_method(D_METHOD("reset_controls"), &JSBGodot::reset_controls);
 
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "input_pitch"), "set_input_pitch", "get_input_pitch");
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "input_roll"), "set_input_roll", "get_input_roll");
@@ -478,6 +479,38 @@ double JSBGodot::get_pitch_deg() const
 double JSBGodot::get_roll_deg() const
 {
     return FDMExec ? Math::rad_to_deg(FDMExec->GetPropagate()->GetEuler(1)) : 0.0;
+}
+
+void JSBGodot::reset_controls()
+{
+    input_pitch = 0.0f;
+    input_roll = 0.0f;
+    input_rudder = 0.0f;
+    input_throttle = 0.0f;
+    input_aileron = 0.0f;
+    input_elevator = 0.0f;
+    elevator_trim = 0.0f;
+    trigger_left_value = 0.0f;
+    trigger_right_value = 0.0f;
+    trim_up_held = false;
+    trim_down_held = false;
+    flaps = 0.0f;
+    gear_cmd = 1.0f;
+    input_brake = 0.0f;
+    input_magnetos = 3;
+    if (FDMExec)
+    {
+        // Push the neutral commands now so RunIC() in the following
+        // re-initialisation does not see the old throttle/flap settings.
+        FDMExec->SetPropertyValue("fcs/throttle-cmd-norm", 0.0);
+        FDMExec->SetPropertyValue("fcs/flap-cmd-norm", 0.0);
+        FDMExec->SetPropertyValue("fcs/gear-cmd-norm", 1.0);
+        FDMExec->SetPropertyValue("fcs/left-brake-cmd-norm", 0.0);
+        FDMExec->SetPropertyValue("fcs/right-brake-cmd-norm", 0.0);
+        FDMExec->SetPropertyValue("fcs/pitch-trim-cmd-norm", 0.0);
+        copy_inputs_to_JSBSim();
+    }
+    UtilityFunctions::print("JSBGodot: controls reset (fresh session)");
 }
 
 void JSBGodot::reinitialize_from_pose(Transform3D ac_global, double airspeed_kts, double terrain_elevation_m)

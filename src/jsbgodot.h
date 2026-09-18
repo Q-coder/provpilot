@@ -167,6 +167,10 @@ namespace jsbgodot
         // Attitude readouts (degrees): JSBSim theta / phi.
         double get_pitch_deg() const;
         double get_roll_deg() const;
+        // Fresh session: zero every pilot input (throttle, stick, pedals, trim,
+        // brakes, triggers), flaps up, gear down, magnetos BOTH. Used by Fly!
+        // so a new flight never inherits the previous flight's controls.
+        void reset_controls();
         // Re-initialise JSBSim from the aircraft node's global transform
         // (position -> geodetic, heading from the nose axis); used after slew
         // mode and teleports.

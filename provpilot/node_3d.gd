@@ -2169,6 +2169,10 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	# 1. Force JSBSim into slew (pauses physics position updates)
 	if jsb_node.has_method("set_slew_mode"):
 		jsb_node.set_slew_mode(true)
+	# Fly! is a fresh session: no throttle, stick, trim, flaps or brakes carried
+	# over from the previous flight ("Continue Flight" keeps everything).
+	if jsb_node.has_method("reset_controls"):
+		jsb_node.reset_controls()
 
 	# 8. Get terrain height at new position — sample a grid around the
 	#    threshold and use the maximum, matching the runway mesh approach.
