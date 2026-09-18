@@ -920,7 +920,7 @@ func _show_intro_hud(show: bool) -> void:
 		_intro_bar.custom_minimum_size = Vector2(0, 12)
 		_intro_bar_bg.add_child(_intro_bar)
 		var hint := Label.new()
-		hint.text = "Press any key to skip animation"
+		hint.text = "Press Space to skip animation"
 		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		hint.add_theme_font_size_override("font_size", 28)
 		hint.add_theme_color_override("font_color", Color(0.95, 0.95, 0.9))

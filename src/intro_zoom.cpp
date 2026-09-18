@@ -150,18 +150,18 @@ int IntroZoom::update(double delta)
 		return STATUS_FINISHED;
 	}
 
-	// Allow the user to skip the cinematic with any key / button. Arm the
-	// skip only once everything has been released after the start (the Fly!
-	// click or Enter that started the flight must not skip it immediately).
+	// Allow the user to skip the cinematic with SPACE only (other keys stay
+	// free for screenshots etc.). Arm the skip once Space has been released
+	// after the start so a held key cannot skip it immediately.
 	Input *input = Input::get_singleton();
 	if (!skip_armed)
 	{
-		if (!input->is_anything_pressed())
+		if (!input->is_key_pressed(KEY_SPACE))
 		{
 			skip_armed = true;
 		}
 	}
-	else if (input->is_anything_pressed())
+	else if (input->is_key_pressed(KEY_SPACE))
 	{
 		finish();
 		return STATUS_FINISHED;

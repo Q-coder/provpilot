@@ -59,7 +59,7 @@ namespace jsbgodot
         // when ac_node or intro_camera is missing (nothing started).
         bool start();
 
-        // Per-frame update while playing. Any key/button (after release) skips;
+        // Per-frame update while playing. Space (after release) skips;
         // Input singleton for the skip. Returns STATUS_RUNNING or
         // STATUS_FINISHED (the handoff happened on this call).
         int update(double delta);
@@ -81,7 +81,7 @@ namespace jsbgodot
         double intro_start_alt_m = 1.6e7; // metres above the aircraft (space view)
 
         bool playing = false;
-        bool skip_armed = false;  // any-key skip enabled once all inputs were released after start
+        bool skip_armed = false;  // Space skip enabled once Space was released after start
         double elapsed = 0.0;
         Vector3 up_dir{0.0, 1.0, 0.0};    // start direction (straight up)
         Vector3 start_pos{0.0, 0.0, 0.0};
