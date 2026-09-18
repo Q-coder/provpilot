@@ -33,6 +33,10 @@ const SKY_TAPER_ALT_M := 100000.0     # ambient/glow fully tapered at/above this
 const AMBIENT_COLOR := Color(0.52, 0.58, 0.68)
 const AMBIENT_DAY_ENERGY := 0.7
 const AMBIENT_NIGHT_ENERGY := 0.04
+# Camera altitudes between which the local dusk fade of the sun light gives
+# way to full-strength global sunlight (day/night terminator on the globe).
+const SUN_LOCAL_ALT_M := 30000.0
+const SUN_SPACE_ALT_M := 400000.0
 
 # Registered nodes (session-stable).
 var environment: Environment = null
@@ -122,6 +126,13 @@ func update(delta: float, viewport: Viewport) -> void:
 	# off below it — a DirectionalLight3D pointing upward would otherwise light
 	# the undersides of the terrain/buildings during dawn/dusk.
 	var day := clampf(sin_elev / 0.08, 0.0, 1.0)
+	# From space the ECEF geometry already produces the day/night terminator
+	# (surfaces facing away from the sun get no light), so the local fade
+	# must not dim the whole planet: blend the sun back to full energy between
+	# SUN_LOCAL_ALT_M and SUN_SPACE_ALT_M, and pull the ambient floor down to
+	# night level so the night side goes dark instead of glowing uniformly.
+	var space := clampf((alt - SUN_LOCAL_ALT_M) / (SUN_SPACE_ALT_M - SUN_LOCAL_ALT_M), 0.0, 1.0)
+	var sun_factor := lerpf(day, 1.0, space)
 	# Sun disk stays visible down to the altitude-adjusted horizon: climbing
 	# lowers the geometric horizon (dip angle), so the sun is still up from
 	# altitude even when it's below the sea-level horizon. Full until it reaches
@@ -132,11 +143,11 @@ func update(delta: float, viewport: Viewport) -> void:
 
 	if is_instance_valid(sun_light):
 		_orient_sun(dir_to_sun)
-		sun_light.light_energy = _base_sun_energy * day
-		sun_light.light_color = _sun_color(sin_elev)
-		sun_light.visible = day > 0.001
+		sun_light.light_energy = _base_sun_energy * sun_factor
+		sun_light.light_color = _sun_color(sin_elev).lerp(Color(1.0, 0.97, 0.92), space)
+		sun_light.visible = sun_factor > 0.001
 	if is_instance_valid(fill_light):
-		fill_light.light_energy = _base_fill_energy * day
+		fill_light.light_energy = _base_fill_energy * day * (1.0 - space)
 
 	if sky_material != null:
 		sky_material.set_shader_parameter("sun_direction", dir_to_sun)
@@ -158,7 +169,7 @@ func update(delta: float, viewport: Viewport) -> void:
 			sky_material.set_shader_parameter(
 				"planet_center", cam.global_position - cam_normal * (PLANET_RADIUS + alt))
 
-	_apply_altitude(alt, day)
+	_apply_altitude(alt, day, space)
 
 	# The coarse globe stays visible at ALL altitudes (no more 25 km gate): it
 	# is the fallback surface wherever Scenery3D has no resident geometry yet —
@@ -197,7 +208,7 @@ func _install_sky_material() -> void:
 ## has normals facing away from the sun — a normal-independent floor keeps those
 ## surfaces readable instead of rendering black. The background stays on the sky
 ## shader (which renders space black + the atmospheric limb by itself).
-func _apply_altitude(alt: float, day: float) -> void:
+func _apply_altitude(alt: float, day: float, space: float = 0.0) -> void:
 	var t := clampf((FOG_ZERO_ALT_M - alt) / (FOG_ZERO_ALT_M - FOG_FULL_ALT_M), 0.0, 1.0)
 	environment.fog_density = _base_fog_density * t
 	environment.fog_enabled = t > 0.0
@@ -206,7 +217,8 @@ func _apply_altitude(alt: float, day: float) -> void:
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_sky_contribution = 0.0
 	environment.ambient_light_color = AMBIENT_COLOR
-	environment.ambient_light_energy = lerpf(AMBIENT_NIGHT_ENERGY, AMBIENT_DAY_ENERGY, day) * lerpf(0.5, 1.0, ts)
+	var ambient_local := lerpf(AMBIENT_NIGHT_ENERGY, AMBIENT_DAY_ENERGY, day) * lerpf(0.5, 1.0, ts)
+	environment.ambient_light_energy = lerpf(ambient_local, AMBIENT_NIGHT_ENERGY, space)
 	environment.glow_intensity = _base_glow_intensity * ts
 	environment.glow_enabled = ts > 0.02
 
