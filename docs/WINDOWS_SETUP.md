@@ -160,7 +160,8 @@ goes through the `.import` remap to the embedded PackedScene.
 
 ### Discovery
 
-[`install_root.gd`](../provpilot/install_root.gd) tries (in order): the
+The `InstallRoot` autoload (C++ `InstallConfig`, [`src/install_config.cpp`](../src/install_config.cpp),
+mounted via `provpilot/install_root.tscn`) tries (in order): the
 directory containing the executable, `$PWD`, `%USERPROFILE%\ProvPilot`, and
 finally the user data directory. The first writable candidate becomes the
 install root and `provpilot.cfg` is written there.

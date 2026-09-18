@@ -14,6 +14,9 @@
 #include "terrain_elevation.h"
 #include "loading_progress.h"
 #include "vfr_map.h"
+#include "install_config.h"
+#include "settings_store.h"
+#include "settings_screen.h"
 
 using namespace godot;
 using namespace jsbgodot;
@@ -36,6 +39,9 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<TerrainElevation>();
 	ClassDB::register_class<LoadingProgress>();
 	ClassDB::register_class<VfrMap>();
+	ClassDB::register_class<InstallConfig>();
+	ClassDB::register_class<SettingsStore>();
+	ClassDB::register_class<SettingsScreen>();
 }
 
 void uninitialize_gojsb_module(ModuleInitializationLevel p_level)

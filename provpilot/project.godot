@@ -18,7 +18,7 @@ config/icon="res://icon.svg"
 
 [autoload]
 
-InstallRoot="*res://install_root.gd"
+InstallRoot="*res://install_root.tscn"
 AircraftInstaller="*res://aircraft_installer.gd"
 JoystickConfig="*res://joystick_config.gd"
 

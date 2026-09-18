@@ -418,7 +418,7 @@ void VfrMap::load_config()
     {
         return;
     }
-    // Key names must match settings_screen.gd, which writes [map] map_enabled
+    // Key names must match SettingsStore (settings_store.cpp), which writes [map] map_enabled
     // / map_frame_size (zoom_index is owned by this module via persist_zoom).
     enabled = cfg->get_value("map", "map_enabled", true);
     frame_size_idx = std::max(0, std::min(2, int(cfg->get_value("map", "map_frame_size", 1))));

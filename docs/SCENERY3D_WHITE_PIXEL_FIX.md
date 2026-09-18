@@ -76,13 +76,14 @@ int ortho_rgb_w = 0;
 
 ### GDScript wiring
 
-`node_3d.gd::_apply_scenery_sources()` reads the bool from settings and pushes
+`SettingsStore::apply_scenery_sources()` (`src/settings_store.cpp`, called from
+`node_3d.gd::_apply_scenery_sources()`) reads the bool from settings and pushes
 it to the live node:
 
-```gdscript
-var skip_white: bool = _settings_screen.settings.get("skip_white_pixels", true)
-if scenery3d_node.has_method("set_skip_white_pixels"):
-    scenery3d_node.set_skip_white_pixels(skip_white)
+```cpp
+bool skip_white = bool(settings.get("skip_white_pixels", true));
+if (scenery3d->has_method("set_skip_white_pixels"))
+    scenery3d->call("set_skip_white_pixels", skip_white);
 ```
 
 ## Performance

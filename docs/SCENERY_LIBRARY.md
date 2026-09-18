@@ -29,7 +29,7 @@ Buttons:
 ## Region Convention
 
 Each entry's `path` is a region directory. Recognised asset subdirectories
-(`ASSET_SUBDIRS` in `settings_screen.gd`):
+(`SettingsStore::ASSET_SUBDIRS` in `src/settings_store.cpp`):
 
 ```
 terrain/  orthophoto/  buildings/  water/  roads/  vegetation/  trees/  airports/
@@ -101,10 +101,10 @@ user's job in the table above. Installs are additive; uninstalls are manual
 ## Runtime Plumbing
 
 `node_3d.gd::_apply_scenery_sources()` is called in `_ready()` and again on
-settings close. It:
+settings close; it forwards to the C++ `SettingsStore::apply_scenery_sources()`
+(`src/settings_store.cpp`), which:
 
-1. Asks `settings_screen.get_enabled_scenery_areas()` for the priority-sorted
-   enabled list.
+1. Takes `get_enabled_scenery_areas()` — the priority-sorted enabled list.
 2. For each area, probes `<path>/terrain`, `<path>/orthophoto`,
    `<path>/buildings`, `<path>/water`, `<path>/roads`, `<path>/vegetation` and
    collects the existing dirs into per-asset `PackedStringArray`s.

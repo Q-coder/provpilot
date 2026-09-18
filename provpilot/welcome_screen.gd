@@ -842,7 +842,7 @@ func _on_update_meta_clicked(_meta: Variant) -> void:
 # ── First-run wizard ──────────────────────────────────────────────────
 # Shown once, when InstallRoot reports the user has never configured a scenery
 # location. Emits `scenery_setup_requested` with the chosen folder; node_3d.gd
-# imports the folder into the settings_screen scenery library and re-applies
+# imports the folder into the settings scenery library and re-applies
 # sources to the Scenery3D node so tile loading actually starts.
 
 var _first_run_dialog: AcceptDialog = null
@@ -850,8 +850,8 @@ var _first_run_path_edit: LineEdit = null
 
 func _maybe_show_first_run_wizard() -> void:
 	# Skip if InstallRoot already knows where scenery lives, or the user has
-	# any scenery_areas configured (settings_screen takes precedence). The
-	# latter check is best-effort via parent's _settings_screen reference.
+	# any scenery_areas configured (the settings library takes precedence).
+	# The latter check is best-effort via parent's _settings (SettingsStore).
 	if not InstallRoot.is_first_run():
 		return
 	if _has_scenery_areas_configured():
@@ -863,10 +863,10 @@ func _has_scenery_areas_configured() -> bool:
 	var parent := get_parent()
 	if parent == null or not parent.has_method("get"):
 		return false
-	var s = parent.get("_settings_screen") if "_settings_screen" in parent else null
-	if s == null or not "settings" in s:
+	var s = parent.get("_settings") if "_settings" in parent else null
+	if s == null or not s.has_method("get_scenery_areas"):
 		return false
-	var areas: Array = s.settings.get("scenery_areas", [])
+	var areas: Array = s.get_scenery_areas()
 	return areas.size() > 0
 
 
@@ -968,7 +968,7 @@ func _on_first_run_confirmed() -> void:
 		return
 	# Persist to provpilot.cfg next to the .app
 	InstallRoot.save_scenery_choice(path)
-	# Hand off to node_3d.gd to populate settings_screen + apply sources.
+	# Hand off to node_3d.gd to populate the settings library + apply sources.
 	scenery_setup_requested.emit(path)
 
 

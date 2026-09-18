@@ -5,10 +5,10 @@ class_name SceneryDownloaderPanel
 ## extracts them into a configurable install root, and tracks installed
 ## pack state so future runs know what's already on disk.
 ##
-## Embeddable in any screen — currently mounted as a section of
-## `SettingsScreen`.
+## Embeddable in any screen — currently mounted as the Downloads tab of the
+## C++ SettingsScreen.
 ##
-## State tracking (persisted via SettingsScreen.settings):
+## State tracking (persisted via SettingsStore "installed_scenery_packs"):
 ##   settings["installed_scenery_packs"] = {
 ##       "<pack_id>": {
 ##           "version": "1",

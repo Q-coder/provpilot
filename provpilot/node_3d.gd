@@ -215,12 +215,8 @@ var _suppress_cov_gen := -1
 # (src/atmosphere.cpp); it captures the scene Environment's base values when
 # registered (see _setup_world3d_globe).
 
-# Tree density mapping (index = tree_density setting value).
-# Off / Low / Medium / High / Very High
-const TREE_DENSITY_FRACTION := [0.0, 0.25, 0.50, 0.75, 1.0]
-# Fixed render radius (m) when vegetation is enabled. Density controls
-# the number of trees within this radius, not the radius itself.
-const TREE_LOAD_RADIUS_M := 1500
+# Tree density mapping (tree_density index -> density fraction / load radius)
+# lives in the C++ SettingsStore (apply_tree_density).
 
 # Teleport rebase cooldown (pin the AC until JSBSim stabilises) + per-frame
 # JSBSim ground-elevation push live in the C++ TerrainElevation module
@@ -239,7 +235,11 @@ var _fly_loading: bool = false   # True while loading after user clicks Fly!
 # Fly-loading timeout safety-net state + tunables live in the C++ LoadingProgress
 # module (src/loading_progress.cpp); begin_fly_loading() arms the safety net.
 var _welcome_screen: CanvasLayer = null
-var _settings_screen: CanvasLayer = null
+# Settings UI (C++ SettingsScreen, src/settings_screen.cpp) and its value
+# store (C++ SettingsStore, src/settings_store.cpp) — the store also owns the
+# scenery-library logic and pushes paths/density into Scenery3D + Vegetation.
+var _settings_screen: SettingsScreen = null
+var _settings: SettingsStore = null
 
 # Deferred scenery loading: skip all heavy loading at startup, load on first Fly!
 var _first_flight: bool = true
@@ -490,8 +490,8 @@ func _update_engine_sound() -> void:
 	# only the scene/UI concerns here: the null gate, reading the ControlSurfaces
 	# smoothed RPM (handles engine-off decay), and the user engine-volume setting.
 	var user_vol_pct: float = 70.0  # default
-	if _settings_screen and "settings" in _settings_screen:
-		user_vol_pct = float(_settings_screen.settings.get("engine_volume", 70))
+	if _settings:
+		user_vol_pct = float(_settings.get_setting("engine_volume"))
 	_engine_sound.update(_control_surfaces.get_visual_rpm(), user_vol_pct)
 
 
@@ -787,10 +787,10 @@ func _track_globe_rebase() -> void:
 ## _refresh_globe_suppress_rects().
 func _load_globe_suppress_regions() -> void:
 	_globe_suppress_regions.clear()
-	if not _settings_screen or not _settings_screen.has_method("get_enabled_scenery_areas"):
+	if not _settings:
 		_suppress_dirty = true
 		return
-	for a in _settings_screen.get_enabled_scenery_areas():
+	for a in _settings.get_enabled_scenery_areas():
 		var base: String = str(a.get("path", ""))
 		var manifest_path := base.path_join("terrain/manifest.json")
 		if base.is_empty() or not FileAccess.file_exists(manifest_path):
@@ -957,9 +957,9 @@ func _setup_sky_atmosphere() -> void:
 func _push_time_of_day_settings() -> void:
 	var use_system := true
 	var minutes := 720
-	if _settings_screen and "settings" in _settings_screen:
-		use_system = bool(_settings_screen.settings.get("use_system_time", true))
-		minutes = int(_settings_screen.settings.get("time_of_day_min", 720))
+	if _settings:
+		use_system = bool(_settings.get_setting("use_system_time"))
+		minutes = int(_settings.get_setting("time_of_day_min"))
 	_sky.set_time(use_system, minutes)
 
 
@@ -1928,9 +1928,9 @@ func _create_welcome_screen() -> void:
 	# in-app — see provpilot/airports_lib.gd.
 	var installed_packs: Dictionary = {}
 	var scenery_areas: Array = []
-	if _settings_screen != null:
-		installed_packs = _settings_screen.settings.get("installed_scenery_packs", {})
-		scenery_areas = _settings_screen.settings.get("scenery_areas", [])
+	if _settings:
+		installed_packs = _settings.get_setting("installed_scenery_packs")
+		scenery_areas = _settings.get_scenery_areas()
 	var regions := AirportsLib.installed_regions(installed_packs)
 	# Also accept scenery placed on disk outside the in-app downloader
 	# (e.g. users who copied a Germany/ folder in manually, or who have
@@ -1945,10 +1945,9 @@ func _create_welcome_screen() -> void:
 
 
 func _create_settings_screen() -> void:
-	var script = load("res://settings_screen.gd")
-	_settings_screen = CanvasLayer.new()
-	_settings_screen.set_script(script)
-	add_child(_settings_screen)
+	_settings_screen = SettingsScreen.new()
+	add_child(_settings_screen)  # loads provpilot.cfg in its _ready
+	_settings = _settings_screen.get_store()
 	_settings_screen.closed.connect(_on_settings_closed)
 
 
@@ -1994,7 +1993,7 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 	# terrain/orthophoto data on disk, the loading screen would stall forever
 	# waiting for tiles that never arrive. Bail out early with a clear message
 	# so the user can fix the configuration in Settings → Scenery.
-	var missing := _missing_scenery_reason()
+	var missing := _settings.missing_scenery_reason() if _settings else "Settings unavailable — cannot verify scenery configuration."
 	if missing != "":
 		_show_scenery_error_dialog(missing)
 		return
@@ -2032,35 +2031,6 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 		_first_flight = false
 	else:
 		_on_teleport_requested(swiss_e, swiss_n, heading_deg)
-
-
-## Returns "" when the configured scenery library has at least one enabled
-## area with terrain or orthophoto data present on disk. Otherwise returns
-## a human-readable explanation suitable for an error dialog.
-func _missing_scenery_reason() -> String:
-	if not _settings_screen or not _settings_screen.has_method("get_enabled_scenery_areas"):
-		return "Settings unavailable — cannot verify scenery configuration."
-	var areas: Array = _settings_screen.get_enabled_scenery_areas()
-	if areas.is_empty():
-		return "No scenery areas are configured.\n\nOpen Settings → Scenery and add the directory that contains your scenery data (e.g. the folder with Switzerland/, Germany/, …)."
-	var missing_paths := PackedStringArray()
-	var has_any_data := false
-	for a in areas:
-		var base: String = str(a.get("path", ""))
-		if base.is_empty():
-			continue
-		if not DirAccess.dir_exists_absolute(base):
-			missing_paths.append(base)
-			continue
-		# A region is considered usable if it has terrain or orthophoto tiles.
-		if DirAccess.dir_exists_absolute(base.path_join("terrain")) \
-				or DirAccess.dir_exists_absolute(base.path_join("orthophoto")):
-			has_any_data = true
-	if has_any_data:
-		return ""
-	if missing_paths.size() > 0:
-		return "The configured scenery folder(s) do not exist on disk:\n\n  %s\n\nOpen Settings → Scenery to update the paths." % "\n  ".join(missing_paths)
-	return "The configured scenery folder(s) contain no terrain or orthophoto tiles.\n\nExtract the scenery ZIPs into the folder you registered in Settings → Scenery, then click Scan."
 
 
 func _show_scenery_error_dialog(message: String) -> void:
@@ -2156,20 +2126,15 @@ func _on_welcome_continue_requested() -> void:
 ## scan it for regions (Switzerland/, Baden-Wuertemberg/, …) and apply the
 ## resulting library to Scenery3D so tile loading starts.
 func _on_welcome_scenery_setup_requested(path: String) -> void:
-	if not is_instance_valid(_settings_screen):
+	if not _settings:
 		push_warning("Welcome scenery setup: settings screen not ready")
 		return
 	# Inject `path` into the scan roots and run the scanner. This mirrors what
 	# the user would do manually in Settings → Scenery → Scan.
-	var roots: PackedStringArray = _settings_screen.settings.get("scenery_scan_roots", PackedStringArray())
-	if not roots.has(path):
-		roots.append(path)
-		_settings_screen.settings["scenery_scan_roots"] = roots
-	if _settings_screen.has_method("_on_scan_scenery"):
-		_settings_screen._on_scan_scenery()
+	_settings.add_scan_root(path)
+	_settings.scan_scenery()
 	# Persist immediately so the next launch skips the wizard.
-	if _settings_screen.has_method("_save_settings"):
-		_settings_screen._save_settings()
+	_settings.save()
 	# Apply newly-found areas to the Scenery3D node.
 	_apply_scenery_sources()
 	print("First-run setup complete: applied scenery library from %s" % path)
@@ -2191,132 +2156,21 @@ func _on_settings_closed() -> void:
 
 
 func _apply_tree_density() -> void:
-	if not is_instance_valid(vegetation_node):
-		return
-	var density_idx: int = 2  # default medium
-	if _settings_screen and "settings" in _settings_screen:
-		density_idx = int(_settings_screen.settings.get("tree_density", 2))
-	density_idx = clamp(density_idx, 0, TREE_DENSITY_FRACTION.size() - 1)
-	var fraction: float = TREE_DENSITY_FRACTION[density_idx]
-	vegetation_node.density_fraction = fraction
-	vegetation_node.load_radius_m = TREE_LOAD_RADIUS_M
-	vegetation_node.visible = fraction > 0.0
-	print("Tree density: index=%d fraction=%.2f radius=%d m" % [density_idx, fraction, TREE_LOAD_RADIUS_M])
+	if _settings and is_instance_valid(vegetation_node):
+		_settings.apply_tree_density(vegetation_node)
 
 
-## Apply scenery data sources from settings to Scenery3D node.
-## Reads the FSX-style scenery library (settings.scenery_areas), filters to
-## enabled entries sorted by priority, then for each asset subdir that exists
-## inside an area's path, appends to the corresponding Scenery3D paths array.
-##
-## Example: if "Switzerland" (priority 1) and "Germany/Baden-Wuertemberg"
-## (priority 2) are both enabled, and BW only contains an orthophoto subdir,
-## the resulting orthophoto_paths is [CH/orthophoto, BW/orthophoto] — Swiss
-## tiles are tried first, German tiles serve as fallback (combined with
-## skip_white_pixels=true this fixes the CH/DE border).
+## Apply scenery data sources from the settings library to the Scenery3D,
+## Vegetation and VfrMap nodes (C++ SettingsStore.apply_scenery_sources:
+## enabled areas in priority order -> per-asset path arrays, plus
+## skip_white_pixels and the terrain load radius).
 func _apply_scenery_sources() -> void:
 	if not is_instance_valid(scenery3d_node):
 		return
-	if not _settings_screen or not _settings_screen.has_method("get_enabled_scenery_areas"):
+	if not _settings:
 		print("Scenery sources: settings screen unavailable, leaving scene defaults")
 		return
-
-	var areas: Array = _settings_screen.get_enabled_scenery_areas()
-	if areas.is_empty():
-		print("Scenery sources: no enabled scenery areas in library — clearing Scenery3D paths")
-
-	# Build per-asset path arrays from enabled areas (priority order).
-	var terrain_paths := PackedStringArray()
-	var ortho_paths := PackedStringArray()
-	var building_paths := PackedStringArray()
-	var water_paths := PackedStringArray()
-	var road_paths := PackedStringArray()
-	var vegetation_paths := PackedStringArray()
-	var map_paths := PackedStringArray()
-	# macOS APFS is case-insensitive by default — two areas that differ only
-	# in path case (e.g. ~/provpilot vs ~/ProvPilot) refer to the same data
-	# on disk, so dedup case-insensitively to avoid loading every tile twice.
-	var _seen := {}
-	var _case_insensitive := OS.get_name() == "macOS" or OS.get_name() == "Windows"
-	var _append_unique := func(arr: PackedStringArray, p: String) -> void:
-		var k: String = p.to_lower() if _case_insensitive else p
-		if not _seen.has(k):
-			_seen[k] = true
-			arr.append(p)
-	for a in areas:
-		var base: String = str(a.get("path", ""))
-		if base.is_empty():
-			continue
-		if not DirAccess.dir_exists_absolute(base):
-			push_warning("Scenery area path does not exist (skipped): %s" % base)
-			continue
-		var t := base.path_join("terrain")
-		if DirAccess.dir_exists_absolute(t): _append_unique.call(terrain_paths, t)
-		var o := base.path_join("orthophoto")
-		if DirAccess.dir_exists_absolute(o): _append_unique.call(ortho_paths, o)
-		var b := base.path_join("buildings")
-		if DirAccess.dir_exists_absolute(b): _append_unique.call(building_paths, b)
-		var w := base.path_join("water")
-		if DirAccess.dir_exists_absolute(w): _append_unique.call(water_paths, w)
-		var r := base.path_join("roads")
-		if DirAccess.dir_exists_absolute(r): _append_unique.call(road_paths, r)
-		var v := base.path_join("vegetation")
-		if DirAccess.dir_exists_absolute(v): _append_unique.call(vegetation_paths, v)
-		var m := base.path_join("map")
-		if DirAccess.dir_exists_absolute(m): _append_unique.call(map_paths, m)
-
-	# Always assign — even empty arrays. Otherwise stale paths baked into the
-	# scene file (.tscn) or ProjectSettings (scenery3d/*) would survive when
-	# the runtime library has nothing, producing confusing "/Users/gery/..."
-	# manifest warnings on a fresh Windows install.
-	# IMPORTANT: do NOT also set the single-path properties (data_path,
-	# orthophoto_path) — their setters in C++ CLEAR the array first, which
-	# would silently drop all but one path. buildings_path stays as a legacy
-	# fallback for older Scenery3D builds that do not expose buildings_paths.
-	_vfr_map.set_tile_paths(map_paths)
-	scenery3d_node.data_paths = terrain_paths
-	scenery3d_node.orthophoto_paths = ortho_paths
-	if scenery3d_node.has_method("set_buildings_paths") or "buildings_paths" in scenery3d_node:
-		scenery3d_node.buildings_paths = building_paths
-	elif building_paths.size() > 0:
-		scenery3d_node.buildings_path = building_paths[0]
-	scenery3d_node.water_paths = water_paths
-	scenery3d_node.road_paths = road_paths
-
-	# Vegetation node uses its own paths
-	if is_instance_valid(vegetation_node):
-		vegetation_node.vegetation_paths = vegetation_paths
-
-	print("Scenery library applied: %d enabled area(s)" % areas.size())
-	print("  terrain_paths    = %s" % [terrain_paths])
-	print("  orthophoto_paths = %s" % [ortho_paths])
-	print("  buildings_paths  = %s" % [building_paths])
-	print("  water_paths      = %s" % [water_paths])
-	print("  road_paths       = %s" % [road_paths])
-	print("  vegetation_paths = %s" % [vegetation_paths])
-	print("  map_paths        = %s" % [map_paths])
-
-	# White-pixel skip (border fix) — only effective once C++ side ships it.
-	var skip_white: bool = _settings_screen.settings.get("skip_white_pixels", true)
-	if scenery3d_node.has_method("set_skip_white_pixels"):
-		scenery3d_node.set_skip_white_pixels(skip_white)
-		print("  skip_white_pixels = %s" % [skip_white])
-	elif "skip_white_pixels" in scenery3d_node:
-		scenery3d_node.skip_white_pixels = skip_white
-		print("  skip_white_pixels = %s" % [skip_white])
-
-	# Terrain Distance (render_distance, in tiles) → Scenery3D.load_radius.
-	# Previously this slider was saved but never applied, so it had no effect.
-	# Keep the radius modest: the low-res far-terrain CHUNK panorama fills
-	# everything beyond it out to far_radius, so a small value (default 8 =
-	# ~8 km of full-detail tiles) keeps streaming fast and memory bounded
-	# while distant scenery still renders. Large values (e.g. 50) push the
-	# chunk panorama past the horizon haze and balloon the tile count.
-	var render_distance: int = int(_settings_screen.settings.get("render_distance", 8))
-	render_distance = clampi(render_distance, 2, 16)
-	if "load_radius" in scenery3d_node:
-		scenery3d_node.load_radius = render_distance
-		print("  load_radius (terrain distance) = %d tiles" % render_distance)
+	_settings.apply_scenery_sources(scenery3d_node, vegetation_node, _vfr_map)
 
 
 # ── Position / Teleport ────────────────────────────────────────────────────

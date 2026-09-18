@@ -26,7 +26,7 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 - **MSFS Scenery Import**: Convert Microsoft Flight Simulator 2020 scenery packages (BGL→GLB)
 - **47 Swiss Airports**: OSM-verified runway geometry (teleport via welcome screen)
 - **Welcome Screen**: Startup UI with aircraft selection and airport/runway picker
-- **Settings Screen**: Configurable graphics, sound, realism, and data path settings (persisted to disk)
+- **Settings Screen**: Tabbed C++ settings UI (Scenery, Downloads, Graphics, World, Map, Sound, Realism, Joystick), persisted to `provpilot.cfg`
 - **In-App Scenery Downloader**: Pulls per-region base + per-quadrant detail packs from `https://www.md80.ch/provpilot/scenery/`, verifies sha256, extracts to a configurable install root, and auto-registers the result in the Scenery Library
 - **Loading Screen**: Progress overlay polling `Scenery3D.is_ready()`
 - **Multiple Camera Views**:
@@ -162,11 +162,15 @@ Open the **Settings** screen from the welcome menu and scroll to the **Joystick*
 provpilot/
 ├── src/                         # GDExtension C++ source (JSBSim binding)
 │   ├── jsbgodot.cpp/.h          # JSBSim ↔ Godot integration
+│   ├── install_config.cpp/.h    # InstallRoot autoload: install dir discovery + provpilot.cfg
+│   ├── settings_store.cpp/.h    # Settings model, provpilot.cfg I/O, scenery library logic
+│   ├── settings_screen.cpp/.h   # Tabbed settings UI (CanvasLayer)
 │   └── register_types.cpp/.h    # GDExtension registration
 ├── provpilot/                   # Godot project
 │   ├── node_3d.gd               # Main scene script (controls, HUD, cameras, Scenery3D glue)
 │   ├── welcome_screen.gd        # Startup aircraft & airport selection UI
-│   ├── settings_screen.gd       # Settings UI (graphics, sound, realism, paths)
+│   ├── scenery_downloader.gd    # Scenery pack downloader (Settings → Downloads tab)
+│   ├── joystick_settings_panel.gd # Joystick binding/calibration (Settings → Joystick tab)
 │   ├── loading_screen.gd        # Progress overlay (polls Scenery3D.is_ready)
 │   ├── custom_scenery_loader.gd # Custom scenery package discovery
 │   ├── object_loader.gd         # Custom scenery object placement
@@ -242,10 +246,12 @@ between machines by copying the folder.
 
 Three autoloads coordinate this on startup (see `provpilot/project.godot`):
 
-1. **`InstallRoot`** — discovers `<install_root>` (the directory containing
-   the `.app` / `.exe`), loads/saves `provpilot.cfg`, and exposes
-   `get_aircraft_root()` / `get_aircraft_dir(id)` helpers consumed by both
-   GDScript and the C++ GDExtension (`src/jsbgodot.cpp`).
+1. **`InstallRoot`** — a C++ `InstallConfig` node (`src/install_config.cpp`,
+   mounted as an autoload through `install_root.tscn`) that discovers
+   `<install_root>` (the directory containing the `.app` / `.exe`),
+   loads/saves `provpilot.cfg`, and exposes `get_aircraft_root()` /
+   `get_aircraft_dir(id)` helpers consumed by GDScript and the other C++
+   modules (`SettingsStore`, `src/jsbgodot.cpp`).
 2. **`AircraftInstaller`** — on first launch (or when `BUNDLE_VERSION` bumps)
    extracts `res://aircraft/` from the PCK to `<install_root>/aircraft/`.
    Skips editor-only sidecars (`.import`, `.uid`, `.blend`, loose textures);
@@ -316,14 +322,18 @@ Press **Escape** during flight to return to the welcome screen.
 
 ## Settings
 
-Open the settings screen from the welcome screen's gear icon. Settings persist to `user://settings.cfg`.
+Open the settings screen from the welcome screen's Settings button. It is a C++
+GDExtension module (`SettingsScreen` + `SettingsStore`, `src/settings_*.cpp`);
+values persist to the portable `provpilot.cfg` through the `InstallRoot` autoload.
+One tab per subject:
 
-| Section | Settings |
+| Tab | Settings |
 |---------|----------|
-| **Paths** | Scenery directory, JSBSim data directory |
-| **Scenery Library** | FSX-style per-region scenery sources (priority, enable, scan/add/remove) — see [docs/SCENERY_LIBRARY.md](docs/SCENERY_LIBRARY.md) |
-| **Download Scenery** | One-click install of official region packs from https://www.md80.ch/provpilot/scenery/ — see [docs/SCENERY_DISTRIBUTION.md](docs/SCENERY_DISTRIBUTION.md) |
-| **Graphics** | Render distance (2–16 tiles), building distance (1–8 tiles), shadow quality (Off/Low/Medium/High), VSync, fullscreen |
+| **Scenery** | FSX-style per-region scenery library (priority, enable, scan/add/remove, skip white pixels) — see [docs/SCENERY_LIBRARY.md](docs/SCENERY_LIBRARY.md) |
+| **Downloads** | One-click install of official region packs from https://www.md80.ch/provpilot/scenery/ — see [docs/SCENERY_DISTRIBUTION.md](docs/SCENERY_DISTRIBUTION.md) |
+| **Graphics** | Render distance (2–16 tiles), building distance (1–8 tiles), shadow quality (Off/Low/Medium/High), tree density, VSync, fullscreen |
+| **World** | System clock vs. manual time of day (drives the sun) |
+| **Map** | VFR map frame on/off and frame size |
 | **Sound** | Master volume, engine volume, wind volume, UI volume |
 | **Realism** | Auto mixture, auto carb heat, unlimited fuel, crash detection, turbulence (None/Light/Moderate/Severe), wind speed & direction |
 | **Joystick** | Per-axis bindings, calibration, deadzone, response curve |

@@ -1,7 +1,7 @@
 extends VBoxContainer
 ## JoystickSettingsPanel — UI for binding & calibrating gamepad axes/buttons.
 ##
-## Embedded as a section in `settings_screen.gd`. All read/write of bindings
+## Mounted as the Joystick tab of the C++ SettingsScreen. All read/write of bindings
 ## goes through the `JoystickConfig` autoload.
 
 const FONT_SM := 18

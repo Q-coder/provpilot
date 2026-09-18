@@ -237,7 +237,8 @@ goes through the `.import` remap to the embedded PackedScene.
 
 ### Discovery
 
-[`install_root.gd`](../provpilot/install_root.gd) walks up from the
+The `InstallRoot` autoload (C++ `InstallConfig`, [`src/install_config.cpp`](../src/install_config.cpp),
+mounted via `provpilot/install_root.tscn`) walks up from the
 `.app/Contents/MacOS/ProvPilot` exec path to the bundle's parent directory.
 That folder — wherever the user dropped the `.app` — becomes the install
 root. `$PWD`, `~/ProvPilot`, and the user data directory are fallbacks.
