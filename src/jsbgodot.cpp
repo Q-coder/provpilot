@@ -79,6 +79,7 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_latitude_deg"), &JSBGodot::get_latitude_deg);
     ClassDB::bind_method(D_METHOD("get_longitude_deg"), &JSBGodot::get_longitude_deg);
     ClassDB::bind_method(D_METHOD("get_godot_position"), &JSBGodot::get_godot_position);
+    ClassDB::bind_method(D_METHOD("get_property", "name"), &JSBGodot::get_property);
     ClassDB::bind_method(D_METHOD("get_pitch_deg"), &JSBGodot::get_pitch_deg);
     ClassDB::bind_method(D_METHOD("get_roll_deg"), &JSBGodot::get_roll_deg);
     ClassDB::bind_method(D_METHOD("reinitialize_from_pose", "ac_global", "airspeed_kts", "terrain_elevation_m"), &JSBGodot::reinitialize_from_pose);
@@ -463,6 +464,11 @@ Vector3 JSBGodot::get_godot_position() const
 }
 
 
+
+double JSBGodot::get_property(const String &name) const
+{
+    return FDMExec ? FDMExec->GetPropertyValue(std::string(name.utf8().get_data())) : 0.0;
+}
 
 double JSBGodot::get_pitch_deg() const
 {
@@ -946,14 +952,20 @@ void JSBGodot::copy_inputs_to_JSBSim()
     FDMExec->SetPropertyValue("fcs/aileron-cmd-norm", lateral_sign * input_aileron);
     FDMExec->SetPropertyValue("fcs/elevator-cmd-norm", input_elevator + elevator_trim);
     FDMExec->SetPropertyValue("fcs/rudder-cmd-norm", lateral_sign * input_rudder);
+    // Nose-wheel steering (fcs/steer-cmd-norm drives the gear legs' max_steer).
+    // JSBSim's two commands have OPPOSITE sign conventions for the same pedal:
+    // right pedal is rudder-cmd -1 (yaw right) but steer-cmd +1 (nose wheel
+    // right) — exactly what FlightGear does (SetDrCmd(-rudder), SetDsCmd(rudder)).
+    // The flat-frame build wrote -input_rudder here, which only looked right in
+    // the mirrored world; in the ECEF world ground turns went the wrong way.
+    // Verified headlessly: tests/smoke_ground_steering.tscn.
+    FDMExec->SetPropertyValue("fcs/steer-cmd-norm", -lateral_sign * input_rudder);
     // Throttle ALL engines (-1). Setting the bare "fcs/throttle-cmd-norm" property
     // only drives engine 0, leaving the other engine(s) at idle/zero on a twin
     // like the A-10 (→ asymmetric thrust + yaw). SetThrottleCmd(-1) fans out to
     // every engine; for single-engine aircraft it is identical to before.
     FCS->SetThrottleCmd(-1, input_throttle);
 
-    // Set nose wheel steering (linked to rudder, but opposite direction for ground steering)
-    FDMExec->SetPropertyValue("fcs/steer-cmd-norm", -input_rudder);
 
     // Set the brake command
     FDMExec->SetPropertyValue("fcs/left-brake-cmd-norm", input_brake);

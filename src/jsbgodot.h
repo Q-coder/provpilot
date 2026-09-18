@@ -162,6 +162,8 @@ namespace jsbgodot
         // The Godot world is WGS84 ECEF (design §9.5): JSBSim runs at the true
         // geodetic position; each tick the aircraft node gets position = ECEF
         // location and basis = body-to-ECEF DCM.
+        // Diagnostic: read any JSBSim property (0.0 if the FDM is not created).
+        double get_property(const String &name) const;
         // Attitude readouts (degrees): JSBSim theta / phi.
         double get_pitch_deg() const;
         double get_roll_deg() const;

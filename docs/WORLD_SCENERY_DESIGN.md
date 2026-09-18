@@ -835,6 +835,16 @@ deferred until the first non-LV95 pack exists; the projection library
 already has the UTM maths and `Crs::from_epsg()`. Docs updated:
 `WORLD3D.md`, `TERRAIN_SETUP.md`, scenery3d and world3d READMEs.
 
+*Check-flight fix (2026-09-18, ground steering).* Nose-wheel steering turned
+the wrong way on the ground while the rudder was right in the air: the
+bridge had always written `fcs/steer-cmd-norm = -input_rudder` (tuned to
+the mirrored world) and only the rudder command got the un-mirroring flip.
+JSBSim's two commands have opposite sign conventions for the same pedal
+(right pedal = rudder-cmd −1, steer-cmd +1 — the FlightGear convention), so
+the steering command is now `+input_rudder`. `JSBGodot.get_property(name)`
+added for diagnostics; `tests/smoke_ground_steering.tscn` taxis with both
+pedal signs and yaws in the air, and asserts all three agree.
+
 ## See also
 
 - [gerys_plan.md](gerys_plan.md) — the plan this subtask serves
