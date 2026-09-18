@@ -845,6 +845,16 @@ the steering command is now `+input_rudder`. `JSBGodot.get_property(name)`
 added for diagnostics; `tests/smoke_ground_steering.tscn` taxis with both
 pedal signs and yaws in the air, and asserts all three agree.
 
+*Startup / settings-save latency (2026-09-18).* `set_data_paths` JSON-parsed
+every terrain `manifest.json` in full (twice, for `pixels_per_tile` and
+`crs`); the Fennoscandia manifests list every tile and weigh 139–309 MB, so
+each apply cost 11.7 s — once in `_ready()` and again on every settings
+Save. The runtime now reads only the first 64 KB of a manifest and extracts
+the scalar fields textually (full parse only for small manifests whose head
+lacks the key), and an unchanged path set is a no-op: 0 ms. Follow-up for
+the bake pipeline: stop writing the per-tile list into terrain manifests
+(the runtime never reads it — tiles are probed by file name).
+
 ## See also
 
 - [gerys_plan.md](gerys_plan.md) — the plan this subtask serves
