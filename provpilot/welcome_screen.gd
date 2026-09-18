@@ -645,13 +645,17 @@ func _get_selected_departure() -> Dictionary:
 			var threshold_key = "threshold_" + p
 			if rwy.has(threshold_key):
 				var thresh = rwy[threshold_key]
-				var hdg := int(rwy.get("heading_deg", 0))
+				# Spawn in the LV95 GRID frame: the runway's true bearing plus
+				# grid convergence (AirportsLib), so the aircraft lines up with
+				# the drawn runway even where grid north != true north (Oslo
+				# -2.7°, Kirkenes -18°). The picker label keeps the true bearing.
+				var hdg: float = float(rwy.get("grid_heading_deg", rwy.get("heading_deg", 0)))
 				if i_part == 1:
-					hdg = (hdg + 180) % 360
+					hdg = fmod(hdg + 180.0, 360.0)
 				entries.append({
 					"swiss_e": thresh.get("e", ap.get("center_e", 0)),
 					"swiss_n": thresh.get("n", ap.get("center_n", 0)),
-					"heading_deg": float(hdg),
+					"heading_deg": hdg,
 				})
 
 	if rwy_idx >= 0 and rwy_idx < entries.size():

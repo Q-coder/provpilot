@@ -559,6 +559,19 @@ resident individual tile into a (2r+1)² byte grid (r = far_radius +
 unload_margin + chunk_size = 210 tiles, ~180 KB), built in C++ so the host
 just uploads it. A no-data tile shows the globe on that tile only.
 
+*Iteration 4c (same day, Oslo check flight).* Slewing south of Oslo at
+19 km showed sky through 1 km-wide E–W bands ~15 tiles ahead that filled on
+approach. Headless probe (`tests/smoke_mask_consistency.tscn`: every
+mask-covered tile must have a visible node with a full-footprint mesh)
+reproduced it: Norway's 34 px tiles at LOD 6 (outer ring, stride 64 > 33 px)
+made `S3DTile::generate_mesh()` bail with **no mesh**, the far chunk had
+already been dropped because the tiles counted as present, and the mask
+stamped them because only `node != null` was checked. A pre-existing
+Scenery3D hole (previously hidden by the globe underneath) that the mask
+turned into sky. Fixes: the mesh stride is clamped to the tile's pixel count
+(a 34 px tile at LOD 6 becomes a 2×2 quad), and the mask requires
+`node->get_mesh()` to be valid. Probe: 0 phantom tiles over a 225 km slew.
+
 **Phase 3 — Face rebake, then atlas (D3b/c).** Faces are baked at
 `face_size=513` (~20 km grid spacing), which discards everything finer in the
 ETOPO source regardless of chunk LOD. Rebake at ≤~5 km spacing (measure bake
@@ -602,7 +615,7 @@ Three coordinate frames are in play today and they only agree near Switzerland:
 |-------|-------|-------|
 | LV95 flat plane (X = West, Z = North, Y = ASL) | Scenery3D tile placement, `TERRAIN_CENTER_E/N` | Oblique Mercator tangent at Bern: fine across Europe, scale unbounded with distance, undefined a quarter-Earth away. No Americas, no Asia. |
 | swisstopo approximation polynomial | `src/geo.cpp`, `s3d_coords.cpp`, globe mount, HUD, airports | Valid inside CH only. Measured globe-feature misplacement 24 km at 59°N, 207 km at 71°N (§8.1 iter 3) — the Norway bake used the rigorous projection, the runtime does not. |
-| Equirectangular offset around the last spawn | `src/jsbgodot.cpp` `lat_lon_alt_to_local()` | Ignores LV95 grid convergence (~3° at Oslo): JSBSim's true north ≠ scenery grid north, so a 100 km leg drifts several km against the terrain. |
+| JSBSim runs at a *fake* location near 0°N 0°E with a linear flat mapping (lat = Z/R, lon = X/R, heading mirrored) | `src/jsbgodot.cpp` `initialize_at_terrain()` / `lat_lon_alt_to_local()` | Consistent with the grid (no drift), but JSBSim's psi is a GRID heading, gravity/Coriolis are equatorial, and N–S ground distance is scaled by a/M(0°) ≈ 1.0067. True runway bearings used as grid headings misalign by the convergence (−2.7° Oslo, −18° Kirkenes). *(Corrected 2026-09-18: an earlier version of this row claimed a convergence drift in the position; the fake-location mapping has none.)* |
 
 The flat plane also puts Scandinavian tiles 150–500 km above the ellipsoid,
 which is what forces the per-500 m globe rebase (Phase 2).
@@ -632,6 +645,29 @@ and lines up once the runtime does too (D7). If rebaked with the 10 m EEA data
 
 A and B are safe on their own. C is the answer to the question and is the
 prerequisite for any non-European region.
+
+### 9.4 Step B — implemented 2026-09-18
+
+`provpilot/addons/scenery3d/src/s3d_proj.h` (header-only, no Godot deps) is
+the shared library: rigorous Swiss oblique Mercator on Bessel 1841 + the
+CH1903+/WGS84 geocentric shift (EPSG:2056 exactly as pyproj does it without
+the CHENyx06 grid), transverse Mercator/UTM (Krüger n⁴), grid convergence,
+and a `Crs` value (LV95 | UTM zone) with `from_epsg()` for D6 manifests.
+Verified against pyproj 3.7.2 at 8 points from Geneva to Kirkenes: forward
+deviation ≤ 0.1 mm for both LV95 and UTM 33; round trip ≤ 8 mm (the 2D
+datum-shift convention pyproj shares). The old polynomial was off by 1.3 km
+at Oslo, 20 km at Tromsø and 32 km at Kirkenes.
+
+Consumers switched: `S3DCoords`, ProVPilot `Geo` (adds
+`lv95_grid_convergence_deg`, `wgs84_to_utm`, `utm_to_wgs84`, `utm_zone_for`;
+the ProVPilot build adds the submodule's `src/` to CPPPATH), `VfrMap`
+(airport/canton overlays now land on the pyproj-baked map tiles), and
+`AirportsLib`, which drops its GDScript copy of the polynomial and now emits
+`grid_heading_deg` per runway (true bearing + convergence at the airport);
+thresholds and the welcome-screen spawn heading use it, the picker label keeps
+the true bearing, and the HUD shows true heading (grid − convergence). The
+JSBSim bridge itself is unchanged: it is rewritten wholesale in step C.
+Smoke test: `provpilot/tests/smoke_geo_proj.gd`.
 
 ## See also
 

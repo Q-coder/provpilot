@@ -7,14 +7,20 @@ class_name AirportsLib
 ##     {
 ##       icao, name, type, region, [quadrant],
 ##       center_e, center_n, elevation_m,
-##       runways: [ { designator, heading_deg, length_m, surface,
+##       runways: [ { designator, heading_deg, grid_heading_deg, length_m, surface,
 ##                    threshold_<low>: {e, n}, threshold_<high>: {e, n} } ],
 ##     }
 ##
-## WGS84 latitude / longitude in the JSON are converted to Swiss LV95 via the
-## official swisstopo approximation (~1 m accuracy). Entries may include
-## explicit `swiss_e` / `swiss_n` overrides when the WGS84 conversion does not
-## line up with the loaded scenery (e.g. LSPF Schmerlat).
+## WGS84 latitude / longitude in the JSON are converted to Swiss LV95 with the
+## rigorous projection in Geo (matches the pyproj bake pipeline). Entries may
+## include explicit `swiss_e` / `swiss_n` overrides when the conversion does
+## not line up with the loaded scenery (e.g. LSPF Schmerlat).
+##
+## `heading_deg` is the runway's TRUE bearing (for display); `grid_heading_deg`
+## is that bearing in the LV95 grid frame (true + grid convergence at the
+## airport), which is what the flat scenery frame, spawn heading and the
+## threshold positions use. The two differ by <1° in Switzerland, -2.7° at
+## Oslo and -18° at Kirkenes.
 ##
 ## Also exposes a helper to derive the set of installed scenery regions from
 ## the `installed_scenery_packs` dict the scenery downloader maintains.
@@ -64,24 +70,32 @@ static func _resolve(raw: Dictionary) -> Dictionary:
 	ap["center_e"] = center_e
 	ap["center_n"] = center_n
 
+	# Grid convergence at the airport: true bearings from the catalog become
+	# LV95 grid bearings for everything placed in the flat scenery frame.
+	var ll: Vector2 = Geo.lv95_to_wgs84(center_e, center_n)
+	var convergence: float = Geo.lv95_grid_convergence_deg(ll.x, ll.y)
+	ap["grid_convergence_deg"] = convergence
+
 	# Compute runway thresholds from heading + length (true bearing of the
-	# lower-numbered designator).
+	# lower-numbered designator, rotated into the grid frame).
 	var runways_out: Array = []
 	for r in raw.get("runways", []):
 		if not (r is Dictionary):
 			continue
 		var desig := str(r.get("designator", ""))
 		var heading: float = float(r.get("heading_deg", 0))
+		var grid_heading: float = fposmod(heading + convergence, 360.0)
 		var length: float = float(r.get("length_m", 0))
 		var rwy: Dictionary = {
 			"designator": desig,
 			"heading_deg": heading,
+			"grid_heading_deg": grid_heading,
 			"length_m": length,
 			"surface": r.get("surface", "asphalt"),
 		}
 		var parts := desig.split("/")
 		if parts.size() >= 2 and length > 0.0:
-			var hdg_rad := deg_to_rad(heading)
+			var hdg_rad := deg_to_rad(grid_heading)
 			var half := length * 0.5
 			var dx_e := sin(hdg_rad) * half
 			var dy_n := cos(hdg_rad) * half
@@ -92,25 +106,9 @@ static func _resolve(raw: Dictionary) -> Dictionary:
 	return ap
 
 
-## WGS84 → Swiss LV95 (CH1903+) — official swisstopo approximation, ~1 m.
-## https://www.swisstopo.admin.ch/.../ch1903wgs84_e.pdf
+## WGS84 → Swiss LV95 (CH1903+). Rigorous projection (Geo / s3d_proj.h).
 static func wgs84_to_lv95(lat_deg: float, lon_deg: float) -> Vector2:
-	var phi_sec := lat_deg * 3600.0
-	var lam_sec := lon_deg * 3600.0
-	var phi := (phi_sec - 169028.66) / 10000.0
-	var lam := (lam_sec - 26782.5) / 10000.0
-	var e := 2600072.37 \
-		+ 211455.93 * lam \
-		- 10938.51 * lam * phi \
-		- 0.36 * lam * phi * phi \
-		- 44.54 * lam * lam * lam
-	var n := 1200147.07 \
-		+ 308807.95 * phi \
-		+ 3745.25 * lam * lam \
-		+ 76.63 * phi * phi \
-		- 194.56 * lam * lam * phi \
-		+ 119.79 * phi * phi * phi
-	return Vector2(e, n)
+	return Geo.wgs84_to_lv95(lat_deg, lon_deg)
 
 
 ## Return the set of region IDs (e.g. "switzerland", "baden-wuerttemberg")

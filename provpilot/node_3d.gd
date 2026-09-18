@@ -718,9 +718,8 @@ func _setup_world3d_globe() -> void:
 ## (lat, lon) and P_a is that point's flat position. The mount takes the
 ## inverse, so W3DGlobe's to_local(camera) LOD/streaming still sees a correct
 ## ECEF camera, and _globe_elevation_at() keeps its formula unchanged.
-## lat/lon come from Geo.lv95_to_wgs84 (swisstopo polynomial — ~1 m near CH,
-## degrading with distance; at 70°N the anchor can be tens of km off, which
-## shifts globe terrain features but leaves the sag correction intact).
+## lat/lon come from Geo.lv95_to_wgs84 (rigorous LV95, design §9 D7 — the
+## anchor is exact everywhere the LV95 frame is used).
 func _rebase_globe_to(flat_x: float, flat_z: float, lat_deg: float, lon_deg: float, quiet := false) -> void:
 	# Keep the sun/observer in sync so solar elevation and local mean-solar
 	# time match the new region (sky_atmosphere.gd reads these every frame).
@@ -746,9 +745,8 @@ func _rebase_globe_to(flat_x: float, flat_z: float, lat_deg: float, lon_deg: flo
 ## costs nothing and in flight the mount moves at (quantized) aircraft speed —
 ## no discrete transform events, and the one-shot destination rebase in
 ## _on_welcome_flight_requested() remains the initial anchor under the loading
-## screen. The Geo.lv95_to_wgs84 polynomial is the only approximation in the
-## chain; its error grows with distance from CH (tens of km at 70°N), which
-## shifts globe terrain features but not the sag correction itself.
+## screen. Geo.lv95_to_wgs84 is the rigorous projection (design §9 D7), so
+## globe terrain features line up with the flat patch everywhere in Europe.
 func _track_globe_rebase() -> void:
 	if not (USE_WORLD3D_GLOBE and is_instance_valid(globe_node) and _w3d_coords != null):
 		return
@@ -1176,7 +1174,6 @@ func _process(delta: float) -> void:
 		altitude_label.text = "Altitude: " + str(round(altitude_ft)) + " feet"
 		vspeed_label.text = "Verical Speed: " + str(round(vertical_spd)) + " ft/m"
 		throttle_label.text = "Throttle: " +str(round(throttle_percent)) + " %"
-		heading_label.text = "Heading: " +str(round(heading))
 		
 		# Coordinate display
 		var godot_pos = jsb_node.get_godot_position()
@@ -1190,6 +1187,10 @@ func _process(delta: float) -> void:
 		# Prime Meridian (WGS84) display — world-scenery design §3.4
 		var ll: Vector2 = Geo.lv95_to_wgs84(swiss_e, swiss_n)
 		$Control/Label9.text = "PM: " + format_pm_coord(ll.x, true) + "  " + format_pm_coord(ll.y, false)
+		# JSBSim's psi is a heading in the LV95 GRID frame (grid north = +Z);
+		# show the TRUE heading a compass would read (grid - convergence).
+		var true_heading := fposmod(heading - Geo.lv95_grid_convergence_deg(ll.x, ll.y), 360.0)
+		heading_label.text = "Heading: " + str(round(true_heading))
 	else:
 		$Label.text = "JSBGodot node not found."
 

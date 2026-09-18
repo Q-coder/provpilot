@@ -1,4 +1,5 @@
 #include "vfr_map.h"
+#include "geo.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/classes/config_file.hpp>
@@ -562,15 +563,9 @@ void VfrMap::load_static_data()
 
 Vector2 VfrMap::wgs84_to_lv95(double lat_deg, double lon_deg)
 {
-    // swisstopo polynomial approximation (same as AirportsLib / Geo).
-    double phi = (lat_deg * 3600.0 - 169028.66) / 10000.0;
-    double lam = (lon_deg * 3600.0 - 26782.5) / 10000.0;
-    double e = 2600072.37 + 211455.93 * lam - 10938.51 * lam * phi
-               - 0.36 * lam * phi * phi - 44.54 * lam * lam * lam;
-    double n = 1200147.07 + 308807.95 * phi + 3745.25 * lam * lam
-               + 76.63 * phi * phi - 194.56 * lam * lam * phi
-               + 119.79 * phi * phi * phi;
-    return Vector2(e, n);
+    // Rigorous LV95 (shared s3d_proj.h via Geo) — the map tiles were baked
+    // with pyproj, so airports and canton outlines now land on them exactly.
+    return Geo::wgs84_to_lv95(lat_deg, lon_deg);
 }
 
 void VfrMap::parse_airports(const String &path)

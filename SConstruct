@@ -14,6 +14,8 @@ jsb_library_path2 = "jsbsim/src/"
 jsb_library = "JSBSim"
 
 env.Append(CPPPATH="src/")
+# Shared rigorous projection header (s3d_proj.h) from the scenery3d submodule.
+env.Append(CPPPATH="provpilot/addons/scenery3d/src/")
 env.Append(CPPPATH="godot-cpp/include/")
 env.Append(CPPPATH="jsbsim/src/")
 env.Append(CPPPATH=['.', godot_headers_path, jsb_headers_path, cpp_bindings_path + 'include/', cpp_bindings_path + 'include/core/', cpp_bindings_path + 'include/gen/'])
