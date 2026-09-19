@@ -317,6 +317,33 @@ func _test_screen() -> void:
 		screen.commit()
 		check(int(store.get_setting("qnh_hpa")) == 1020, "QNH slider commits to the store")
 
+	# Weather profiles: save / list / load / delete round trip through the store.
+	var pname := "smoke_test_profile"
+	store.delete_weather_profile(pname)
+	store.set_setting("weather_layers", [{"base_m": 0, "top_m": 2500, "wind_dir_deg": 240, "wind_speed_kts": 18, "turbulence": 1, "cloud_type": 1, "coverage_oktas": 3}])
+	store.set_setting("visibility_km", 35)
+	store.set_setting("qnh_hpa", 1002)
+	check(store.save_weather_profile(pname), "save_weather_profile writes a file")
+	check(FileAccess.file_exists(store.weather_profiles_dir().path_join(pname + ".json")), "profile file exists under <install_root>/weather")
+	check(store.list_weather_profiles().has(pname), "list_weather_profiles finds it")
+	store.set_setting("weather_layers", [])
+	store.set_setting("visibility_km", 80)
+	store.set_setting("qnh_hpa", 1013)
+	check(store.load_weather_profile(pname), "load_weather_profile succeeds")
+	var pl: Array = store.get_setting("weather_layers")
+	check(pl.size() == 1 and int(pl[0]["wind_dir_deg"]) == 240 and int(store.get_setting("visibility_km")) == 35 and int(store.get_setting("qnh_hpa")) == 1002, "loaded profile restores layers, visibility and QNH")
+	check(not store.load_weather_profile("no_such_profile_xyz"), "loading a missing profile fails cleanly")
+	check(store.delete_weather_profile(pname) and not store.list_weather_profiles().has(pname), "delete_weather_profile removes it")
+	var plist: ItemList = _find_first(weather_tab, "ItemList")
+	check(plist != null, "Weather tab has the profile list")
+	var pbtns: Array = []
+	_collect(weather_tab, "Button", pbtns)
+	var have := {"Load": false, "Save": false, "Delete": false}
+	for b in pbtns:
+		if have.has(b.text):
+			have[b.text] = true
+	check(have["Load"] and have["Save"] and have["Delete"], "Weather tab has Load / Save / Delete profile buttons")
+
 	# Restore Defaults resets the UI, keeps the library.
 	var areas_before: int = store.get_scenery_areas().size()
 	screen._on_restore_defaults()

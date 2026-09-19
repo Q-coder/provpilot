@@ -73,6 +73,10 @@ void SettingsScreen::_bind_methods()
     ClassDB::bind_method(D_METHOD("_on_area_row_gui_input", "event", "idx"), &SettingsScreen::_on_area_row_gui_input);
     ClassDB::bind_method(D_METHOD("_on_weather_add_layer"), &SettingsScreen::_on_weather_add_layer);
     ClassDB::bind_method(D_METHOD("_on_live_weather_toggled", "pressed"), &SettingsScreen::_on_live_weather_toggled);
+    ClassDB::bind_method(D_METHOD("_on_weather_profile_selected", "idx"), &SettingsScreen::_on_weather_profile_selected);
+    ClassDB::bind_method(D_METHOD("_on_weather_profile_load"), &SettingsScreen::_on_weather_profile_load);
+    ClassDB::bind_method(D_METHOD("_on_weather_profile_save"), &SettingsScreen::_on_weather_profile_save);
+    ClassDB::bind_method(D_METHOD("_on_weather_profile_delete"), &SettingsScreen::_on_weather_profile_delete);
     ClassDB::bind_method(D_METHOD("set_live_weather", "layers", "status"), &SettingsScreen::set_live_weather);
     ClassDB::bind_method(D_METHOD("clear_live_weather"), &SettingsScreen::clear_live_weather);
     ClassDB::bind_method(D_METHOD("_on_weather_remove_layer", "idx"), &SettingsScreen::_on_weather_remove_layer);
@@ -815,7 +819,51 @@ static const char *WEATHER_TURBULENCE[] = { "None", "Light", "Moderate", "Severe
 
 void SettingsScreen::_build_weather_tab()
 {
-    VBoxContainer *content = _add_tab("Weather");
+    VBoxContainer *tab = _add_tab("Weather");
+    // Two columns: the weather itself on the left, profile files on the right.
+    HBoxContainer *split = memnew(HBoxContainer);
+    split->add_theme_constant_override("separation", 24);
+    split->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+    tab->add_child(split);
+    VBoxContainer *content = memnew(VBoxContainer);
+    content->add_theme_constant_override("separation", 8);
+    content->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+    split->add_child(content);
+    VBoxContainer *side = memnew(VBoxContainer);
+    side->add_theme_constant_override("separation", 8);
+    side->set_custom_minimum_size(Vector2(300, 0));
+    split->add_child(side);
+
+    // ── Right column: weather profile files (<install_root>/weather/*.json) ──
+    _add_section_header(side, "Weather Profiles");
+    _add_hint(side, "Saved in the weather folder of the ProVPilot data directory.");
+    weather_profile_list = memnew(ItemList);
+    weather_profile_list->set_custom_minimum_size(Vector2(0, 260));
+    weather_profile_list->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+    weather_profile_list->add_theme_font_size_override("font_size", FONT_SM);
+    weather_profile_list->connect("item_selected", Callable(this, "_on_weather_profile_selected"));
+    side->add_child(weather_profile_list);
+    HBoxContainer *name_row = memnew(HBoxContainer);
+    name_row->add_theme_constant_override("separation", 8);
+    name_row->add_child(_make_label("Name:", FONT_SM, LABEL_COLOR, 60));
+    weather_profile_name = memnew(LineEdit);
+    weather_profile_name->set_placeholder("profile name");
+    weather_profile_name->add_theme_font_size_override("font_size", FONT_SM);
+    weather_profile_name->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+    name_row->add_child(weather_profile_name);
+    side->add_child(name_row);
+    HBoxContainer *btns = memnew(HBoxContainer);
+    btns->add_theme_constant_override("separation", 8);
+    btns->add_child(_make_button("Load", 90, FONT_SM, Callable(this, "_on_weather_profile_load")));
+    btns->add_child(_make_button("Save", 90, FONT_SM, Callable(this, "_on_weather_profile_save")));
+    btns->add_child(_make_button("Delete", 90, FONT_SM, Callable(this, "_on_weather_profile_delete")));
+    side->add_child(btns);
+    weather_profile_status = _make_label("", FONT_SM, HINT_COLOR);
+    weather_profile_status->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+    side->add_child(weather_profile_status);
+    _refresh_weather_profiles();
+
+    // ── Left column ──
     _add_section_header(content, "Source");
     _add_check_row(content, "live_weather", "Live Weather:", "Nearest METAR (aviationweather.gov), refreshed every 10 min");
     live_weather_check = Object::cast_to<CheckBox>(rows.back().control);
@@ -961,6 +1009,90 @@ void SettingsScreen::clear_live_weather()
 void SettingsScreen::_on_live_weather_toggled(bool)
 {
     _refresh_weather_table();
+}
+
+void SettingsScreen::_refresh_weather_profiles()
+{
+    if (weather_profile_list == nullptr || store.is_null())
+    {
+        return;
+    }
+    weather_profile_list->clear();
+    PackedStringArray names = store->list_weather_profiles();
+    for (int i = 0; i < names.size(); i++)
+    {
+        weather_profile_list->add_item(names[i]);
+    }
+    if (weather_profile_status != nullptr && weather_profile_status->get_text().is_empty())
+    {
+        weather_profile_status->set_text(names.is_empty() ? String("No profiles yet: set up the layers and click Save.") : String());
+    }
+}
+
+void SettingsScreen::_on_weather_profile_selected(int idx)
+{
+    if (weather_profile_list != nullptr && weather_profile_name != nullptr && idx >= 0 && idx < weather_profile_list->get_item_count())
+    {
+        weather_profile_name->set_text(weather_profile_list->get_item_text(idx));
+    }
+}
+
+void SettingsScreen::_on_weather_profile_load()
+{
+    const String name = weather_profile_name != nullptr ? weather_profile_name->get_text().strip_edges() : String();
+    if (name.is_empty())
+    {
+        weather_profile_status->set_text("Select a profile to load.");
+        return;
+    }
+    // Keep the other tabs' edits, then swap the weather values in and
+    // refresh the UI from the store.
+    _read_from_ui();
+    if (!store->load_weather_profile(name))
+    {
+        weather_profile_status->set_text("Could not load '" + name + "'.");
+        return;
+    }
+    _apply_to_ui();
+    weather_profile_status->set_text("Loaded '" + name + "'. Save the settings to apply.");
+}
+
+void SettingsScreen::_on_weather_profile_save()
+{
+    const String name = weather_profile_name != nullptr ? weather_profile_name->get_text().strip_edges() : String();
+    if (name.is_empty())
+    {
+        weather_profile_status->set_text("Enter a name first.");
+        return;
+    }
+    _read_from_ui();
+    if (!store->save_weather_profile(name))
+    {
+        weather_profile_status->set_text("Could not save '" + name + "'.");
+        return;
+    }
+    weather_profile_status->set_text("Saved '" + name + "'.");
+    _refresh_weather_profiles();
+    for (int i = 0; i < weather_profile_list->get_item_count(); i++)
+    {
+        if (weather_profile_list->get_item_text(i) == name)
+        {
+            weather_profile_list->select(i);
+        }
+    }
+}
+
+void SettingsScreen::_on_weather_profile_delete()
+{
+    const String name = weather_profile_name != nullptr ? weather_profile_name->get_text().strip_edges() : String();
+    if (name.is_empty() || !store->delete_weather_profile(name))
+    {
+        weather_profile_status->set_text("Nothing to delete.");
+        return;
+    }
+    weather_profile_status->set_text("Deleted '" + name + "'.");
+    weather_profile_name->set_text("");
+    _refresh_weather_profiles();
 }
 
 void SettingsScreen::_read_weather_table()

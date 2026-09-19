@@ -84,6 +84,16 @@ namespace jsbgodot
         // Push per-asset path arrays + skip_white_pixels + load_radius into
         // Scenery3D, vegetation_paths into Vegetation, map/ dirs into VfrMap.
         void apply_scenery_sources(Node *scenery3d, Node *vegetation, Node *vfr_map);
+
+        // ── Weather profiles ─────────────────────────────────────────────
+        // Named files under <install_root>/weather/<name>.json holding the
+        // static weather (layers, visibility, QNH) so a setup survives the
+        // session and can be swapped in one click.
+        String weather_profiles_dir() const;
+        PackedStringArray list_weather_profiles() const;
+        bool save_weather_profile(const String &name);   // from the store's current values
+        bool load_weather_profile(const String &name);   // into the store's values
+        bool delete_weather_profile(const String &name);
         // tree_density index -> Vegetation density_fraction / load_radius_m.
         void apply_tree_density(Node *vegetation);
 

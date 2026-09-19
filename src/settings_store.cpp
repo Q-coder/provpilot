@@ -4,6 +4,7 @@
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/json.hpp>
 #include <godot_cpp/classes/main_loop.hpp>
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
@@ -44,6 +45,11 @@ void SettingsStore::_bind_methods()
     ClassDB::bind_method(D_METHOD("set_setting", "key", "value"), &SettingsStore::set_setting);
     ClassDB::bind_method(D_METHOD("has_setting", "key"), &SettingsStore::has_setting);
     ClassDB::bind_method(D_METHOD("get_settings"), &SettingsStore::get_settings);
+    ClassDB::bind_method(D_METHOD("weather_profiles_dir"), &SettingsStore::weather_profiles_dir);
+    ClassDB::bind_method(D_METHOD("list_weather_profiles"), &SettingsStore::list_weather_profiles);
+    ClassDB::bind_method(D_METHOD("save_weather_profile", "name"), &SettingsStore::save_weather_profile);
+    ClassDB::bind_method(D_METHOD("load_weather_profile", "name"), &SettingsStore::load_weather_profile);
+    ClassDB::bind_method(D_METHOD("delete_weather_profile", "name"), &SettingsStore::delete_weather_profile);
     ClassDB::bind_method(D_METHOD("restore_defaults"), &SettingsStore::restore_defaults);
     ClassDB::bind_static_method("SettingsStore", D_METHOD("get_defaults"), &SettingsStore::get_defaults);
     ClassDB::bind_static_method("SettingsStore", D_METHOD("section_for_key", "key"), &SettingsStore::section_for_key);
@@ -196,6 +202,125 @@ void SettingsStore::restore_defaults()
 }
 
 // ── Persistence ─────────────────────────────────────────────────────────────
+
+// ── Weather profiles ────────────────────────────────────────────────────────
+
+static String _weather_profile_safe_name(const String &name)
+{
+    String n = name.strip_edges();
+    // Keep it a plain file stem: letters, digits, space, dash, underscore, dot.
+    String out;
+    for (int i = 0; i < n.length(); i++)
+    {
+        const char32_t c = n[i];
+        const bool ok = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == ' ' || c == '-' || c == '_' || c == '.' || c > 127;
+        out += ok ? String::chr(c) : String("_");
+    }
+    return out;
+}
+
+String SettingsStore::weather_profiles_dir() const
+{
+    InstallConfig *ir = _install_root();
+    if (ir == nullptr)
+    {
+        return String();
+    }
+    return ir->get_install_root().path_join("weather");
+}
+
+PackedStringArray SettingsStore::list_weather_profiles() const
+{
+    PackedStringArray out;
+    const String dir = weather_profiles_dir();
+    if (dir.is_empty() || !DirAccess::dir_exists_absolute(dir))
+    {
+        return out;
+    }
+    Ref<DirAccess> d = DirAccess::open(dir);
+    if (d.is_null())
+    {
+        return out;
+    }
+    PackedStringArray files = d->get_files();
+    for (int i = 0; i < files.size(); i++)
+    {
+        if (files[i].to_lower().ends_with(".json"))
+        {
+            out.push_back(files[i].get_basename());
+        }
+    }
+    out.sort();
+    return out;
+}
+
+bool SettingsStore::save_weather_profile(const String &name)
+{
+    const String safe = _weather_profile_safe_name(name);
+    const String dir = weather_profiles_dir();
+    if (safe.is_empty() || dir.is_empty())
+    {
+        return false;
+    }
+    DirAccess::make_dir_recursive_absolute(dir);
+    Dictionary p;
+    p["name"] = safe;
+    p["layers"] = settings.get("weather_layers", Array());
+    p["visibility_km"] = settings.get("visibility_km", 80);
+    p["qnh_hpa"] = settings.get("qnh_hpa", 1013);
+    Ref<FileAccess> f = FileAccess::open(dir.path_join(safe + String(".json")), FileAccess::WRITE);
+    if (f.is_null())
+    {
+        UtilityFunctions::push_warning("SettingsStore: cannot write weather profile ", safe);
+        return false;
+    }
+    f->store_string(JSON::stringify(p, "  "));
+    f->close();
+    UtilityFunctions::print("SettingsStore: weather profile saved: ", safe);
+    return true;
+}
+
+bool SettingsStore::load_weather_profile(const String &name)
+{
+    const String dir = weather_profiles_dir();
+    const String path = dir.path_join(_weather_profile_safe_name(name) + String(".json"));
+    if (dir.is_empty() || !FileAccess::file_exists(path))
+    {
+        return false;
+    }
+    Variant parsed = JSON::parse_string(FileAccess::get_file_as_string(path));
+    if (parsed.get_type() != Variant::DICTIONARY)
+    {
+        UtilityFunctions::push_warning("SettingsStore: weather profile is not valid JSON: ", path);
+        return false;
+    }
+    Dictionary p = parsed;
+    if (p.has("layers") && Variant(p["layers"]).get_type() == Variant::ARRAY)
+    {
+        settings["weather_layers"] = p["layers"];
+    }
+    if (p.has("visibility_km"))
+    {
+        settings["visibility_km"] = int(p["visibility_km"]);
+    }
+    if (p.has("qnh_hpa"))
+    {
+        settings["qnh_hpa"] = int(p["qnh_hpa"]);
+    }
+    UtilityFunctions::print("SettingsStore: weather profile loaded: ", name);
+    return true;
+}
+
+bool SettingsStore::delete_weather_profile(const String &name)
+{
+    const String dir = weather_profiles_dir();
+    const String path = dir.path_join(_weather_profile_safe_name(name) + String(".json"));
+    if (dir.is_empty() || !FileAccess::file_exists(path))
+    {
+        return false;
+    }
+    return DirAccess::remove_absolute(path) == OK;
+}
 
 InstallConfig *SettingsStore::_install_root() const
 {

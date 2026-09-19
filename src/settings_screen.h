@@ -6,6 +6,8 @@
 #include <godot_cpp/classes/spin_box.hpp>
 #include <godot_cpp/classes/option_button.hpp>
 #include <godot_cpp/classes/check_box.hpp>
+#include <godot_cpp/classes/item_list.hpp>
+#include <godot_cpp/classes/line_edit.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/button.hpp>
 #include <godot_cpp/classes/control.hpp>
@@ -82,6 +84,12 @@ namespace jsbgodot
         // Weather-layer table actions.
         void _on_weather_add_layer();
         void _on_live_weather_toggled(bool pressed);
+        // Weather profile files (right-hand column of the Weather tab).
+        void _on_weather_profile_selected(int idx);
+        void _on_weather_profile_load();
+        void _on_weather_profile_save();
+        void _on_weather_profile_delete();
+        void _refresh_weather_profiles();
         void _on_weather_remove_layer(int idx);
         void _on_weather_spin_changed(double value, int idx);
         void _on_weather_option_changed(int value, int idx);
@@ -144,6 +152,9 @@ namespace jsbgodot
         };
         std::vector<WeatherRow> weather_rows;
         CheckBox *live_weather_check = nullptr;
+        ItemList *weather_profile_list = nullptr;
+        LineEdit *weather_profile_name = nullptr;
+        Label *weather_profile_status = nullptr;
         Label *weather_status = nullptr;
         Button *weather_add_button = nullptr;
         Array live_weather_layers;

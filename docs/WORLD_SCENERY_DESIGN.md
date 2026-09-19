@@ -1012,6 +1012,13 @@ deck (25 fps with and without clouds — the near-ground scenery dominates),
 Not done: cloud shadows on the ground, precipitation, half-resolution
 rendering for 4K if it turns out to be needed.
 
+**Weather profiles (2026-09-19):** the Weather tab has a right-hand column
+listing `<install_root>/weather/*.json` (name, layers, visibility_km,
+qnh_hpa). Load swaps the file's values into the store and refreshes the
+tab (Save in the settings then applies them), Save writes the current
+layers under the typed name, Delete removes the file.
+`SettingsStore.save/load/delete_weather_profile`, `list_weather_profiles`.
+
 ### 10.1 How it maps onto JSBSim
 
 JSBSim has no layered atmosphere: the host sets *one* wind vector and one
