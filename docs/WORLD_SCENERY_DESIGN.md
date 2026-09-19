@@ -996,6 +996,11 @@ flight model uses (static or METAR):
 - **Thin types** (altostratus, altocumulus, cirrus):
   `shaders/cloud_sheet.gdshader`, a 180 km curved sheet at `base_m`
   (vertex y follows the planet curvature) with 2D-noise alpha per type.
+- The noise is anchored to LV95 easting/northing of the frame origin
+  (`world_offset`); without it the field moved with the camera and the
+  clouds "followed the aircraft". The cloud materials use
+  `render_priority` 100 so water and other transparent surfaces, which
+  sort by distance, cannot draw over the volume.
 - Wind per layer drifts the noise; `Graphics > Cloud Quality` selects
   Off / 20 / 32 / 56 steps. Sun direction, colour, energy and the ambient
   come from `sky_atmosphere.gd` (`sun_dir_now` etc.).

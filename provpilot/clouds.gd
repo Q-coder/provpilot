@@ -117,6 +117,9 @@ func set_layers(layers: Array) -> void:
 		mat.set_shader_parameter("coverage", float(oktas) / 8.0)
 		mat.set_shader_parameter("cloud_type", ct)
 		mat.set_shader_parameter("planet_radius", PLANET_RADIUS)
+		# Draw after every other transparent surface (water, glass): those
+		# sort by distance and would otherwise blend over the cloud volume.
+		mat.render_priority = 100
 		mi.material_override = mat
 		mi.extra_cull_margin = 16384.0
 		mi.custom_aabb = AABB(Vector3(-SHEET_HALF_M, -1000.0, -SHEET_HALF_M), Vector3(2.0 * SHEET_HALF_M, 25000.0, 2.0 * SHEET_HALF_M))
@@ -153,10 +156,15 @@ func update(cam: Camera3D, sun_dir_world: Vector3, sun_color: Color, sun_energy:
 	global_transform = W3DCoords.enu_to_ecef_transform(g.x, g.y, 0.0, true)
 	var sun_local: Vector3 = global_transform.basis.inverse() * sun_dir_world
 	var cam_local: Vector3 = global_transform.affine_inverse() * p
+	# World-fixed noise anchor: LV95 easting/northing of the frame origin,
+	# mapped onto the frame's axes (x = west, z = north).
+	var lv: Vector2 = Geo.wgs84_to_lv95(g.x, g.y)
+	var world_offset := Vector2(-lv.x, lv.y)
 	for i in range(_meshes.size()):
 		_offsets[i] += _wind[i] * delta
 		var mat: ShaderMaterial = _meshes[i].material_override
 		mat.set_shader_parameter("cam_local", cam_local)
+		mat.set_shader_parameter("world_offset", world_offset)
 		mat.set_shader_parameter("sun_dir", sun_local.normalized())
 		mat.set_shader_parameter("sun_color", sun_color)
 		mat.set_shader_parameter("sun_energy", sun_energy)

@@ -22,6 +22,10 @@ uniform float sun_energy = 1.0;
 uniform vec3 ambient_color : source_color = vec3(0.55, 0.65, 0.85);
 uniform float ambient_energy = 0.6;
 uniform vec2 wind_offset = vec2(0.0);          // metres (animated drift)
+// The node frame is re-anchored under the camera every frame, so noise must
+// be sampled at a world-fixed position: world_offset = (-E, N) of the frame
+// origin in LV95 metres (x = west, z = north), or the clouds follow the aircraft.
+uniform vec2 world_offset = vec2(0.0);
 uniform float shape_scale = 6000.0;            // metres per noise period
 uniform float detail_scale = 900.0;
 uniform float density_scale = 1.0;
@@ -74,7 +78,7 @@ float density_at(vec3 p, vec3 c, bool with_detail) {
 	float h = height_of(p, c);
 	float hf = (h - base_m) / max(top_m - base_m, 1.0);
 	if (hf <= 0.0 || hf >= 1.0) return 0.0;
-	vec3 q = vec3(p.x + wind_offset.x, h * 1.5, p.z + wind_offset.y);
+	vec3 q = vec3(p.x + world_offset.x + wind_offset.x, h * 1.5, p.z + world_offset.y + wind_offset.y);
 	// Perlin FBM sits in ~0.3..0.7: stretch it to the full range first.
 	float n = texture(shape_noise, q / shape_scale).r;
 	float shape = smoothstep(0.32, 0.70, n);
@@ -149,11 +153,14 @@ vec4 march(vec3 ro, vec3 rd, vec2 screen_uv, mat4 inv_proj) {
 	// needs ~10 samples, not 32; oblique rays toward the horizon keep the
 	// full count. The loop stops at t1 either way.
 	int n = max(steps, 8);
-	float min_step = (top_m - base_m) / 10.0;
+	float min_step = (top_m - base_m) / 24.0;
 	float ds = max((t1 - t0) / float(n), min_step);
 	// Jitter the start to hide banding.
-	float jitter = fract(sin(dot(screen_uv, vec2(12.9898, 78.233))) * 43758.5453);
-	float t = t0 + ds * jitter;
+	// Interleaved gradient noise: finer-grained than a sin hash, less visible
+	// as dither at close range.
+	vec2 px = screen_uv * vec2(1920.0, 1080.0);
+	float jitter = fract(52.9829189 * fract(0.06711056 * px.x + 0.00583715 * px.y));
+	float t = t0 + ds * jitter * 0.75;
 
 	float sigma = 0.012;                     // extinction per metre at density 1
 	float trans = 1.0;

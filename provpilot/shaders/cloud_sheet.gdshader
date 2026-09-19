@@ -15,6 +15,7 @@ uniform float sun_energy = 1.0;
 uniform vec3 ambient_color : source_color = vec3(0.55, 0.65, 0.85);
 uniform float ambient_energy = 0.6;
 uniform vec2 wind_offset = vec2(0.0);
+uniform vec2 world_offset = vec2(0.0);   // (-E, N) of the frame origin, see cloud_layer
 uniform float noise_scale = 20000.0;
 uniform float fog_density = 0.00005;
 uniform vec3 fog_color : source_color = vec3(0.7, 0.75, 0.85);
@@ -33,7 +34,7 @@ void vertex() {
 }
 
 void fragment() {
-	vec2 uv = (v_local.xz + wind_offset) / noise_scale;
+	vec2 uv = (v_local.xz + world_offset + wind_offset) / noise_scale;
 	float n1 = texture(sheet_noise, uv).r;
 	float n2 = texture(sheet_noise, uv * 3.7 + vec2(0.31, 0.77)).r;
 	float n = n1 * 0.7 + n2 * 0.3;
