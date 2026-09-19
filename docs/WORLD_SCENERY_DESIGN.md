@@ -968,6 +968,45 @@ Next steps, in order: cloud rendering (the METAR layers already carry
 type/coverage/base), then Open-Meteo as a second source for winds aloft
 and regional variation.
 
+### 10.2 Cloud rendering (2026-09-19)
+
+`provpilot/clouds.gd` (`CloudLayers`, child of the main scene) builds one
+mesh per weather layer with clouds, from the same layer Dictionaries the
+flight model uses (static or METAR):
+
+- **Thick types** (cumulus, stratus, stratocumulus, cumulonimbus):
+  `shaders/cloud_layer.gdshader`, a raymarched *spherical shell* between
+  `base_m` and `top_m` above the ellipsoid, drawn inside a 120 km
+  camera-centred box (`cull_front`, so it also works from inside). The
+  node's frame is West/Up/North at the camera's ground point, re-anchored
+  every frame, so the planet centre is (0, −R, 0) in shader space and the
+  camera position / mesh offset are passed as uniforms in double precision
+  (the shader's camera-relative built-ins cannot be mixed with them in
+  the double build). Ray/shell intersection handles below / inside /
+  above the layer; the march is clipped by the scene depth (terrain in
+  front) and `max_distance`, steps adapt to the layer thickness with a
+  cheap shape-only probe through empty air. Density = Perlin FBM shape
+  (`NoiseTexture3D`, normalised to full range) thresholded by coverage
+  (oktas/8, threshold rising with height for rounded tops) × per-type
+  height profile, eroded by inverted worley detail. Lighting: 3-sample
+  light march toward the sun (Beer-Lambert with a floor), Henyey-Greenstein
+  forward scattering, powder term, ambient graded from base to top, then
+  the scene fog by mean depth and a fade toward the box edge. Noise /
+  erosion / lighting follow Clay John's MIT volumetric-cloud demo.
+- **Thin types** (altostratus, altocumulus, cirrus):
+  `shaders/cloud_sheet.gdshader`, a 180 km curved sheet at `base_m`
+  (vertex y follows the planet curvature) with 2D-noise alpha per type.
+- Wind per layer drifts the noise; `Graphics > Cloud Quality` selects
+  Off / 20 / 32 / 56 steps. Sun direction, colour, energy and the ambient
+  come from `sky_atmosphere.gd` (`sun_dir_now` etc.).
+
+Measured at 1280×800: no measurable cost at 600 m below a 5/8 cumulus
+deck (25 fps with and without clouds — the near-ground scenery dominates),
+100 fps above it. Probe: `tests/probe_space_view.tscn` with
+`PROBE_WEATHER_JSON`, `PROBE_LOOK=pitch:-8`, `PROBE_CLOUD_DEBUG=1|2|3`.
+Not done: cloud shadows on the ground, precipitation, half-resolution
+rendering for 4K if it turns out to be needed.
+
 ### 10.1 How it maps onto JSBSim
 
 JSBSim has no layered atmosphere: the host sets *one* wind vector and one

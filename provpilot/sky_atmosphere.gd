@@ -60,6 +60,11 @@ var sky_material: ShaderMaterial = null
 var observer_lat := 47.7
 var observer_lon := 8.6
 var _observer_up := Vector3.UP  # ellipsoid normal at the camera (ECEF world)
+# Per-frame light state for other renderers (clouds): set in update().
+var sun_dir_now := Vector3.UP
+var sun_color_now := Color(1.0, 0.97, 0.92)
+var sun_energy_now := 1.0
+var ambient_energy_now := 0.7
 
 # Time source: real system clock, or a manual local time (minutes past midnight).
 var use_system_time := true
@@ -158,10 +163,13 @@ func update(delta: float, viewport: Viewport) -> void:
 	var horizon_sin := -sin(dip) - 0.010  # extra ~0.6° for atmospheric refraction
 	var disk := clampf((sin_elev - horizon_sin) / 0.02, 0.0, 1.0)
 
+	sun_dir_now = dir_to_sun
+	sun_energy_now = _base_sun_energy * sun_factor
+	sun_color_now = _sun_color(sin_elev).lerp(Color(1.0, 0.97, 0.92), space)
 	if is_instance_valid(sun_light):
 		_orient_sun(dir_to_sun)
-		sun_light.light_energy = _base_sun_energy * sun_factor
-		sun_light.light_color = _sun_color(sin_elev).lerp(Color(1.0, 0.97, 0.92), space)
+		sun_light.light_energy = sun_energy_now
+		sun_light.light_color = sun_color_now
 		sun_light.visible = sun_factor > 0.001
 	if is_instance_valid(fill_light):
 		fill_light.light_energy = _base_fill_energy * day * (1.0 - space)
@@ -238,6 +246,7 @@ func _apply_altitude(alt: float, day: float, space: float = 0.0) -> void:
 	environment.ambient_light_color = AMBIENT_COLOR
 	var ambient_local := lerpf(AMBIENT_NIGHT_ENERGY, AMBIENT_DAY_ENERGY, day) * lerpf(0.5, 1.0, ts)
 	environment.ambient_light_energy = lerpf(ambient_local, AMBIENT_NIGHT_ENERGY, space)
+	ambient_energy_now = environment.ambient_light_energy
 	environment.glow_intensity = _base_glow_intensity * ts
 	environment.glow_enabled = ts > 0.02
 

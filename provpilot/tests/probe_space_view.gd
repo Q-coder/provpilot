@@ -61,6 +61,43 @@ func _ready() -> void:
 					print("[space] hidden " + c.name)
 			if key == "vegetation" and is_instance_valid(_root.vegetation_node):
 				_root.vegetation_node.visible = false
+	if OS.get_environment("PROBE_WEATHER_JSON") != "":
+		var wx = JSON.parse_string(OS.get_environment("PROBE_WEATHER_JSON"))
+		if wx is Dictionary:
+			_root._settings.set_setting("live_weather", false)
+			if wx.has("layers"):
+				_root._settings.set_setting("weather_layers", wx["layers"])
+			if wx.has("visibility_km"):
+				_root._settings.set_setting("visibility_km", wx["visibility_km"])
+			_root._push_weather_settings()
+			print("[space] cloud meshes: %d quality %d visible %s" % [_root._clouds._meshes.size(), _root._clouds.quality, str(_root._clouds.visible)])
+			if OS.get_environment("PROBE_CLOUD_STEPS") != "":
+				for m in _root._clouds._meshes:
+					m.material_override.set_shader_parameter("steps", int(OS.get_environment("PROBE_CLOUD_STEPS")))
+			if int(OS.get_environment("PROBE_CLOUD_DEBUG")) == 3:
+				for m in _root._clouds._meshes:
+					m.material_override.set_shader_parameter("debug_mode", 3)
+			elif int(OS.get_environment("PROBE_CLOUD_DEBUG")) != 0:
+				for m in _root._clouds._meshes:
+					m.material_override.set_shader_parameter("debug_mode", int(OS.get_environment("PROBE_CLOUD_DEBUG")))
+				# Control object: plain red sphere 3 km north of the camera at the layer base.
+				var ctrl := MeshInstance3D.new()
+				var sm := SphereMesh.new()
+				sm.radius = 300.0
+				sm.height = 600.0
+				ctrl.mesh = sm
+				var smat := StandardMaterial3D.new()
+				smat.albedo_color = Color(1, 0, 0)
+				ctrl.material_override = smat
+				ctrl.name = "CloudDebugSphere"
+				_root._clouds.add_child(ctrl)
+				ctrl.position = Vector3(0, 1500, 3000)
+				await get_tree().process_frame
+				await get_tree().process_frame
+				var m0: MeshInstance3D = _root._clouds._meshes[0]
+				print("[space] clouds node origin=%s basis_ok=%s visible_in_tree=%s" % [str(_root._clouds.global_transform.origin), str(_root._clouds.global_transform.basis.is_finite()), str(_root._clouds.is_visible_in_tree())])
+				print("[space] mesh0 global=%s aabb=%s cam=%s dist=%.0f layers=%d" % [str(m0.global_position), str(m0.get_aabb()), str(get_viewport().get_camera_3d().global_position), m0.global_position.distance_to(get_viewport().get_camera_3d().global_position), m0.layers])
+				print("[space] ctrl global=%s" % str(ctrl.global_position))
 	var cam: Camera3D = _root._intro_camera
 	var ac: Node3D = _root.get_node("AC")
 	var base_pos: Vector3 = ac.global_position
@@ -75,12 +112,21 @@ func _ready() -> void:
 		var pos: Vector3 = base_pos + n * alt
 		var east := Vector3(0, 0, 1).cross(n).normalized()
 		var north := n.cross(east).normalized()
-		cam.global_transform = Transform3D(Basis.looking_at(-n, north), pos)
+		var look := OS.get_environment("PROBE_LOOK")
+		if look == "horizon":
+			cam.global_transform = Transform3D(Basis.looking_at(north, n), pos)
+		elif look.begins_with("pitch:"):   # e.g. pitch:-20 (degrees below the horizon), looking north
+			var pitch := deg_to_rad(float(look.substr(6)))
+			var fwd: Vector3 = (north * cos(pitch) + n * sin(pitch)).normalized()
+			cam.global_transform = Transform3D(Basis.looking_at(fwd, n), pos)
+		else:
+			cam.global_transform = Transform3D(Basis.looking_at(-n, north), pos)
 		cam.far = 5.0e7
 		cam.current = true
 		await get_tree().create_timer(wait_s).timeout
 		var env: Environment = _root.get_node("Environment/WorldEnvironment").environment
 		print("[space] alt " + str(int(alt / 1000.0)) + " km: sun vis=" + str(sun.visible) + " energy=" + str(sun.light_energy) + " color=" + str(sun.light_color) + " shadow=" + str(sun.shadow_enabled) + " ambient=" + str(env.ambient_light_energy) + " fog=" + str(env.fog_enabled) + " density=" + str(env.fog_density) + " ssao=" + str(env.ssao_enabled) + " ssil=" + str(env.ssil_enabled) + " far=" + str(cam.far) + " near=" + str(cam.near) + " sun-z=" + str(sun.global_transform.basis.z))
+		print("[space] fps %d at alt %d" % [Engine.get_frames_per_second(), int(alt)])
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(out.path_join("space_%dkm.png" % int(alt / 1000.0)))
 	get_tree().quit(0)

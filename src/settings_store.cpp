@@ -91,6 +91,7 @@ Dictionary SettingsStore::get_defaults()
     d["render_distance"] = 8;     // terrain load radius in tiles
     d["building_distance"] = 3;   // building load radius in tiles
     d["shadow_quality"] = 2;      // 0=off, 1=low, 2=medium, 3=high
+    d["cloud_quality"] = 2;       // 0=off, 1=low (24 steps), 2=medium (40), 3=high (64)
     d["tree_density"] = 2;        // index into TREE_DENSITY_FRACTION
     d["vsync"] = true;
     d["fullscreen"] = true;
@@ -139,7 +140,7 @@ String SettingsStore::section_for_key(const String &key)
     {
         return "scenery";
     }
-    if (key == "render_distance" || key == "building_distance" || key == "shadow_quality" || key == "tree_density" || key == "vsync" || key == "fullscreen")
+    if (key == "render_distance" || key == "building_distance" || key == "shadow_quality" || key == "cloud_quality" || key == "tree_density" || key == "vsync" || key == "fullscreen")
     {
         return "graphics";
     }

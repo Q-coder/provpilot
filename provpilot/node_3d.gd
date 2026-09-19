@@ -229,6 +229,8 @@ var _welcome_screen: CanvasLayer = null
 var _settings_screen: SettingsScreen = null
 var _settings: SettingsStore = null
 const LiveWeatherScript := preload("res://live_weather.gd")
+const CloudLayersScript := preload("res://clouds.gd")
+var _clouds: Node3D = null  # CloudLayers (clouds.gd)
 var _live_weather: Node = null  # LiveWeather (live_weather.gd)
 
 # Deferred scenery loading: skip all heavy loading at startup, load on first Fly!
@@ -900,6 +902,10 @@ func _apply_weather(layers: Array, qnh_hpa: float, visibility_km: float) -> void
 	if jsb_node and jsb_node.has_method("set_weather"):
 		jsb_node.set_weather(layers, qnh_hpa)
 	_sky.set_visibility_km(visibility_km)
+	if _clouds:
+		if _settings:
+			_clouds.quality = int(_settings.get_setting("cloud_quality"))
+		_clouds.set_layers(layers)
 
 
 func _set_weather_overlay(show: bool) -> void:
@@ -1253,6 +1259,11 @@ func _process(delta: float) -> void:
 	# shader so the horizon matches the globe's curvature at altitude, fades fog
 	# toward space, and gates the coarse globe under the detailed patch.
 	_sky.update(delta, get_viewport())
+	if _clouds:
+		var env: Environment = _sky.environment
+		_clouds.update(get_viewport().get_camera_3d(), _sky.sun_dir_now, _sky.sun_color_now, _sky.sun_energy_now,
+			env.ambient_light_color if env else Color(0.55, 0.65, 0.85), _sky.ambient_energy_now,
+			env.fog_density if env and env.fog_enabled else 0.0, env.fog_light_color if env else Color(0.7, 0.75, 0.85), delta)
 	if time_label:
 		time_label.text = "Time: " + _sky.get_time_string()
 
@@ -2077,6 +2088,9 @@ func _create_settings_screen() -> void:
 	add_child(_settings_screen)  # loads provpilot.cfg in its _ready
 	_settings = _settings_screen.get_store()
 	_settings_screen.closed.connect(_on_settings_closed)
+	_clouds = CloudLayersScript.new()
+	_clouds.name = "CloudLayers"
+	add_child(_clouds)
 	_live_weather = LiveWeatherScript.new()
 	_live_weather.latlon_provider = _aircraft_latlon
 	_live_weather.weather_updated.connect(_on_live_weather_updated)

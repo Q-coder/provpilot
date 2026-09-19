@@ -758,6 +758,7 @@ void SettingsScreen::_build_graphics_tab()
     _add_slider_row(content, "render_distance", "Terrain Distance:", 2, 16, 1, " tiles");
     _add_slider_row(content, "building_distance", "Building Distance:", 1, 8, 1, " tiles");
     _add_option_row(content, "shadow_quality", "Shadow Quality:", PackedStringArray{ "Off", "Low", "Medium", "High" });
+    _add_option_row(content, "cloud_quality", "Cloud Quality:", PackedStringArray{ "Off", "Low", "Medium", "High" });
     _add_option_row(content, "tree_density", "Tree Density:", PackedStringArray{ "Off", "Low", "Medium", "High", "Very High" });
     _add_check_row(content, "vsync", "V-Sync:", "Synchronize with display refresh");
     _add_check_row(content, "fullscreen", "Fullscreen:", "Run in fullscreen mode");
@@ -850,7 +851,7 @@ void SettingsScreen::_build_weather_tab()
     _add_section_header(content, "Global");
     _add_slider_row(content, "visibility_km", "Visibility:", 0, 200, 1, " km");
     _add_slider_row(content, "qnh_hpa", "Pressure (QNH):", 900, 1100, 1, " hPa");
-    _add_hint(content, "Standard atmosphere: 1013 hPa. Wind, turbulence and QNH feed the flight model; visibility sets the haze. Clouds are not rendered yet.");
+    _add_hint(content, "Standard atmosphere: 1013 hPa. Wind, turbulence and QNH feed the flight model; visibility sets the haze. Cloud detail: Graphics > Cloud Quality.");
     _refresh_weather_table();
 }
 
