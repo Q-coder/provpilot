@@ -1269,13 +1269,26 @@ void JSBGodot::copy_outputs_from_JSBSim()
     // In slew mode GDScript/SlewMode own the node transform.
     if (!slew_mode)
     {
-        const Vector3 scale = ac->get_scale();
+        // The node's scale is read back from its own basis; remember the last
+        // sane value so one degenerate tick can never collapse the aircraft
+        // (and every child camera with it) to scale 0 for good.
+        Vector3 scale = ac->get_scale();
+        if (scale.is_finite() && scale.x > 1e-6 && scale.y > 1e-6 && scale.z > 1e-6)
+        {
+            last_good_scale = scale;
+        }
+        else
+        {
+            scale = last_good_scale;
+        }
         Basis b;
         b.set_column(0, -by * scale.x);
         b.set_column(1, -bz * scale.y);
         b.set_column(2, bx * scale.z);
         const Transform3D xf(b, pos);
-        if (!pos.is_finite() || !bx.is_finite() || !by.is_finite() || !bz.is_finite())
+        const bool dcm_ok = bx.is_finite() && by.is_finite() && bz.is_finite()
+            && bx.length_squared() > 0.5 && by.length_squared() > 0.5 && bz.length_squared() > 0.5;
+        if (!pos.is_finite() || !dcm_ok)
         {
             // The FDM blew up (huge ground-contact force, etc.). Never hand a
             // NaN pose to the scene (renderer asserts, camera/sky go NaN):

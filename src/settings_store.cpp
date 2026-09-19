@@ -30,8 +30,8 @@ const double SettingsStore::TREE_DENSITY_FRACTION[5] = { 0.0, 0.25, 0.50, 0.75, 
 
 // Sections read back from provpilot.cfg at load(). Keys are routed to one of
 // these by section_for_key() on save.
-static const char *SETTINGS_SECTIONS[] = { "scenery", "graphics", "sound", "realism", "world", "map" };
-static const int SETTINGS_SECTION_COUNT = 6;
+static const char *SETTINGS_SECTIONS[] = { "scenery", "graphics", "sound", "realism", "world", "map", "weather" };
+static const int SETTINGS_SECTION_COUNT = 7;
 
 // Library state that survives "Restore Defaults" (user data, not preferences).
 static const char *LIBRARY_KEYS[] = { "scenery_areas", "scenery_scan_roots", "installed_scenery_packs" };

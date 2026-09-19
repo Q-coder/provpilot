@@ -209,6 +209,7 @@ namespace jsbgodot
         // (e.g. a gear-spring blow-up) is caught in copy_outputs_from_JSBSim and
         // the FDM re-initialised here instead of poisoning the scene.
         Transform3D last_good_transform;
+        Vector3 last_good_scale = Vector3(1, 1, 1);
         bool has_last_good_transform = false;
         double last_terrain_m = 0.0;
         int64_t last_nan_reset_msec = 0;

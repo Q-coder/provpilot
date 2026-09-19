@@ -908,6 +908,27 @@ func _apply_weather(layers: Array, qnh_hpa: float, visibility_km: float) -> void
 		_clouds.set_layers(layers)
 
 
+var _cam_sanity_reported := false
+## One-shot diagnostic: a camera whose basis collapses (det 0 / NaN) renders
+## a black screen and floods the log with "det == 0" from the light culler;
+## name the camera and its parent chain once so the cause can be found.
+func _check_camera_sanity() -> void:
+	if _cam_sanity_reported:
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var b := cam.global_transform.basis
+	if not b.is_finite() or absf(b.determinant()) < 1e-9:
+		_cam_sanity_reported = true
+		var chain := ""
+		var n: Node = cam
+		while n != null and n is Node3D:
+			chain += "%s(det %.3g, scale %s) <- " % [n.name, (n as Node3D).global_transform.basis.determinant(), str((n as Node3D).scale)]
+			n = n.get_parent()
+		push_error("Camera '%s' has a degenerate basis: %s" % [cam.name, chain])
+
+
 func _set_weather_overlay(show: bool) -> void:
 	_wx_visible = show
 	if _wx_label:
@@ -1259,6 +1280,7 @@ func _process(delta: float) -> void:
 	# shader so the horizon matches the globe's curvature at altitude, fades fog
 	# toward space, and gates the coarse globe under the detailed patch.
 	_sky.update(delta, get_viewport())
+	_check_camera_sanity()
 	if _clouds:
 		var env: Environment = _sky.environment
 		_clouds.update(get_viewport().get_camera_3d(), _sky.sun_dir_now, _sky.sun_color_now, _sky.sun_energy_now,
