@@ -33,6 +33,7 @@ var app_ref: Node = null
 var frame := 0
 var phase := "boot"
 var phase_frame := 0
+var saw_hold := false   # zoom reached its end while the destination was still loading
 
 # Key-press step machine (mirrors smoke_slew_mode.gd).
 var steps: Array = []
@@ -181,15 +182,25 @@ func _process(_delta: float) -> void:
 				_enter_phase("wait_loading")
 
 		"wait_loading":
-			# The intro starts synchronously when fly-loading completes, so by
-			# the time this clears the space view is already up.
-			if not app_ref._fly_loading and not app_ref._pending_terrain_init:
+			# The intro starts with the Fly! request and plays while the
+			# destination loads (its HUD shows the loading status); give the
+			# sky a few frames to settle at the space altitude.
+			if app_ref._intro_playing and frame - phase_frame > 5:
 				_enter_phase("check_space_view")
 
 		"check_space_view":
 			var env := _env()
 			check(env != null, "WorldEnvironment/environment exists")
-			check(app_ref._intro_playing, "_intro_playing is true after first-flight loading")
+			check(app_ref._intro_playing, "_intro_playing is true right after the first Fly! request")
+			check(app_ref._loading_screen == null or not app_ref._loading_screen.visible, "no loading screen: the intro zoom is the loading view")
+			if app_ref._fly_loading:
+				check(app_ref._intro_status_label != null and app_ref._intro_status_label.text != "" and app_ref._intro_status_label.text != "Loading scenery",
+					"intro HUD shows the loading status while the destination loads (%s)" % (app_ref._intro_status_label.text if app_ref._intro_status_label else "<none>"))
+				check(app_ref._intro_zoom.get_hold_at_end(), "zoom set to wait on the spot view until loading completes")
+				var ph: float = app_ref._loading_progress.get_phase_progress()
+				var want_px: float = app_ref._intro_bar_bg.size.x * ph
+				check(ph >= 0.0 and ph <= 1.0 and absf(app_ref._intro_bar.custom_minimum_size.x - want_px) <= 2.0,
+					"intro bar shows the current loading phase's own progress (phase %d at %.2f, %.0f of %.0f px)" % [app_ref._loading_progress.get_phase(), ph, app_ref._intro_bar.custom_minimum_size.x, app_ref._intro_bar_bg.size.x])
 			check(app_ref._intro_zoom.is_playing(), "IntroZoom.is_playing() matches _intro_playing")
 			check(
 				app_ref._intro_camera != null and app_ref._intro_camera.current,
@@ -205,11 +216,21 @@ func _process(_delta: float) -> void:
 			check(app_ref._intro_hud != null and app_ref._intro_hud.visible and app_ref._intro_dist_label.text.begins_with("Distance to aircraft:"),
 				"intro HUD shown with the distance readout (%s)" % (app_ref._intro_dist_label.text if app_ref._intro_dist_label else "<none>"))
 			check(app_ref.get_node("Control").visible == false, "flight HUD hidden during the intro")
-			_start_steps([{"press": [KEY_SPACE], "frames": 4}], "check_handoff")
+			_start_steps([{"press": [KEY_SPACE], "frames": 4}], "wait_handoff")
+
+		"wait_handoff":
+			# SPACE while loading only jumps the zoom to the spot view; the
+			# handoff happens once loading is complete.
+			if app_ref._intro_playing and app_ref._intro_zoom.is_holding():
+				saw_hold = true
+				check(app_ref._intro_camera != null and app_ref._intro_camera.current, "intro camera stays current while the zoom waits for loading")
+			if not app_ref._fly_loading and not app_ref._pending_terrain_init and not app_ref._intro_playing:
+				print("SMOKE-GLOBE: zoom waited on the spot view for loading: %s" % str(saw_hold))
+				_enter_phase("check_handoff")
 
 		"check_handoff":
 			var env := _env()
-			check(not app_ref._intro_playing, "_intro_playing cleared after SPACE skip")
+			check(not app_ref._intro_playing, "_intro_playing cleared after SPACE skip and loading")
 			check(not app_ref._intro_zoom.is_playing(), "IntroZoom stopped after handoff")
 			check(
 				app_ref.camera_mode == app_ref.CameraMode.ORBIT,

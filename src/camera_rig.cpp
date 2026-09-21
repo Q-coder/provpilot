@@ -21,6 +21,7 @@ void CameraRig::_bind_methods()
 	ClassDB::bind_method(D_METHOD("set_orbit_zoom_speed", "units_per_sec"), &CameraRig::set_orbit_zoom_speed);
 	ClassDB::bind_method(D_METHOD("set_orbit_distance_min", "distance"), &CameraRig::set_orbit_distance_min);
 	ClassDB::bind_method(D_METHOD("set_orbit_distance_max", "distance"), &CameraRig::set_orbit_distance_max);
+	ClassDB::bind_method(D_METHOD("set_orbit_distance", "distance"), &CameraRig::set_orbit_distance);
 	ClassDB::bind_method(D_METHOD("set_orbit_pitch_min", "deg"), &CameraRig::set_orbit_pitch_min);
 	ClassDB::bind_method(D_METHOD("set_orbit_pitch_max", "deg"), &CameraRig::set_orbit_pitch_max);
 	ClassDB::bind_method(D_METHOD("set_chase_smooth", "smooth"), &CameraRig::set_chase_smooth);
@@ -31,6 +32,10 @@ void CameraRig::_bind_methods()
 	ClassDB::bind_method(D_METHOD("update", "delta", "joy_device"), &CameraRig::update);
 	ClassDB::bind_method(D_METHOD("flip"), &CameraRig::flip);
 	ClassDB::bind_method(D_METHOD("set_mode", "mode"), &CameraRig::set_mode);
+	ClassDB::bind_method(D_METHOD("mouse_look", "relative"), &CameraRig::mouse_look);
+	ClassDB::bind_method(D_METHOD("mouse_zoom", "notches"), &CameraRig::mouse_zoom);
+	ClassDB::bind_method(D_METHOD("is_mouse_look_active"), &CameraRig::is_mouse_look_active);
+	ClassDB::bind_method(D_METHOD("recenter_head"), &CameraRig::recenter_head);
 	ClassDB::bind_method(D_METHOD("get_mode"), &CameraRig::get_mode);
 	ClassDB::bind_method(D_METHOD("set_cockpit_enabled", "enabled"), &CameraRig::set_cockpit_enabled);
 
@@ -57,6 +62,11 @@ void CameraRig::set_orbit_speed(double deg_per_sec) { orbit_speed = deg_per_sec;
 void CameraRig::set_orbit_zoom_speed(double units_per_sec) { orbit_zoom_speed = units_per_sec; }
 void CameraRig::set_orbit_distance_min(double distance) { orbit_distance_min = distance; }
 void CameraRig::set_orbit_distance_max(double distance) { orbit_distance_max = distance; }
+void CameraRig::set_orbit_distance(double distance)
+{
+	orbit_distance = distance;
+	chase_distance = distance;
+}
 void CameraRig::set_orbit_pitch_min(double deg) { orbit_pitch_min = deg; }
 void CameraRig::set_orbit_pitch_max(double deg) { orbit_pitch_max = deg; }
 void CameraRig::set_chase_smooth(double smooth) { chase_smooth = smooth; }
@@ -76,6 +86,41 @@ void CameraRig::capture_cockpit_base()
 	if (camera1 != nullptr)
 	{
 		cockpit_base = camera1->get_transform();
+		cockpit_fov_default = camera1->get_fov();
+	}
+}
+
+void CameraRig::mouse_look(const Vector2 &relative)
+{
+	if (space_held && mode == MODE_COCKPIT)
+	{
+		pending_mouse += relative;
+	}
+}
+
+void CameraRig::mouse_zoom(int notches)
+{
+	if (!is_mouse_look_active() || camera1 == nullptr || notches == 0)
+	{
+		return;
+	}
+	space_motion_px += tap_max_px; // a wheel notch is not a tap
+	double fov = camera1->get_fov() - notches * mouse_zoom_deg_per_notch;
+	camera1->set_fov(Math::clamp(fov, cockpit_fov_min, cockpit_fov_max));
+}
+
+bool CameraRig::is_mouse_look_active() const
+{
+	return space_held && mode == MODE_COCKPIT;
+}
+
+void CameraRig::recenter_head()
+{
+	head_yaw = 0.0;
+	head_pitch = 0.0;
+	if (camera1 != nullptr)
+	{
+		camera1->set_fov(cockpit_fov_default);
 	}
 }
 
@@ -105,10 +150,9 @@ void CameraRig::flip()
 			mode = MODE_CHASE;
 			break;
 		default:
+			// Back to the cockpit with the head where it was left (the spot
+			// and chase views keep their positions the same way).
 			mode = MODE_COCKPIT;
-			// Reset head position when switching back to cockpit view.
-			head_yaw = 0.0;
-			head_pitch = 0.0;
 			break;
 	}
 	apply_current_flags();
@@ -217,6 +261,35 @@ void CameraRig::update_head_look(double delta, int joy_device)
 		look_y = 1.0;
 	}
 
+	// Space: held, the mouse looks around (right = look right, down = look
+	// down); a short tap without movement recentres the view.
+	const bool space = input->is_key_pressed(KEY_SPACE);
+	if (space && !space_held)
+	{
+		space_held = true;
+		space_time = 0.0;
+		space_motion_px = 0.0;
+		pending_mouse = Vector2();
+		input->set_mouse_mode(Input::MOUSE_MODE_CAPTURED);
+	}
+	if (space_held)
+	{
+		space_time += delta;
+		space_motion_px += pending_mouse.length();
+		look_x += pending_mouse.x * mouse_look_deg_per_px / (head_look_speed * std::max(delta, 1e-6));
+		look_y += pending_mouse.y * mouse_look_deg_per_px / (head_look_speed * std::max(delta, 1e-6));
+		pending_mouse = Vector2();
+	}
+	if (!space && space_held)
+	{
+		space_held = false;
+		input->set_mouse_mode(Input::MOUSE_MODE_VISIBLE);
+		if (space_time < tap_max_s && space_motion_px < tap_max_px)
+		{
+			recenter_head();
+		}
+	}
+
 	// Update head angles, clamped to limits.
 	head_yaw += look_x * head_look_speed * delta;
 	head_pitch += look_y * head_look_speed * delta;
@@ -227,6 +300,22 @@ void CameraRig::update_head_look(double delta, int joy_device)
 	camera1->set_transform(cockpit_base);
 	camera1->rotate_y(Math::deg_to_rad(-head_yaw));                           // Yaw (left/right)
 	camera1->rotate_object_local(Vector3(1, 0, 0), Math::deg_to_rad(-head_pitch)); // Pitch (up/down)
+
+	// Zoom: the same inputs as the external cameras (L1/R1, Page Up/Down)
+	// narrow / widen the field of view.
+	double zoom_in = 0.0;
+	double zoom_out = 0.0;
+	int dz = (joy_device >= 0) ? joy_device : 0;
+	if (input->is_joy_button_pressed(dz, JOY_BUTTON_LEFT_SHOULDER) || input->is_key_pressed(KEY_PAGEUP))
+		zoom_in = 1.0;
+	if (input->is_joy_button_pressed(dz, JOY_BUTTON_RIGHT_SHOULDER) || input->is_key_pressed(KEY_PAGEDOWN))
+		zoom_out = 1.0;
+	if (zoom_in > 0.0 || zoom_out > 0.0)
+	{
+		double fov = camera1->get_fov();
+		fov += (zoom_out - zoom_in) * cockpit_zoom_speed * delta;
+		camera1->set_fov(Math::clamp(fov, cockpit_fov_min, cockpit_fov_max));
+	}
 }
 
 // External/spot camera orbiting around the aircraft. The offset is computed in

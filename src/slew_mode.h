@@ -50,6 +50,9 @@ namespace jsbgodot
                             Label *vspeed_label, Label *throttle_label,
                             Label *heading_label, Label *godot_pos_label,
                             Label *swiss_label, Label *heading_deg_label);
+        // Control/Label9: the WGS84 "PM:" readout (design §3.4). Optional;
+        // registered separately so the nine-label call site stays as is.
+        void set_pm_label(Label *pm_label);
         // Swiss LV95 origin (TERRAIN_CENTER_E/N) for the coordinate readout.
 
         // ── Per-frame update ──
@@ -94,6 +97,7 @@ namespace jsbgodot
         Label *throttle_label = nullptr;
         Label *heading_label = nullptr;
         Label *godot_pos_label = nullptr;
+        Label *pm_label = nullptr;
         Label *swiss_label = nullptr;
         Label *heading_deg_label = nullptr;
 
@@ -106,6 +110,8 @@ namespace jsbgodot
         void handle_movement(double delta, double ax_strafe, double ax_forward,
                              double ax_yaw, double ax_vertical, double terrain_h);
         static String format_swiss_coord(double value);
+        // "N 47°27.88′" / "E 008°32.95′" — same format as node_3d.gd.
+        static String format_pm_coord(double deg, bool is_lat);
     };
 
 } // namespace jsbgodot

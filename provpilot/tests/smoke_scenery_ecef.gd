@@ -100,12 +100,20 @@ func _check() -> void:
 					_fail("tile (%d,%d) up axis is not the ellipsoid normal" % [c.get_tile_x(), c.get_tile_z()])
 		else:
 			chunks += 1
-			# Exact placement: pure rotation (det 1, orthonormal), origin on the ellipsoid − 30 m bias
+			# Exact placement: pure rotation (det 1, orthonormal), origin on the
+			# ellipsoid minus the Y bias, which scales with the composite
+			# spacing (30 m at 250 m; a 129 px near chunk spans 8192 m at
+			# 64 m spacing -> 7.68 m).
 			if absf(det - 1.0) > 1e-6:
 				_fail("chunk basis det %.6f (expected 1)" % det)
 			var llo: Vector3 = W3DCoords.ecef_to_geodetic(xf.origin)
-			if absf(llo.z + 30.0) > 0.05:
-				_fail("chunk origin height %.3f (expected -30 m bias)" % llo.z)
+			var expected_bias := -30.0
+			if c.mesh != null and c.mesh.get_surface_count() > 0:
+				var nv: int = c.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX].size()
+				var res := int(round(sqrt(float(nv))))
+				expected_bias = -30.0 * (float(c.get_tile_size()) / float(res - 1)) / 250.0
+			if absf(llo.z - expected_bias) > 0.05:
+				_fail("chunk origin height %.3f (expected %.2f m bias)" % [llo.z, expected_bias])
 	print("[ecef] tiles=%d chunks=%d checked=%d worst corner err %.4f m, worst centre err %.4f m, worst vertex height err %.3f m" % [tiles, chunks, checked, worst_corner, worst_center, worst_vertex])
 	if worst_vertex > 1.0:
 		_fail("vertex height error %.3f m > 1 m (sag/placement)" % worst_vertex)

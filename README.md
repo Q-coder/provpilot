@@ -26,9 +26,9 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 - **MSFS Scenery Import**: Convert Microsoft Flight Simulator 2020 scenery packages (BGL→GLB)
 - **47 Swiss Airports**: OSM-verified runway geometry (teleport via welcome screen)
 - **Welcome Screen**: Startup UI with aircraft selection and airport/runway picker
-- **Settings Screen**: Tabbed C++ settings UI (Scenery, Downloads, Graphics, World, Map, Sound, Realism, Joystick), persisted to `provpilot.cfg`
+- **Settings Screen**: Tabbed C++ settings UI (Aircraft, Scenery, Downloads, Graphics, World, Map, Sound, Realism, Joystick), persisted to `provpilot.cfg`
 - **In-App Scenery Downloader**: Pulls per-region base + per-quadrant detail packs from `https://www.md80.ch/provpilot/scenery/`, verifies sha256, extracts to a configurable install root, and auto-registers the result in the Scenery Library
-- **Loading Screen**: Progress overlay polling `Scenery3D.is_ready()`
+- **Loading Screen**: Progress overlay for the startup load; after **Fly!** the space → spot intro zoom is the loading view (status and progress on its HUD)
 - **Multiple Camera Views**:
   - Cockpit camera with pilot head look (hat switch / D-pad / arrow keys)
   - External orbit camera with full rotation and zoom
@@ -78,8 +78,14 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 | Switch Camera (Cockpit/Orbit/Chase) | Select / Back | C |
 | Head Look (Cockpit) | D-pad | Arrow Keys |
 | Orbit/Chase Camera Adjust | D-pad | Arrow Keys |
-| Zoom In | L1 (Left Shoulder) | Page Up |
+| Zoom In (orbit/chase distance; cockpit field of view) | L1 (Left Shoulder) | Page Up |
 | Zoom Out | R1 (Right Shoulder) | Page Down |
+| Look around (cockpit) | — | hold Space + mouse |
+| Zoom cockpit view | — | hold Space + mouse wheel |
+| Cockpit knobs (Kollsman, course…) | — | click zones, or mouse wheel over the knob (Shift = coarse) |
+| Recentre cockpit view (head + zoom) | — | Space (tap) |
+| HUD overlay: off / readouts / readouts + coordinates | — | H |
+| Parking brake (set at every flight start) | — | . set / , release |
 
 ### Slew Mode Controls
 | Control | Gamepad | Keyboard |
@@ -315,8 +321,8 @@ On launch, the simulator follows a deferred loading sequence:
 2. Core nodes initialize (Scenery3D, JSBSim binding)
 3. **Welcome screen** appears with aircraft selection and a starting airport (currently hardcoded to LSPF Schaffhausen)
 4. User selects aircraft and clicks **Fly!**
-5. **Loading screen** reappears and polls `Scenery3D.is_ready()` while tiles, buildings, roads, water, and orthophotos stream in
-6. Once ready, the simulation begins at the selected airport
+5. The **intro zoom** starts at once over the destination (space → spot view) and shows the loading status (terrain, flight model, "Stabilizing aircraft…") on its HUD, with one progress bar per phase, while tiles, buildings, roads, water, and orthophotos stream in; **Space** jumps to the spot view
+6. Once ready, the simulation begins at the selected airport and the zoom hands over to the spot camera (it waits on the spot view if loading takes longer than the zoom)
 
 Press **Escape** during flight to return to the welcome screen.
 

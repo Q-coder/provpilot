@@ -16,6 +16,12 @@ void LoadingProgress::_bind_methods()
 	ClassDB::bind_method(D_METHOD("update", "loaded", "total", "is_fly_loading", "terrain_init_pending", "rebase_cooldown", "rebase_cooldown_frames"), &LoadingProgress::update);
 	ClassDB::bind_method(D_METHOD("get_status_text"), &LoadingProgress::get_status_text);
 	ClassDB::bind_method(D_METHOD("is_complete"), &LoadingProgress::is_complete);
+	ClassDB::bind_method(D_METHOD("get_phase_progress"), &LoadingProgress::get_phase_progress);
+	ClassDB::bind_method(D_METHOD("get_phase"), &LoadingProgress::get_phase);
+	ClassDB::bind_integer_constant("LoadingProgress", "Phase", "PHASE_SCENERY", PHASE_SCENERY);
+	ClassDB::bind_integer_constant("LoadingProgress", "Phase", "PHASE_FDM_INIT", PHASE_FDM_INIT);
+	ClassDB::bind_integer_constant("LoadingProgress", "Phase", "PHASE_STABILIZE", PHASE_STABILIZE);
+	ClassDB::bind_integer_constant("LoadingProgress", "Phase", "PHASE_READY", PHASE_READY);
 	ClassDB::bind_method(D_METHOD("set_scenery_weight", "weight"), &LoadingProgress::set_scenery_weight);
 	ClassDB::bind_method(D_METHOD("set_cooldown_weight", "weight"), &LoadingProgress::set_cooldown_weight);
 	ClassDB::bind_method(D_METHOD("set_fly_loading_max_msec", "msec"), &LoadingProgress::set_fly_loading_max_msec);
@@ -29,6 +35,9 @@ LoadingProgress::LoadingProgress()
 void LoadingProgress::begin_fly_loading()
 {
 	_fly_loading_start_msec = static_cast<double>(Time::get_singleton()->get_ticks_msec());
+	_phase = PHASE_SCENERY;
+	_phase_start_msec = _fly_loading_start_msec;
+	_phase_progress = 0.0;
 }
 
 double LoadingProgress::update(int loaded, int total, bool is_fly_loading, bool terrain_init_pending, int rebase_cooldown, int rebase_cooldown_frames)
@@ -75,26 +84,47 @@ double LoadingProgress::update(int loaded, int total, bool is_fly_loading, bool 
 	}
 
 	String status_text;
+	int phase;
+	double phase_progress;
+	const double now_msec = static_cast<double>(Time::get_singleton()->get_ticks_msec());
 	if (!scenery_ready)
 	{
 		status_text = "Loading scenery... (" + String::num_int64(loaded) + "/" + String::num_int64(total) + " tiles)";
+		phase = PHASE_SCENERY;
+		phase_progress = p_scenery;
 	}
 	else if (terrain_init_pending)
 	{
 		status_text = "Initialising flight model...";
+		phase = PHASE_FDM_INIT;
+		phase_progress = 0.0; // set below from the time in this phase
 	}
 	else if (cooldown_pending > 0)
 	{
 		status_text = "Stabilizing aircraft...";
+		phase = PHASE_STABILIZE;
+		phase_progress = p_cooldown;
 	}
 	else
 	{
 		status_text = "Ready";
+		phase = PHASE_READY;
+		phase_progress = 1.0;
+	}
+	if (phase != _phase)
+	{
+		_phase = phase;
+		_phase_start_msec = now_msec;
+	}
+	if (phase == PHASE_FDM_INIT)
+	{
+		phase_progress = std::min((now_msec - _phase_start_msec) / 12000.0, 0.95);
 	}
 
 	bool complete = scenery_ready && !terrain_init_pending && cooldown_pending == 0;
 
 	_progress = progress;
+	_phase_progress = std::max(0.0, std::min(phase_progress, 1.0));
 	_status_text = status_text;
 	_complete = complete;
 
@@ -109,6 +139,16 @@ String LoadingProgress::get_status_text() const
 bool LoadingProgress::is_complete() const
 {
 	return _complete;
+}
+
+double LoadingProgress::get_phase_progress() const
+{
+	return _phase_progress;
+}
+
+int LoadingProgress::get_phase() const
+{
+	return _phase;
 }
 
 void LoadingProgress::set_scenery_weight(double weight)

@@ -220,7 +220,8 @@ func _test_screen() -> void:
 	var titles := PackedStringArray()
 	for i in range(tabs.get_tab_count()):
 		titles.append(tabs.get_tab_title(i))
-	check(titles == PackedStringArray(["Scenery", "Downloads", "Graphics", "World", "Weather", "Map", "Sound", "Realism", "Joystick"]), "9 subject tabs: %s" % [titles])
+	check(titles == PackedStringArray(["Aircraft", "Scenery", "Downloads", "Graphics", "World", "Weather", "Map", "Sound", "Realism", "Joystick"]), "10 subject tabs: %s" % [titles])
+	check(_find_script(screen, "aircraft_settings_panel.gd") != null, "Aircraft tab hosts aircraft_settings_panel.gd")
 
 	# GDScript panels mounted as tabs.
 	check(_find_first(screen, "SceneryDownloaderPanel") != null or _find_script(screen, "scenery_downloader.gd") != null, "Downloads tab hosts scenery_downloader.gd")
@@ -231,9 +232,9 @@ func _test_screen() -> void:
 	screen.show_settings()
 	check(screen.visible, "show_settings() makes it visible")
 	var sound_sliders: Array = []
-	_collect(tabs.get_child(6), "HSlider", sound_sliders)   # Sound tab
+	_collect(tabs.get_child(7), "HSlider", sound_sliders)   # Sound tab
 	var world_sliders: Array = []
-	_collect(tabs.get_child(3), "HSlider", world_sliders)   # World tab
+	_collect(tabs.get_child(4), "HSlider", world_sliders)   # World tab
 	check(sound_sliders.size() == 4, "Sound tab has 4 sliders (got %d)" % sound_sliders.size())
 	check(world_sliders.size() == 1, "World tab has the time slider (got %d)" % world_sliders.size())
 	if sound_sliders.size() == 4 and world_sliders.size() == 1:
@@ -244,7 +245,7 @@ func _test_screen() -> void:
 		check(int(store.get_setting("master_volume")) == 60, "commit() reads slider back into the store")
 		# Dragging the time slider switches the system clock off.
 		var checks: Array = []
-		_collect(tabs.get_child(3), "CheckBox", checks)
+		_collect(tabs.get_child(4), "CheckBox", checks)
 		var sys_clock: CheckBox = null
 		for c in checks:
 			if c.get_parent().get_child(0) is Label and c.get_parent().get_child(0).text == "Use System Clock:":
@@ -259,7 +260,7 @@ func _test_screen() -> void:
 			check(int(store.get_setting("time_of_day_min")) == 600 and not bool(store.get_setting("use_system_time")), "time slider + system clock committed")
 
 	# Weather tab: layer table round trip (add / edit / remove).
-	var weather_tab: Control = tabs.get_child(4)
+	var weather_tab: Control = tabs.get_child(5)
 	var w_spins: Array = []
 	_collect(weather_tab, "SpinBox", w_spins)
 	check(w_spins.size() == 4, "Weather tab shows one default layer (4 spin boxes, got %d)" % w_spins.size())

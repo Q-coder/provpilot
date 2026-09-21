@@ -59,6 +59,8 @@ namespace jsbgodot
         void set_live_weather(const Array &layers, const String &status);
         void clear_live_weather();
         Ref<SettingsStore> get_store() const;
+        // The Aircraft tab panel (aircraft_settings_panel.gd), or null.
+        Node *get_aircraft_panel() const;
         Variant get_setting(const String &key) const;
         // Re-push store values into every control (after external changes).
         void refresh();
@@ -161,6 +163,7 @@ namespace jsbgodot
         String live_weather_status;
         bool _live_weather_shown() const;
         Node *joystick_panel = nullptr;
+        Node *aircraft_panel = nullptr;
         Node *downloader_panel = nullptr;
         Node *area_dialog = nullptr;    // live "Add Area..." FileDialog, if any
         int selected_area_idx = -1;
@@ -204,6 +207,8 @@ namespace jsbgodot
         Row *_find_row(const String &key);
         Node *_joystick_config() const;
         void _refresh_joystick_panel();
+        void _build_aircraft_tab();
+        void _refresh_aircraft_panel();
     };
 
 } // namespace jsbgodot

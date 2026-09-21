@@ -33,6 +33,7 @@ var _layers: Array = []
 var _meshes: Array = []          # MeshInstance3D per layer with cloud_type > 0
 var _wind: Array = []            # Vector2 drift (m/s, local x=west... converted) per mesh
 var _offsets: Array = []         # accumulated Vector2 per mesh
+var _mids: Array = []            # layer mid altitude (m) per mesh, for draw order
 
 
 func _ready() -> void:
@@ -79,6 +80,7 @@ func set_layers(layers: Array) -> void:
 	_meshes.clear()
 	_wind.clear()
 	_offsets.clear()
+	_mids.clear()
 	for l in _layers:
 		var ct := int(l.get("cloud_type", 0))
 		var oktas := int(l.get("coverage_oktas", 0))
@@ -119,6 +121,11 @@ func set_layers(layers: Array) -> void:
 		mat.set_shader_parameter("planet_radius", PLANET_RADIUS)
 		# Draw after every other transparent surface (water, glass): those
 		# sort by distance and would otherwise blend over the cloud volume.
+		# The layers' order among themselves is set per frame in update():
+		# Godot sorts transparent meshes by the depth of their AABB centre,
+		# and every layer's centre sits directly under the camera, so with a
+		# level camera the depths tie and a low layer could draw over a
+		# high one when seen from above.
 		mat.render_priority = 100
 		mi.material_override = mat
 		mi.extra_cull_margin = 16384.0
@@ -132,7 +139,22 @@ func set_layers(layers: Array) -> void:
 		var spd := float(l.get("wind_speed_kts", 0.0)) * 0.514444
 		_wind.append(Vector2(spd * sin(dir), -spd * cos(dir)))  # (west, north) components
 		_offsets.append(Vector2.ZERO)
+		_mids.append((base + top) * 0.5)
 	_apply_quality()
+
+
+## Painter's order between the layers: the layer farthest from the camera
+## altitude draws first, the nearest last. Layers on opposite sides of the
+## camera never overlap on screen, so only the same-side order matters.
+func _apply_draw_order(cam_alt: float) -> void:
+	var order: Array = range(_meshes.size())
+	order.sort_custom(func(a: int, b: int) -> bool:
+		return absf(cam_alt - _mids[a]) > absf(cam_alt - _mids[b]))
+	for rank in range(order.size()):
+		var mat: ShaderMaterial = _meshes[order[rank]].material_override
+		var pri := 100 + rank
+		if mat.render_priority != pri:
+			mat.render_priority = pri
 
 
 func _apply_quality() -> void:
@@ -160,6 +182,7 @@ func update(cam: Camera3D, sun_dir_world: Vector3, sun_color: Color, sun_energy:
 	# mapped onto the frame's axes (x = west, z = north).
 	var lv: Vector2 = Geo.wgs84_to_lv95(g.x, g.y)
 	var world_offset := Vector2(-lv.x, lv.y)
+	_apply_draw_order(cam_local.y)
 	for i in range(_meshes.size()):
 		_offsets[i] += _wind[i] * delta
 		var mat: ShaderMaterial = _meshes[i].material_override

@@ -10,6 +10,7 @@
 #include <godot_cpp/classes/input_event_joypad_button.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/vector3.hpp>
+#include <godot_cpp/variant/callable.hpp>
 #include <vector>
 
 using namespace godot;
@@ -123,6 +124,13 @@ namespace jsbgodot
         // false = retract (cmd 0.0). get_gear_pos returns the FDM's actual
         // 0..1 position (for drag + visual animation); get_gear_cmd the command.
         void set_gear_down(bool down);
+        // Nose-wheel steering range (design: A-10 NWS engage, Ctrl+W).
+        // JSBSim's <max_steer> is the LIMITED range (the value in the FDM
+        // XML); FULL scales the steer command by full/limited (JSBSim does
+        // not clamp fcs/steer-cmd-norm). full <= limited disables the toggle.
+        void set_nose_steer_range(double limited_deg, double full_deg);
+        void set_nose_steer_full(bool full);
+        bool get_nose_steer_full() const;
         bool get_gear_down() const;
         float get_gear_pos() const;
         float get_gear_cmd() const;
@@ -139,6 +147,14 @@ namespace jsbgodot
 
         // Set terrain elevation for ground collision (meters)
         void set_terrain_elevation(double elevation_m);
+        // Terrain height (metres ASL, NaN = unknown) at a geodetic position:
+        // Callable(lat_deg, lon_deg) -> float. Installed as JSBSim's ground
+        // callback so every gear contact point sees the terrain under IT,
+        // with the local slope normal — instead of one flat plane at the
+        // CG height (aircraft stayed level on slopes and hopped when that
+        // height stepped, ENGM 2026-09-20). set_terrain_elevation() remains
+        // the fallback where the query has no data.
+        void set_ground_query(const godot::Callable &query);
         
         // Initialise JSBSim resting on the terrain (metres ASL) at the aircraft
         // node's ECEF position with a TRUE compass heading (degrees). Must be
@@ -168,6 +184,16 @@ namespace jsbgodot
         // location and basis = body-to-ECEF DCM.
         // Diagnostic: read any JSBSim property (0.0 if the FDM is not created).
         double get_property(const String &name) const;
+        // Fuel tanks (Aircraft settings tab): count, capacity and contents in lb, direct fill.
+        int get_tank_count() const;
+        double get_tank_capacity_lbs(int index) const;
+        double get_tank_contents_lbs(int index) const;
+        void set_tank_contents_lbs(int index, double lbs);
+        // Centre of gravity: {cg_x_in, cg_y_in, cg_z_in, weight_lbs, mac_ft, aero_rp_x_in, pct_mac}
+        // pct_mac estimates the aerodynamic centre at 25 % MAC (LEMAC = rp - 0.25 * MAC).
+        Dictionary get_cg_info() const;
+        // Generic FDM property write (e.g. fcs/speedbrake-cmd-norm from a key).
+        void set_property(const String &name, double value);
         // Attitude readouts (degrees): JSBSim theta / phi.
         double get_pitch_deg() const;
         double get_roll_deg() const;
@@ -213,6 +239,11 @@ namespace jsbgodot
         bool has_last_good_transform = false;
         double last_terrain_m = 0.0;
         int64_t last_nan_reset_msec = 0;
+        godot::Callable ground_query;
+        double nose_steer_limited_deg = 0.0;
+        double nose_steer_full_deg = 0.0;
+        bool nose_steer_full = false;
+        void install_ground_callback();
 
         struct WeatherLayer
         {

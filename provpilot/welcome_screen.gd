@@ -448,6 +448,18 @@ func _populate_aircraft_list() -> void:
 		_on_aircraft_selected(0)
 
 
+## The aircraft currently highlighted in the list (Settings → Aircraft tab).
+func get_selected_aircraft_id() -> String:
+	return AIRCRAFT[_selected_aircraft_idx]["id"] if _selected_aircraft_idx >= 0 and _selected_aircraft_idx < AIRCRAFT.size() else "c172p"
+
+
+static func aircraft_label(id: String) -> String:
+	for a in AIRCRAFT:
+		if a["id"] == id:
+			return a["label"]
+	return id
+
+
 func _on_aircraft_selected(index: int) -> void:
 	_selected_aircraft_idx = index
 	if index >= 0 and index < AIRCRAFT.size():

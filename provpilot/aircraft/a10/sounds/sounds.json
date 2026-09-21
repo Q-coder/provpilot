@@ -1,0 +1,3175 @@
+{
+ "source": "FlightGear A-10 Aircraft/A-10/Sounds/A-10-sound.xml",
+ "sounds": [
+  {
+   "tag": "engine",
+   "name": "fan-outside-0",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/fan.wav",
+   "raw": {
+    "name": "fan-outside-0",
+    "path": "Aircraft/A-10/Sounds/fan.wav",
+    "mode": "looped",
+    "condition": {
+     "and": {
+      "not": {
+       "property": "sim/current-view/internal"
+      },
+      "greater-than": {
+       "property": "engines/engine/n1",
+       "value": "0"
+      }
+     }
+    },
+    "volume": {
+     "property": "/engines/engine/n1",
+     "factor": "0.010",
+     "max": "0.50"
+    },
+    "pitch": {
+     "property": "/engines/engine/n1",
+     "factor": "0.03",
+     "offset": "0.1"
+    },
+    "orientation": {
+     "x": "0",
+     "y": "0",
+     "z": "0",
+     "inner-angle": "75",
+     "outer-angle": "360",
+     "outer-gain": "0.1"
+    }
+   },
+   "override": "engine condition on engines/engine/n1",
+   "file": "fan.wav"
+  },
+  {
+   "tag": "engine",
+   "name": "fan-outside-1",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/fan2.wav",
+   "raw": {
+    "name": "fan-outside-1",
+    "path": "Aircraft/A-10/Sounds/fan2.wav",
+    "mode": "looped",
+    "condition": {
+     "and": {
+      "not": {
+       "property": "sim/current-view/internal"
+      },
+      "greater-than": {
+       "property": "engines/engine/n1",
+       "value": "0"
+      }
+     }
+    },
+    "volume": {
+     "property": "/engines/engine[0]/n1",
+     "factor": "0.010",
+     "max": "0.50"
+    },
+    "pitch": {
+     "property": "/engines/engine[0]/n1",
+     "factor": "0.03",
+     "offset": "0.1"
+    },
+    "orientation": {
+     "x": "0",
+     "y": "0",
+     "z": "0",
+     "inner-angle": "75",
+     "outer-angle": "360",
+     "outer-gain": "0.1"
+    }
+   },
+   "override": "engine condition on engines/engine/n1",
+   "file": "fan2.wav"
+  },
+  {
+   "tag": "engine",
+   "name": "whine-outside-0",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/whine.wav",
+   "raw": {
+    "name": "whine-outside-0",
+    "path": "Aircraft/A-10/Sounds/whine.wav",
+    "mode": "looped",
+    "condition": {
+     "and": {
+      "not": {
+       "property": "sim/current-view/internal"
+      },
+      "greater-than": {
+       "property": "engines/engine/n1",
+       "value": "0"
+      }
+     }
+    },
+    "volume": {
+     "property": "/engines/engine/thrust-lbs",
+     "factor": "0.00006062"
+    },
+    "pitch": {
+     "property": "/engines/engine/n1",
+     "factor": "1.0",
+     "offset": "1.0"
+    },
+    "orientation": {
+     "x": "1",
+     "y": "0",
+     "z": "0",
+     "inner-angle": "75",
+     "outer-angle": "180",
+     "outer-gain": "0.04"
+    }
+   },
+   "override": "engine condition on engines/engine/n1",
+   "file": "whine.wav"
+  },
+  {
+   "tag": "engine",
+   "name": "whine-outside-2",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/whine.wav",
+   "raw": {
+    "name": "whine-outside-2",
+    "path": "Aircraft/A-10/Sounds/whine.wav",
+    "mode": "looped",
+    "condition": {
+     "and": {
+      "not": {
+       "property": "sim/current-view/internal"
+      },
+      "greater-than": {
+       "property": "engines/engine[1]/n1",
+       "value": "0"
+      }
+     }
+    },
+    "volume": {
+     "property": "/engines/engine[1]/thrust_lb",
+     "factor": "0.00006062"
+    },
+    "pitch": {
+     "property": "/engines/engine[1]/n1",
+     "factor": "1.0",
+     "offset": "1.0"
+    },
+    "orientation": {
+     "x": "1",
+     "y": "0",
+     "z": "0",
+     "inner-angle": "75",
+     "outer-angle": "180",
+     "outer-gain": "0.04"
+    }
+   },
+   "override": "engine condition on engines/engine[1]/n1",
+   "file": "whine.wav"
+  },
+  {
+   "tag": "engine",
+   "name": "whine-outside-3",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/whine2.wav",
+   "raw": {
+    "name": "whine-outside-3",
+    "path": "Aircraft/A-10/Sounds/whine2.wav",
+    "mode": "looped",
+    "condition": {
+     "and": {
+      "not": {
+       "property": "sim/current-view/internal"
+      },
+      "greater-than": {
+       "property": "engines/engine/n1",
+       "value": "0"
+      }
+     }
+    },
+    "volume": {
+     "property": "/engines/engine/thrust_lb",
+     "factor": "0.00005062"
+    },
+    "pitch": {
+     "property": "/engines/engine/n1",
+     "factor": "1.0",
+     "offset": "1.0"
+    },
+    "orientation": {
+     "x": "1",
+     "y": "0",
+     "z": "0",
+     "inner-angle": "75",
+     "outer-angle": "180",
+     "outer-gain": "0.04"
+    }
+   },
+   "override": "engine condition on engines/engine/n1",
+   "file": "whine2.wav"
+  },
+  {
+   "tag": "engine",
+   "name": "whine-outside-4",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/whine2.wav",
+   "raw": {
+    "name": "whine-outside-4",
+    "path": "Aircraft/A-10/Sounds/whine2.wav",
+    "mode": "looped",
+    "condition": {
+     "and": {
+      "not": {
+       "property": "sim/current-view/internal"
+      },
+      "greater-than": {
+       "property": "engines/engine[1]/n1",
+       "value": "0"
+      }
+     }
+    },
+    "volume": {
+     "property": "/engines/engine[1]/thrust_lb",
+     "factor": "0.00005062"
+    },
+    "pitch": {
+     "property": "/engines/engine[1]/n1",
+     "factor": "1.0",
+     "offset": "1.0"
+    },
+    "orientation": {
+     "x": "1",
+     "y": "0",
+     "z": "0",
+     "inner-angle": "75",
+     "outer-angle": "180",
+     "outer-gain": "0.04"
+    }
+   },
+   "override": "engine condition on engines/engine[1]/n1",
+   "file": "whine2.wav"
+  },
+  {
+   "tag": "engine",
+   "name": "whistle-outside-0",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/whistle.wav",
+   "raw": {
+    "name": "whistle-outside-0",
+    "path": "Aircraft/A-10/Sounds/whistle.wav",
+    "mode": "looped",
+    "condition": {
+     "and": {
+      "not": {
+       "property": "sim/current-view/internal"
+      },
+      "greater-than": {
+       "property": "engines/engine/n1",
+       "value": "0"
+      }
+     }
+    },
+    "volume": {
+     "property": "/engines/engine/thrust_lb",
+     "factor": "0.00005062"
+    },
+    "pitch": {
+     "property": "/engines/engine/n1",
+     "factor": "0.1",
+     "offset": "1.0"
+    },
+    "orientation": {
+     "x": "1",
+     "y": "0",
+     "z": "0",
+     "inner-angle": "75",
+     "outer-angle": "180",
+     "outer-gain": "0.05"
+    }
+   },
+   "override": "engine condition on engines/engine/n1",
+   "file": "whistle.wav"
+  },
+  {
+   "tag": "engine",
+   "name": "whistle-outside-1",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/whistle.wav",
+   "raw": {
+    "name": "whistle-outside-1",
+    "path": "Aircraft/A-10/Sounds/whistle.wav",
+    "mode": "looped",
+    "condition": {
+     "and": {
+      "not": {
+       "property": "sim/current-view/internal"
+      },
+      "greater-than": {
+       "property": "engines/engine[1]/n1",
+       "value": "0"
+      }
+     }
+    },
+    "volume": {
+     "property": "/engines/engine[1]/thrust_lb",
+     "factor": "0.00005062"
+    },
+    "pitch": {
+     "property": "/engines/engine[1]/n1",
+     "factor": "0.1",
+     "offset": "1.0"
+    },
+    "orientation": {
+     "x": "1",
+     "y": "0",
+     "z": "0",
+     "inner-angle": "75",
+     "outer-angle": "180",
+     "outer-gain": "0.05"
+    }
+   },
+   "override": "engine condition on engines/engine[1]/n1",
+   "file": "whistle.wav"
+  },
+  {
+   "tag": "engine",
+   "name": "jet-outside-0",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/jet.wav",
+   "raw": {
+    "name": "jet-outside-0",
+    "path": "Aircraft/A-10/Sounds/jet.wav",
+    "mode": "looped",
+    "condition": {
+     "and": {
+      "not": {
+       "property": "sim/current-view/internal"
+      },
+      "greater-than": {
+       "property": "engines/engine/n1",
+       "value": "0"
+      }
+     }
+    },
+    "volume": {
+     "property": "/engines/engine/thrust_lb",
+     "factor": "0.00009062"
+    },
+    "pitch": {
+     "property": "/engines/engine/n1",
+     "factor": "0.1",
+     "offset": "0.6"
+    },
+    "orientation": {
+     "x": "1",
+     "y": "0",
+     "z": "1",
+     "inner-angle": "75",
+     "outer-angle": "160",
+     "outer-gain": "0.3"
+    }
+   },
+   "override": "engine condition on engines/engine/n1",
+   "file": "jet.wav"
+  },
+  {
+   "tag": "engine",
+   "name": "jet-outside-1",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/jet.wav",
+   "raw": {
+    "name": "jet-outside-1",
+    "path": "Aircraft/A-10/Sounds/jet.wav",
+    "mode": "looped",
+    "condition": {
+     "and": {
+      "not": {
+       "property": "sim/current-view/internal"
+      },
+      "greater-than": {
+       "property": "engines/engine[1]/n1",
+       "value": "0"
+      }
+     }
+    },
+    "volume": {
+     "property": "/engines/engine[1]/thrust_lb",
+     "factor": "0.00009062"
+    },
+    "pitch": {
+     "property": "/engines/engine[1]/n1",
+     "factor": "0.1",
+     "offset": "0.6"
+    },
+    "orientation": {
+     "x": "1",
+     "y": "0",
+     "z": "1",
+     "inner-angle": "75",
+     "outer-angle": "160",
+     "outer-gain": "0.3"
+    }
+   },
+   "override": "engine condition on engines/engine[1]/n1",
+   "file": "jet.wav"
+  },
+  {
+   "tag": "engine",
+   "name": "Engine 1 sound 1 internal",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/fan3.wav",
+   "raw": {
+    "name": "Engine 1 sound 1 internal",
+    "path": "Aircraft/A-10/Sounds/fan3.wav",
+    "mode": "looped",
+    "condition": {
+     "and": {
+      "property": "sim/current-view/internal",
+      "greater-than": {
+       "property": "engines/engine/n1",
+       "value": "0"
+      }
+     }
+    },
+    "volume": {
+     "property": "engines/engine/n1",
+     "offset": "0",
+     "factor": "0.02",
+     "max": "0.50"
+    },
+    "pitch": {
+     "property": "engines/engine/n1",
+     "offset": "0.5",
+     "factor": "0.005"
+    }
+   },
+   "override": "engine condition on engines/engine/n1",
+   "file": "fan3.wav"
+  },
+  {
+   "tag": "engine",
+   "name": "Engine 2 sound 1 internal",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/fan3.wav",
+   "raw": {
+    "name": "Engine 2 sound 1 internal",
+    "path": "Aircraft/A-10/Sounds/fan3.wav",
+    "mode": "looped",
+    "condition": {
+     "and": {
+      "property": "sim/current-view/internal",
+      "greater-than": {
+       "property": "engines/engine[1]/n1",
+       "value": "0"
+      }
+     }
+    },
+    "volume": {
+     "property": "engines/engine[1]/n1",
+     "offset": "0",
+     "factor": "1",
+     "max": "0.50"
+    },
+    "pitch": {
+     "property": "engines/engine[1]/n1",
+     "offset": "0.5",
+     "factor": "0.005"
+    }
+   },
+   "override": "engine condition on engines/engine[1]/n1",
+   "file": "fan3.wav"
+  },
+  {
+   "tag": "apu-rpm",
+   "name": "apu-rpm",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/fan3.wav",
+   "raw": {
+    "name": "apu-rpm",
+    "path": "Aircraft/A-10/Sounds/fan3.wav",
+    "mode": "looped",
+    "condition": {
+     "equals": {
+      "property": "sim/current-view/view-number",
+      "value": "0"
+     },
+     "greater-than": {
+      "property": "sim/model/A-10/systems/apu/rpm-norm",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "property": "sim/model/A-10/systems/apu/rpm-norm",
+     "factor": "0.5",
+     "offset": "0.015",
+     "max": "0.50"
+    },
+    "pitch": {
+     "property": "sim/model/A-10/systems/apu/rpm-norm",
+     "factor": "0.5",
+     "offset": "0.005"
+    }
+   },
+   "file": "fan3.wav"
+  },
+  {
+   "tag": "rumble",
+   "name": "rumble",
+   "mode": "looped",
+   "path": "Sounds/rumble.wav",
+   "raw": {
+    "name": "rumble",
+    "mode": "looped",
+    "path": "Sounds/rumble.wav",
+    "condition": {
+     "property": "gear/gear[0]/wow"
+    },
+    "volume": {
+     "property": "velocities/groundspeed-kt",
+     "type": "log",
+     "factor": "0.07"
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "rumble",
+   "name": "rumble",
+   "mode": "looped",
+   "path": "Sounds/rumble.wav",
+   "raw": {
+    "name": "rumble",
+    "mode": "looped",
+    "path": "Sounds/rumble.wav",
+    "condition": {
+     "property": "gear/gear[1]/wow"
+    },
+    "volume": {
+     "property": "velocities/groundspeed-kt",
+     "type": "log",
+     "factor": "0.07"
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "rumble",
+   "name": "rumble",
+   "mode": "looped",
+   "path": "Sounds/rumble.wav",
+   "raw": {
+    "name": "rumble",
+    "mode": "looped",
+    "path": "Sounds/rumble.wav",
+    "condition": {
+     "property": "gear/gear[2]/wow"
+    },
+    "volume": {
+     "property": "velocities/groundspeed-kt",
+     "type": "log",
+     "factor": "0.07"
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "gear",
+   "name": "gear",
+   "mode": "in-transit",
+   "path": "Sounds/gear.wav",
+   "raw": {
+    "name": "gear",
+    "mode": "in-transit",
+    "path": "Sounds/gear.wav",
+    "property": "gear/gear[0]/position-norm",
+    "pitch": {
+     "internal": "dt_play",
+     "offset": "1.0",
+     "factor": "-0.001"
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "gear",
+   "name": "gear-lock",
+   "mode": "once",
+   "path": "Sounds/gear-lck.wav",
+   "raw": {
+    "name": "gear-lock",
+    "path": "Sounds/gear-lck.wav",
+    "condition": {
+     "equals": {
+      "property": "gear/gear[0]/position-norm",
+      "value": "0"
+     }
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "gear",
+   "name": "gear-lock",
+   "mode": "once",
+   "path": "Sounds/gear-lck.wav",
+   "raw": {
+    "name": "gear-lock",
+    "path": "Sounds/gear-lck.wav",
+    "condition": {
+     "equals": {
+      "property": "gear/gear[0]/position-norm",
+      "value": "1"
+     }
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "gear",
+   "name": "gear",
+   "mode": "in-transit",
+   "path": "Sounds/gear.wav",
+   "raw": {
+    "name": "gear",
+    "mode": "in-transit",
+    "path": "Sounds/gear.wav",
+    "property": "gear/gear[1]/position-norm",
+    "pitch": {
+     "internal": "dt_play",
+     "offset": "1.0",
+     "factor": "-0.001"
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "gear",
+   "name": "gear-lock",
+   "mode": "once",
+   "path": "Sounds/gear-lck.wav",
+   "raw": {
+    "name": "gear-lock",
+    "path": "Sounds/gear-lck.wav",
+    "condition": {
+     "equals": {
+      "property": "gear/gear[1]/position-norm",
+      "value": "0"
+     }
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "gear",
+   "name": "gear-lock",
+   "mode": "once",
+   "path": "Sounds/gear-lck.wav",
+   "raw": {
+    "name": "gear-lock",
+    "path": "Sounds/gear-lck.wav",
+    "condition": {
+     "equals": {
+      "property": "gear/gear[1]/position-norm",
+      "value": "1"
+     }
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "gear",
+   "name": "gear",
+   "mode": "in-transit",
+   "path": "Sounds/gear.wav",
+   "raw": {
+    "name": "gear",
+    "mode": "in-transit",
+    "path": "Sounds/gear.wav",
+    "property": "gear/gear[2]/position-norm",
+    "pitch": {
+     "internal": "dt_play",
+     "offset": "1.0",
+     "factor": "-0.001"
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "gear",
+   "name": "gear-lock",
+   "mode": "once",
+   "path": "Sounds/gear-lck.wav",
+   "raw": {
+    "name": "gear-lock",
+    "path": "Sounds/gear-lck.wav",
+    "condition": {
+     "equals": {
+      "property": "gear/gear[2]/position-norm",
+      "value": "0"
+     }
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "gear",
+   "name": "gear-lock",
+   "mode": "once",
+   "path": "Sounds/gear-lck.wav",
+   "raw": {
+    "name": "gear-lock",
+    "path": "Sounds/gear-lck.wav",
+    "condition": {
+     "equals": {
+      "property": "gear/gear[2]/position-norm",
+      "value": "1"
+     }
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "squeal",
+   "name": "squeal",
+   "mode": "once",
+   "path": "Sounds/squeal.wav",
+   "raw": {
+    "name": "squeal",
+    "path": "Sounds/squeal.wav",
+    "condition": {
+     "property": "gear/gear[0]/wow"
+    },
+    "volume": [
+     {
+      "property": "velocities/speed-down-fps",
+      "factor": "0.05"
+     },
+     {
+      "property": "velocities/groundspeed-kt",
+      "factor": "0.01"
+     },
+     {
+      "internal": "dt_stop",
+      "factor": "0.05",
+      "max": "1.0"
+     }
+    ],
+    "pitch": {
+     "property": "velocities/groundspeed-kt",
+     "factor": "0.0025",
+     "offset": "1.2"
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "squeal",
+   "name": "squeal",
+   "mode": "once",
+   "path": "Sounds/squeal.wav",
+   "raw": {
+    "name": "squeal",
+    "path": "Sounds/squeal.wav",
+    "condition": {
+     "property": "gear/gear[1]/wow"
+    },
+    "volume": [
+     {
+      "property": "velocities/speed-down-fps",
+      "factor": "0.05"
+     },
+     {
+      "property": "velocities/groundspeed-kt",
+      "factor": "0.01"
+     },
+     {
+      "internal": "dt_stop",
+      "factor": "0.05",
+      "max": "1.0"
+     }
+    ],
+    "pitch": {
+     "property": "velocities/airspeed-kt",
+     "factor": "0.0025",
+     "offset": "1.2"
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "squeal",
+   "name": "squeal",
+   "mode": "once",
+   "path": "Sounds/squeal.wav",
+   "raw": {
+    "name": "squeal",
+    "path": "Sounds/squeal.wav",
+    "condition": {
+     "property": "gear/gear[2]/wow"
+    },
+    "volume": [
+     {
+      "property": "velocities/speed-down-fps",
+      "factor": "0.05"
+     },
+     {
+      "property": "velocities/groundspeed-kt",
+      "factor": "0.01"
+     },
+     {
+      "internal": "dt_stop",
+      "factor": "0.05",
+      "max": "1.0"
+     }
+    ],
+    "pitch": {
+     "property": "velocities/groundspeed-kt",
+     "factor": "0.0025",
+     "offset": "1.2"
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "flap",
+   "name": "flaps",
+   "mode": "in-transit",
+   "path": "Sounds/flaps.wav",
+   "raw": {
+    "name": "flaps",
+    "mode": "in-transit",
+    "path": "Sounds/flaps.wav",
+    "property": "surface-positions/left-flap-pos-norm",
+    "volume": {
+     "factor": "0.15"
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "flap",
+   "name": "flaps",
+   "mode": "in-transit",
+   "path": "Sounds/flaps.wav",
+   "raw": {
+    "name": "flaps",
+    "mode": "in-transit",
+    "path": "Sounds/flaps.wav",
+    "property": "surface-positions/right-flap-pos-norm",
+    "volume": {
+     "factor": "0.25"
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "spoiler",
+   "name": "spoilers",
+   "mode": "in-transit",
+   "path": "Sounds/flaps.wav",
+   "raw": {
+    "name": "spoilers",
+    "mode": "in-transit",
+    "path": "Sounds/flaps.wav",
+    "property": "surface-positions/left-spoiler-pos-norm",
+    "volume": {
+     "factor": "0.15"
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "spoiler",
+   "name": "spoilers",
+   "mode": "in-transit",
+   "path": "Sounds/flaps.wav",
+   "raw": {
+    "name": "spoilers",
+    "mode": "in-transit",
+    "path": "Sounds/flaps.wav",
+    "property": "surface-positions/right-spoiler-pos-norm",
+    "volume": {
+     "factor": "0.25"
+    }
+   },
+   "file": ""
+  },
+  {
+   "tag": "wind",
+   "name": "wind",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/wind.wav",
+   "raw": {
+    "name": "wind",
+    "mode": "looped",
+    "path": "Aircraft/A-10/Sounds/wind.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/current-view/view-number",
+      "value": "0"
+     },
+     "greater-than": {
+      "property": "canopy/position-norm",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "property": "velocities/airspeed-kt",
+     "factor": "0.001"
+    }
+   },
+   "file": "wind.wav"
+  },
+  {
+   "tag": "canopy",
+   "name": "canopy",
+   "mode": "in-transit",
+   "path": "Aircraft/A-10/Sounds/canopy-trans.wav",
+   "raw": {
+    "name": "canopy",
+    "mode": "in-transit",
+    "path": "Aircraft/A-10/Sounds/canopy-trans.wav",
+    "property": "canopy/position-norm",
+    "volume": {
+     "factor": "0.1"
+    }
+   },
+   "file": "canopy-trans.wav"
+  },
+  {
+   "tag": "canopy-close",
+   "name": "canopy-close2",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/canopy-close2.wav",
+   "raw": {
+    "name": "canopy-close2",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/canopy-close2.wav",
+    "condition": {
+     "less-than-equals": {
+      "property": "canopy/position-norm",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "factor": "0.09"
+    }
+   },
+   "file": "canopy-close2.wav"
+  },
+  {
+   "tag": "pre-stall",
+   "name": "pre-stall",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/stall-600-continue.wav",
+   "raw": {
+    "name": "pre-stall",
+    "mode": "looped",
+    "path": "Aircraft/A-10/Sounds/stall-600-continue.wav",
+    "condition": {
+     "greater-than": [
+      {
+       "property": "systems/electrical/outputs/aoa-indexer",
+       "value": "23"
+      },
+      {
+       "property": "orientation/alpha-deg",
+       "value": "10"
+      },
+      {
+       "property": "instrumentation/airspeed-indicator/indicated-speed-kt",
+       "value": "10"
+      }
+     ],
+     "less-than-equals": {
+      "property": "orientation/alpha-deg",
+      "value": "13.5"
+     }
+    },
+    "volume": {
+     "value": "1"
+    }
+   },
+   "file": "stall-600-continue.wav"
+  },
+  {
+   "tag": "stall",
+   "name": "stall",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/stall-600-chopped.wav",
+   "raw": {
+    "name": "stall",
+    "mode": "looped",
+    "path": "Aircraft/A-10/Sounds/stall-600-chopped.wav",
+    "condition": {
+     "greater-than": [
+      {
+       "property": "systems/electrical/outputs/aoa-indexer",
+       "value": "23"
+      },
+      {
+       "property": "orientation/alpha-deg",
+       "value": "13.5"
+      },
+      {
+       "property": "instrumentation/airspeed-indicator/indicated-speed-kt",
+       "value": "10"
+      }
+     ]
+    },
+    "volume": {
+     "value": "1"
+    }
+   },
+   "file": "stall-600-chopped.wav"
+  },
+  {
+   "tag": "alt-warning",
+   "name": "alt-warning",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/altitude.wav",
+   "raw": {
+    "name": "alt-warning",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/altitude.wav",
+    "condition": {
+     "property": "sim/model/A-10/instrumentation/warnings/audio-alt",
+     "equals": {
+      "property": "sim/current-view/view-number",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "property": "sim/model/A-10/instrumentation/warnings/audio-alt-volume"
+    }
+   },
+   "file": "altitude.wav"
+  },
+  {
+   "tag": "cannon",
+   "name": "cannon",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/gau-8.wav",
+   "raw": {
+    "name": "cannon",
+    "path": "Aircraft/A-10/Sounds/gau-8.wav",
+    "condition": {
+     "property": [
+      "controls/armament/trigger-gun",
+      "payload/armament/fire-control/serviceable"
+     ],
+     "greater-than": {
+      "property": "ai/submodels/submodel[1]/count",
+      "value": "0"
+     }
+    },
+    "mode": "looped",
+    "position": {
+     "x": "0",
+     "y": "0",
+     "z": "0"
+    },
+    "volume": {
+     "factor": "0.5"
+    }
+   },
+   "file": "gau-8.wav"
+  },
+  {
+   "tag": "apu-switch-start",
+   "name": "apu-switch-start",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "apu-switch-start",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "property": "controls/APU/off-start-switch"
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "apu-switch-stop",
+   "name": "apu-switch-stop",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "apu-switch-stop",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "not": {
+      "property": "controls/APU/off-start-switch"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "L-engine-operation-switch-start",
+   "name": "L-engine-operation-switch-start",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "L-engine-operation-switch-start",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/controls/engines/engine[0]/starter-switch-position",
+      "value": "2"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "L-engine-operation-switch-off",
+   "name": "L-engine-operation-switch-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "L-engine-operation-switch-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/controls/engines/engine[0]/starter-switch-position",
+      "value": "1"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "L-engine-operation-switch-motor",
+   "name": "L-engine-operation-switch-motor",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "L-engine-operation-switch-motor",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/controls/engines/engine[0]/starter-switch-position",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "R-engine-operation-switch-start",
+   "name": "R-engine-operation-switch-start",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "R-engine-operation-switch-start",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/controls/engines/engine[1]/starter-switch-position",
+      "value": "2"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "R-engine-operation-switch-off",
+   "name": "R-engine-operation-switch-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "R-engine-operation-switch-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/controls/engines/engine[1]/starter-switch-position",
+      "value": "1"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "R-engine-operation-switch-motor",
+   "name": "R-engine-operation-switch-motor",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "R-engine-operation-switch-motor",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/controls/engines/engine[1]/starter-switch-position",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "ext-tanks-wing-on",
+   "name": "ext-tanks-wing-on",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "ext-tanks-wing-on",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "property": "controls/fuel/tank[4]/boost-pump[0]"
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "ext-tanks-wing-off",
+   "name": "ext-tanks-wing-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "ext-tanks-wing-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "not": {
+      "property": "controls/fuel/tank[4]/boost-pump[0]"
+     }
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "ext-tanks-fus-on",
+   "name": "ext-tanks-fus-on",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "ext-tanks-fus-on",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "property": "controls/fuel/tank[5]/boost-pump[0]"
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "ext-tanks-fus-off",
+   "name": "ext-tanks-fus-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "ext-tanks-fus-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "not": {
+      "property": "controls/fuel/tank[5]/boost-pump[0]"
+     }
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "tk-gate-open-on",
+   "name": "tk-gate-open-on",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "tk-gate-open-on",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "property": "sim/model/A-10/controls/fuel/tk-gate-switch"
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "tk-gate-open-off",
+   "name": "tk-gate-open-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "tk-gate-open-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "not": {
+      "property": "sim/model/A-10/controls/fuel/tk-gate-switch"
+     }
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "cross-feed-sw-on",
+   "name": "cross-feed-sw-on",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "cross-feed-sw-on",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "property": "sim/model/A-10/controls/fuel/cross-feed-sw"
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "cross-feed-sw-off",
+   "name": "cross-feed-sw-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "cross-feed-sw-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "not": {
+      "property": "sim/model/A-10/controls/fuel/cross-feed-sw"
+     }
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "boost-pumps-wing-l-on",
+   "name": "boost-pumps-wing-l-on",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "boost-pumps-wing-l-on",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "property": "controls/fuel/tank[0]/boost-pump[0]"
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "boost-pumps-wing-l-off",
+   "name": "boost-pumps-wing-l-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "boost-pumps-wing-l-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "not": {
+      "property": "controls/fuel/tank[0]/boost-pump[0]"
+     }
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "boost-pumps-wing-r-on",
+   "name": "boost-pumps-wing-r-on",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "boost-pumps-wing-r-on",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "property": "controls/fuel/tank[3]/boost-pump[0]"
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "boost-pumps-wing-r-off",
+   "name": "boost-pumps-wing-r-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "boost-pumps-wing-r-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "not": {
+      "property": "controls/fuel/tank[3]/boost-pump[0]"
+     }
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "boost-pumps-main-l-on",
+   "name": "boost-pumps-main-l-on",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "boost-pumps-main-l-on",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "property": "controls/fuel/tank[1]/boost-pump[0]"
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "boost-pumps-main-l-off",
+   "name": "boost-pumps-main-l-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "boost-pumps-main-l-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "not": {
+      "property": "controls/fuel/tank[1]/boost-pump[0]"
+     }
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "boost-pumps-main-r-on",
+   "name": "boost-pumps-main-r-on",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "boost-pumps-main-r-on",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "property": "controls/fuel/tank[2]/boost-pump[0]"
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "boost-pumps-main-r-off",
+   "name": "boost-pumps-main-r-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "boost-pumps-main-r-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "not": {
+      "property": "controls/fuel/tank[2]/boost-pump[0]"
+     }
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "fill-dis-wing-l-on",
+   "name": "fill-dis-wing-l-on",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click2.wav",
+   "raw": {
+    "name": "fill-dis-wing-l-on",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click2.wav",
+    "condition": {
+     "property": "controls/fuel/tank[0]/fill-dis"
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click2.wav"
+  },
+  {
+   "tag": "fill-dis-wing-l-off",
+   "name": "fill-dis-wing-l-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click2.wav",
+   "raw": {
+    "name": "fill-dis-wing-l-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click2.wav",
+    "condition": {
+     "not": {
+      "property": "controls/fuel/tank[0]/fill-dis"
+     }
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click2.wav"
+  },
+  {
+   "tag": "fill-dis-wing-r-on",
+   "name": "fill-dis-wing-r-on",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click2.wav",
+   "raw": {
+    "name": "fill-dis-wing-r-on",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click2.wav",
+    "condition": {
+     "property": "controls/fuel/tank[3]/fill-dis"
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click2.wav"
+  },
+  {
+   "tag": "fill-dis-wing-r-off",
+   "name": "fill-dis-wing-r-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click2.wav",
+   "raw": {
+    "name": "fill-dis-wing-r-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click2.wav",
+    "condition": {
+     "not": {
+      "property": "controls/fuel/tank[3]/fill-dis"
+     }
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click2.wav"
+  },
+  {
+   "tag": "fill-dis-main-l-on",
+   "name": "fill-dis-main-l-on",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click2.wav",
+   "raw": {
+    "name": "fill-dis-main-l-on",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click2.wav",
+    "condition": {
+     "property": "controls/fuel/tank[1]/fill-dis"
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click2.wav"
+  },
+  {
+   "tag": "fill-dis-main-l-off",
+   "name": "fill-dis-main-l-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click2.wav",
+   "raw": {
+    "name": "fill-dis-main-l-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click2.wav",
+    "condition": {
+     "not": {
+      "property": "controls/fuel/tank[1]/fill-dis"
+     }
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click2.wav"
+  },
+  {
+   "tag": "fill-dis-main-r-on",
+   "name": "fill-dis-main-r-on",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click2.wav",
+   "raw": {
+    "name": "fill-dis-main-r-on",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click2.wav",
+    "condition": {
+     "property": "controls/fuel/tank[2]/fill-dis"
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click2.wav"
+  },
+  {
+   "tag": "fill-dis-main-r-off",
+   "name": "fill-dis-main-r-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click2.wav",
+   "raw": {
+    "name": "fill-dis-main-r-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click2.wav",
+    "condition": {
+     "not": {
+      "property": "controls/fuel/tank[2]/fill-dis"
+     }
+    },
+    "volume": {
+     "factor": "0.35"
+    }
+   },
+   "file": "click2.wav"
+  },
+  {
+   "tag": "nav-selector-tacan-on",
+   "name": "nav-selector-tacan-on",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click2.wav",
+   "raw": {
+    "name": "nav-selector-tacan-on",
+    "path": "Aircraft/A-10/Sounds/click2.wav",
+    "condition": {
+     "property": "instrumentation/tacan/switch-position"
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "click2.wav"
+  },
+  {
+   "tag": "nav-selector-tacan-off",
+   "name": "nav-selector-tacan-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click2.wav",
+   "raw": {
+    "name": "nav-selector-tacan-off",
+    "path": "Aircraft/A-10/Sounds/click2.wav",
+    "condition": {
+     "not": {
+      "property": "instrumentation/tacan/switch-position"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "click2.wav"
+  },
+  {
+   "tag": "selector-hars",
+   "name": "selector-hars",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/shlock.wav",
+   "raw": {
+    "name": "selector-hars",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/shlock.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/A-10-nav/selector-hars",
+      "value": "1"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "shlock.wav"
+  },
+  {
+   "tag": "selector-vlocs",
+   "name": "selector-vlocs",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/shlock.wav",
+   "raw": {
+    "name": "selector-vlocs",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/shlock.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/A-10-nav/selector-vlocs",
+      "value": "2"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "shlock.wav"
+  },
+  {
+   "tag": "selector-tils",
+   "name": "selector-tils",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/shlock.wav",
+   "raw": {
+    "name": "selector-tils",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/shlock.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/A-10-nav/selector-tils",
+      "value": "3"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "shlock.wav"
+  },
+  {
+   "tag": "selector-crs",
+   "name": "selector-crs",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/shlock.wav",
+   "raw": {
+    "name": "selector-crs",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/shlock.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/A-10-nav/selector-crs",
+      "value": "4"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "shlock.wav"
+  },
+  {
+   "tag": "selector-man",
+   "name": "selector-man",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/shlock.wav",
+   "raw": {
+    "name": "selector-man",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/shlock.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/A-10-nav/selector-man",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "shlock.wav"
+  },
+  {
+   "tag": "selector-ils",
+   "name": "selector-ils-on",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/shlock.wav",
+   "raw": {
+    "name": "selector-ils-on",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/shlock.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/A-10-nav/selector-ils",
+      "value": "1"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "shlock.wav"
+  },
+  {
+   "tag": "selector-ils",
+   "name": "selector-ils-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/shlock.wav",
+   "raw": {
+    "name": "selector-ils-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/shlock.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/A-10-nav/selector-ils",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "shlock.wav"
+  },
+  {
+   "tag": "selector-ptr-left",
+   "name": "selector-ptr-left",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/shlock.wav",
+   "raw": {
+    "name": "selector-ptr-left",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/shlock.wav",
+    "condition": {
+     "not": {
+      "property": "sim/model/A-10/A-10-nav/selector-ptr"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "shlock.wav"
+  },
+  {
+   "tag": "selector-ptr-right",
+   "name": "selector-ptr",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/shlock.wav",
+   "raw": {
+    "name": "selector-ptr",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/shlock.wav",
+    "condition": {
+     "property": "sim/model/A-10/A-10-nav/selector-ptr"
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "shlock.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-1",
+   "name": "A-10-nav-preset-1",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-1",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "1"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-2",
+   "name": "A-10-nav-preset-2",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-2",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "2"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-3",
+   "name": "A-10-nav-preset-3",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-3",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "3"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-4",
+   "name": "A-10-nav-preset-4",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-4",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "4"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-5",
+   "name": "A-10-nav-preset-5",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-5",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "5"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-6",
+   "name": "A-10-nav-preset-6",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-6",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "6"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-7",
+   "name": "A-10-nav-preset-7",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-7",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "7"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-8",
+   "name": "A-10-nav-preset-8",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-8",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "8"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-9",
+   "name": "A-10-nav-preset-9",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-9",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "9"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-10",
+   "name": "A-10-nav-preset-10",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-10",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "10"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-11",
+   "name": "A-10-nav-preset-11",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-11",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "11"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-12",
+   "name": "A-10-nav-preset-12",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-12",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "12"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-13",
+   "name": "A-10-nav-preset-13",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-13",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "13"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-14",
+   "name": "A-10-nav-preset-14",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-14",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "14"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-15",
+   "name": "A-10-nav-preset-15",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-15",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "15"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-16",
+   "name": "A-10-nav-preset-16",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-16",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "16"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-17",
+   "name": "A-10-nav-preset-17",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-17",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "17"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-18",
+   "name": "A-10-nav-preset-18",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-18",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "18"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-19",
+   "name": "A-10-nav-preset-19",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-19",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "19"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-preset-20",
+   "name": "A-10-nav-preset-20",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/slide.wav",
+   "raw": {
+    "name": "A-10-nav-preset-20",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/slide.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/selected-preset",
+      "value": "20"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "slide.wav"
+  },
+  {
+   "tag": "A-10-nav-load-preset",
+   "name": "A-10-nav-load-preset",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/record-signal.wav",
+   "raw": {
+    "name": "A-10-nav-load-preset",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/record-signal.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/instrumentation/vhf/load-state",
+      "value": "1"
+     }
+    },
+    "volume": {
+     "factor": "0.6"
+    }
+   },
+   "file": "record-signal.wav"
+  },
+  {
+   "tag": "apu-gen-power-up",
+   "name": "apu-gen-power-up",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "apu-gen-power-up",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "property": "controls/APU/generator"
+    },
+    "volume": {
+     "factor": "0.45"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "apu-gen-power-down",
+   "name": "apu-gen-power-down",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "apu-gen-power-down",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "not": {
+      "property": "controls/APU/generator"
+     }
+    },
+    "volume": {
+     "factor": "0.45"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "battery-cockpit-switch-up",
+   "name": "battery-cockpit-switch-up",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "battery-cockpit-switch-up",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "property": "controls/electric/battery-switch"
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "battery-cockpit-switch-down",
+   "name": "battery-cockpit-switch-down",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "battery-cockpit-switch-down",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "not": {
+      "property": "controls/electric/battery-switch"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "l-ac-gen-switch-up",
+   "name": "l-ac-gen-switch-up",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "l-ac-gen-switch-up",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "property": "controls/electric/engine/generator"
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "l-ac-gen-switch-down",
+   "name": "l-ac-gen-switch-down",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "l-ac-gen-switch-down",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "not": {
+      "property": "controls/electric/engine/generator"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "r-ac-gen-switch-up",
+   "name": "r-ac-gen-switch-up",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "r-ac-gen-switch-up",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "property": "controls/electric/engine[1]/generator"
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "r-ac-gen-switch-down",
+   "name": "r-ac-gen-switch-down",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "r-ac-gen-switch-down",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "not": {
+      "property": "controls/electric/engine[1]/generator"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "inverter-switch-stby",
+   "name": "inverter-switch-stby",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "inverter-switch-stby",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/controls/switches/inverter",
+      "value": "2"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "inverter-switch-off",
+   "name": "inverter-switch-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "inverter-switch-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/controls/switches/inverter",
+      "value": "1"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "inverter-switch-test",
+   "name": "inverter-switch-test",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "inverter-switch-test",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/controls/switches/inverter",
+      "value": "00"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "RWR",
+   "name": "incoming",
+   "mode": "single",
+   "path": "Aircraft/A-10/Sounds/1000hz-Triangle.wav",
+   "raw": {
+    "name": "incoming",
+    "mode": "single",
+    "path": "Aircraft/A-10/Sounds/1000hz-Triangle.wav",
+    "condition": {
+     "or": {
+      "property": [
+       "payload/armament/MAW-active",
+       "payload/armament/MAW-semiactive"
+      ]
+     },
+     "property": "A-10/avionics/ew-mws-switch",
+     "equals": {
+      "property": "sim/current-view/view-number",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "property": "sim/model/A-10/instrumentation/warnings/audio-alt-volume"
+    }
+   },
+   "file": "1000hz-Triangle.wav"
+  },
+  {
+   "tag": "air-spike",
+   "name": "spike",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/rwr/spike.wav",
+   "raw": {
+    "name": "spike",
+    "mode": "looped",
+    "path": "Aircraft/A-10/Sounds/rwr/spike.wav",
+    "condition": {
+     "property": [
+      "payload/armament/spike",
+      "A-10/avionics/ew-rwr-switch"
+     ],
+     "equals": {
+      "property": "sim/current-view/view-number",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "property": "sim/model/A-10/instrumentation/warnings/audio-alt-volume"
+    }
+   },
+   "file": "rwr_spike.wav"
+  },
+  {
+   "tag": "new-emitter",
+   "name": "rwr-new1",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/rwr/rwr-new.wav",
+   "raw": {
+    "name": "rwr-new1",
+    "path": "Aircraft/A-10/Sounds/rwr/rwr-new.wav",
+    "mode": "once",
+    "condition": {
+     "equals": [
+      {
+       "property": "sound/rwr-new",
+       "value": "1"
+      },
+      {
+       "property": "sim/current-view/view-number",
+       "value": "0"
+      }
+     ],
+     "property": "A-10/avionics/ew-rwr-switch"
+    },
+    "volume": {
+     "property": "sim/model/A-10/instrumentation/warnings/audio-alt-volume"
+    }
+   },
+   "file": "rwr_rwr-new.wav"
+  },
+  {
+   "tag": "strobe-switch-up",
+   "name": "strobe-switch-up",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "strobe-switch-up",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "property": "controls/lighting/strobe"
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "strobe-switch-down",
+   "name": "strobe-switch-down",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "strobe-switch-down",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "not": {
+      "property": "controls/lighting/strobe"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "nav-flash-switch-flash",
+   "name": "nav-flash-switch-flash",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "nav-flash-switch-flash",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/controls/lighting/nav-lights-switch",
+      "value": "2"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "nav-flash-switch-off",
+   "name": "nav-flash-switch-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "nav-flash-switch-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/controls/lighting/nav-lights-switch",
+      "value": "1"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "nav-flash-switch-steady",
+   "name": "nav-flash-switch-steady",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "nav-flash-switch-steady",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/controls/lighting/nav-lights-switch",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "factor": "0.3"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "master-arm-switch-up",
+   "name": "master-arm-switch-up",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/shlock.wav",
+   "raw": {
+    "name": "master-arm-switch-up",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/shlock.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/weapons/master-arm-switch",
+      "value": "1"
+     }
+    },
+    "volume": {
+     "factor": "0.5"
+    }
+   },
+   "file": "shlock.wav"
+  },
+  {
+   "tag": "master-arm-switch-middle",
+   "name": "master-arm-switch-middle",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/shlock.wav",
+   "raw": {
+    "name": "master-arm-switch-middle",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/shlock.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/weapons/master-arm-switch",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "shlock.wav"
+  },
+  {
+   "tag": "master-arm-switch-down",
+   "name": "master-arm-switch-down",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/shlock.wav",
+   "raw": {
+    "name": "master-arm-switch-down",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/shlock.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/weapons/master-arm-switch",
+      "value": "-1"
+     }
+    },
+    "volume": {
+     "factor": "0.5"
+    }
+   },
+   "file": "shlock.wav"
+  },
+  {
+   "tag": "gun-rate-switch-hi",
+   "name": "gun-rate-switch-hi",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "gun-rate-switch-hi",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/weapons/gun-rate-switch",
+      "value": "1"
+     }
+    },
+    "volume": {
+     "factor": "0.5"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "gun-rate-switch-safe",
+   "name": "gun-rate-switch-safe",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click.wav",
+   "raw": {
+    "name": "gun-rate-switch-safe",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/weapons/gun-rate-switch",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "click.wav"
+  },
+  {
+   "tag": "aim9-knob-off",
+   "name": "aim9-knob-off",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click2.wav",
+   "raw": {
+    "name": "aim9-knob-off",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click2.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/weapons/dual-AIM-9/aim9-knob",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "click2.wav"
+  },
+  {
+   "tag": "aim9-knob-cool",
+   "name": "aim9-knob-cool",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click2.wav",
+   "raw": {
+    "name": "aim9-knob-cool",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click2.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/weapons/dual-AIM-9/aim9-knob",
+      "value": "1"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "click2.wav"
+  },
+  {
+   "tag": "aim9-knob-selected",
+   "name": "aim9-knob-selected",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/click2.wav",
+   "raw": {
+    "name": "aim9-knob-selected",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/click2.wav",
+    "condition": {
+     "equals": {
+      "property": "sim/model/A-10/weapons/dual-AIM-9/aim9-knob",
+      "value": "2"
+     }
+    },
+    "volume": {
+     "factor": "0.4"
+    }
+   },
+   "file": "click2.wav"
+  },
+  {
+   "tag": "lock-tone",
+   "name": "aim-9m-growl",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/aim-9-growl.wav",
+   "raw": {
+    "name": "aim-9m-growl",
+    "mode": "looped",
+    "type": "avionics",
+    "path": "Aircraft/A-10/Sounds/aim-9-growl.wav",
+    "condition": {
+     "greater-than": {
+      "property": "systems/electrical/R-AC-volts",
+      "value": "24"
+     },
+     "property": "payload/armament/aim-9m/sound-on-off"
+    },
+    "pitch": {
+     "property": "payload/armament/aim-9m/sound-volume",
+     "factor": "1.00",
+     "offset": "1.60",
+     "min": "0",
+     "max": "2"
+    },
+    "volume": [
+     {
+      "property": "payload/armament/aim-9m/sound-volume"
+     },
+     {
+      "property": "sim/current-view/internal"
+     },
+     {
+      "property": "sim/model/A-10/instrumentation/warnings/audio-alt-volume"
+     }
+    ]
+   },
+   "file": "aim-9-growl.wav"
+  },
+  {
+   "tag": "missile1",
+   "name": "missile2m",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/aim-launch.wav",
+   "raw": {
+    "name": "missile2m",
+    "path": "Aircraft/A-10/Sounds/aim-launch.wav",
+    "mode": "once",
+    "condition": {
+     "property": "payload/armament/aim-9m/sound-fire-on-off"
+    },
+    "reference-dist": "25",
+    "max-dist": "10000",
+    "position": {
+     "x": "3.15986",
+     "y": "-2.70311",
+     "z": "-0.67645"
+    },
+    "volume": {
+     "factor": "0.65",
+     "max": "1"
+    }
+   },
+   "file": "aim-launch.wav"
+  },
+  {
+   "tag": "bomb-release",
+   "name": "bomb-release0",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/bomb_release.wav",
+   "raw": {
+    "name": "bomb-release0",
+    "mode": "once",
+    "type": "avionics",
+    "path": "Aircraft/A-10/Sounds/bomb_release.wav",
+    "condition": {
+     "property": "payload/armament/mk-82/sound-fire-on-off"
+    },
+    "volume": {
+     "property": "sim/current-view/internal",
+     "factor": "1",
+     "max": "1"
+    }
+   },
+   "file": "bomb_release.wav"
+  },
+  {
+   "tag": "bomb-release",
+   "name": "bomb-release1",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/bomb_release.wav",
+   "raw": {
+    "name": "bomb-release1",
+    "mode": "once",
+    "type": "avionics",
+    "path": "Aircraft/A-10/Sounds/bomb_release.wav",
+    "condition": {
+     "property": "payload/armament/mk-82air/sound-fire-on-off"
+    },
+    "volume": {
+     "property": "sim/current-view/internal",
+     "factor": "1",
+     "max": "1"
+    }
+   },
+   "file": "bomb_release.wav"
+  },
+  {
+   "tag": "bomb-release",
+   "name": "bomb-release2",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/bomb_release.wav",
+   "raw": {
+    "name": "bomb-release2",
+    "mode": "once",
+    "type": "avionics",
+    "path": "Aircraft/A-10/Sounds/bomb_release.wav",
+    "condition": {
+     "property": "payload/armament/mk-84/sound-fire-on-off"
+    },
+    "volume": {
+     "property": "sim/current-view/internal",
+     "factor": "1",
+     "max": "1"
+    }
+   },
+   "file": "bomb_release.wav"
+  },
+  {
+   "tag": "bomb-release",
+   "name": "bomb-release3",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/bomb_release.wav",
+   "raw": {
+    "name": "bomb-release3",
+    "mode": "once",
+    "type": "avionics",
+    "path": "Aircraft/A-10/Sounds/bomb_release.wav",
+    "condition": {
+     "property": "payload/armament/cbu-87/sound-fire-on-off"
+    },
+    "volume": {
+     "property": "sim/current-view/internal",
+     "factor": "1",
+     "max": "1"
+    }
+   },
+   "file": "bomb_release.wav"
+  },
+  {
+   "tag": "flare",
+   "name": "flare-voice",
+   "mode": "once",
+   "path": "Aircraft/A-10/Sounds/flare.wav",
+   "raw": {
+    "name": "flare-voice",
+    "mode": "once",
+    "path": "Aircraft/A-10/Sounds/flare.wav",
+    "condition": {
+     "equals": {
+      "property": "ai/submodels/submodel[3]/flare-release",
+      "value": "true"
+     }
+    },
+    "volume": {
+     "factor": "5"
+    }
+   },
+   "file": "flare.wav"
+  },
+  {
+   "tag": "rain",
+   "name": "RainOutside",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/rain.wav",
+   "raw": {
+    "name": "RainOutside",
+    "mode": "looped",
+    "path": "Aircraft/A-10/Sounds/rain.wav",
+    "condition": {
+     "not": {
+      "property": "sim/current-view/internal"
+     },
+     "greater-than": {
+      "property": "/environment/rain-norm",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "property": "/environment/rain-norm",
+     "factor": "0.40"
+    }
+   },
+   "file": "rain.wav"
+  },
+  {
+   "tag": "rain",
+   "name": "RainInside",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/rain.wav",
+   "raw": {
+    "name": "RainInside",
+    "mode": "looped",
+    "path": "Aircraft/A-10/Sounds/rain.wav",
+    "condition": {
+     "property": "sim/current-view/internal",
+     "greater-than": {
+      "property": "/environment/rain-norm",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "property": "/environment/rain-norm",
+     "factor": "0.1"
+    }
+   },
+   "file": "rain.wav"
+  },
+  {
+   "tag": "rain-windshield",
+   "name": "RainWindshieldInside",
+   "mode": "looped",
+   "path": "Aircraft/A-10/Sounds/rain-windshield.wav",
+   "raw": {
+    "name": "RainWindshieldInside",
+    "mode": "looped",
+    "path": "Aircraft/A-10/Sounds/rain-windshield.wav",
+    "condition": {
+     "property": "sim/current-view/internal",
+     "greater-than": {
+      "property": "/environment/rain-norm",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "property": "velocities/airspeed-kt",
+     "factor": "0.008",
+     "min": "0.04",
+     "max": "0.44"
+    }
+   },
+   "file": "rain-windshield.wav"
+  }
+ ],
+ "missing": [
+  "Sounds/rumble.wav",
+  "Sounds/gear.wav",
+  "Sounds/gear-lck.wav",
+  "Sounds/squeal.wav",
+  "Sounds/flaps.wav"
+ ]
+}

@@ -67,6 +67,15 @@ namespace jsbgodot
         // Abort a running zoom (teleport / new flight requested mid-animation):
         // same handoff as a finished zoom, camera2 on the spot view.
         void cancel();
+        // While set, a zoom that reaches its end keeps the camera on the spot
+        // view and stays playing (STATUS_RUNNING) instead of handing over;
+        // Space then only jumps to the end. Used while the destination is
+        // still loading behind the zoom. Clearing it lets the next update()
+        // finish a zoom that is already at its end.
+        void set_hold_at_end(bool hold);
+        bool get_hold_at_end() const;
+        // True while the zoom sits at its end waiting for the hold to clear.
+        bool is_holding() const;
 
         // ── Tunables (exposed as properties so they can be set from
         // GDScript at runtime — e.g. _intro_zoom.intro_duration = 90.0 —
@@ -85,6 +94,7 @@ namespace jsbgodot
 
         bool playing = false;
         bool skip_armed = false;  // Space skip enabled once Space was released after start
+        bool hold_at_end = false;
         double elapsed = 0.0;
         Vector3 up_dir{0.0, 1.0, 0.0};    // start direction (straight up)
         Vector3 start_pos{0.0, 0.0, 0.0};

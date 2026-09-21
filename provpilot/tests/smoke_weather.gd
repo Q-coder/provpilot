@@ -20,6 +20,10 @@ func _ready() -> void:
 	var jsb = _root.jsb_node
 	if jsb == null:
 		_fail("no JSBGodot node"); _finish(); return
+	# The live METAR overrides the synthetic weather this test sets (the
+	# checks only held while the fetch failed offline) — switch it off.
+	if _root._live_weather:
+		_root._live_weather.enabled = false
 
 	# ── Part 1: sampler ────────────────────────────────────────────────────
 	jsb.set_weather([_layer(0, 1000, 270, 20, 1), _layer(2000, 4000, 180, 40, 3)], 990.0)

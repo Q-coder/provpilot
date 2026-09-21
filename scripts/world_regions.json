@@ -1,0 +1,407 @@
+{
+    "schema_version": 1,
+    "_doc": [
+        "Worldwide base-tier regions for scripts/build_world_terrain.py and",
+        "scripts/build_world_airports.py (WORLD_SCENERY_DESIGN.md §11).",
+        "select = 'country': coverage is the Natural Earth admin-0 polygon(s)",
+        "for iso_a3 (optionally clipped to bbox_wgs84) + land_margin_m;",
+        "select = 'bbox': coverage is ne_10m_land inside bbox_wgs84 (the",
+        "Fennoscandia packs; bbox_lv95 is the fixed cell-iteration window).",
+        "Every region is baked on the single LV95 (EPSG:2056) 1024 m grid at",
+        "pixels_per_tile px — see §11 for why one grid serves all of Europe.",
+        "Output: <build_root>/<id>/<subdir>/terrain/. Landmarks: [name, lat,",
+        "lon, expected_m, tolerance_m] for the verify step."
+    ],
+    "build_root": "/Volumes/Data1/provpilot/build",
+    "cache_root": "/Volumes/Data1/scenery_in_world",
+    "legacy_srtm_caches": [
+        "/Volumes/Data1/scenery_in_norway/srtm"
+    ],
+    "legacy_ourairports_caches": [
+        "/Volumes/Data1/provpilot/build/norway/ourairports"
+    ],
+    "tile_size_m": 1024,
+    "pixels_per_tile": 34,
+    "land_margin_m": 5000,
+    "regions": [
+        {
+            "id": "norway",
+            "name": "Norway",
+            "subdir": "Norway",
+            "select": "country",
+            "iso_a2": [
+                "NO"
+            ],
+            "iso_a3": [
+                "NOR"
+            ],
+            "bbox_wgs84": [
+                4.6,
+                57.9,
+                31.3,
+                71.2
+            ],
+            "landmarks": [
+                [
+                    "ENGM Oslo Gardermoen (field 208 m)",
+                    60.1939,
+                    11.1004,
+                    208,
+                    25
+                ],
+                [
+                    "Oslo city centre (plateau 20-80 m)",
+                    59.913,
+                    10.752,
+                    50,
+                    40
+                ],
+                [
+                    "Galdhopiggen summit (2469 m, SRTM fill ~2380)",
+                    61.63644,
+                    8.31248,
+                    2380,
+                    150
+                ],
+                [
+                    "Tromso (coastal plain <30 m)",
+                    69.6492,
+                    18.9553,
+                    10,
+                    40
+                ]
+            ],
+            "_note": "country-clipped since 2026-09-20 (was a bbox bake; the three packs overlapped and their plateaus disagreed at ENGM)"
+        },
+        {
+            "id": "sweden",
+            "name": "Sweden",
+            "subdir": "Sweden",
+            "select": "country",
+            "iso_a2": [
+                "SE"
+            ],
+            "iso_a3": [
+                "SWE"
+            ],
+            "bbox_wgs84": [
+                10.5,
+                55.3,
+                24.5,
+                69.1
+            ],
+            "landmarks": [
+                [
+                    "ESSA Stockholm Arlanda (field ~42 m)",
+                    59.6519,
+                    17.9186,
+                    42,
+                    40
+                ],
+                [
+                    "Kebnekaise (2097 m, SRTM ~2050)",
+                    67.9014,
+                    18.5168,
+                    2050,
+                    150
+                ]
+            ],
+            "_note": "country-clipped since 2026-09-20 (was a bbox bake; the three packs overlapped and their plateaus disagreed at ENGM)"
+        },
+        {
+            "id": "finland",
+            "name": "Finland",
+            "subdir": "Finland",
+            "select": "country",
+            "iso_a2": [
+                "FI"
+            ],
+            "iso_a3": [
+                "FIN"
+            ],
+            "bbox_wgs84": [
+                19.7,
+                59.8,
+                31.6,
+                70.1
+            ],
+            "landmarks": [
+                [
+                    "EFHK Helsinki-Vantaa (field ~55 m)",
+                    60.3172,
+                    24.9633,
+                    55,
+                    40
+                ],
+                [
+                    "Halti (1324 m)",
+                    69.3106,
+                    21.2661,
+                    1300,
+                    100
+                ]
+            ],
+            "_note": "country-clipped since 2026-09-20 (was a bbox bake; the three packs overlapped and their plateaus disagreed at ENGM)"
+        },
+        {
+            "id": "denmark",
+            "name": "Denmark",
+            "subdir": "Denmark",
+            "select": "country",
+            "iso_a2": [
+                "DK"
+            ],
+            "iso_a3": [
+                "DNK"
+            ],
+            "landmarks": [
+                [
+                    "EKCH Copenhagen Kastrup (field ~5 m)",
+                    55.618,
+                    12.6508,
+                    5,
+                    15
+                ],
+                [
+                    "EKBI Billund (field ~75 m)",
+                    55.7403,
+                    9.1518,
+                    75,
+                    20
+                ],
+                [
+                    "Mollehoj (171 m, highest natural point)",
+                    55.97972,
+                    9.82972,
+                    171,
+                    20
+                ]
+            ]
+        },
+        {
+            "id": "germany",
+            "name": "Germany",
+            "subdir": "Germany",
+            "select": "country",
+            "iso_a2": [
+                "DE"
+            ],
+            "iso_a3": [
+                "DEU"
+            ],
+            "landmarks": [
+                [
+                    "EDDF Frankfurt (field ~111 m)",
+                    50.0333,
+                    8.5706,
+                    111,
+                    25
+                ],
+                [
+                    "EDDH Hamburg (field ~16 m)",
+                    53.6304,
+                    9.9882,
+                    16,
+                    20
+                ],
+                [
+                    "Feldberg summit (1493 m)",
+                    47.8739,
+                    8.0041,
+                    1480,
+                    50
+                ],
+                [
+                    "Zugspitze (2962 m, SRTM ~2900)",
+                    47.42107,
+                    10.98546,
+                    2900,
+                    120
+                ]
+            ]
+        },
+        {
+            "id": "switzerland-base",
+            "name": "Switzerland",
+            "subdir": "Switzerland",
+            "select": "country",
+            "iso_a2": [
+                "CH",
+                "LI"
+            ],
+            "iso_a3": [
+                "CHE",
+                "LIE"
+            ],
+            "landmarks": [
+                [
+                    "LSZH Zurich (field ~432 m)",
+                    47.4647,
+                    8.5492,
+                    432,
+                    25
+                ],
+                [
+                    "Lake Geneva surface (372 m)",
+                    46.45,
+                    6.55,
+                    372,
+                    15
+                ],
+                [
+                    "Dufourspitze (4634 m, SRTM ~4550)",
+                    45.93689,
+                    7.86694,
+                    4550,
+                    150
+                ]
+            ]
+        },
+        {
+            "id": "austria",
+            "name": "Austria",
+            "subdir": "Austria",
+            "select": "country",
+            "iso_a2": [
+                "AT"
+            ],
+            "iso_a3": [
+                "AUT"
+            ],
+            "landmarks": [
+                [
+                    "LOWW Vienna Schwechat (field ~183 m)",
+                    48.1103,
+                    16.5697,
+                    183,
+                    25
+                ],
+                [
+                    "Lake Constance at Bregenz (395 m)",
+                    47.505,
+                    9.72,
+                    395,
+                    15
+                ],
+                [
+                    "Grossglockner (3798 m, SRTM ~3700)",
+                    47.07447,
+                    12.69389,
+                    3700,
+                    150
+                ]
+            ]
+        },
+        {
+            "id": "italy",
+            "name": "Italy",
+            "subdir": "Italy",
+            "select": "country",
+            "iso_a2": [
+                "IT",
+                "SM",
+                "VA"
+            ],
+            "iso_a3": [
+                "ITA",
+                "SMR",
+                "VAT"
+            ],
+            "landmarks": [
+                [
+                    "LIMC Milan Malpensa (field ~234 m)",
+                    45.6306,
+                    8.7231,
+                    234,
+                    25
+                ],
+                [
+                    "LIRF Rome Fiumicino (field ~4 m)",
+                    41.8003,
+                    12.2389,
+                    4,
+                    15
+                ],
+                [
+                    "LIPZ Venice Marco Polo (field ~2 m)",
+                    45.5053,
+                    12.3519,
+                    2,
+                    15
+                ],
+                [
+                    "Gran Sasso (2912 m)",
+                    42.47,
+                    13.5661,
+                    2850,
+                    120
+                ],
+                [
+                    "Etna summit (~3320 m)",
+                    37.751,
+                    14.9934,
+                    3300,
+                    150
+                ]
+            ]
+        },
+        {
+            "id": "france",
+            "name": "France",
+            "subdir": "France",
+            "select": "country",
+            "iso_a2": [
+                "FR",
+                "MC"
+            ],
+            "iso_a3": [
+                "FRA",
+                "MCO"
+            ],
+            "_note": "bbox clips the admin-0 multipolygon to metropolitan France + Corsica (French Guiana, Reunion etc. are in the same feature)",
+            "bbox_wgs84": [
+                -5.6,
+                41.0,
+                10.0,
+                51.3
+            ],
+            "landmarks": [
+                [
+                    "LFPG Paris Charles de Gaulle (field ~119 m)",
+                    49.0097,
+                    2.5479,
+                    119,
+                    25
+                ],
+                [
+                    "LFSB Basel-Mulhouse (field ~270 m)",
+                    47.59,
+                    7.5292,
+                    270,
+                    25
+                ],
+                [
+                    "LFMN Nice Cote d'Azur (field ~4 m)",
+                    43.6584,
+                    7.2159,
+                    4,
+                    15
+                ],
+                [
+                    "Puy de Dome (1465 m)",
+                    45.7722,
+                    2.9642,
+                    1450,
+                    60
+                ],
+                [
+                    "Mont Blanc (4808 m, SRTM ~4750)",
+                    45.8326,
+                    6.8652,
+                    4750,
+                    150
+                ]
+            ]
+        }
+    ]
+}

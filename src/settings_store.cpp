@@ -30,8 +30,8 @@ const double SettingsStore::TREE_DENSITY_FRACTION[5] = { 0.0, 0.25, 0.50, 0.75, 
 
 // Sections read back from provpilot.cfg at load(). Keys are routed to one of
 // these by section_for_key() on save.
-static const char *SETTINGS_SECTIONS[] = { "scenery", "graphics", "sound", "realism", "world", "map", "weather" };
-static const int SETTINGS_SECTION_COUNT = 7;
+static const char *SETTINGS_SECTIONS[] = { "scenery", "graphics", "sound", "realism", "world", "map", "weather", "aircraft" };
+static const int SETTINGS_SECTION_COUNT = 8;
 
 // Library state that survives "Restore Defaults" (user data, not preferences).
 static const char *LIBRARY_KEYS[] = { "scenery_areas", "scenery_scan_roots", "installed_scenery_packs" };
@@ -165,6 +165,11 @@ String SettingsStore::section_for_key(const String &key)
     if (key == "weather_layers" || key == "visibility_km" || key == "qnh_hpa" || key == "live_weather")
     {
         return "weather";
+    }
+    // per-aircraft settings (Aircraft tab): aircraft_<id>_<name>
+    if (key.begins_with("aircraft_"))
+    {
+        return "aircraft";
     }
     return "realism";
 }
@@ -344,9 +349,14 @@ void SettingsStore::load()
             PackedStringArray keys = ir->get_section_keys(section);
             for (int k = 0; k < keys.size(); k++)
             {
-                if (settings.has(keys[k]))
+                // Per-aircraft settings (aircraft_<id>_*) have no defaults: any
+                // such key in the [aircraft] section is loaded as is. The section
+                // also holds InstallConfig's own keys (initialized, version),
+                // which are not settings.
+                const bool per_aircraft = section == "aircraft" && keys[k].begins_with("aircraft_");
+                if (per_aircraft || settings.has(keys[k]))
                 {
-                    settings[keys[k]] = ir->get_value(section, keys[k], settings[keys[k]]);
+                    settings[keys[k]] = ir->get_value(section, keys[k], settings.get(keys[k], Variant()));
                     loaded = true;
                 }
             }
@@ -404,6 +414,16 @@ Error SettingsStore::save()
     {
         UtilityFunctions::push_warning("SettingsStore: InstallRoot not available, save skipped");
         return ERR_UNAVAILABLE;
+    }
+    // Per-aircraft keys no longer in the store (Restore Defaults) must not
+    // come back from the file on the next load.
+    PackedStringArray stale = ir->get_section_keys("aircraft");
+    for (int i = 0; i < stale.size(); i++)
+    {
+        if (stale[i].begins_with("aircraft_") && !settings.has(stale[i]))
+        {
+            ir->erase_section_key("aircraft", stale[i]);
+        }
     }
     Array keys = settings.keys();
     for (int i = 0; i < keys.size(); i++)

@@ -134,7 +134,16 @@ static func installed_regions(installed_packs: Dictionary) -> Dictionary:
 ## settings.installed_scenery_packs).
 const REGION_DIRS := {
 	"switzerland": "Switzerland",
-	"baden-wuerttemberg": "Germany",
+	"baden-wuerttemberg": "Baden-Wuertemberg",
+	"norway": "Norway",
+	"sweden": "Sweden",
+	"finland": "Finland",
+	"denmark": "Denmark",
+	"germany": "Germany",
+	"switzerland-base": "Switzerland",
+	"austria": "Austria",
+	"italy": "Italy",
+	"france": "France",
 }
 
 
@@ -150,14 +159,35 @@ static func installed_regions_from_areas(scenery_areas: Array) -> Dictionary:
 		var path := str((area as Dictionary).get("path", ""))
 		if path == "":
 			continue
+		# Base-tier packs (build_world_terrain.py, design §11) name their
+		# region in terrain/manifest.json — authoritative when present.
+		var tagged := manifest_region(path)
+		if tagged != "":
+			regions[tagged] = true
+			continue
+		# Untagged packs: the area's own directory name decides. Only the
+		# last path component counts, so "Germany/Baden-Wuertemberg" is the
+		# BW add-on and not also the Germany base pack.
+		var leaf := path.rstrip("/").get_file()
 		for region_id in REGION_DIRS.keys():
-			var dir_name: String = REGION_DIRS[region_id]
-			# Match "/<dir_name>/" or path ending in "/<dir_name>".
-			if path.find("/" + dir_name + "/") != -1 \
-					or path.ends_with("/" + dir_name) \
-					or path.get_file() == dir_name:
+			if leaf == REGION_DIRS[region_id]:
 				regions[region_id] = true
 	return regions
+
+
+## The `"region"` scalar from `<area>/terrain/manifest.json`, or "" when the
+## manifest is absent or untagged. Only the first 64 KB are read: the
+## Fennoscandia manifests weigh hundreds of MB and the scalars sit at the top.
+static func manifest_region(area_path: String) -> String:
+	var f := FileAccess.open(area_path.path_join("terrain/manifest.json"), FileAccess.READ)
+	if f == null:
+		return ""
+	var head := f.get_buffer(65536).get_string_from_utf8()
+	f.close()
+	var re := RegEx.new()
+	re.compile("\"region\"\\s*:\\s*\"([^\"]+)\"")
+	var m := re.search(head)
+	return m.get_string(1) if m != null else ""
 
 
 ## Availability marker for the welcome screen list. Returns one of:

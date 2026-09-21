@@ -38,6 +38,7 @@ void InstallConfig::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_sections"), &InstallConfig::get_sections);
     ClassDB::bind_method(D_METHOD("get_section_keys", "section"), &InstallConfig::get_section_keys);
     ClassDB::bind_method(D_METHOD("erase_section", "section"), &InstallConfig::erase_section);
+    ClassDB::bind_method(D_METHOD("erase_section_key", "section", "key"), &InstallConfig::erase_section_key);
     ClassDB::bind_method(D_METHOD("save_config"), &InstallConfig::save_config);
 }
 
@@ -403,6 +404,14 @@ void InstallConfig::erase_section(const String &section)
     if (config->has_section(section))
     {
         config->erase_section(section);
+    }
+}
+
+void InstallConfig::erase_section_key(const String &section, const String &key)
+{
+    if (config->has_section_key(section, key))
+    {
+        config->erase_section_key(section, key);
     }
 }
 

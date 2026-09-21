@@ -24,6 +24,9 @@ void IntroZoom::_bind_methods()
 	ClassDB::bind_method(D_METHOD("update", "delta"), &IntroZoom::update);
 	ClassDB::bind_method(D_METHOD("is_playing"), &IntroZoom::is_playing);
 	ClassDB::bind_method(D_METHOD("cancel"), &IntroZoom::cancel);
+	ClassDB::bind_method(D_METHOD("set_hold_at_end", "hold"), &IntroZoom::set_hold_at_end);
+	ClassDB::bind_method(D_METHOD("get_hold_at_end"), &IntroZoom::get_hold_at_end);
+	ClassDB::bind_method(D_METHOD("is_holding"), &IntroZoom::is_holding);
 	ClassDB::bind_method(D_METHOD("set_intro_duration", "seconds"), &IntroZoom::set_intro_duration);
 	ClassDB::bind_method(D_METHOD("get_intro_duration"), &IntroZoom::get_intro_duration);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "intro_duration"), "set_intro_duration", "get_intro_duration");
@@ -173,8 +176,12 @@ int IntroZoom::update(double delta)
 	}
 	else if (input->is_key_pressed(KEY_SPACE))
 	{
-		finish();
-		return STATUS_FINISHED;
+		if (!hold_at_end)
+		{
+			finish();
+			return STATUS_FINISHED;
+		}
+		elapsed = intro_duration; // jump to the spot view, keep waiting
 	}
 
 	elapsed += delta;
@@ -202,12 +209,27 @@ int IntroZoom::update(double delta)
 	// Robust up vector: avoid look_at degeneracy when peering straight down.
 	geo::aim(intro_camera, target, view_up_hint(cam_pos, target, pe * pe));
 
-	if (p >= 1.0)
+	if (p >= 1.0 && !hold_at_end)
 	{
 		finish();
 		return STATUS_FINISHED;
 	}
 	return STATUS_RUNNING;
+}
+
+void IntroZoom::set_hold_at_end(bool hold)
+{
+	hold_at_end = hold;
+}
+
+bool IntroZoom::get_hold_at_end() const
+{
+	return hold_at_end;
+}
+
+bool IntroZoom::is_holding() const
+{
+	return playing && hold_at_end && elapsed >= intro_duration;
 }
 
 void IntroZoom::finish()

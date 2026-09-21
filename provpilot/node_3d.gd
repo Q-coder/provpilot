@@ -70,6 +70,7 @@ var _intro_camera: Camera3D = null
 var _intro_hud: CanvasLayer = null
 var _intro_dist_label: Label = null
 var _intro_bar_bg: ColorRect = null
+var _intro_status_label: Label = null   # loading status while the destination loads, else "Loading scenery"
 var _intro_bar: ColorRect = null
 var _intro_pending_prev := -1   # pending count last frame (-1 = none yet)
 var _intro_done := 0            # completed tile/chunk loads since the intro started
@@ -231,6 +232,24 @@ var _settings: SettingsStore = null
 const LiveWeatherScript := preload("res://live_weather.gd")
 const CloudLayersScript := preload("res://clouds.gd")
 var _clouds: Node3D = null  # CloudLayers (clouds.gd)
+const RunwaysScript := preload("res://runways.gd")
+const RunwaysLibScript := preload("res://runways_lib.gd")
+var _runways: Node3D = null  # Runways (runways.gd): per-pack runway meshes, design §12
+var _aircraft_lights: AircraftLights = null  # exterior lights of the flown aircraft (aircraft_lights.gd)
+var _fg_animator: FGAnimator = null          # FlightGear model animations (docs/A10_FLIGHTGEAR_PORT.md)
+var _fg_bridge = preload("res://fg_bridge.gd").new()
+var _fg_controls = preload("res://fg_controls.gd").new()   # clickable FlightGear cockpit controls
+const WelcomeScreenScript = preload("res://welcome_screen.gd")
+const AircraftSettingsPanelScript = preload("res://aircraft_settings_panel.gd")
+var _fg_seeded: bool = false
+var _fg_sounds: FGSounds = null     # FlightGear sound set (aircraft.cfg [sound] fg_sounds)
+var _parking_brake: bool = false
+var _landing_key_held: bool = false
+var _speedbrake_key_held: bool = false
+var _hud_key_held: bool = false
+var _hud_mode: int = 0   # H cycles: 0 none, 1 bottom readouts, 2 + upper info (coordinates, time)
+var _speedbrake_out: bool = false
+var _runways_merged: Dictionary = {}  # icao -> merged pack airport entry
 var _live_weather: Node = null  # LiveWeather (live_weather.gd)
 
 # Deferred scenery loading: skip all heavy loading at startup, load on first Fly!
@@ -304,6 +323,7 @@ func _ready() -> void:
 	var fps_layer := CanvasLayer.new()
 	fps_layer.layer = 100
 	add_child(fps_layer)
+	_apply_hud_mode()
 	_fps_label = Label.new()
 	_fps_label.text = "FPS: 0"
 	_fps_label.add_theme_font_size_override("font_size", 18)
@@ -339,6 +359,10 @@ func _ready() -> void:
 
 	# Get JSBGodot node after we're in the scene tree
 	jsb_node = $AC/JSBGodot
+	# JSBSim's ground model queries the scenery under EACH gear contact point
+	# (with the slope normal) through this callable — see JSBGodot::set_ground_query.
+	if jsb_node and jsb_node.has_method("set_ground_query"):
+		jsb_node.set_ground_query(Callable(self, "_ground_height_geodetic"))
 	print("JSBGodot node: ", jsb_node)
 	
 	# Access the AC node and its cameras
@@ -421,6 +445,7 @@ func _ready() -> void:
 
 	# Slew mode (C++ module): register the session-stable AC root + HUD labels.
 	_slew_mode.register_nodes($AC, airspeed_label, altitude_label, vspeed_label, throttle_label, heading_label, $Control/Label6, $Control/Label7, $Control/Label8)
+	_slew_mode.set_pm_label($Control/Label9)
 	_outline_hud_labels($Control)
 
 	# VFR map frame (C++ module): one-time wiring with the portable config
@@ -505,6 +530,9 @@ func _update_engine_sound() -> void:
 	var user_vol_pct: float = 70.0  # default
 	if _settings:
 		user_vol_pct = float(_settings.get_setting("engine_volume"))
+	# an aircraft with a FlightGear sound set plays its own engines
+	if _fg_sounds != null and _fg_sounds.count > 0:
+		user_vol_pct = 0.0
 	_engine_sound.update(_control_surfaces.get_visual_rpm(), user_vol_pct)
 
 
@@ -654,6 +682,18 @@ func _flip_normals_recursive(node: Node, prefix: String) -> void:
 ## Prefers the precise scenery3d patch (Swiss/BW/...); falls back to the
 ## coarse whole-planet world3d globe so the aircraft always has ground beneath
 ## it beyond the detailed patches. Returns NAN only if neither has data.
+## Ground height for JSBSim's contact points: scenery terrain plus the lift
+## of a drawn runway / taxiway / apron surface there. NAN when no terrain
+## data (the bridge then keeps its flat fallback).
+func _ground_height_geodetic(lat: float, lon: float) -> float:
+	var h: float = _scenery_elevation_geodetic(lat, lon)
+	if is_nan(h):
+		return NAN
+	if _runways:
+		h += _runways.surface_lift_at(W3DCoords.geodetic_to_ecef(lat, lon, h))
+	return h
+
+
 func _terrain_elevation_geodetic(lat: float, lon: float) -> float:
 	var h: float = _scenery_elevation_geodetic(lat, lon)
 	if not is_nan(h):
@@ -898,7 +938,11 @@ func _push_weather_settings() -> void:
 	_refresh_weather_overlay()
 
 
+var _visibility_km := 40.0   # last applied visibility (airfield lights come on below 1 km)
+
+
 func _apply_weather(layers: Array, qnh_hpa: float, visibility_km: float) -> void:
+	_visibility_km = visibility_km
 	if jsb_node and jsb_node.has_method("set_weather"):
 		jsb_node.set_weather(layers, qnh_hpa)
 	_sky.set_visibility_km(visibility_km)
@@ -1012,19 +1056,41 @@ func _push_time_of_day_settings() -> void:
 ## animation state + math live in the C++ IntroZoom module; this keeps the
 ## scene-side gates (globe mounted, AC + dedicated intro camera valid) and the
 ## active_camera mirror.
-func _start_intro_zoom() -> void:
+## Start the cinematic space → spot zoom. It plays while the destination is
+## still loading (_fly_loading): the intro HUD shows the loading status and
+## the zoom waits on the spot view until loading is complete. Returns false
+## when it cannot start (no globe); the caller then falls back to the loading
+## screen.
+func _start_intro_zoom() -> bool:
 	if not USE_WORLD3D_GLOBE or not is_instance_valid(globe_node) or not _globe_mount:
-		return
+		return false
 	var ac_node := get_node_or_null("AC")
 	if not ac_node or not is_instance_valid(_intro_camera):
-		return
-	if _intro_zoom.start():
-		_intro_playing = true
-		active_camera = _intro_camera
-		_intro_pending_prev = -1
-		_intro_done = 0
-		_intro_shown = 0.0
-		_show_intro_hud(true)
+		return false
+	if not _intro_zoom.start():
+		return false
+	_intro_zoom.set_hold_at_end(_fly_loading)
+	_intro_playing = true
+	active_camera = _intro_camera
+	_intro_pending_prev = -1
+	_intro_done = 0
+	_intro_shown = 0.0
+	_show_intro_hud(true)
+	if _intro_status_label:
+		_intro_status_label.text = _loading_progress.get_status_text() if _fly_loading else "Loading scenery"
+	_set_intro_bar(0.0)
+	return true
+
+
+## Per-frame step of a playing intro; mirrors camera_mode / active_camera when
+## the C++ module reports the handoff to the orbit camera.
+func _advance_intro(delta: float) -> void:
+	_update_intro_hud()
+	if _intro_zoom.update(delta) == IntroZoom.STATUS_FINISHED:
+		_intro_playing = false
+		camera_mode = CameraMode.ORBIT
+		active_camera = camera2
+		_show_intro_hud(false)
 
 
 ## Build (once) and show/hide the intro HUD; the flight HUD is hidden while
@@ -1050,13 +1116,13 @@ func _show_intro_hud(show: bool) -> void:
 		_intro_dist_label.add_theme_color_override("font_color", Color(0.35, 0.9, 1.0))
 		_outline_label(_intro_dist_label)
 		box.add_child(_intro_dist_label)
-		var bar_title := Label.new()
-		bar_title.text = "Loading scenery"
-		bar_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		bar_title.add_theme_font_size_override("font_size", 18)
-		bar_title.add_theme_color_override("font_color", Color(0.85, 0.9, 0.95))
-		_outline_label(bar_title)
-		box.add_child(bar_title)
+		_intro_status_label = Label.new()
+		_intro_status_label.text = "Loading scenery"
+		_intro_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_intro_status_label.add_theme_font_size_override("font_size", 18)
+		_intro_status_label.add_theme_color_override("font_color", Color(0.85, 0.9, 0.95))
+		_outline_label(_intro_status_label)
+		box.add_child(_intro_status_label)
 		_intro_bar_bg = ColorRect.new()
 		_intro_bar_bg.color = Color(0.12, 0.14, 0.18, 0.85)
 		_intro_bar_bg.custom_minimum_size = Vector2(600, 12)
@@ -1105,6 +1171,8 @@ func _update_intro_hud() -> void:
 			_intro_dist_label.text = "Distance to aircraft: %.0f km" % (d / 1000.0)
 		else:
 			_intro_dist_label.text = "Distance to aircraft: %.0f m" % d
+	if _fly_loading:
+		return   # the bar shows the loading phases (_update_loading_progress)
 	var tm = _get_tile_manager()
 	if tm != null and tm.has_method("get_pending_count"):
 		# Completed work = decreases of the pending count; new requests (the
@@ -1115,10 +1183,17 @@ func _update_intro_hud() -> void:
 			_intro_done += _intro_pending_prev - pending
 		_intro_pending_prev = pending
 		var total: int = _intro_done + pending
-		var frac: float = 1.0 if total == 0 else float(_intro_done) / float(total)
+		# nothing queued and nothing done yet: the streamer has not started, not "all done"
+		var frac: float = (1.0 if _intro_done > 0 else 0.0) if total == 0 else float(_intro_done) / float(total)
 		_intro_shown = maxf(_intro_shown, clampf(frac, 0.0, 1.0))
-		_intro_bar.custom_minimum_size.x = _intro_bar_bg.size.x * _intro_shown
-		_intro_bar.size.x = _intro_bar.custom_minimum_size.x
+		_set_intro_bar(_intro_shown)
+
+
+func _set_intro_bar(frac: float) -> void:
+	if _intro_bar == null or _intro_bar_bg == null:
+		return
+	_intro_bar.custom_minimum_size.x = _intro_bar_bg.size.x * clampf(frac, 0.0, 1.0)
+	_intro_bar.size.x = _intro_bar.custom_minimum_size.x
 
 
 
@@ -1222,6 +1297,8 @@ func _do_deferred_terrain_init() -> void:
 
 	var start_godot_pos = ac_node.global_position
 	jsb_node.initialize_at_terrain(jsbsim_terrain_elevation, start_godot_pos, target_heading)
+	_apply_fuel_setting()
+	_set_parking_brake_at_start()
 	print("=== JSBSim initialized at Godot pos: ", start_godot_pos, " heading: ", target_heading, "° ===")
 
 	terrain_initialized = true
@@ -1266,7 +1343,13 @@ func _update_terrain_elevation() -> void:
 	var ac = get_node_or_null("AC")
 	if ac == null:
 		return
-	_terrain_elevation.update_terrain_elevation(jsb_node, _terrain_elevation_below(ac.global_position), is_instance_valid(scenery3d_node))
+	# JSBSim's ground is the DRAWN surface: the runway / taxiway / apron
+	# meshes sit a few centimetres above the flattened terrain (design
+	# §12.5), so add that lift wherever the aircraft is on a pavement.
+	var ground_h: float = _terrain_elevation_below(ac.global_position)
+	if _runways and not is_nan(ground_h):
+		ground_h += _runways.surface_lift_at(ac.global_position)
+	_terrain_elevation.update_terrain_elevation(jsb_node, ground_h, is_instance_valid(scenery3d_node))
 
 
 # Called every frame. 'delta' is the elapsed time since the previous frame.
@@ -1281,6 +1364,54 @@ func _process(delta: float) -> void:
 	# toward space, and gates the coarse globe under the detailed patch.
 	_sky.update(delta, get_viewport())
 	_check_camera_sanity()
+	if _runways:
+		var rcam := get_viewport().get_camera_3d()
+		if rcam:
+			_runways.update(rcam.global_position, delta)
+			_runways.set_light_intensity(_airfield_light_intensity(rcam.global_position))
+	if jsb_node:
+		var gear_down: bool = (not _gear_retractable) or jsb_node.get_gear_pos() > 0.05
+		var airborne: bool = not jsb_node.get_weight_on_wheels()
+		var lcam := get_viewport().get_camera_3d()
+		var night: float = _airfield_light_intensity(lcam.global_position) if lcam else 0.0
+		if _aircraft_lights and _aircraft_lights.fixture_count() > 0:
+			var acb: Basis = $AC.global_transform.basis
+			_aircraft_lights.update(delta, airborne, gear_down, night,
+				acb.z.normalized(), -acb.y.normalized())   # AC frame: nose along +Z
+		if _fg_animator and _fg_animator.animation_count() > 0:
+			var landing_on: bool = _aircraft_lights != null and _aircraft_lights.landing_lights_on() and gear_down
+			_fg_bridge.landing_light = landing_on
+			_fg_bridge.taxi_light = landing_on
+			# "internal" follows the camera that is rendering (the intro zoom and the
+			# external cameras are outside even while camera_mode says cockpit)
+			var rendering_cam: Camera3D = get_viewport().get_camera_3d()
+			_fg_bridge.cockpit_view = rendering_cam == camera1
+			_fg_bridge.sim_time_seconds = _sky._time_seconds
+			_sync_parking_brake()
+			_fg_bridge.control_state = _fg_controls.state
+			_fg_bridge.advance_canopy(delta)
+			var fg_props: Dictionary = _fg_bridge.collect(jsb_node, airborne, night)
+			_fg_animator.set_properties(fg_props)
+			if _aircraft_lights:
+				_aircraft_lights.powered = _fg_bridge.dc_volts > 0.0
+			if _fg_sounds and _fg_sounds.count > 0 and terrain_initialized and not (_fly_loading and not _intro_playing):
+				_fg_sounds.user_volume = (float(_settings.get_setting("engine_volume")) if _settings else 70.0) / 100.0
+				_fg_sounds.camera_distance_m = 0.0 if _fg_bridge.cockpit_view or rendering_cam == null else (rendering_cam.global_position - $AC.global_position).length()
+				_fg_sounds.update(fg_props, delta)
+			# properties only the cockpit switches write: seed their defaults once
+			if not _fg_seeded:
+				_fg_seeded = true
+				for prop in _fg_animator.unknown_properties():
+					_fg_controls.state[prop] = _fg_bridge.switch_default(prop)
+				for prop in FGBridge.SWITCH_DEFAULTS.keys():
+					if not _fg_controls.state.has(prop):
+						_fg_controls.state[prop] = FGBridge.SWITCH_DEFAULTS[prop]
+				_fg_animator.set_properties(_fg_controls.state)
+			_fg_animator.update(delta)
+			# pointing hand over a clickable cockpit part
+			if camera_mode == CameraMode.COCKPIT and active_camera and _fg_controls.count > 0:
+				var over: String = _fg_controls.hover_name(active_camera, get_viewport().get_mouse_position())
+				Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND if over != "" else Input.CURSOR_ARROW)
 	if _clouds:
 		var env: Environment = _sky.environment
 		_clouds.update(get_viewport().get_camera_3d(), _sky.sun_dir_now, _sky.sun_color_now, _sky.sun_energy_now,
@@ -1296,9 +1427,12 @@ func _process(delta: float) -> void:
 
 	# Post-Fly loading: terrain/buildings/roads/water settling at destination
 	if _fly_loading:
-		# Process rebase cooldown while loading screen is shown
 		_process_rebase_cooldown()
 		_update_loading_progress(true)  # fly-to-destination loading
+		# The intro zoom plays (and then waits on the spot view) while the
+		# destination loads; the flight logic below stays paused until then.
+		if _fly_loading and _intro_playing and not (_welcome_screen and _welcome_screen.visible) and not (_settings_screen and _settings_screen.visible):
+			_advance_intro(delta)
 		return
 
 	# Sun/local-time observer follows the aircraft (ECEF world: no rebase).
@@ -1335,12 +1469,7 @@ func _process(delta: float) -> void:
 	# IntroZoom module owns the animation + the CameraRig orbit handoff; sync
 	# the camera_mode/active_camera mirrors when it reports the handoff.
 	if _intro_playing:
-		_update_intro_hud()
-		if _intro_zoom.update(delta) == IntroZoom.STATUS_FINISHED:
-			_intro_playing = false
-			camera_mode = CameraMode.ORBIT
-			active_camera = camera2
-			_show_intro_hud(false)
+		_advance_intro(delta)
 		return
 
 	# Escape key: return to welcome screen
@@ -1356,6 +1485,35 @@ func _process(delta: float) -> void:
 	if _fps_label and _fps_visible:
 		_fps_label.text = "FPS: %d" % Engine.get_frames_per_second()
 
+	# HUD overlay with H: none -> bottom readouts -> readouts + upper info
+	if Input.is_key_pressed(KEY_H) and not Input.is_key_pressed(KEY_CTRL):
+		if not _hud_key_held:
+			_hud_key_held = true
+			_hud_mode = (_hud_mode + 1) % 3
+			_apply_hud_mode()
+	else:
+		_hud_key_held = false
+	# Speed brakes with B (fcs/speedbrake-cmd-norm 0/1; the A-10 splits its ailerons)
+	if Input.is_key_pressed(KEY_B) and not Input.is_key_pressed(KEY_CTRL):
+		if not _speedbrake_key_held:
+			_speedbrake_key_held = true
+			if jsb_node:
+				_speedbrake_out = not _speedbrake_out
+				jsb_node.set_property("fcs/speedbrake-cmd-norm", 1.0 if _speedbrake_out else 0.0)
+				print("Speed brakes: ", "OUT" if _speedbrake_out else "IN")
+	else:
+		_speedbrake_key_held = false
+	# Landing / taxi lights with L
+	if Input.is_key_pressed(KEY_L) and not Input.is_key_pressed(KEY_CTRL):
+		if not _landing_key_held:
+			_landing_key_held = true
+			if _aircraft_lights:
+				var on: bool = _aircraft_lights.toggle_landing_lights()
+				print("Landing lights: ", "ON" if on else "OFF")
+				if _fg_controls.count > 0:
+					_fg_controls.state["sim/model/A-10/controls/lighting/land-lights-switch"] = 2.0 if on else 1.0
+	else:
+		_landing_key_held = false
 	# Toggle FPS display with Ctrl+Shift+F
 	if Input.is_key_pressed(KEY_CTRL) and Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_F):
 		if not _fps_key_held:
@@ -1629,6 +1787,20 @@ func _load_aircraft_config() -> void:
 # aircraft.cfg for the new id (so model paths / tunables follow) and asks the
 # JSBGodot extension to (re)load the matching JSBSim flight model, taken from
 # the cfg [jsbsim] model key (defaults to the aircraft id itself).
+## Nose-wheel steering ranges from aircraft.cfg [gear] steer_limited_deg /
+## steer_full_deg (Ctrl+W toggles in the bridge); starts in LIMITED.
+func _apply_nose_steer_range() -> void:
+	if jsb_node == null or not jsb_node.has_method("set_nose_steer_range"):
+		return
+	var limited := 0.0
+	var full := 0.0
+	if _aircraft_cfg != null:
+		limited = _aircraft_cfg.get_float("gear", "steer_limited_deg", 0.0)
+		full = _aircraft_cfg.get_float("gear", "steer_full_deg", 0.0)
+	jsb_node.set_nose_steer_range(limited, full)
+	jsb_node.set_nose_steer_full(false)
+
+
 func _apply_selected_aircraft(aircraft_id: String) -> void:
 	if aircraft_id.is_empty():
 		aircraft_id = DEFAULT_AIRCRAFT_ID
@@ -1641,6 +1813,7 @@ func _apply_selected_aircraft(aircraft_id: String) -> void:
 	if jsb_node and jsb_node.has_method("load_aircraft"):
 		print("Loading JSBSim model '%s' for aircraft '%s'" % [jsbsim_model, _aircraft_id])
 		jsb_node.load_aircraft(_aircraft_id, jsbsim_model)
+	_apply_nose_steer_range()
 
 	# Swap the visual GLB model to the selected aircraft, then re-resolve all
 	# model-dependent nodes (control surfaces + cockpit levers) against it. Only
@@ -1689,6 +1862,10 @@ func _apply_camera_config() -> void:
 	# Head look composes on top of this transform; keep the C++ rig's captured
 	# cockpit base in sync (it resets Camera1 to it every frame).
 	_camera_rig.capture_cockpit_base()
+	# External camera distances in metres (rig defaults 1.5 / 50 / 6 when absent).
+	_camera_rig.set_orbit_distance_min(_aircraft_cfg.get_float("camera", "orbit_distance_min", 1.5))
+	_camera_rig.set_orbit_distance_max(_aircraft_cfg.get_float("camera", "orbit_distance_max", 50.0))
+	_camera_rig.set_orbit_distance(_aircraft_cfg.get_float("camera", "orbit_distance", 6.0))
 
 
 
@@ -1849,6 +2026,130 @@ func _resolve_aircraft_nodes() -> void:
 			_cockpit_controls.apply_magneto_position(jsb_node)
 		if flap_lever_node:
 			_cockpit_controls.sync_flaps_from_jsb(jsb_node)
+	_setup_aircraft_lights()
+	_setup_fg_animations()
+	_setup_fg_sounds()
+	_apply_hidden_nodes()
+
+
+# aircraft.cfg [sound] fg_sounds: a FlightGear sound set (scripts/fg_a10_sounds.py)
+# played by FGSounds from the bridge's property values; the basic engine loop
+# stays silent for such an aircraft.
+func _setup_fg_sounds() -> void:
+	if _fg_sounds == null:
+		_fg_sounds = FGSounds.new()
+		_fg_sounds.name = "FGSounds"
+		add_child(_fg_sounds)
+	_fg_sounds.clear()
+	var rel: String = _aircraft_cfg.get_string("sound", "fg_sounds", "") if _aircraft_cfg else ""
+	if rel.is_empty():
+		return
+	var ir := get_node_or_null("/root/InstallRoot")
+	var path: String = ir.get_aircraft_dir(_aircraft_id).path_join(rel) if ir != null else ""
+	if path.is_empty() or not FileAccess.file_exists(path):
+		path = ProjectSettings.globalize_path("res://aircraft/%s/%s" % [_aircraft_id, rel])
+	var n: int = _fg_sounds.load(path, path.get_base_dir())
+	print("FlightGear sounds for '%s': %d loaded, %d without a file: %s" % [_aircraft_id, n, _fg_sounds.skipped.size(), str(_fg_sounds.skipped.slice(0, 8))])
+
+
+# aircraft.cfg [model] hide_nodes: model nodes (by name, all matches) never
+# shown, e.g. placeholder display textures of a FlightGear model.
+func _apply_hidden_nodes() -> void:
+	if _aircraft_cfg == null:
+		return
+	var model_root := get_node_or_null(NodePath(_model_root_path))
+	if model_root == null:
+		return
+	var n := 0
+	for name in _aircraft_cfg.get_string_array("model", "hide_nodes", []):
+		var nm := str(name).strip_edges()
+		if nm.is_empty():
+			continue
+		for node in model_root.find_children(nm, "", true, false):
+			if node is Node3D:
+				(node as Node3D).visible = false
+				n += 1
+	if n > 0:
+		print("Model: %d nodes hidden by [model] hide_nodes" % n)
+
+
+# FlightGear animation manifest (aircraft.cfg [model] fg_animations) run by
+# the FGAnimator extension on the loaded model; FGBridge feeds it per frame.
+func _setup_fg_animations() -> void:
+	if _fg_animator == null:
+		_fg_animator = FGAnimator.new()
+		_fg_animator.name = "FGAnimator"
+		add_child(_fg_animator)
+	var rel: String = _aircraft_cfg.get_string("model", "fg_animations", "") if _aircraft_cfg else ""
+	if rel.is_empty():
+		_fg_animator.clear()
+		return
+	var path := ""
+	var ir := get_node_or_null("/root/InstallRoot")
+	if ir != null:
+		path = ir.get_aircraft_dir(_aircraft_id).path_join(rel)
+	if path.is_empty() or not FileAccess.file_exists(path):
+		path = ProjectSettings.globalize_path("res://aircraft/%s/%s" % [_aircraft_id, rel])
+	var model_root := get_node_or_null(NodePath(_model_root_path))
+	if _fg_animator.load(path, model_root):
+		print("FlightGear animations loaded for '%s': %s" % [_aircraft_id, str(_fg_animator.stats())])
+		_fg_controls.state.clear()
+		_fg_seeded = false
+		_fg_controls.on_change = Callable(self, "_on_fg_control")
+		print("FlightGear cockpit controls: %d clickable parts" % _fg_controls.setup(path, model_root, _fg_animator))
+	else:
+		print("WARNING: FlightGear animations not loaded from %s" % path)
+		_fg_controls.setup("", null, null)
+
+
+## A cockpit switch or knob changed a FlightGear property: real effects.
+func _on_fg_control(prop: String, value) -> void:
+	match prop:
+		"controls/gear/brake-parking":
+			if jsb_node:
+				_parking_brake = float(value) > 0.5
+				jsb_node.set_input_brake(1.0 if _parking_brake else 0.0)
+				print("Parking brake: ", "SET" if _parking_brake else "RELEASED")
+		"sim/model/A-10/controls/lighting/land-lights-switch":
+			if _aircraft_lights:
+				_aircraft_lights.set_landing_lights(float(value) != 1.0)   # 0 taxi / 1 off / 2 landing
+		"sim/model/A-10/controls/lighting/nav-lights-switch":
+			if _aircraft_lights:
+				_aircraft_lights.nav_enabled = float(value) > 0.5
+		"controls/lighting/strobe":
+			if _aircraft_lights:
+				_aircraft_lights.strobe_enabled = float(value) > 0.5
+				_aircraft_lights.beacon_enabled = float(value) > 0.5
+		"sim/model/A-10/controls/canopy/canopy-switch":
+			_fg_bridge.canopy_target = float(value)
+		"provpilot/gear-toggle":
+			# the gear handle (ProvPilot-defined pick): same path as the G key
+			_fg_controls.state.erase(prop)
+			if jsb_node and _gear_retractable:
+				var down: bool = jsb_node.get_gear_cmd() < 0.5
+				_cockpit_controls.set_gear_down(down)
+				_control_surfaces.set_gear_down(down)
+				jsb_node.set_gear_down(down)
+				print("Gear (handle): ", "DOWN" if down else "UP")
+		"sim/model/A-10/instrumentation/g-meter/g-max", "sim/model/A-10/instrumentation/g-meter/g-min":
+			_fg_bridge.g_max = 1.0
+			_fg_bridge.g_min = 1.0
+			_fg_controls.state.erase(prop)
+
+
+# Exterior lights (aircraft.cfg [lights]) on the loaded model; rebuilt on
+# every airframe swap because the fixtures live inside the model subtree.
+func _setup_aircraft_lights() -> void:
+	if _aircraft_lights == null:
+		_aircraft_lights = AircraftLights.new()
+		_aircraft_lights.name = "AircraftLights"
+		add_child(_aircraft_lights)
+	_aircraft_lights.setup(get_node_or_null(NodePath(_model_root_path)), _aircraft_cfg, $AC)
+	if _aircraft_lights.fixture_count() > 0:
+		print("Aircraft lights: %d fixtures (nav %d, strobe %d, beacon %d, landing %d, taxi %d)" % [
+			_aircraft_lights.fixture_count(), _aircraft_lights.fixture_count("nav_left") + _aircraft_lights.fixture_count("nav_right") + _aircraft_lights.fixture_count("nav_tail"),
+			_aircraft_lights.fixture_count("strobe"), _aircraft_lights.fixture_count("beacon"),
+			_aircraft_lights.fixture_count("landing"), _aircraft_lights.fixture_count("taxi")])
 
 
 # Resolves an animated control-surface mesh from aircraft.cfg [animation].
@@ -2049,18 +2350,29 @@ func _update_loading_progress(is_fly_loading: bool) -> void:
 	if _loading_screen:
 		_loading_screen.set_progress(progress)
 		_loading_screen.set_status(_loading_progress.get_status_text())
+	if is_fly_loading and _intro_playing and _intro_status_label:
+		# one bar per loading phase (scenery tiles, flight model, stabilizing),
+		# each restarting at 0; the tile bar takes over after completion
+		_intro_status_label.text = _loading_progress.get_status_text()
+		_set_intro_bar(_loading_progress.get_phase_progress())
 
 	if not _loading_progress.is_complete():
 		return
 
 	if is_fly_loading:
-		# Post-Fly loading complete — dismiss and start flying
+		# Post-Fly loading complete — the simulation runs; the intro zoom
+		# (started with the Fly! request) may now hand over to the spot view.
 		_fly_loading = false
 		if _loading_screen:
 			_loading_screen.hide_loading()
+		_intro_zoom.set_hold_at_end(false)
+		if _intro_status_label:
+			_intro_status_label.text = "Loading scenery"
+		_intro_pending_prev = -1   # the tile bar starts over for the last phase
+		_intro_done = 0
+		_intro_shown = 0.0
+		_set_intro_bar(0.0)
 		print("Fly loading complete — simulation active")
-		# Kick off the cinematic space→spot zoom over the globe.
-		_start_intro_zoom()
 	else:
 		# Startup loading complete — show welcome screen
 		_loading_done = true
@@ -2100,7 +2412,7 @@ func _create_welcome_screen() -> void:
 	for r in disk_regions.keys():
 		regions[r] = true
 	_welcome_screen.set_installed_regions(regions)
-	_welcome_screen.populate_airports(AirportsLib.load_default())
+	_welcome_screen.populate_airports(_catalog_with_pack_runways())
 
 	_welcome_screen.show_welcome()
 
@@ -2109,10 +2421,14 @@ func _create_settings_screen() -> void:
 	_settings_screen = SettingsScreen.new()
 	add_child(_settings_screen)  # loads provpilot.cfg in its _ready
 	_settings = _settings_screen.get_store()
+	_wire_aircraft_settings_panel()
 	_settings_screen.closed.connect(_on_settings_closed)
 	_clouds = CloudLayersScript.new()
 	_clouds.name = "CloudLayers"
 	add_child(_clouds)
+	_runways = RunwaysScript.new()
+	_runways.name = "Runways"
+	add_child(_runways)
 	_live_weather = LiveWeatherScript.new()
 	_live_weather.latlon_provider = _aircraft_latlon
 	_live_weather.weather_updated.connect(_on_live_weather_updated)
@@ -2174,13 +2490,10 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 	# and initialise the simulation.
 	_apply_selected_aircraft(aircraft_id)
 
-	# Show loading screen while destination loads
+	# Loading state while the destination streams in: the intro zoom shows the
+	# progress; the flight logic waits for _loading_progress (below).
 	_fly_loading = true
 	_loading_progress.begin_fly_loading()
-	if _loading_screen:
-		_loading_screen.set_progress(0.0)
-		_loading_screen.set_status("Loading terrain...")
-		_loading_screen.show_loading()
 
 	# Sun/observer to the destination now (the loading screen hides the jump);
 	# the coverage mask follows the streamer once tiles arrive.
@@ -2195,12 +2508,20 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 		_do_first_flight(swiss_e, swiss_n, heading_deg)
 		_first_flight = false
 	else:
-		# A Fly! during the previous flight's intro zoom: abort the zoom first.
-		# The loading screen blocks the zoom from advancing, and the intro
-		# camera parked in space over the OLD airport would keep the tile
-		# streamer there — the precise tile at the destination never loads.
+		# A Fly! during the previous flight's intro zoom: end that zoom first
+		# (a new one starts over the new destination below).
 		_cancel_intro_zoom()
 		_on_teleport_requested(swiss_e, swiss_n, heading_deg)
+
+	# The cinematic space → spot zoom starts now, over the destination, and
+	# doubles as the loading view (status + progress on its HUD; it waits on
+	# the spot view until loading is complete). No cockpit camera renders
+	# meanwhile, so no cockpit sounds. The loading screen is only the fallback
+	# when the zoom cannot start.
+	if not _start_intro_zoom() and _loading_screen:
+		_loading_screen.set_progress(0.0)
+		_loading_screen.set_status("Loading terrain...")
+		_loading_screen.show_loading()
 
 
 func _cancel_intro_zoom() -> void:
@@ -2210,6 +2531,8 @@ func _cancel_intro_zoom() -> void:
 	_intro_playing = false
 	camera_mode = CameraMode.ORBIT
 	active_camera = camera2
+	if camera2:
+		camera2.current = true
 	_show_intro_hud(false)
 
 
@@ -2346,6 +2669,42 @@ func _apply_scenery_sources() -> void:
 		print("Scenery sources: settings screen unavailable, leaving scene defaults")
 		return
 	_settings.apply_scenery_sources(scenery3d_node, vegetation_node, _vfr_map)
+	_rebuild_runways()
+
+
+## Airfield lights: on from dusk (sun 4 deg above the horizon -> full at
+## 4 deg below) and whenever the visibility is below 1 km (low-visibility
+## operations), as agreed 2026-09-20 instead of the JAR minima tables.
+func _airfield_light_intensity(cam_pos: Vector3) -> float:
+	if _visibility_km < 1.0:
+		return 1.0
+	var g := _geodetic_of(cam_pos)
+	var up: Vector3 = W3DCoords.geodetic_normal(g.x, g.y)
+	var sun_elev_deg: float = rad_to_deg(asin(clampf(_sky.sun_dir_now.dot(up), -1.0, 1.0)))
+	return clampf((4.0 - sun_elev_deg) / 8.0, 0.0, 1.0)
+
+
+## Merge the enabled packs' airports/runways.json (design §12 D16) and
+## rebuild the procedural runway meshes. Called with the scenery sources
+## (startup, first flight, settings closed).
+func _rebuild_runways() -> void:
+	if not _settings or not is_instance_valid(_runways):
+		return
+	_runways_merged = RunwaysLibScript.load_merged(_settings.get_scenery_areas())
+	_runways.set_merged(_runways_merged, Callable(self, "_terrain_elevation_geodetic"))
+	print("Runways: %d airports merged from the enabled packs (built by distance)" % _runways_merged.size())
+
+
+## The bundled catalog with every pack-defined airport's runways replaced
+## by the pack data (real thresholds instead of ARP + heading), plus pack
+## airports the catalog lacks.
+func _catalog_with_pack_runways() -> Array[Dictionary]:
+	var catalog: Array[Dictionary] = AirportsLib.load_default()
+	if _settings:
+		if _runways_merged.is_empty():
+			_runways_merged = RunwaysLibScript.load_merged(_settings.get_scenery_areas())
+		RunwaysLibScript.merge_into_catalog(catalog, _runways_merged)
+	return catalog
 
 
 # ── Position / Teleport ────────────────────────────────────────────────────
@@ -2419,6 +2778,8 @@ func _on_teleport_requested(swiss_e: float, swiss_n: float, heading_deg: float) 
 	#     has loaded and the cooldown expires (in _process).
 	if jsb_node.has_method("reinitialize_from_pose"):
 		jsb_node.reinitialize_from_pose(ac_node.global_transform, 0.0, terrain_height)
+		_apply_fuel_setting()
+		_set_parking_brake_at_start()
 	if _live_weather and _live_weather.enabled:
 		_live_weather.refresh(true)  # new region: fetch the METAR there now
 	_update_terrain_elevation()
@@ -2494,6 +2855,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
+		# Space held: the wheel zooms the cockpit view
+		if mb.pressed and _camera_rig.is_mouse_look_active() and mb.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+			_camera_rig.mouse_zoom(1 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else -1)
+			get_viewport().set_input_as_handled()
+			return
+		# FlightGear cockpit controls (switches, knobs) take clicks and wheel first
+		if _fg_controls.count > 0 and _fg_controls.click(active_camera, mb.position, mb.button_index, mb.pressed, mb.shift_pressed):
+			get_viewport().set_input_as_handled()
+			return
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			if mb.pressed:
 				# Try mixture lever first, then throttle, then magneto switch
@@ -2545,7 +2915,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	
 	elif event is InputEventMouseMotion:
 		var mm := event as InputEventMouseMotion
-		if _mixture_dragging:
+		if _camera_rig.is_mouse_look_active():
+			_camera_rig.mouse_look(mm.relative)   # Space held: look around
+			get_viewport().set_input_as_handled()
+		elif _mixture_dragging:
 			var delta_y := _mixture_drag_start_y - mm.position.y
 			var delta_mixture := delta_y / 200.0
 			var new_value := clampf(_mixture_drag_start_value + delta_mixture, 0.0, 1.0)
@@ -2627,3 +3000,85 @@ func _setup_flap_lever_collision() -> void:
 	
 	flap_lever_body.add_child(shape)
 	flap_lever_node.add_child(flap_lever_body)
+
+
+## ProVPilot HUD overlay (H key): 0 nothing, 1 the bottom readouts (airspeed,
+## altitude, vertical speed, throttle, heading), 2 also the upper info block
+## (Swiss coordinates, PM, ECEF, time, slew heading). The VFR map, the weather
+## overlay and the FPS counter have their own toggles.
+func _apply_hud_mode() -> void:
+	var bottom := get_node_or_null("Control/BottomRow")
+	if bottom:
+		bottom.visible = _hud_mode >= 1
+	for nm in ["Control/Label6", "Control/Label7", "Control/Label8", "Control/Label9", "Control/TimeLabel"]:
+		var n := get_node_or_null(nm)
+		if n:
+			n.visible = _hud_mode >= 2
+
+
+## Settings → Aircraft tab (aircraft_settings_panel.gd): tell it which aircraft
+## is selected, which is flown, and how to read a config.
+func _wire_aircraft_settings_panel() -> void:
+	if _settings_screen == null:
+		return
+	var panel = _settings_screen.get_aircraft_panel()
+	if panel == null:
+		return
+	panel.aircraft_provider = Callable(self, "_settings_aircraft_id")
+	panel.flown_provider = func() -> String: return _aircraft_id if terrain_initialized else ""
+	panel.fdm_provider = func(): return jsb_node
+	panel.config_provider = Callable(self, "_config_for_aircraft")
+	panel.name_provider = func(id: String) -> String: return WelcomeScreenScript.aircraft_label(id) if WelcomeScreenScript else id
+
+
+## The aircraft the Aircraft tab shows: the welcome page's selection while it
+## is up, else the one being flown.
+func _settings_aircraft_id() -> String:
+	if _welcome_screen and _welcome_screen.visible and _welcome_screen.has_method("get_selected_aircraft_id"):
+		return _welcome_screen.get_selected_aircraft_id()
+	return _aircraft_id
+
+
+func _config_for_aircraft(id: String):
+	if id == _aircraft_id and _aircraft_cfg != null:
+		return _aircraft_cfg
+	var ir := get_node_or_null("/root/InstallRoot")
+	var path: String = ir.get_aircraft_dir(id).path_join("aircraft.cfg") if ir != null else ""
+	if path == "" or not FileAccess.file_exists(path):
+		path = ProjectSettings.globalize_path("res://aircraft/%s/aircraft.cfg" % id)
+	return AircraftConfig.load_from_file(path) if FileAccess.file_exists(path) else null
+
+
+## Fuel load from the Aircraft tab (aircraft_<id>_fuel_pct), applied to every
+## tank when a flight starts.
+func _apply_fuel_setting() -> void:
+	if _settings == null or jsb_node == null:
+		return
+	var key := "aircraft_%s_fuel_pct" % _aircraft_id
+	if _settings.has_setting(key):
+		var pct: float = float(_settings.get_setting(key))
+		AircraftSettingsPanelScript.apply_fuel(jsb_node, pct)
+		print("Fuel: %s tanks set to %.0f %% from the Aircraft settings" % [_aircraft_id, pct])
+
+
+## Every flight starts with the parking brake set (the aircraft used to roll
+## off while the scenery was still loading). Release: "," (comma), the A-10's
+## emergency brake handle, or set again with ".".
+func _set_parking_brake_at_start() -> void:
+	if jsb_node == null:
+		return
+	jsb_node.set_input_brake(1.0)
+	_parking_brake = true
+	if _fg_controls.count > 0:
+		_fg_controls.state["controls/gear/brake-parking"] = 1.0
+	print("Parking brake: SET at flight start (release with ,)")
+
+
+## Keep the cockpit handle (FlightGear control) in step with the brake keys.
+func _sync_parking_brake() -> void:
+	if jsb_node == null or _fg_controls.count == 0:
+		return
+	var braked: bool = jsb_node.get_input_brake() > 0.5
+	if braked != _parking_brake:
+		_parking_brake = braked
+		_fg_controls.state["controls/gear/brake-parking"] = 1.0 if braked else 0.0

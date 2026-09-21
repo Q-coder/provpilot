@@ -81,6 +81,7 @@ namespace jsbgodot
         PackedStringArray get_sections() const;
         PackedStringArray get_section_keys(const String &section) const;
         void erase_section(const String &section);
+        void erase_section_key(const String &section, const String &key);
         Error save_config();
 
     protected:

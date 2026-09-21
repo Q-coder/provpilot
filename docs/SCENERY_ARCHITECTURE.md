@@ -486,8 +486,8 @@ background thread pool (4 workers). The main thread runs budgeted work only:
 These caps spread the JPEG decode + texture upload work across many frames so
 the simulation no longer stalls when the camera crosses into a fresh 8×8 far
 chunk. The trade-off is that the very first load after `Fly!` takes several
-seconds — `node_3d.gd` shows this on the loading screen instead of freezing
-silently.
+seconds — `node_3d.gd` shows this on the intro zoom's HUD (status + progress)
+instead of freezing silently.
 
 A far chunk is dropped only after every individual tile in its footprint that
 lies within `load_radius` has finished loading (or is marked `no_data`),

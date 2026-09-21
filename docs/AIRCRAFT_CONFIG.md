@@ -62,11 +62,26 @@ Typed getters each take a default, so omitted keys fall back gracefully:
   uniformly; a prefix flips only matching mesh names. Calibrate against the
   Cessna: a mesh whose top faces measure “up” needs `flip_normals true`.
 
+#### FlightGear models (A-10)
+`fg_animations "model/animations.json"` — manifest written by
+`scripts/fg_a10_build.py`; the `FGAnimator` extension runs every FlightGear
+animation of the model with values from `fg_bridge.gd` (see
+`docs/A10_FLIGHTGEAR_PORT.md`). `hide_nodes "a, b"` hides model nodes by name
+(all matches), used for placeholder display textures. `scale` fits a model
+authored in metres: the AC frame draws models at 0.2 m per unit, so `5.0`
+gives real size. Generic FlightGear models the package references
+(`/Aircraft/Instruments-3d/...`) come from `third_party/fgdata`; see
+`docs/INSTRUMENTS.md` for how instruments are built and added.
+
 ### `[camera]`
 Cockpit camera (Camera1) placement, in AC‑node‑local meters. Omit the whole
 section to keep the scene default.
 - `cockpit_position "x,y,z"` (x=right, y=up, z=back)
 - `cockpit_rotation_deg "p,y,r"` *(optional)*, `cockpit_fov` *(optional)*
+
+`orbit_distance`, `orbit_distance_min`, `orbit_distance_max` — external
+camera distance in metres (defaults 6 / 1.5 / 50; a 17.5 m jet wants 32 / 6 /
+300).
 
 ### `[animation]`
 Control‑surface mesh node paths, **relative to `model.root_node`**:
@@ -115,6 +130,64 @@ wheels from `gear/gear-pos-norm`).
 - Optional nose‑wheel **steering**, composed under the retract transform:
   `<leg>_steer true`, `<leg>_steer_axis "z"` (signed), `<leg>_steer_max_deg`,
   `<leg>_steer_pivot "x,y,z"`.
+- Nose‑wheel steering **range** (Ctrl+W toggles limited ↔ full, like the
+  A‑10's NWS engage): `steer_limited_deg` must equal the FDM's `<max_steer>`
+  (the pedal range at speed); `steer_full_deg` is the engaged taxi range
+  (A‑10: 5 / 60). The bridge scales `fcs/steer-cmd-norm` by full/limited,
+  which JSBSim does not clamp. Omit both (or full ≤ limited) to disable.
+
+
+**Calibrating `offset` (wheels on the ground):** run
+`godot --headless --path provpilot res://tests/probe_gear_height.tscn`. It parks
+each aircraft at LSZH with the FDM on its gear and prints the clearance of
+the lowest tyre mesh above the ground under it (positive = floats). Note the
+offset is applied in the model's parent frame, which carries the AC node's
+scale, so one offset unit is not one metre — adjust, re-run, converge (the
+A‑10 needed −0.85 for a 0.2 m/unit response; PC‑7 +4 cm, within tolerance).
+
+### `[lights]`
+
+Exterior lights, drawn by `aircraft_lights.gd` (node `AircraftLights` under
+the scene root). Each key lists model mesh nodes (comma separated, found by
+name anywhere in the model); the light sprite sits at the mesh's bounding-box
+centre and follows the node, so lights on animated gear retract with it.
+
+| key | fixture | state |
+|---|---|---|
+| `nav_left`, `nav_right`, `nav_tail` | red / green / white steady | on while an aircraft is loaded |
+| `strobe` | white double flash (1.2 s) | airborne (no weight on wheels) |
+| `beacon` | red flash (1 Hz) | always |
+| `landing`, `taxi` | white sprite + `SpotLight3D` on the ground | **L** toggles both; out while the gear is retracted |
+| `<kind>_pos` | `"x, y, z"` in model-root units | alternative for models without a lens mesh |
+| `<kind>_anchor` | animated part the lens rides on | for lens meshes without animation tracks (the A-10 nose-gear lights): the lens is reparented under the part with the offset from the clip pose in which they coincide |
+| `landing_pitch_deg` | spot aim below the aircraft's forward axis (default 5) | |
+| `landing_range_m`, `taxi_range_m` | spot ranges (300 / 90) | |
+| `spot_energy` | landing spot energy (12; taxi half) | |
+| `pair_meshes` | `false` leaves the `-on`/`-off` lens meshes to another system (the A-10's FlightGear selects, fed by `fg_bridge.gd`) | |
+
+Each sprite is placed a few model-centimetres outside its lens (outboard for
+wingtip lights, up for the beacon, forward for the nose lights) and drawn
+with the depth test on, so the airframe hides lights on its far side. Note
+that the airframes are drawn at a fraction of world scale (the `AC` node is
+0.1, the A-10 ends up at 0.2 m per model metre, wingtip to wingtip 3.6 m in
+world metres), so anything metre-based on the model must use model units.
+
+A node named `<x>-on` with a sibling `<x>-off` is a lit / unlit mesh pair
+(FlightGear convention): the pair's visibility follows the light. Sprites are
+dimmer by day and full at night (host rule: sun below 4° or visibility under
+1 km, the same as the airfield lights).
+
+### `[performance]`
+Reference data shown in Settings → Aircraft (not used by the flight model):
+`vne_kts`, `vno_kts`, `vs_kts`, `vs0_kts`, `vr_kts`, `vref_kts`,
+`ceiling_ft`, `max_takeoff_lbs`, `empty_lbs`, `notes` (free text), and
+optionally `cg_fwd_pct_mac` / `cg_aft_pct_mac` for the CG limits line. The
+tab also holds the per-aircraft fuel load (`aircraft_<id>_fuel_pct` in
+provpilot.cfg `[aircraft]`, applied to every tank at flight start; such keys
+have no default and are loaded as they are, next to InstallConfig's own
+`initialized` / `version` keys in that section) and a live
+centre-of-gravity readout from JSBSim (inches aft of the datum, % MAC with
+the aerodynamic centre taken at 25 % MAC, weight).
 
 ### `[sound]`
 `engine` (ogg path) and RPM‑mapped `pitch_*` / volume tuning.
@@ -168,6 +241,13 @@ engines), so a twin behaves symmetrically. Single-engine airframes are
 unaffected (engine 0 == all engines).
 
 ### A-10 Thunderbolt II (`aircraft/a10`)
+
+Keys specific to this airframe: **Ctrl+W** full / limited nose-wheel
+steering, **B** speed brakes (split ailerons, `fcs/speedbrake-cmd-norm`),
+**L** landing / taxi lights, **G** gear. The cockpit switches and knobs are
+clickable (left / right click, wheel, Shift for coarse steps; see
+`docs/A10_FLIGHTGEAR_PORT.md` subtask 5). **H** cycles the ProVPilot HUD
+overlay for every aircraft: off, bottom readouts, readouts + upper info.
 
 Ported from the FlightGear A-10 (its standalone JSBSim FDM: twin TF34 turbofan,
 retractable tricycle gear, flaps, speedbrake). The visual model is a

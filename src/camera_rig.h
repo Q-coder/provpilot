@@ -53,6 +53,8 @@ namespace jsbgodot
         void set_orbit_zoom_speed(double units_per_sec);
         void set_orbit_distance_min(double distance);
         void set_orbit_distance_max(double distance);
+        // Jump the orbit/chase camera to a distance (clamped next frame): per-aircraft default from aircraft.cfg [camera].
+        void set_orbit_distance(double distance);
         void set_orbit_pitch_min(double deg);
         void set_orbit_pitch_max(double deg);
         void set_chase_smooth(double smooth);
@@ -74,6 +76,15 @@ namespace jsbgodot
         // Direct mode set — used by the world3d intro-zoom handoff, which must
         // jump straight to ORBIT without a head reset. Toggles current flags.
         void set_mode(int mode);
+        // Mouse motion (InputEventMouseMotion.relative) from GDScript; used
+        // while Space is held in the cockpit.
+        void mouse_look(const Vector2 &relative);
+        // Mouse wheel while Space is held: notches > 0 zoom in (narrower
+        // field of view), < 0 zoom out.
+        void mouse_zoom(int notches);
+        bool is_mouse_look_active() const;
+        // Head straight ahead, cockpit zoom back to the default.
+        void recenter_head();
         int get_mode() const;
 
         // Suppress the cockpit branch while a dedicated camera (the intro zoom)
@@ -124,6 +135,23 @@ namespace jsbgodot
         Camera3D *camera2 = nullptr;
         Node3D *ac_node = nullptr;
         Transform3D cockpit_base;
+        // Cockpit zoom: the orbit/chase zoom inputs (L1/R1, Page Up/Down) change
+        // the cockpit camera's field of view instead of a distance.
+        double cockpit_zoom_speed = 40.0; // degrees of FOV per second
+        double cockpit_fov_min = 15.0;
+        double cockpit_fov_max = 100.0;
+        double cockpit_fov_default = 65.0; // captured with the cockpit base
+        // Space in the cockpit (MSFS style): held, the mouse looks around
+        // (mouse captured meanwhile); a short tap without mouse movement
+        // recentres the head and the zoom.
+        double mouse_look_deg_per_px = 0.15;
+        double mouse_zoom_deg_per_notch = 5.0;
+        double tap_max_s = 0.3;
+        double tap_max_px = 5.0;
+        bool space_held = false;
+        double space_time = 0.0;
+        double space_motion_px = 0.0;
+        Vector2 pending_mouse;
 
         void update_head_look(double delta, int joy_device);
         void update_orbit(double delta, int joy_device);

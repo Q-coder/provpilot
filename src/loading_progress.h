@@ -41,6 +41,14 @@ namespace jsbgodot
         // Cached outputs from the last update() call.
         String get_status_text() const;
         bool is_complete() const;
+        // Progress of the current phase alone, 0..1, restarting at 0 with each
+        // phase (scenery tiles → flight-model init → stabilizing): the bar the
+        // intro HUD shows while fly-loading. The init phase has no measurable
+        // progress; it creeps with time (12 s ≈ the precise-tile wait window)
+        // and caps at 0.95.
+        double get_phase_progress() const;
+        int get_phase() const;   // PHASE_*
+        enum Phase { PHASE_SCENERY = 0, PHASE_FDM_INIT = 1, PHASE_STABILIZE = 2, PHASE_READY = 3 };
 
         // Config setters (defaults = historical GDScript constants). GDScript pushes
         // the values it still owns locally so there is one source of truth.
@@ -63,6 +71,9 @@ namespace jsbgodot
 
         // Cached per-frame outputs
         double _progress = 0.0;
+        double _phase_progress = 0.0;
+        int _phase = PHASE_SCENERY;
+        double _phase_start_msec = 0.0;
         String _status_text;
         bool _complete = false;
     };

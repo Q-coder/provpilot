@@ -6,9 +6,9 @@ extends Node
 ## tile manager streams around the ECEF camera.
 ## Run: godot/bin/godot.macos.editor.double.arm64 --headless --path provpilot res://tests/smoke_ecef_spawn.tscn
 
-const E := 2683732.0   # LSZH reference (pyproj)
-const N := 1257695.0
-const HDG := 160.0     # true heading
+const E := 2682767.0   # LSZH runway 16, 120 m past the pavement end (flat plateau; the
+const N := 1258797.0   # old airport reference sat on sloped grass west of the runway)
+const HDG := 155.0     # true heading, along runway 16
 var _root: Node = null
 var _fails: Array[String] = []
 
@@ -46,7 +46,8 @@ func _ready() -> void:
 	var drift: float = dvec.length()
 	var along_nose: float = dvec.dot(ac.global_transform.basis.z.normalized())
 	print("[ecef-spawn] drift over 5 s on the ground: %.2f m (%.2f m along the nose)" % [drift, along_nose])
-	if drift > 15.0 or (drift > 1.0 and along_nose < 0.8 * drift):
+	# (~3 m/s at idle on the C172 since JSBSim runs at real time, 2026-09-20)
+	if drift > 25.0 or (drift > 1.0 and along_nose < 0.8 * drift):
 		_fail("aircraft moved %.1f m on the ground, only %.1f m of it forward" % [drift, along_nose])
 	# Streaming around the ECEF camera.
 	var tm = _root._get_tile_manager()

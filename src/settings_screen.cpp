@@ -51,6 +51,7 @@ void SettingsScreen::_bind_methods()
     ADD_SIGNAL(MethodInfo("closed"));
 
     ClassDB::bind_method(D_METHOD("show_settings"), &SettingsScreen::show_settings);
+    ClassDB::bind_method(D_METHOD("get_aircraft_panel"), &SettingsScreen::get_aircraft_panel);
     ClassDB::bind_method(D_METHOD("hide_settings"), &SettingsScreen::hide_settings);
     ClassDB::bind_method(D_METHOD("get_store"), &SettingsScreen::get_store);
     ClassDB::bind_method(D_METHOD("get_setting", "key"), &SettingsScreen::get_setting);
@@ -124,6 +125,7 @@ void SettingsScreen::_input(const Ref<InputEvent> &event)
 void SettingsScreen::show_settings()
 {
     _apply_to_ui();
+    _refresh_aircraft_panel();
     set_visible(true);
 }
 
@@ -198,6 +200,7 @@ void SettingsScreen::_build_ui()
     tabs->add_theme_font_size_override("font_size", FONT_MD);
     main_vbox->add_child(tabs);
 
+    _build_aircraft_tab();
     _build_scenery_tab();
     _build_downloads_tab();
     _build_graphics_tab();
@@ -1164,6 +1167,35 @@ void SettingsScreen::_on_weather_option_changed(int, int)
     _read_weather_table();
 }
 
+// ── Tab: Aircraft (aircraft_settings_panel.gd) ──────────────────────────────
+// Per-aircraft settings (fuel) and reference data for the aircraft selected
+// on the welcome page; the host wires the panel's providers (node_3d.gd).
+
+void SettingsScreen::_build_aircraft_tab()
+{
+    VBoxContainer *content = _add_tab("Aircraft");
+    aircraft_panel = _instantiate_script("res://aircraft_settings_panel.gd");
+    if (aircraft_panel == nullptr)
+    {
+        _add_hint(content, "Aircraft panel unavailable.");
+        return;
+    }
+    content->add_child(aircraft_panel);
+}
+
+Node *SettingsScreen::get_aircraft_panel() const
+{
+    return aircraft_panel;
+}
+
+void SettingsScreen::_refresh_aircraft_panel()
+{
+    if (aircraft_panel != nullptr && aircraft_panel->has_method("refresh"))
+    {
+        aircraft_panel->call("refresh");
+    }
+}
+
 // ── Tab: Joystick (joystick_settings_panel.gd) ──────────────────────────────
 
 void SettingsScreen::_build_joystick_tab()
@@ -1316,6 +1348,7 @@ void SettingsScreen::_on_cancel()
         jc->call("_load");
         _refresh_joystick_panel();
     }
+    _refresh_aircraft_panel();
     hide_settings();
     emit_signal("closed");
 }
@@ -1330,6 +1363,7 @@ void SettingsScreen::_on_restore_defaults()
         jc->call("reset_to_defaults");
         _refresh_joystick_panel();
     }
+    _refresh_aircraft_panel();
 }
 
 } // namespace jsbgodot

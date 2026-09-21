@@ -446,7 +446,7 @@ single surface, no snap; rebase cost ≪10 µs/frame; chunk-commit counter flat.
 Tracking threshold is 500 m (`GLOBE_REBASE_TRACK_M`), not 100 m — the re-anchor
 is a quantized event at most once per 500 m of travel, and the residual sag at
 500 m is ~2 cm. The one-shot destination rebase stays as the initial anchor
-under the loading screen; `_track_globe_rebase()` in `node_3d.gd::_process`
+during fly-loading (behind the intro zoom); `_track_globe_rebase()` in `node_3d.gd::_process`
 re-anchors quietly afterwards (the `quiet` flag suppresses the log line). The
 suppression API is `W3DGlobe::add_suppress_rect()/clear_suppress_rects()` —
 **one rectangle per enabled region's terrain-manifest grid** (not a bounding
@@ -875,7 +875,12 @@ precise tile):
    the streamer follows the viewport camera, so the destination never
    loaded. The zoom is cancelled before a teleport
    (`IntroZoom.cancel()`), and `_on_teleport_requested` makes sure the
-   current camera rides with the pinned aircraft.
+   current camera rides with the pinned aircraft. Since 2026-09-21 there
+   is no fly-loading screen: the zoom starts with the Fly! request over the
+   destination and is the loading view (status + progress on the intro
+   HUD); `IntroZoom.set_hold_at_end(true)` keeps it on the spot view until
+   `LoadingProgress` completes (Space then only jumps to the end). The
+   loading screen remains the fallback when the zoom cannot start.
 3. Safety nets: `TerrainElevation::update_terrain_elevation` lifts the
    aircraft onto the ground when a tile loads *above* it (terrain jump
    > 1 m and CG below ground; flying into a mountain is left to crash
@@ -1019,6 +1024,14 @@ tab (Save in the settings then applies them), Save writes the current
 layers under the typed name, Delete removes the file.
 `SettingsStore.save/load/delete_weather_profile`, `list_weather_profiles`.
 
+*Draw order between layers (2026-09-19).* Seen from high altitude a low
+layer could draw over a high one: Godot orders transparent meshes by the
+depth of their AABB centre, and every layer's centre sits directly under
+the camera, so with a level camera the depths tie. `Clouds._apply_draw_order`
+now assigns `render_priority` per frame — the layer farthest from the
+camera altitude draws first, the nearest last (layers on opposite sides of
+the camera never overlap on screen).
+
 ### 10.1 How it maps onto JSBSim
 
 JSBSim has no layered atmosphere: the host sets *one* wind vector and one
@@ -1049,6 +1062,501 @@ the aircraft's current altitude every frame.
 
 Frame note: JSBSim's wind NED frame is local to the aircraft's geodetic
 position, so the ECEF world frame needs no conversion here.
+
+## 11. Worldwide base tier — decision 2026-09-19
+
+gery, 2026-09-19 (weather work parked): *"the Swiss and BW scenery should be
+treated as add-ons due to the huge size … I want a similar basis as
+Scandinavia for the rest of the globe, starting with a strip from Scandinavia
+over Germany, Switzerland and Italy to the Mediterranean. We would continue
+with Denmark and the water in the North Sea."*
+
+### 11.1 Decisions
+
+| # | Decision |
+|---|----------|
+| D10 | **Two tiers.** The *base tier* is what Fennoscandia already is: SRTM 30 m terrain (34 px / 1024 m tiles), OurAirports catalog, no ortho. It is meant to cover the whole globe eventually and to be the default install. The 1 m CH and BW packs (46 + 16 GB, ortho, buildings, roads) become **opt-in add-on overlays** on top of the base tier. |
+| D11 | **Region packs are countries** (Natural Earth 1:10m admin-0 polygon + 5 km margin), not bounding boxes. Neighbouring packs overlap by the margin and bake identical values there (same source), so seams are impossible and a user with only one pack sees the ETOPO globe past the margin (fragment mask, D8). The Fennoscandia packs keep their bbox selection (`select: "bbox"`) — already baked and flight-tested. |
+| D12 | **One grid for all of Europe: LV95 (EPSG:2056).** Scenery3D streams a single grid per build (C3) and the runtime places every tile through the rigorous projection with the local Jacobian, so LV95 scale distortion does not misplace anything; it only stretches the 31 m posting. Scale factor k−1 ≈ d²/2R²: Denmark 1.2 %, Sicily 1.8 %, Nordkapp 10 % (flown). Multi-CRS streaming (D6) starts with the **first pack outside Europe**, not before. |
+| D13 | **Priority order and cross-resolution merge.** Base packs go **after** the detail packs in the scenery library (higher priority number). `S3DTileManager` merges same-resolution sources pixel-wise (later non-zero wins). Sources of *different* resolution are merged by `elev_fill_zeros_resampled` (2026-09-19): the finer tile is authoritative wherever it has data and its no-data (0.0) samples are filled from the coarser tile, bilinearly resampled from non-zero neighbours — both in the tile path and in the far-chunk composite. Before this the first source found won wholesale, which left the diagonal no-data wedge along the BW pack's eastern edge (UTM32 source cells projected into LV95) at 0 m next to the 30 m base: the dark cliffs of the first strip check flight (Bavaria, 2026-09-19). Smoke: `tests/smoke_tile_merge.tscn`. |
+| D14 | **Terrain manifests carry scalars only** (`pixels_per_tile`, `crs`, `grid`, `tile_count`, …). The per-tile list of the Norway bake (139–309 MB per pack, never read by the runtime) is dropped. |
+
+### 11.2 Pipeline
+
+`scripts/world_regions.json` is the single region registry (id, name,
+subdir, `select`, ISO codes, optional bbox, verify landmarks).
+`scripts/build_world_terrain.py {plan,fetch,bake,verify,build} --region <id>`
+bakes one region into `/Volumes/Data1/provpilot/build/<id>/<Name>/terrain/`;
+`scripts/build_world_strip.sh <id>…` chains regions with per-region logs.
+The SRTM cache is shared (`/Volumes/Data1/scenery_in_world/srtm`, the old
+Norway cache is read as a fallback); ocean-only 1° tiles that the server does
+not have (HTTP 404) are recorded as empty marker files and bake to 0.0
+(no-data → globe). The bake is resumable (existing tiles of the right size
+are skipped; `--force` rebakes). `scripts/build_world_airports.py --all`
+fills the catalog for every region with ISO codes; an ICAO already present
+under another region (the hand-curated CH/BW entries) is not duplicated.
+
+Strip plan (2026-09-19, `plan` output; Norway bake rate was 186 tiles/s,
+the Denmark bake ran at ~2000 tiles/s with a warm SRTM cache):
+
+| Region | Selection | Tiles | SRTM 1° | Tile bytes |
+|--------|-----------|------:|--------:|-----------:|
+| denmark | DNK | 59 770 | 24 | 264 MB |
+| germany | DEU | 368 911 | 71 | 1 627 MB |
+| switzerland-base | CHE + LIE | 47 336 | 15 | 209 MB |
+| austria | AUT | 91 036 | 25 | 401 MB |
+| italy | ITA + SMR + VAT | 329 963 | 82 | 1 455 MB |
+| france (2026-09-20) | FRA + MCO, clipped to 5.6°W–10°E / 41–51.3°N | 555 977 | 100 | 2 452 MB |
+
+France was added after the strip check flights (gery, 2026-09-20: the
+Swiss border against the bare globe looked odd). Its Natural Earth admin-0
+feature includes the overseas departments, hence the `bbox_wgs84` clip;
+OurAirports lists those under their own ISO codes, so the catalog needs no
+clip but the builder applies the region bbox anyway.
+
+Italy's southern islands (Lampedusa 35.5°N) give **negative LV95 northings**;
+the tile manager already floors negative tile and chunk indices, so this is
+supported (Crete and North Africa will need it too).
+
+Verified 2026-09-19: every pack's landmarks inside tolerance (Denmark EKCH
+2 m / Møllehøj 161 m, Germany Zugspitze 2940 m, Switzerland Dufourspitze
+4499 m, Austria Großglockner 3629 m, Italy Etna 3270 m). First check flight
+(gery, ENGM → Denmark → Germany, slew): BW loads over the base without
+issues; the dark wedges at the BW/Bavaria edge were the cross-resolution
+merge gap fixed in D13. The slew HUD also never updated the "PM:" WGS84
+line (only the C++ SlewMode wrote the HUD; it now gets the label via
+`set_pm_label`). Remaining: re-fly the BW east edge and a Basel seam pass
+(CH add-on over Germany base over Switzerland base).
+
+### 11.3 Open: pack naming and the CH/BW migration
+
+The base packs are named by country (`Switzerland`, `Germany`, …) like
+Norway. The installed detail packs live in `Switzerland/` and
+`Germany/Baden-Wuertemberg/`, so a base `Germany/` next to the BW add-on
+would nest two regions in one directory. Proposal: publish the add-ons as
+`Switzerland-HD` / `Baden-Wuerttemberg-HD` (schema-v2 region entries with
+`"overlay_of": "switzerland-base"`), keep the old directory names working
+for existing installs, and let the base packs own the plain country names.
+Decision pending (gery).
+
+### 11.5 Morphing over the Alps — LOD for 30 m tiles (2026-09-20)
+
+Check flight (gery, CH/BW add-ons disabled): the base scenery "morphs" a lot
+over the Alps. Measured on the 8 km block around the Zugspitze (1061–2941 m)
+by rebuilding the surface at each mesh spacing and comparing with the 31 m
+data:
+
+| Mesh spacing | RMS error | Max |
+|--------------|----------:|----:|
+| 62 m (stride 2) | 9.6 m | 318 m |
+| 124 m (stride 4) | 20.4 m | 437 m |
+| 248 m (stride 8 = old far chunk) | 40.0 m | 520 m |
+| 496 m (stride 16) | 78.9 m | 771 m |
+| 1 km (2 vertices, old ring 13–16) | 150.2 m | 658 m |
+
+Cause: the ring table (`rebuild_lod_rings`) names LOD levels that were
+applied as raw strides to every tile. For 1 m/px CH tiles LOD 3 means 8 m
+cells at 8 km; for a 34 px base tile the same LOD 3 meant 256 m cells, and
+ring 13–16 (LOD 6, stride 64 clamped to 33) collapsed each tile to one quad,
+while the far chunks beyond 16 km were *finer* (250 m). Headless probe
+(`tests/smoke_lod_base.tscn`, before): ring 2 → 289 verts, 3–4 → 81,
+5–8 → 25, 9–12 → 9, 13–16 → 4, chunks 1089. Every ring crossing re-meshed
+the tile with a different surface, and the chunk→tile handoff at 16 km
+jumped the surface by the 30 m chunk bias.
+
+Fixes (scenery3d):
+- **Resolution-aware LOD** — `S3DTile::effective_lod(lod, img_w, tile_m)`:
+  a LOD level names a target spacing of 2^lod m; each tile subtracts
+  log2 of its own pixel spacing. 34 px tiles stay native (31 m) through
+  ring 12 and use stride 2 (62 m) in ring 13–16; 1 m tiles are unchanged;
+  2 m BW tiles now keep native resolution in ring 2 (target 2 m).
+  Ring crossings that map to the same stride no longer regenerate the mesh,
+  and small heightmaps (≤ 64 KB) are no longer discarded at LOD ≥ 4.
+- **Far chunks by distance** — composite 129 px (64 m) for chunks whose
+  nearest tile is within 32 tiles, 65 px (128 m) within 64, 33 px beyond,
+  with 4 tiles of hysteresis; chunks are rebuilt when their target changes,
+  so the tile/chunk handoff at ring 16 is 62 m ↔ 64 m instead of 1 km ↔ 250 m.
+- **Chunk Y bias scales with spacing** (30 m at 250 m → 7.7 m at 64 m), so
+  the handoff no longer lifts the terrain by 30 m.
+
+After (same probe): rings 0–12 → 1156 verts (native), 13–16 → 289, nearest
+chunk 16641 verts, farthest 1089. `smoke_scenery_ecef` and `smoke_tile_merge`
+still pass. Remaining morphing is the real data change at ring 12 (31 → 62 m,
+RMS ~10 m over the Alps) and at 32 / 64 tiles between chunk resolutions.
+A geomorph (vertex blend over ~1 s on LOD change) would hide those too and
+is the next step if they still show in flight.
+
+### 11.4 Next: the sea (North Sea first)
+
+The base packs stop 5 km off the coast; beyond that the globe shows the ETOPO
+sea floor colour ramp, and inside the packs the SRTM bathymetry is rendered
+as dry terrain below 0 m. Neither is water. Options considered:
+
+1. **Bake sea polygons per pack** (OSM water polygons from osmdata, on the
+   1 km grid through `convert_osm_bw.py`, baked Y = 0). Exact coastline,
+   handles land below sea level (Dutch polders), but the open sea is
+   hundreds of thousands of trivial full-tile quads per pack.
+2. **Engine sea surface at 0 m on the ellipsoid** (world3d draws a water
+   material at h = 0 wherever ETOPO < 0, ignoring the coverage mask; inside
+   packs the surface simply sits above the baked sea floor). Worldwide for
+   free, no data; wrong only where land lies below sea level.
+3. **Hybrid (recommended):** option 2 as the surface, plus a per-pack
+   1 km **sea mask** (sea / land / coast, one byte per tile, from the OSM
+   water polygons) that the engine samples: land tiles suppress the surface,
+   coast tiles get an exact polygon GLB from option 1, open-sea tiles use the
+   engine quad. Compact, exact at the shore, and the same mechanism serves
+   lakes at their own level later (§5.4 per-polygon water level).
+
+To be designed after the strip is flown; the Denmark pack is the test bed.
+
+## 12. Runways for the base tier — plan 2026-09-20
+
+gery: *"the next base scenery item to do are runways … what source is best
+for the generic runways and how can we keep the runways generic but as
+precise as possible? … Keep all the scenery elements like runways so that
+it can be replaced easily with bespoke more detailed scenery later."*
+
+### 12.1 Findings
+
+- The base tier draws **no runways**; the procedural loader named in
+  SCENERY_ARCHITECTURE.md no longer exists. Runways are visible only where
+  the Swiss ortho shows them.
+- The catalog stores heading + length per runway and derives both
+  thresholds from the airport reference point, so every runway is centred
+  on the ARP (wrong for offset runways). The curated Zurich entry lists only
+  16/34.
+- Sources compared on the nine regions (442 large/medium airports, 623
+  runways): **OurAirports** runways.csv (public domain) has runway-end
+  coordinates for 96 %, width 99 %, end elevations 91 %, displaced
+  thresholds, lighting — but 36 of 595 runways contradict their own declared
+  length by > 10 % (up to 1.5 km). **OpenStreetMap** `aeroway=runway`
+  centrelines (ODbL, already credited for roads/water) are imagery-traced,
+  typically within a few metres, carry `width`/`ref`/`surface`, but ways are
+  split or duplicated and small fields are patchy. **X-Plane Gateway**
+  apt.dat is the most precise but its reuse licence is unclear → not used.
+- OurAirports `le/he_latitude_deg` are the **runway ends**, not the
+  displaced thresholds; at Zurich they agree with the OSM pavement ends
+  within 10–20 m.
+
+### 12.2 Decisions
+
+| # | Decision |
+|---|----------|
+| D15 | **Geometry from OSM, identity and metadata from OurAirports.** Ways with the same designators (or none) on the runway axis (bearing ±6°, lateral ≤ 80 m, compatible surface class, not already claimed by an exact-ref match) are merged; the pavement ends are the extreme node projections along the axis, the width is the OSM `width` tag. OurAirports supplies designators, end elevations, displaced thresholds, surface, lighting, and is the geometric fallback when OSM has nothing. Disagreements (> 30 m at an end, > 10 % in length) are **reported, not resolved silently**. |
+| D16 | **Runways are a per-pack asset**: `<Pack>/airports/runways.json` (schema v1 below), resolved by scenery-library priority like every other asset class. The runtime merges the enabled packs **per airport**: the highest-priority pack that lists an ICAO defines that airport completely (all its runways); lower packs are ignored for it. A bespoke or detail pack therefore overrides an airport by listing it, and removes a base runway by listing the airport without it. |
+| D17 | **Replaceable rendering.** The procedural runway mesh is one renderer of the same file. An airport entry may carry `"model": "LSZH/apron.glb"` (path inside the pack) with `"procedural": false`: the model is placed at the airport reference point in its WUN frame and the procedural runways are suppressed. Terrain flattening (D18) still applies, driven by the same runway records, so a bespoke model sits on the same plateau. |
+| D18 | **Precision comes from the terrain, not the coordinates.** Each runway is a plane between its two end elevations (OurAirports, else terrain samples at the ends); the bake flattens the terrain tiles under the strip plus a blend margin onto that plane. On 30 m SRTM the Zurich ends differ by 8 m with bumps between; without this even perfect coordinates give a runway that cuts the ground. |
+
+### 12.3 Schema v1 (`airports/runways.json`)
+
+```
+{ "schema_version": 1, "region": "germany", "built": "2026-09-20", "sources": [...],
+  "airports": [
+    { "icao": "EDDF", "name": "…", "lat": …, "lon": …, "elevation_m": 111, "type": "international_airport",
+      "model": "EDDF/terminals.glb",     # optional (D17)
+      "procedural": true,                 # optional, default true
+      "runways": [
+        { "designators": ["07L", "25R"],
+          "ends": [ { "ident": "07L", "pavement": [lat, lon], "end_ourairports": [lat, lon],
+                      "elev_m": 108.5, "displaced_m": 0, "heading_deg": 69.0 },
+                    { "ident": "25R", … } ],
+          "width_m": 45.0, "length_m": 4000, "surface": "asphalt", "lighted": true,
+          "geometry_source": "osm" | "ourairports" | "arp+heading",
+          "flags": ["length_osm_4000_vs_declared_3800"] } ] } ] }
+```
+
+`ends[0]` is the end you land over on `designators[0]`; `pavement` is the
+end of the strip, `displaced_m` is measured inward from it; `elev_m` absent
+→ the runtime samples the terrain. Coordinates WGS84.
+
+### 12.5 Taxiways and aprons (2026-09-20)
+
+Same source, same file, same renderer. `build_world_runways.py` also
+fetches `aeroway=taxiway` ways and `aeroway=apron` areas (closed ways and
+multipolygon relations) per region bbox (cache `scenery_in_world/
+osm_airfield/`) and assigns each to the nearest airport reference point
+within its reach (4 km international, 3 km regional, 2 km grass strip).
+The pack file gains `taxiways[] {path[[lat, lon, elev_m]], width_m
+(OSM width, else 23 m), surface}` and `aprons[] {polygon[[lat, lon,
+elev_m]], surface}`.
+
+**Terrain (flatten stage).** Every surface class is rasterised jointly
+with priorities: runway pavement 4 > apron 3 > runway margin 2 > taxiway
+1; within a class the *lowest* surface wins where features overlap
+(crossing runways, adjoining aprons, overlapping ribbons), so no mesh of
+that class ends below the terrain — the higher one floats by the overlap
+difference instead. Aprons are merged per airport (pieces closer than two
+dilations become one polygon) and fitted as planes (least squares on the
+phase-A terrain, slope ≤ 3 %, lowered wherever they would rise above a
+runway strip, checked on interior pixels and outline vertices). Taxiway
+node heights are the terrain after runways and aprons, smoothed ±60 m
+along the path, then refined twice against the final terrain so ribbons
+sit on it to 5 mm. Aprons and ribbons are flattened one pixel spacing
+(31 m) past their outline so the bilinear terrain under a mesh edge only
+sees flat pixels. Residual: at Zurich one apron edge on the steep west
+side is buried 0.8 m; Geneva, Bern and St. Gallen are within 0.2 m.
+
+**Runtime.** `runways.gd` builds ONE `Surfaces` mesh per airport holding
+its runway strips, taxiway ribbons (mitred corners, stored profile) and
+apron polygons (`Geometry2D.triangulate_polygon` in the airport frame,
+vertices at the stored plane heights); every vertex is projected exactly,
+so the airport frame is only an origin. Lifts: runway 5 cm, taxiway 3 cm,
+apron 2 cm, so at junctions the runway draws on top. Shader kinds 4
+(taxiway: asphalt, yellow centreline) and 5 (apron: concrete slabs).
+*Check flight LSZH (2026-09-20): ribbons and aprons submerged in patches,
+ribbons drawn across runways.* Ribbons had vertices only at the OSM
+nodes, so between nodes a straight segment cut through terrain that had
+been flattened to a runway or apron plane it crossed. The bake now
+densifies every taxiway to ≤ 20 m nodes and inserts exact nodes where a
+path enters or leaves a runway pavement (duplicated, so the flag switches
+crisply); path records are `[lat, lon, elev_m, on_runway]`. In the shader
+a taxiway fragment with the on-runway flag draws only the yellow guidance
+line — the pavement stops at the runway edge, the line continues across —
+and the taxiway lift (6 cm) is above the runway (5 cm) so the line shows;
+aprons stay lowest (2 cm).
+*Second LSZH check (2026-09-20): a ramp from the apron up to the runway 28
+end, and messy crossings.* The ramp was a datum conflict: runways use the
+surveyed end elevations (28: 431.6 m, 428.5 after the crossing shift)
+while taxiways and aprons followed SRTM, 5–7 m lower there. The bake now
+anchors taxiway and apron heights to the runway planes (`runway_datum`:
+inverse-distance blend of the airport's runway planes at their nearest
+points, full weight within 300 m of a runway, fading to SRTM by 1 200 m);
+taxiway nodes within 250 m of the 28 end are now within 1.2 m of the
+runway plane. The crossings were geometry: mitred ribbon corners folded
+at sharp turns (dark back faces) and overlapping ribbons at identical
+heights z-fought. Ribbons are now one quad per segment plus a flat disc
+at each interior node (1 cm lower, fills the wedge), and each taxiway
+gets a deterministic lift offset (0–2 cm) so junctions have a fixed order.
+Better DEMs around airports (gery's suggestion) remain the way to fix the
+surroundings — the datum only levels the airfield itself; a per-airport
+DEM patch from national data would slot into the add-on packs (§12.2).
+*Third LSZH check (2026-09-20): small gaps where one OSM way ends on
+another, and the yellow line vanished under the other ribbon at taxiway
+crossings.* Discs now sit at every node (ends included), and the guidance
+line is its own 0.5 m strip (kind 6) at 9 cm, above every pavement, so it
+reads through taxiway crossings exactly as it does across runways;
+taxiway pavement (kind 4) carries no line and is discarded on runways.
+The probe (`tests/probe_runway_shader.gd`) takes PROBE_LAT/LON/ALT and
+PROBE_PNG and saves a top-down render — the check of record for these.
+*Fourth LSZH check (2026-09-20): still gaps at multi-way junctions;
+gery: "what if these were roads — grey polygons".* Taxiway pavement is now
+built like a road network: the bake unions every ribbon of an airport
+(`LineString.buffer` with round joins, minus the runway pavement
+rectangles for the cut at the runway edge), densifies the outline to
+20 m, constrained-Delaunay-triangulates it (shapely 2.1), subdivides
+triangles longer than 24 m, samples vertex heights from the final terrain
+and then sinks the terrain to the mesh under every triangle (the
+lowest-surface rule leaves creases where two ribbon profiles meet).
+Stored per airport as `taxiway_mesh {vertices[[lat, lon, elev]],
+triangles[]}`; Zurich 21 629 vertices / 26 503 triangles, terrain never
+more than 7 cm above the pavement (lift 8 cm, lines 11 cm). Ribbons and
+discs are gone from the renderer; the paths only feed the line strips.
+*Distance-driven build (2026-09-20).* With unioned pavements the nine
+packs hold ~2.1 M triangles (260 MB of runways.json) and building all
+airports took ~6 s at startup and on every settings change. `Runways`
+now takes the merged set (`set_merged`) and `update(cam_pos, delta)`
+builds airports entering 150 km of the camera (4 per half-second) and
+frees them beyond 250 km; the merge itself (JSON parse, ~1 s) stays at
+startup. `build()` remains for tests and probes.
+*Fifth LSZH check (2026-09-20): ground through the 10/28 × 16/34 crossing;
+side lines of the crossing runway across the other.* Measured: terrain
+stood ≤ 11 cm above the runway planes, only at pavement edges and at the
+crossing — the shorter runway's margin took the longer one's (higher)
+pavement value and the bilinear terrain at the edge rose through the 5 cm
+lift. Fixes: runway flat zones are dilated one pixel like aprons and
+taxiways; a final *runway ceiling* pass caps the terrain at every runway's
+plane inside its flat zone; the taxiway-pavement sinking grows each
+triangle by one pixel (plane extrapolated, capped at 0.5 m). Residuals:
+runways ≤ 4.7 cm, pavements ≤ 4.7 cm at LSZH/LSGG/LSZB/LSZR; lifts are now
+runway 8 cm, taxiway 10 cm, line 13 cm, apron 3 cm. Marking cut at
+runway crossings: `reconcile_crossings` stores, on the shorter runway,
+the along-track interval inside the longer one's pavement
+(`crossings: [[t0, t1]]`); `_add_runway` inserts duplicated vertex rows at
+those bounds with flag 1 in CUSTOM1.w and the shader draws no markings
+there, so the through runway's centreline and edge lines continue while
+the crossing runway's stop at its edge (Zurich 10/28: 745–851 m).
+*ENGM check (gery, 2026-09-20): surfaces 6 m above the ground, aircraft
+rolling under the runway.* Oslo lies inside both the Norway and the Sweden
+pack (bbox bakes), and same-resolution tiles merge later-wins at runtime,
+so Sweden's raw tiles showed under Norway's flattened surfaces. Two fixes:
+(1) `flatten` now also applies the plateaus of every *other* pack's
+airports whose runways touch this region's tiles (`_foreign_airports`,
+never written back), so any pack that wins a tile carries the same
+plateau — this also covers border airports inside the 5 km country
+margins (Basel is in three packs); (2) Norway, Sweden and Finland are
+rebaked as country-clipped packs like the rest (`prune_terrain_to_plan.py`
+removes the old bbox tiles), so the only overlaps left are the margins.
+*Ground plane = drawn surface (2026-09-20).* Wheels sat 8–10 cm into
+runways and taxiways: JSBSim's ground was the terrain while the surfaces
+are drawn a few centimetres above it. `Runways.surface_lift_at(ecef)`
+answers the lift at a position from a per-airport 2D lookup built with
+the mesh (runway rectangles, taxiway triangles in a 50 m grid, apron
+polygons; airports within 8 km), and `node_3d._update_terrain_elevation`
+adds it to the height pushed to JSBSim. Smoke: 16/34 → 8 cm, a taxiway
+node → 10 cm, open field → 0. The A-10's remaining float is its own
+`aircraft.cfg` model offset (2.21 m, marked as a guess there); the JSBSim
+geometry gives CG − gear = 1.90 m for the A-10, 0.93 m for the PC-7.
+*Slopes (ENGM grass, 2026-09-20): the aircraft stayed level on slopes and
+was lifted or dropped from time to time.* JSBSim only received one terrain
+height per frame at the CG and its default ground callback returns a flat
+plane, so the gear never saw a slope and the plane stepped whenever that
+height changed. `JSBGodot::set_ground_query(Callable)` installs a
+`GodotGroundCallback` (FGGroundCallback) on the FDM's inertial model:
+for every gear contact point JSBSim asks the host
+(`node_3d._ground_height_geodetic`: Scenery3D elevation + drawn-surface
+lift) for the terrain under that point and gets the slope normal from
+finite differences 4 m north and east (NED → ECEF via the location's
+Tl2ec); where the query has no data it falls back to the flat elevation
+the host still pushes each frame. Contact locations must have the
+planet ellipse set before geodetic values are read (as the default
+callback does) — without it the gear model blew up. Re-installed after
+every model load. `smoke_ground_steering` (taxi + yaw) passes.
+*A-10 bouncing itself up on downhill grass (2026-09-20).* The bridge ran
+`FDMExec->Run()` once per Godot physics tick (60 Hz) with JSBSim's default
+1/120 s step: the FDM advanced at half real time and integrated the A-10's
+stiff, heavily damped gear (50 000 lb/ft, 25 000 lb·s/ft per main) too
+coarsely, so every ground crease pumped energy in. `_physics_process` now
+sub-steps: `steps = round(delta / (1/240))`, `Setdt(delta / steps)`, and
+runs JSBSim `steps` times per tick — real time, gear at 240 Hz, the
+scenery ground callback queried per sub-step. `smoke_ground_steering`
+and the main-scene smoke pass; `tests/probe_sim_rate.tscn` reports the
+sim-time / wall-time ratio.
+*One material for everything:* the first build used a ShaderMaterial per
+runway plus one per taxiway/apron set (~10 000 materials) and the app died
+at startup with SIGBUS in the Metal driver's `uniform_set_create`
+(2026-09-20). The per-surface parameters (half width, length, displaced
+thresholds, packed designator glyphs, kind·64 + stripes·2 + aiming) now
+ride in the CUSTOM0/CUSTOM1 vertex attributes and a single shared
+material renders all 3 376 airports (3 716 runways, 28 248 taxiways,
+3 713 aprons; merge 0.2 s + build 0.5 s). `tests/probe_runway_shader.gd`
+builds every region with the real renderer and is the guard for this
+class of failure — headless runs never touch the GPU driver.
+
+### 12.4 Steps
+
+1. **Data** — `scripts/build_world_runways.py --all` (done 2026-09-20): one
+   Overpass query per region bbox (cached under
+   `scenery_in_world/osm_runways/`), OurAirports merge, `runways.json` per
+   pack and `runways_report.txt` per region. Zurich: 16/34, 14/32, 10/28 and
+   the grass strip, all from OSM, no flags.
+2. **Bake** — terrain plateau under each runway (D18): done 2026-09-20,
+   `build_world_terrain.py flatten` (`scripts/runway_plateau.py`, also part
+   of `build`). The touched tiles are re-baked from SRTM first, so the step
+   is idempotent (verified: a second run is byte-identical); then each
+   strip (width + 12 m apron, 40 m overrun) is set to the runway plane and
+   an 80 m smoothstep blend joins it to the terrain. The plane uses the
+   OurAirports end elevations when both exist and each is within 15 m of
+   the terrain there, else a least-squares line through the centreline
+   terrain. `plateau_report.txt` per region lists plane, source, max cut and
+   fill. Zurich 16/34: plane 423.7 → 423.1 m, SRTM along the centreline
+   409.8–427.2 m (max fill 13.5 m); cross profile flat to ±42 m, terrain
+   again at ±120 m. `bake --force` discards plateaus — run `flatten` again
+   (`build` does).
+   *Crossings (check flight LFSB / LSZH, 2026-09-20):* strips were applied
+   one after another, so at a crossing the last plane overwrote the first
+   and the terrain rose through the other runway's strip (a green band
+   across it). Now all strips are rasterised jointly: inside a strip the
+   terrain takes the lowest plane of every strip covering the pixel, and
+   the blend zones are weight-averaged instead of compounded. Before that,
+   `reconcile_crossings` makes crossing or touching runways of one airport
+   agree in height at the crossing (the longer keeps its plane, the shorter
+   is shifted; Zurich 10/28 moved −3.1 m onto 16/34), so the two surfaces
+   meet instead of one floating above the other. The shifted plane is what
+   `plane_elev_m` stores, so the mesh follows.
+   *Small airfields:* OurAirports `small_airport` (2 937 in the nine
+   regions) was outside the large/medium selection, so Schmerlat (LSPF)
+   and Thun (LSZW) had no runways at all. They are now included in the
+   runway data, the plateaus and the catalog as `grass_strip`, or
+   `regional_airport` when a runway is paved.
+3. **Runtime** — done 2026-09-20. `runways_lib.gd` merges the enabled
+   packs per airport in priority order (D16; disabled packs ignored) and
+   converts entries to the catalog shape (thresholds = pavement end moved
+   inward by the displaced distance, true heading from OurAirports else the
+   end bearing). `runways.gd` (node `Runways`, rebuilt with the scenery
+   sources) draws one strip mesh per runway in a WUN frame at the runway
+   midpoint, every vertex projected exactly onto the ellipsoid at the plane
+   height (`plane_elev_m`, written by the flatten stage, else `elev_m`, else
+   terrain) + 5 cm; `shaders/runway.gdshader` draws the surface and
+   markings in metres (edge lines, centreline dashes, threshold stripes by
+   width, aiming bars ≥ 1800 m, designators from a 5×7 bitmap font,
+   displaced-threshold bar; grass and gravel get no markings). A pack entry
+   with `"model"` loads the glTF at the reference point and `"procedural":
+   false` suppresses the strips (D17). Smokes: `tests/smoke_runways.tscn`
+   (merge, override precedence, catalog, mesh on plane to 0.1 mm),
+   `tests/probe_runway_shader.gd` (compiles the shader with the real
+   renderer). Full scene: 608 runways from 441 airports.
+4. **Catalog** — done with step 3: `node_3d.gd::_catalog_with_pack_runways`
+   replaces the runways of every pack-defined airport in the bundled
+   catalog and appends pack airports the catalog lacks, so the welcome
+   screen lists Zurich 16/34, 14/32, 10/28 with real thresholds. The
+   heading+length derivation remains only for airports no pack defines
+   (the curated CH/BW entries until they become an override pack).
+
+### 12.6 Airfield lighting (2026-09-20)
+
+Agreed with gery: runway lights, taxiway centreline green, taxiway edges
+blue, approach lights on lit runways of 1 800 m and more, lights on from
+dusk and whenever the visibility is below 1 km (the JAR low-visibility
+tables are not modelled).
+
+**Data.** OSM maps individual fixtures as `aeroway=navigationaid` nodes
+(`navigationaid=als|papi|vasi`, `light=runway_edge|runway_centre|
+runway_threshold|touchdown_zone|taxiway_edge|taxiway_centre` and the
+older spellings). `build_world_runways.py` fetches them per region bbox
+(cache `scenery_in_world/osm_lights/`, Overpass query must be `out;` —
+`out tags;` drops the coordinates) and stores them under the nearest
+airport (reach 4 / 3 / 2 km for international / regional / grass) as
+`lights: [{kind, lat, lon, colour?, dir?}]`, kinds `als txe txc rwe rwt
+rwc tdz papi vasi`; `flatten` writes each fixture's `elev_m` from the
+final terrain (so they sit on the plateau). Zurich: 3 996 fixtures
+(1 202 taxiway edge, 796 taxiway centre, 625 approach, 519 centreline,
+468 edge, 240 TDZ, 130 threshold, 4 PAPI). Coverage varies a lot between
+airports, so the mapped fixtures are an *override per class*: a class
+with at least 8 mapped fixtures replaces the generated one for that
+airport, otherwise the generated layout is used. PAPI/VASI are always
+generated (OSM maps one node per system and never the angles).
+
+**Generated layout** (`runways.gd`, one PRIMITIVE_POINTS mesh per
+airport, one vertex per fixture, lights 35 cm above the surface):
+
+| class | rule |
+|---|---|
+| runway edge | white every 60 m, 1 m outside the pavement; yellow in the last 600 m of the direction of travel; every lit runway |
+| threshold / end | green across the threshold every 6 m seen from the approach, red from the runway; the pavement end before a displaced threshold red |
+| centreline | ≥ 1 800 m: white every 30 m, alternating red/white in the last 900 m, red in the last 300 m |
+| PAPI | four units on the pilot's left, 300 m past the threshold, 15 m from the edge, 9 m apart, angles 3.5 → 2.5° from the unit nearest the runway outward (two white / two red on a 3° slope) |
+| approach | ≥ 1 800 m: centreline bars every 30 m out to 900 m (international, Calvert-style crossbars widening outward) or 420 m (others), only visible from the approach side |
+| taxiway | green centreline every 15 m, blue edges every 30 m 1.5 m outside the pavement, none on runway pavement |
+
+Each fixture carries two colours (seen from either side of its axis), a
+mode (two-way / directed / PAPI) and the axis in the airport frame in
+CUSTOM0..2; `shaders/airport_lights.gdshader` picks colour and
+visibility per vertex, sizes the sprite by distance (3–12 px) and draws a
+soft additive disc. The host sets `intensity` per frame:
+`_airfield_light_intensity` = 1 when the visibility is below 1 km, else
+`clamp((4° − sun elevation) / 8°)`, so lights fade in from sun elevation
+4° down to −4°.
+
+**Verified** with `tests/probe_runway_shader.gd` (PROBE_HDG / PROBE_PITCH /
+PROBE_FOV / PROBE_NIGHT, PROBE_TARGET prints where a point lands in the
+view): Zurich 34 approach shows the mapped Calvert bars, the green
+threshold row, edge and centreline lights; PAPI shows 1 / 2 / 3 white
+units at 2.7 / 3.0 / 3.4° to the PAPI (which sits 300 m past the
+threshold, so a 3° slope over the threshold reads 2.5° there and all
+red — as in reality). Gotcha found on the way: in the double-precision
+build the model matrix is camera-relative, so a shader must not combine
+`MODEL_MATRIX` with `CAMERA_POSITION_WORLD`; the camera position in model
+space is `inverse(MODELVIEW_MATRIX) * (0,0,0,1)`. With the wrong
+direction, approach lights showed from behind and hid from the
+approach. Whole scene: 687 308 fixtures over the nine regions (117 868
+mapped from OSM at 351 airports, the rest generated), built by distance
+like the surfaces.
+
+All nine regions fetched and flattened 2026-09-20 with
+`scripts/build_world_lights.sh` (retries Overpass per region, then
+`flatten`). **Open:** real airports' actual approach system types (ALSF-2, SALS, …) are not
+modelled beyond the two lengths; runway lights of unlit (`lighted:
+false`) runways are not drawn.
 
 ## See also
 

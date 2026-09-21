@@ -4,9 +4,14 @@
 #include "models/FGAircraft.h"
 #include "initialization/FGInitialCondition.h"
 #include "models/FGPropulsion.h"
+#include "models/propulsion/FGTank.h"
 #include "models/propulsion/FGThruster.h"
 #include "models/FGAtmosphere.h"
 #include "models/atmosphere/FGWinds.h"
+#include "models/FGInertial.h"
+#include "input_output/FGGroundCallback.h"
+#include "math/FGLocation.h"
+#include <cmath>
 #include <algorithm>
 
 #include <godot_cpp/classes/input_event.hpp>     // Ensure InputEvent is fully included
@@ -36,6 +41,69 @@ using namespace jsbgodot;
 
 
 
+// Ground model backed by the scenery: height under each contact point from
+// the host's terrain query (Scenery3D elevation + drawn-surface lift), the
+// normal from finite differences 4 m north/east. Falls back to the flat
+// terrain elevation JSBSim was last given where the query has no data.
+static constexpr double FDM_TARGET_HZ = 240.0;
+
+class GodotGroundCallback : public JSBSim::FGGroundCallback
+{
+public:
+    GodotGroundCallback(const godot::Callable &q, double semimajor, double semiminor)
+        : query(q), a(semimajor), b(semiminor) {}
+
+    double GetAGLevel(double t, const JSBSim::FGLocation &location, JSBSim::FGLocation &contact,
+                      JSBSim::FGColumnVector3 &normal, JSBSim::FGColumnVector3 &v,
+                      JSBSim::FGColumnVector3 &w) const override
+    {
+        // Like FGDefaultGroundCallback: the contact-point location handed in
+        // may carry no ellipsoid, so geodetic values are taken on a copy
+        // with the planet's ellipse set (without this the geodetic altitude
+        // was garbage and the gear model blew up, 2026-09-20).
+        JSBSim::FGLocation loc = location;
+        loc.SetEllipse(a, b);
+        const double lat = loc.GetGeodLatitudeDeg();
+        const double lon = loc.GetLongitudeDeg();
+        double h_ft = terrain_ft;
+        double dhdn = 0.0, dhde = 0.0;
+        if (query.is_valid())
+        {
+            const double h = (double)query.call(lat, lon);
+            if (std::isfinite(h))
+            {
+                h_ft = h * 3.28084;
+                const double d = 4.0;
+                const double dlat = d / 111320.0;
+                const double dlon = d / (111320.0 * std::max(0.05, std::cos(lat * M_PI / 180.0)));
+                const double hn = (double)query.call(lat + dlat, lon);
+                const double he = (double)query.call(lat, lon + dlon);
+                if (std::isfinite(hn) && std::isfinite(he))
+                {
+                    dhdn = (hn - h) / d;
+                    dhde = (he - h) / d;
+                }
+            }
+        }
+        contact.SetEllipse(a, b);
+        contact.SetPositionGeodetic(loc.GetLongitude(), loc.GetGeodLatitudeRad(), h_ft);
+        JSBSim::FGColumnVector3 n_ned(-dhdn, -dhde, -1.0);   // NED: up is -z
+        n_ned.Normalize();
+        normal = loc.GetTl2ec() * n_ned;
+        v.InitMatrix();
+        w.InitMatrix();
+        return loc.GetGeodAltitude() - h_ft;
+    }
+
+    void SetTerrainElevation(double h) override { terrain_ft = h; }
+    void SetEllipse(double semimajor, double semiminor) override { a = semimajor; b = semiminor; }
+
+private:
+    godot::Callable query;
+    double a, b;
+    double terrain_ft = 0.0;
+};
+
 void JSBGodot::_bind_methods()
 {
     // Don't bind _process - it's a virtual method that's automatically overridden
@@ -57,6 +125,7 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_input_brake"), &JSBGodot::get_input_brake);
     ClassDB::bind_method(D_METHOD("set_input_mixture", "value"), &JSBGodot::set_input_mixture);
     ClassDB::bind_method(D_METHOD("get_input_mixture"), &JSBGodot::get_input_mixture);
+    ClassDB::bind_method(D_METHOD("set_input_aileron", "value"), &JSBGodot::set_input_aileron);
     ClassDB::bind_method(D_METHOD("get_input_aileron"), &JSBGodot::get_input_aileron);
     ClassDB::bind_method(D_METHOD("get_input_elevator"), &JSBGodot::get_input_elevator);
     ClassDB::bind_method(D_METHOD("increase_flaps"), &JSBGodot::increase_flaps);
@@ -73,6 +142,10 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("set_input_magnetos", "value"), &JSBGodot::set_input_magnetos);
     ClassDB::bind_method(D_METHOD("get_input_magnetos"), &JSBGodot::get_input_magnetos);
     ClassDB::bind_method(D_METHOD("set_terrain_elevation", "elevation_m"), &JSBGodot::set_terrain_elevation);
+    ClassDB::bind_method(D_METHOD("set_ground_query", "query"), &JSBGodot::set_ground_query);
+    ClassDB::bind_method(D_METHOD("set_nose_steer_range", "limited_deg", "full_deg"), &JSBGodot::set_nose_steer_range);
+    ClassDB::bind_method(D_METHOD("set_nose_steer_full", "full"), &JSBGodot::set_nose_steer_full);
+    ClassDB::bind_method(D_METHOD("get_nose_steer_full"), &JSBGodot::get_nose_steer_full);
     ClassDB::bind_method(D_METHOD("initialize_at_terrain", "terrain_elevation_m", "godot_pos", "heading_deg"), &JSBGodot::initialize_at_terrain);
     ClassDB::bind_method(D_METHOD("load_aircraft", "aircraft_id", "jsbsim_model"), &JSBGodot::load_aircraft, DEFVAL("c172p"), DEFVAL("c172p"));
     ClassDB::bind_method(D_METHOD("is_initialized"), &JSBGodot::is_initialized);
@@ -85,6 +158,12 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_longitude_deg"), &JSBGodot::get_longitude_deg);
     ClassDB::bind_method(D_METHOD("get_godot_position"), &JSBGodot::get_godot_position);
     ClassDB::bind_method(D_METHOD("get_property", "name"), &JSBGodot::get_property);
+    ClassDB::bind_method(D_METHOD("set_property", "name", "value"), &JSBGodot::set_property);
+    ClassDB::bind_method(D_METHOD("get_tank_count"), &JSBGodot::get_tank_count);
+    ClassDB::bind_method(D_METHOD("get_tank_capacity_lbs", "index"), &JSBGodot::get_tank_capacity_lbs);
+    ClassDB::bind_method(D_METHOD("get_tank_contents_lbs", "index"), &JSBGodot::get_tank_contents_lbs);
+    ClassDB::bind_method(D_METHOD("set_tank_contents_lbs", "index", "lbs"), &JSBGodot::set_tank_contents_lbs);
+    ClassDB::bind_method(D_METHOD("get_cg_info"), &JSBGodot::get_cg_info);
     ClassDB::bind_method(D_METHOD("get_pitch_deg"), &JSBGodot::get_pitch_deg);
     ClassDB::bind_method(D_METHOD("get_roll_deg"), &JSBGodot::get_roll_deg);
     ClassDB::bind_method(D_METHOD("reinitialize_from_pose", "ac_global", "airspeed_kts", "terrain_elevation_m"), &JSBGodot::reinitialize_from_pose);
@@ -356,6 +435,41 @@ int JSBGodot::get_input_magnetos() const
     return input_magnetos;
 }
 
+void JSBGodot::set_nose_steer_range(double limited_deg, double full_deg)
+{
+    nose_steer_limited_deg = limited_deg;
+    nose_steer_full_deg = full_deg;
+}
+
+void JSBGodot::set_nose_steer_full(bool full)
+{
+    nose_steer_full = full;
+}
+
+bool JSBGodot::get_nose_steer_full() const
+{
+    return nose_steer_full;
+}
+
+void JSBGodot::set_ground_query(const godot::Callable &query)
+{
+    ground_query = query;
+    install_ground_callback();
+}
+
+void JSBGodot::install_ground_callback()
+{
+    if (FDMExec == nullptr || !ground_query.is_valid() || FDMExec->GetInertial() == nullptr)
+    {
+        return;
+    }
+    GodotGroundCallback *gc = new GodotGroundCallback(ground_query,
+        FDMExec->GetInertial()->GetSemimajor(), FDMExec->GetInertial()->GetSemiminor());
+    gc->SetTerrainElevation(last_terrain_m * 3.28084);
+    FDMExec->GetInertial()->SetGroundCallback(gc);
+    UtilityFunctions::print("JSBGodot: scenery ground callback installed (per-contact terrain + slope)");
+}
+
 void JSBGodot::set_terrain_elevation(double elevation_m)
 {
     // Set the terrain elevation in JSBSim (convert meters to feet)
@@ -479,6 +593,58 @@ Vector3 JSBGodot::get_godot_position() const
 double JSBGodot::get_property(const String &name) const
 {
     return FDMExec ? FDMExec->GetPropertyValue(std::string(name.utf8().get_data())) : 0.0;
+}
+
+void JSBGodot::set_property(const String &name, double value)
+{
+    if (FDMExec)
+        FDMExec->SetPropertyValue(std::string(name.utf8().get_data()), value);
+}
+
+int JSBGodot::get_tank_count() const
+{
+    return FDMExec ? (int)FDMExec->GetPropulsion()->GetNumTanks() : 0;
+}
+
+double JSBGodot::get_tank_capacity_lbs(int index) const
+{
+    if (!FDMExec || index < 0 || index >= (int)FDMExec->GetPropulsion()->GetNumTanks())
+        return 0.0;
+    return FDMExec->GetPropulsion()->GetTank(index)->GetCapacity();
+}
+
+double JSBGodot::get_tank_contents_lbs(int index) const
+{
+    if (!FDMExec || index < 0 || index >= (int)FDMExec->GetPropulsion()->GetNumTanks())
+        return 0.0;
+    return FDMExec->GetPropulsion()->GetTank(index)->GetContents();
+}
+
+void JSBGodot::set_tank_contents_lbs(int index, double lbs)
+{
+    if (!FDMExec || index < 0 || index >= (int)FDMExec->GetPropulsion()->GetNumTanks())
+        return;
+    auto tank = FDMExec->GetPropulsion()->GetTank(index);
+    tank->SetContents(Math::clamp(lbs, 0.0, tank->GetCapacity()));
+}
+
+Dictionary JSBGodot::get_cg_info() const
+{
+    Dictionary d;
+    if (!FDMExec)
+        return d;
+    double cg_x = FDMExec->GetPropertyValue("inertia/cg-x-in");
+    double mac_ft = FDMExec->GetPropertyValue("metrics/cbarw-ft");
+    double rp_x = FDMExec->GetPropertyValue("metrics/aero-rp-x-in");
+    d["cg_x_in"] = cg_x;
+    d["cg_y_in"] = FDMExec->GetPropertyValue("inertia/cg-y-in");
+    d["cg_z_in"] = FDMExec->GetPropertyValue("inertia/cg-z-in");
+    d["weight_lbs"] = FDMExec->GetPropertyValue("inertia/weight-lbs");
+    d["mac_ft"] = mac_ft;
+    d["aero_rp_x_in"] = rp_x;
+    double mac_in = mac_ft * 12.0;
+    d["pct_mac"] = mac_in > 1e-6 ? (cg_x - (rp_x - 0.25 * mac_in)) / mac_in * 100.0 : 0.0;
+    return d;
 }
 
 double JSBGodot::get_pitch_deg() const
@@ -730,6 +896,22 @@ void JSBGodot::_input(const Ref<InputEvent> event)
         {
             // Handle key press event
             int keycode = key_event->get_keycode();
+            // Ctrl+W: toggle full / limited nose-wheel steering (A-10 NWS
+            // engage). Checked before the plain-W pitch key.
+            if (keycode == KEY_W && key_event->is_ctrl_pressed())
+            {
+                if (nose_steer_full_deg > nose_steer_limited_deg && nose_steer_limited_deg > 0.0)
+                {
+                    nose_steer_full = !nose_steer_full;
+                    UtilityFunctions::print("Nose-wheel steering: ", nose_steer_full ? "FULL" : "LIMITED",
+                        " (", nose_steer_full ? nose_steer_full_deg : nose_steer_limited_deg, " deg)");
+                }
+                else
+                {
+                    UtilityFunctions::print("Nose-wheel steering: this aircraft has a single range");
+                }
+                return;
+            }
             // Check if the 'O' or 'P' keys are pressed
             if (keycode == KEY_O)
             {
@@ -909,12 +1091,17 @@ void JSBGodot::_physics_process(const real_t delta)
             return;
         }
         
-        // Apply continuous throttle from triggers
-        if (trigger_right_value > 0.1f) {
-            set_input_throttle(input_throttle + trigger_right_value * 0.005f);
+        // Apply continuous throttle from triggers. Dead zone 0.3: pads that
+        // share one axis between the two triggers (Logitech F310 in D mode)
+        // rest a little off centre after a pull, and a raw > 0.1 test kept
+        // running the throttle down to idle. The rate scales from the dead
+        // zone up, so analog triggers still give a proportional rate.
+        const float trigger_dead = 0.3f;
+        if (trigger_right_value > trigger_dead) {
+            set_input_throttle(input_throttle + (trigger_right_value - trigger_dead) / (1.0f - trigger_dead) * 0.005f);
         }
-        if (trigger_left_value > 0.1f) {
-            set_input_throttle(input_throttle - trigger_left_value * 0.005f);
+        if (trigger_left_value > trigger_dead) {
+            set_input_throttle(input_throttle - (trigger_left_value - trigger_dead) / (1.0f - trigger_dead) * 0.005f);
         }
         
         // Apply continuous trim from held buttons
@@ -929,7 +1116,22 @@ void JSBGodot::_physics_process(const real_t delta)
         
         copy_inputs_to_JSBSim();
         apply_weather_to_fdm();
-        FDMExec->Run();
+        // Sub-step the FDM so it (a) keeps real time — JSBSim's default step
+        // is 1/120 s but Godot's physics tick is 1/60 s, so one Run() per
+        // tick ran the aircraft at half speed — and (b) integrates the gear
+        // springs at FDM_TARGET_HZ, where the A-10's stiff, heavily damped
+        // legs stop bouncing themselves up on downhill grass (ENGM,
+        // 2026-09-20). Ground contacts (the scenery callback) are queried
+        // per sub-step as well.
+        const double target_dt = 1.0 / FDM_TARGET_HZ;
+        int steps = (int)std::lround((double)delta / target_dt);
+        if (steps < 1) steps = 1;
+        if (steps > 16) steps = 16;
+        FDMExec->Setdt((double)delta / (double)steps);
+        for (int i = 0; i < steps; i++)
+        {
+            FDMExec->Run();
+        }
         copy_outputs_from_JSBSim();
     }
 }
@@ -1067,6 +1269,7 @@ bool JSBGodot::load_aircraft(const String &aircraft_id, const String &jsbsim_mod
     {
         UtilityFunctions::print("JSBSim model '", jsbsim_model, "' loaded successfully.");
         loaded_jsbsim_model = model_name;
+        install_ground_callback();
         // When switching airframes after the initial _ready() load, re-seed
         // the initial conditions so the FDM is in a valid state before the
         // next initialize_at_terrain() call.
@@ -1145,7 +1348,15 @@ void JSBGodot::copy_inputs_to_JSBSim()
     // The flat-frame build wrote -input_rudder here, which only looked right in
     // the mirrored world; in the ECEF world ground turns went the wrong way.
     // Verified headlessly: tests/smoke_ground_steering.tscn.
-    FDMExec->SetPropertyValue("fcs/steer-cmd-norm", -lateral_sign * input_rudder);
+    // With full nose-wheel steering engaged (Ctrl+W) the command is scaled
+    // by full/limited: JSBSim multiplies it by <max_steer> without clamping,
+    // so the nose wheel reaches the full range (A-10: 5 deg -> 60 deg).
+    double steer_gain = 1.0;
+    if (nose_steer_full && nose_steer_limited_deg > 0.0 && nose_steer_full_deg > nose_steer_limited_deg)
+    {
+        steer_gain = nose_steer_full_deg / nose_steer_limited_deg;
+    }
+    FDMExec->SetPropertyValue("fcs/steer-cmd-norm", -lateral_sign * input_rudder * steer_gain);
     // Throttle ALL engines (-1). Setting the bare "fcs/throttle-cmd-norm" property
     // only drives engine 0, leaving the other engine(s) at idle/zero on a twin
     // like the A-10 (→ asymmetric thrust + yaw). SetThrottleCmd(-1) fans out to

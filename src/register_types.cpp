@@ -16,6 +16,7 @@
 #include "install_config.h"
 #include "settings_store.h"
 #include "settings_screen.h"
+#include "fg_animator.h"
 
 using namespace godot;
 using namespace jsbgodot;
@@ -38,6 +39,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<LoadingProgress>();
 	ClassDB::register_class<VfrMap>();
 	ClassDB::register_class<InstallConfig>();
+	ClassDB::register_class<FGAnimator>();
 	ClassDB::register_class<SettingsStore>();
 	ClassDB::register_class<SettingsScreen>();
 }

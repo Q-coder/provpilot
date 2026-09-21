@@ -22,6 +22,7 @@ namespace jsbgodot
 void SlewMode::_bind_methods()
 {
 	ClassDB::bind_method(D_METHOD("register_nodes", "ac_node", "airspeed_label", "altitude_label", "vspeed_label", "throttle_label", "heading_label", "godot_pos_label", "swiss_label", "heading_deg_label"), &SlewMode::register_nodes);
+	ClassDB::bind_method(D_METHOD("set_pm_label", "pm_label"), &SlewMode::set_pm_label);
 	ClassDB::bind_method(D_METHOD("update", "delta", "jsb_node", "axis_strafe", "axis_forward", "axis_yaw", "axis_vertical", "terrain_height_at_ac", "joy_device"), &SlewMode::update);
 	ClassDB::bind_method(D_METHOD("is_enabled"), &SlewMode::is_enabled);
 	ClassDB::bind_method(D_METHOD("get_preserved_airspeed_kts"), &SlewMode::get_preserved_airspeed_kts);
@@ -47,6 +48,32 @@ void SlewMode::register_nodes(Node3D *p_ac_node,
 	godot_pos_label = p_godot_pos_label;
 	swiss_label = p_swiss_label;
 	heading_deg_label = p_heading_deg_label;
+}
+
+void SlewMode::set_pm_label(Label *p_pm_label)
+{
+	pm_label = p_pm_label;
+}
+
+String SlewMode::format_pm_coord(double deg, bool is_lat)
+{
+	const char *hemi = is_lat ? (deg >= 0.0 ? "N" : "S") : (deg >= 0.0 ? "E" : "W");
+	double a = std::abs(deg);
+	int d = (int)a;
+	// Round minutes to 2 decimals before formatting so 59.997 does not
+	// print as "60.00".
+	double m = std::round((a - d) * 60.0 * 100.0) / 100.0;
+	if (m >= 60.0) {
+		d += 1;
+		m = 0.0;
+	}
+	char buf[48];
+	if (is_lat) {
+		snprintf(buf, sizeof(buf), "%s %d\xC2\xB0%05.2f\xE2\x80\xB2", hemi, d, m);
+	} else {
+		snprintf(buf, sizeof(buf), "%s %03d\xC2\xB0%05.2f\xE2\x80\xB2", hemi, d, m);
+	}
+	return String::utf8(buf);
 }
 
 
@@ -228,6 +255,7 @@ void SlewMode::handle_movement(double delta, double ax_strafe, double ax_forward
 	Vector3 pos;
 	double swiss_e, swiss_n, heading_deg;
 	double alt_asl;
+	double lat_deg = 0.0, lon_deg = 0.0;
 	{
 		// Build the local frame at the aircraft; "forward" is the nose
 		// projected onto the local horizontal plane, vertical is local up.
@@ -260,6 +288,8 @@ void SlewMode::handle_movement(double delta, double ax_strafe, double ax_forward
 		Vector2 lv = Geo::wgs84_to_lv95(g.lat, g.lon);
 		swiss_e = lv.x;
 		swiss_n = lv.y;
+		lat_deg = g.lat;
+		lon_deg = g.lon;
 		heading_deg = geo::true_heading_deg(xf.basis, g.lat, g.lon);
 		alt_asl = g.h;
 	}
@@ -291,6 +321,10 @@ void SlewMode::handle_movement(double delta, double ax_strafe, double ax_forward
 	if (swiss_label != nullptr)
 	{
 		swiss_label->set_text(String("Swiss E: ") + format_swiss_coord(swiss_e) + ", N: " + format_swiss_coord(swiss_n));
+	}
+	if (pm_label != nullptr)
+	{
+		pm_label->set_text(String("PM: ") + format_pm_coord(lat_deg, true) + "  " + format_pm_coord(lon_deg, false));
 	}
 	if (heading_deg_label != nullptr)
 	{
