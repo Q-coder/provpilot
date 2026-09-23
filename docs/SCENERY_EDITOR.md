@@ -354,7 +354,9 @@ half widths in UV2, so the shader's lane dashes follow the taper).
 9. **More elements** — pilot 2026-09-22. Bridge structures: every
    elevated run (stations more than 0.3 m up) gets concrete parapets
    along both edges and a pier every 25 m from the deck's underside to
-   the ground, live and in the bake (shader kind 7). Areas (`areas` in
+   the ground, live and in the bake (shader kind 7; the bake skips piers
+   under decks less than 1 m up and piers that would stand on another
+   way, 2026-09-23). Areas (`areas` in
    the document): grass, forest floor and field patches flat on the
    highest ground under them, water flat on the lowest, buildings as a
    roof at their height with walls to the ground (kinds 10–15, ear-clipped

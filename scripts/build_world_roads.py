@@ -177,6 +177,7 @@ BALLAST_LIFT_M = 0.15      # ballast surface above the ground after the runtime 
 # pixel and an untouched one rises through the ribbon on a hillside; the
 # shelf that gives is the price of the base tier's posting.
 CORRIDOR_MARGIN_MIN_M = 14.0
+CORRIDOR_BLEND_M = 3.0     # overlap weight 1 / (edge distance + this)^2
 
 lv95 = Transformer.from_crs("EPSG:4326", "EPSG:2056", always_xy=True)
 wgs = Transformer.from_crs("EPSG:2056", "EPSG:4326", always_xy=True)
@@ -195,6 +196,7 @@ class Terrain:
         self.tiles: dict = {}
         self.dirty: set = set()
         self.missing: set = set()
+        self.acc: dict = {}       # (te, tn) -> (sum of weights, sum of weight x height) of the corridors over each pixel
 
     def path(self, te: int, tn: int) -> Path:
         return self.dir / f"tile_{te}_{tn}.raw"
@@ -213,7 +215,10 @@ class Terrain:
         self.tiles[k] = a
         return a
 
-    def sample(self, e: float, n: float) -> float:
+    def sample(self, e: float, n: float, tri: bool = False) -> float:
+        """Terrain height at (e, n): bilinear, or with tri=True the runtime
+        mesh's own surface (s3d_tile.cpp splits every pixel quad along the
+        (col + 1, row) - (col, row + 1) diagonal) - what a ribbon must clear."""
         te = int(math.floor(e / self.tile_m)) * self.tile_m
         tn = int(math.floor(n / self.tile_m)) * self.tile_m
         a = self.load(te, tn)
@@ -225,8 +230,36 @@ class Terrain:
         c0 = max(0, min(px - 2, int(pcol)))
         r0 = max(0, min(px - 2, int(prow)))
         fc, fr = pcol - c0, prow - r0
-        return float(a[r0, c0] * (1 - fc) * (1 - fr) + a[r0, c0 + 1] * fc * (1 - fr)
-                     + a[r0 + 1, c0] * (1 - fc) * fr + a[r0 + 1, c0 + 1] * fc * fr)
+        h00, h10, h01, h11 = a[r0, c0], a[r0, c0 + 1], a[r0 + 1, c0], a[r0 + 1, c0 + 1]
+        if tri:
+            if fc + fr <= 1.0:
+                return float(h00 + (h10 - h00) * fc + (h01 - h00) * fr)
+            return float(h11 + (h01 - h11) * (1.0 - fc) + (h10 - h11) * (1.0 - fr))
+        return float(h00 * (1 - fc) * (1 - fr) + h10 * fc * (1 - fr) + h01 * (1 - fc) * fr + h11 * fc * fr)
+
+    def corridor_acc(self, te: int, tn: int):
+        k = (te, tn)
+        if k not in self.acc:
+            self.acc[k] = (np.zeros((self.px, self.px)), np.zeros((self.px, self.px)))
+        return self.acc[k]
+
+    def resolve_corridors(self):
+        """After every corridor: each pixel takes the weighted mean of the
+        corridor heights over it (weights fall off with the distance from
+        each ribbon edge, so the ground under a ribbon is its own and the
+        step between two ways is spread instead of jagged)."""
+        n = 0
+        for k, (sw, swh) in self.acc.items():
+            a = self.tiles.get(k)
+            if a is None:
+                continue
+            m = sw > 0.0
+            if m.any():
+                a[m] = (swh[m] / sw[m]).astype(a.dtype)
+                self.dirty.add(k)
+                n += int(m.sum())
+        self.acc.clear()
+        return n
 
     def pixel_en(self, te: int, tn: int, row: int, col: int):
         step = self.tile_m / (self.px - 1)
@@ -358,7 +391,7 @@ def collect_tlm(gpkg: Path, bbox_lv95):
             ways.append({
                 "id": uid(row.uuid), "kind": "road", "cls": cls,
                 "pts": pts, "refs": refs(len(pts)), "z": [float(c[2]) for c in coords], "has_z": True,
-                "bridge": False, "elevated": kb in TLM_BRIDGE, "tunnel": kb in TLM_TUNNEL, "underpass": kb in TLM_UNDERPASS,
+                "bridge": False, "elevated": kb in TLM_BRIDGE, "tunnel": kb in TLM_TUNNEL or kb in TLM_UNDERPASS, "underpass": kb in TLM_UNDERPASS,
                 "layer": str(row.stufe), "lanes": str(lanes), "width": str(width) if width else None,
                 "gauge": None, "tracks": None, "oneway": bool(oneway), "source": "tlm",
             })
@@ -629,20 +662,35 @@ def tunnel_profile(wy, portal):
 
 def ground_under(pts, prof, half_width, terrain):
     """Final ground under a ribbon: the highest terrain (after every corridor
-    bake) across the ribbon at each station, never below the way's own
-    profile. No smoothing: where a crossing way's corridor stepped the
-    ground, the ribbon steps with it rather than sinking into the step."""
+    bake) across the ribbon at each station and halfway to the next one
+    (a terrain vertex between two stations bulges above the straight
+    ribbon), sampled on the runtime mesh's own triangles, never below the
+    way's own profile. No smoothing: where a crossing way's corridor
+    stepped the ground, the ribbon steps with it rather than sinking in."""
     n = len(pts)
     if n < 2:
         return prof
     frames = MeshBuf.frames([(e, n_) for e, n_ in pts])
     g = np.array(prof, dtype=float)
+    F = (-1.0, -0.5, 0.0, 0.5, 1.0)
+
+    def highest(e, n_, px, pz):
+        hi = -math.inf
+        for f in F:
+            h = terrain.sample(e + px * half_width * f, n_ + pz * half_width * f, tri=True)
+            if not math.isnan(h) and h > hi:
+                hi = h
+        return hi
+
     for i, (e, n_) in enumerate(pts):
         px, pz = frames[i]
-        for f in (-1.0, -0.5, 0.0, 0.5, 1.0):
-            h = terrain.sample(e + px * half_width * f, n_ + pz * half_width * f)
-            if not math.isnan(h) and h > g[i]:
-                g[i] = h
+        g[i] = max(g[i], highest(e, n_, px, pz))
+        if i + 1 < n:
+            e2, n2 = pts[i + 1]
+            qx, qz = frames[i + 1]
+            hm = highest((e + e2) * 0.5, (n_ + n2) * 0.5, (px + qx) * 0.5, (pz + qz) * 0.5)
+            g[i] = max(g[i], hm)
+            g[i + 1] = max(g[i + 1], hm)
     return g
 
 
@@ -658,6 +706,12 @@ KIND_CONCRETE = 7
 AREA_KIND = {"grass": 10, "forest": 11, "field": 12, "water": 13}
 KIND_ROOF, KIND_WALL = 14, 15
 ELEVATED_M = 0.3
+KIND_EMBANKMENT = 16
+SKIRT_MIN_M = 0.3         # a ribbon this far above the ground gets an embankment strip
+SKIRT_RUN = 1.5           # embankment run per metre of height (1:1.5)
+SKIRT_MAX_M = 15.0        # embankment run: a 10 m bank; anything taller stays a floating ribbon
+EMBANKMENT_U8 = (115, 140, 89)
+PIER_MIN_H_M = 1.0        # no pier under a deck closer than this to the ground
 PIER_SPACING_M = 25.0
 PIER_W_M = 1.2
 PARAPET_H_M = 0.45
@@ -881,44 +935,9 @@ class Design:
                 legs.append({"edge": eid, "dir": d, "ang": math.atan2(d[1], d[0]), "half": self.edge_width(eid) * 0.5, "cls": ed["cls"], "cut": 0.0})
             if len(legs) < 3:
                 continue
-            legs.sort(key=lambda L: L["ang"])
-            k = len(legs)
-            corners = []
-            for i in range(k):
-                a, b = legs[i], legs[(i + 1) % k]
-                da, db = a["dir"], b["dir"]
-                na, nb = (-da[1], da[0]), (-db[1], db[0])
-                pa = (centre[0] + na[0] * a["half"], centre[1] + na[1] * a["half"])
-                pb = (centre[0] - nb[0] * b["half"], centre[1] - nb[1] * b["half"])
-                den = da[0] * db[1] - da[1] * db[0]
-                if abs(den) < 0.05:
-                    sx, sy = da[0] + db[0], da[1] + db[1]
-                    sl = math.hypot(sx, sy) or 1.0
-                    m = max(a["half"], b["half"])
-                    corner = ((pa[0] + pb[0]) / 2 + sx / sl * m, (pa[1] + pb[1]) / 2 + sy / sl * m)
-                else:
-                    qx, qy = pb[0] - pa[0], pb[1] - pa[1]
-                    t = (qx * db[1] - qy * db[0]) / den
-                    corner = (pa[0] + da[0] * t, pa[1] + da[1] * t)
-                    if (corner[0] - centre[0]) * da[0] + (corner[1] - centre[1]) * da[1] < 0 and (corner[0] - centre[0]) * db[0] + (corner[1] - centre[1]) * db[1] < 0:
-                        corner = ((pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2)
-                corners.append(corner)
-                a["cut"] = max(a["cut"], (corner[0] - centre[0]) * da[0] + (corner[1] - centre[1]) * da[1])
-                b["cut"] = max(b["cut"], (corner[0] - centre[0]) * db[0] + (corner[1] - centre[1]) * db[1])
-            poly = []
-            best_cls, best_drop = legs[0]["cls"], 1.0
-            for i, leg in enumerate(legs):
-                leg["cut"] = max(leg["cut"], JUNCTION_MIN_CUT_M)
+            poly, best_cls = junction_fan(centre, legs)
+            for leg in legs:
                 self.cuts[leg["edge"]][nid] = leg["cut"]
-                d = leg["dir"]
-                n = (-d[1], d[0])
-                base = (centre[0] + d[0] * leg["cut"], centre[1] + d[1] * leg["cut"])
-                poly.append((base[0] - n[0] * leg["half"], base[1] - n[1] * leg["half"]))
-                poly.append((base[0] + n[0] * leg["half"], base[1] + n[1] * leg["half"]))
-                poly.append(corners[i])
-                drop = CLASS_DROP_M.get(leg["cls"], 0.0)
-                if drop < best_drop:
-                    best_drop, best_cls = drop, leg["cls"]
             self.junctions.append({"node": nid, "centre": centre, "poly": poly, "cls": best_cls})
 
     def _neighbour_half(self, chain, at_start):
@@ -986,6 +1005,56 @@ class Design:
                     "elevated": max(o_run) > 0.3,
                 })
         return ways
+
+
+def junction_fan(centre, legs):
+    """The pavement of a node where three or more road legs meet: legs are
+    dicts with "dir" (unit vector away from the node, (e, n)), "half" and
+    "cls"; each gets its "cut" (metres the ribbon is trimmed back) and the
+    fan polygon (corner, edge, edge, corner, ... around the node) and the
+    class of the widest-lifted leg are returned."""
+    for L in legs:
+        L["ang"] = math.atan2(L["dir"][1], L["dir"][0])
+        L["cut"] = 0.0
+    legs.sort(key=lambda L: L["ang"])
+    k = len(legs)
+    corners = []
+    for i in range(k):
+        a, b = legs[i], legs[(i + 1) % k]
+        da, db = a["dir"], b["dir"]
+        na, nb = (-da[1], da[0]), (-db[1], db[0])
+        pa = (centre[0] + na[0] * a["half"], centre[1] + na[1] * a["half"])
+        pb = (centre[0] - nb[0] * b["half"], centre[1] - nb[1] * b["half"])
+        den = da[0] * db[1] - da[1] * db[0]
+        if abs(den) < 0.05:
+            # parallel legs: push the corner out by the half width; opposite
+            # legs (a through road at a T): the corner is the edge midpoint
+            sx, sy = da[0] + db[0], da[1] + db[1]
+            m = max(a["half"], b["half"]) * 0.5
+            corner = ((pa[0] + pb[0]) / 2 + sx * m, (pa[1] + pb[1]) / 2 + sy * m)
+        else:
+            qx, qy = pb[0] - pa[0], pb[1] - pa[1]
+            t = (qx * db[1] - qy * db[0]) / den
+            corner = (pa[0] + da[0] * t, pa[1] + da[1] * t)
+            if (corner[0] - centre[0]) * da[0] + (corner[1] - centre[1]) * da[1] < 0 and (corner[0] - centre[0]) * db[0] + (corner[1] - centre[1]) * db[1] < 0:
+                corner = ((pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2)
+        corners.append(corner)
+        a["cut"] = max(a["cut"], (corner[0] - centre[0]) * da[0] + (corner[1] - centre[1]) * da[1])
+        b["cut"] = max(b["cut"], (corner[0] - centre[0]) * db[0] + (corner[1] - centre[1]) * db[1])
+    poly = []
+    best_cls, best_drop = legs[0]["cls"], 1.0
+    for i, leg in enumerate(legs):
+        leg["cut"] = max(leg["cut"], JUNCTION_MIN_CUT_M)
+        d = leg["dir"]
+        n = (-d[1], d[0])
+        base = (centre[0] + d[0] * leg["cut"], centre[1] + d[1] * leg["cut"])
+        poly.append((base[0] - n[0] * leg["half"], base[1] - n[1] * leg["half"]))
+        poly.append((base[0] + n[0] * leg["half"], base[1] + n[1] * leg["half"]))
+        poly.append(corners[i])
+        drop = CLASS_DROP_M.get(leg["cls"], 0.0)
+        if drop < best_drop:
+            best_drop, best_cls = drop, leg["cls"]
+    return poly, best_cls
 
 
 def clip_way(pts, refs, polys):
@@ -1083,13 +1152,40 @@ class MeshBuf:
             out.append((px, pz))
         return out
 
-    def ribbon(self, pts_xz, ys, width, colour_u8, kind, u0=0.0, along_s=None, count=0.0, halves=None):
+    def ribbon(self, pts_xz, ys, width, colour_u8, kind, u0=0.0, along_s=None, count=0.0, halves=None, end_frames=None):
         """Flat ribbon of `width` centred on pts_xz shifted sideways by u0 (m);
-        UV u = across (m, signed, + = right of travel), v = along (m); UV2 =
+        UV u = across (m, signed, + = right of travel); v = along (m); UV2 =
         (half width, count: lanes of a road, tracks of a ballast bed).
-        `halves`: per-station half widths (a lane taper)."""
+        `halves`: per-station half widths (a lane taper); `end_frames`: the
+        (start, end) frame normals of a mitred join, or None."""
         half = width * 0.5
-        self.profile(pts_xz, ys, ((-half, 0.0), (half, 0.0)), colour_u8, kind, u0, along_s, half, count, halves)
+        self.profile(pts_xz, ys, ((-half, 0.0), (half, 0.0)), colour_u8, kind, u0, along_s, half, count, halves, end_frames)
+
+    def strip(self, left, right, colour_u8, kind, along_s):
+        """Two vertex rows (x, z, y) left and right of travel, one per
+        station: an embankment from a ribbon edge down to the ground.
+        UV = (metres from the left row, along)."""
+        n = len(left)
+        if n < 2:
+            return
+        base = len(self.v)
+        cu = (colour_u8[0], colour_u8[1], colour_u8[2], kind)
+        self._tag(2 * n)
+        for i in range(n):
+            lx, lz, ly = left[i]
+            rx, rz, ry = right[i]
+            # normals straight up like the (mostly flat) terrain's, so the
+            # strip takes the terrain's shade and only its outline shows
+            wdt = math.hypot(rx - lx, rz - lz)
+            for (x, z, y, u) in ((lx, lz, ly, 0.0), (rx, rz, ry, wdt)):
+                self.v.append((x, y, z))
+                self.n.append((0.0, 1.0, 0.0))
+                self.c.append(cu)
+                self.uv.append((u, along_s[i]))
+                self.uv2.append((0.0, 0.0))
+        for i in range(n - 1):
+            a = base + i * 2
+            self.idx.extend([a, a + 2, a + 1, a + 1, a + 2, a + 3])
 
     def polygon(self, poly_xz, y, colour_u8, kind):
         """A flat triangulated polygon (land cover, water, roof); UV = metres."""
@@ -1137,10 +1233,12 @@ class MeshBuf:
         for i in range(n):
             self.idx.extend([base, base + 1 + i, base + 1 + (i + 1) % n])
 
-    def profile(self, pts_xz, ys, section, colour_u8, kind, u0=0.0, along_s=None, half_w=0.0, count=0.0, halves=None):
+    def profile(self, pts_xz, ys, section, colour_u8, kind, u0=0.0, along_s=None, half_w=0.0, count=0.0, halves=None, end_frames=None):
         """Extrude a cross-section (list of (u m, height m), left to right)
         along pts_xz: one vertex strip per section point, normals from the
-        section slope. Used for the rails; a flat two-point section is a ribbon."""
+        section slope. Used for the rails; a flat two-point section is a ribbon.
+        `end_frames` replaces the first / last frame normal (a mitred join
+        with the neighbouring way)."""
         n = len(pts_xz)
         if n < 2:
             return
@@ -1148,6 +1246,11 @@ class MeshBuf:
         cu = (colour_u8[0], colour_u8[1], colour_u8[2], kind)
         s = along_s or along(pts_xz)
         frames = self.frames(pts_xz)
+        if end_frames:
+            if end_frames[0]:
+                frames[0] = end_frames[0]
+            if end_frames[1]:
+                frames[-1] = end_frames[1]
         m = len(section)
         self._tag(n * m)
         # section normals: perpendicular to the segment to the next point, averaged
@@ -1294,9 +1397,139 @@ def protection_mask(protect, E, N):
 
 
 # ── corridor bake ───────────────────────────────────────────────────────────
+def emit_skirts(buf, xz, tops, s, half, lift, terrain, end_frames=(None, None)):
+    """Embankment strips where a ribbon rides above the ground: from just
+    under each ribbon edge down to the terrain at a 1:SKIRT_RUN slope, on
+    the runs of stations that are more than SKIRT_MIN_M up (padded by one
+    station each side so the strip tapers out). `tops` are the ground-level
+    profile heights, `lift` the ribbon's baked lift. Returns metres built."""
+    n = len(xz)
+    if n < 2:
+        return 0.0
+    frames = MeshBuf.frames(xz)
+    if end_frames[0]:
+        frames[0] = end_frames[0]
+    if end_frames[1]:
+        frames[-1] = end_frames[1]
+    total = 0.0
+    for side in (-1.0, 1.0):          # + = right of travel = -frame normal
+        inner, outer, need = [], [], []
+        for i in range(n):
+            px, pz = frames[i]
+            x, z = xz[i]
+            ix, iz = x - px * side * half, z - pz * side * half
+            g = terrain.sample(CONV_E - ix, iz + CONV_N, tri=True)
+            top = float(tops[i])
+            gap = (top - g) if not math.isnan(g) else 0.0
+            l = math.hypot(px, pz) or 1.0
+            ux, uz = -px / l * side, -pz / l * side       # outward, unit
+            # walk outward down the slope line until the ground meets it (or
+            # the ground is above the road: a cut, the strip ends there)
+            d = 0.3
+            y_out = min(g, top - 0.05) if not math.isnan(g) else top - 0.05
+            if gap > SKIRT_MIN_M:
+                step_m = 0.5
+                k = step_m
+                prev_k, prev_gap = 0.0, gap                      # gap between the slope line and the ground
+                d_max = min(SKIRT_MAX_M, gap * SKIRT_RUN)
+                while k <= d_max + step_m:
+                    y_line = top - k / SKIRT_RUN
+                    gk = terrain.sample(CONV_E - (ix + ux * k), (iz + uz * k) + CONV_N, tri=True)
+                    if math.isnan(gk):
+                        d, y_out = k, y_line
+                        break
+                    cur_gap = y_line - gk
+                    if cur_gap <= 0.0:
+                        # the line meets the ground between prev_k and k: interpolate
+                        f = prev_gap / (prev_gap - cur_gap) if prev_gap > cur_gap else 1.0
+                        d = prev_k + (k - prev_k) * f
+                        y_out = top - d / SKIRT_RUN
+                        break
+                    d, y_out = k, y_line
+                    prev_k, prev_gap = k, cur_gap
+                    k += step_m
+            ox, oz = ix + ux * d, iz + uz * d
+            inner.append((ix, iz, top + lift - 0.02))
+            outer.append((ox, oz, y_out + RUNTIME_DROP_M + 0.08))
+            need.append(gap > SKIRT_MIN_M)
+        i = 0
+        while i < n:
+            if not need[i]:
+                i += 1
+                continue
+            j = i
+            while j < n and need[j]:
+                j += 1
+            a, b = max(0, i - 1), min(n - 1, j)
+            if b - a >= 1:
+                if side < 0:
+                    buf.strip(outer[a:b + 1], inner[a:b + 1], EMBANKMENT_U8, KIND_EMBANKMENT, s[a:b + 1])
+                else:
+                    buf.strip(inner[a:b + 1], outer[a:b + 1], EMBANKMENT_U8, KIND_EMBANKMENT, s[a:b + 1])
+                total += s[b] - s[a]
+            i = j + 1
+    return total
+
+
+class StationIndex:
+    """Stations of the ways near the elevated ones, by 32 m cell: what a
+    bridge pier would stand on."""
+    CELL = 32.0
+
+    def __init__(self, ways):
+        hot = set()
+        for wy in ways:
+            if wy["w"].get("elevated"):
+                for e, n in wy["pts"]:
+                    ce, cn = int(e // self.CELL), int(n // self.CELL)
+                    for de in (-2, -1, 0, 1, 2):
+                        for dn in (-2, -1, 0, 1, 2):
+                            hot.add((ce + de, cn + dn))
+        self.cells = defaultdict(list)
+        for wi, wy in enumerate(ways):
+            for si, (e, n) in enumerate(wy["pts"]):
+                k = (int(e // self.CELL), int(n // self.CELL))
+                if k in hot:
+                    self.cells[k].append((wi, si))
+
+    def near(self, e, n, radius):
+        r = int(math.ceil(radius / self.CELL))
+        ce, cn = int(e // self.CELL), int(n // self.CELL)
+        for de in range(-r, r + 1):
+            for dn in range(-r, r + 1):
+                yield from self.cells.get((ce + de, cn + dn), ())
+
+
+def _seg_dist(p, a, b):
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    l2 = dx * dx + dy * dy
+    t = 0.0 if l2 < 1e-9 else max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2))
+    return math.hypot(p[0] - (a[0] + dx * t), p[1] - (a[1] + dy * t))
+
+
+def way_under(index, ways, wi, e, n, deck_h, radius):
+    """True when another way passes within `radius` of (e, n) more than
+    PIER_MIN_H_M below the deck (a pier would stand on it)."""
+    seen = set()
+    for oi, si in index.near(e, n, radius + DENSIFY_M * 1.5):
+        if oi == wi or (oi, si) in seen:
+            continue
+        seen.add((oi, si))
+        o = ways[oi]
+        P = o["pts"]
+        for j in (si - 1, si):
+            if j < 0 or j + 1 >= len(P):
+                continue
+            if _seg_dist((e, n), P[j], P[j + 1]) < o["width"] * 0.5 + radius:
+                if deck_h - max(float(o["prof"][j]), float(o["prof"][j + 1])) > PIER_MIN_H_M:
+                    return True
+    return False
+
+
 def bake_corridor(terrain: Terrain, pts, prof, half_width, protect=None):
     """Terrain pixels within half_width + margin of the polyline take the
-    profile height of the nearest point (road cut / embankment)."""
+    profile height of the nearest point (road cut / embankment); where
+    corridors overlap the way with the nearest ribbon edge wins."""
     step = terrain.tile_m / (terrain.px - 1)
     reach = half_width + max(CORRIDOR_MARGIN_MIN_M, step * math.sqrt(2.0) + 1.0)
     P = np.array(pts)
@@ -1343,9 +1576,20 @@ def bake_corridor(terrain: Terrain, pts, prof, half_width, protect=None):
             if protect is not None and m.any():
                 m &= ~protection_mask(protect, E, N)   # never inside an airport plateau
             if m.any():
-                sub = a[r0:r1 + 1, c0:c1 + 1]
-                sub[m] = best_h[m]
-                terrain.dirty.add((te, tn))
+                # where corridors overlap (a lane beside a motorway, a road
+                # along a railway) the pixel blends the ways' heights by
+                # 1 / (distance from the ribbon edge + 3 m)^2: under a ribbon
+                # the ground is its own, between two ways the step is spread
+                # over the overlap instead of jumping at a jagged pixel
+                # boundary. A 31 m pixel shared by two ways at different
+                # heights still lifts the farther one, and its embankment
+                # strip (emit_skirts) covers that (Terrain.resolve_corridors
+                # writes the means once every corridor is in)
+                sw, swh = terrain.corridor_acc(te, tn)
+                edge_d = np.maximum(best_d - half_width, 0.0)
+                wgt = 1.0 / (edge_d + CORRIDOR_BLEND_M) ** 2
+                sw[r0:r1 + 1, c0:c1 + 1][m] += wgt[m]
+                swh[r0:r1 + 1, c0:c1 + 1][m] += (wgt * best_h)[m]
                 touched += int(m.sum())
     return touched
 
@@ -1514,7 +1758,10 @@ def main():
             wy["prof"] = tunnel_profile(wy, tuple(r in surface_ends for r in wy["end_refs"]))
             stats["tunnels"] += 1
         elif wy["w"]["tunnel"]:
-            stats["tunnels"] += 1   # surveyed axis: drawn where it is, no corridor
+            # surveyed axis: drawn where it is, no corridor. An Unterfuehrung
+            # is a short tunnel under the crossing way's ground (the ground
+            # around the crossing belongs to the way on top).
+            stats["underpasses" if wy["w"].get("underpass") else "tunnels"] += 1
 
     # Stage 3: the corridor bake. Corridors of neighbouring ways overlap
     # (parallel tracks of a yard, a road beside a railway) and the last one
@@ -1526,15 +1773,81 @@ def main():
         print(f"airport protection: {len(protect['corridors'])} runway / taxiway strips, {len(protect['polys'])} aprons")
         for wy in sorted((wy for wy in ways if not wy["w"]["bridge"] and not wy["w"]["tunnel"] and not wy["w"].get("elevated")), key=lambda wy: not wy["ramp"]):
             corridor_px += bake_corridor(terrain, wy["pts"], wy["prof"], wy["width"] * 0.5, protect)
+        corridor_px = terrain.resolve_corridors()
 
-    # Stage 4: ribbons on the final ground, never below it (a bridge deck is
-    # raised too where a corridor lifted the ground under it; a tunnel stays
-    # below the surface).
+    # Stage 4a: the final profile of every way on the final ground, never
+    # below it (a bridge deck is raised too where a corridor lifted the ground
+    # under it; a tunnel stays below the surface), then the nodes of the
+    # baked network: where way ends meet at one LV95 point (OSM shares node
+    # ids, swissTLM3D splits its lines at every junction). Three or more road
+    # legs get the same corner-fan pavement a design junction gets and the
+    # ribbons are cut back to it; two legs of one kind meet on a mitre.
     for wy in ways:
+        if not wy["w"]["tunnel"]:
+            wy["prof"] = ground_under(wy["pts"], wy["prof"], wy["width"] * 0.5, terrain)
+        wy["cut"] = [0.0, 0.0]
+        wy["end_frames"] = [None, None]
+    nodes: dict = defaultdict(list)
+    for wi, wy in enumerate(ways):
+        if len(wy["pts"]) < 2:
+            continue
+        for at_start in (True, False):
+            p = wy["pts"][0] if at_start else wy["pts"][-1]
+            nodes[(round(p[0], 1), round(p[1], 1))].append((wi, at_start))
+    baked_fans = []
+    for legs_raw in nodes.values():
+        if len(legs_raw) < 2:
+            continue
+        legs = []
+        for wi, at_start in legs_raw:
+            pts = ways[wi]["pts"]
+            p, q = (pts[0], pts[1]) if at_start else (pts[-1], pts[-2])
+            dx, dy = q[0] - p[0], q[1] - p[1]
+            l = math.hypot(dx, dy) or 1.0
+            legs.append({"wi": wi, "at_start": at_start, "dir": (dx / l, dy / l), "half": ways[wi]["width"] * 0.5,
+                         "cls": ways[wi]["w"]["cls"], "kind": ways[wi]["w"]["kind"], "cut": 0.0})
+        road_legs = [L for L in legs if L["kind"] == "road" and not ways[L["wi"]]["w"]["tunnel"]]
+        if len(road_legs) >= 3:
+            L0 = road_legs[0]
+            centre = ways[L0["wi"]]["pts"][0] if L0["at_start"] else ways[L0["wi"]]["pts"][-1]
+            poly, best_cls = junction_fan(centre, road_legs)
+            for L in road_legs:
+                ways[L["wi"]]["cut"][0 if L["at_start"] else 1] = L["cut"]
+            baked_fans.append((centre, poly, best_cls, [(L["wi"], L["at_start"], L["half"]) for L in road_legs]))
+        elif len(legs) == 2 and legs[0]["kind"] == legs[1]["kind"]:
+            a, b = legs
+            t0 = (-a["dir"][0], -a["dir"][1])   # travelling a -> node -> b, in (e, n)
+            t1 = b["dir"]
+            den = 1.0 + t0[0] * t1[0] + t0[1] * t1[1]
+            if den < 1e-4:
+                continue
+            # frames live in xz (x = -e, z = n): tangent (-te, tn), left normal (-tn, -te)
+            n0, n1 = (-t0[1], -t0[0]), (-t1[1], -t1[0])
+            mx, mz = (n0[0] + n1[0]) / den, (n0[1] + n1[1]) / den
+            l = math.hypot(mx, mz)
+            if l > MITER_LIMIT:
+                mx, mz = mx * MITER_LIMIT / l, mz * MITER_LIMIT / l
+            ways[a["wi"]]["end_frames"][0 if a["at_start"] else 1] = (-mx, -mz) if a["at_start"] else (mx, mz)
+            ways[b["wi"]]["end_frames"][0 if b["at_start"] else 1] = (mx, mz) if b["at_start"] else (-mx, -mz)
+            stats["mitres"] += 1
+    station_index = StationIndex(ways)
+
+    # Stage 4b: ribbons, embankments, structures.
+    for wi, wy in enumerate(ways):
         w, pts, prof, width = wy["w"], wy["pts"], wy["prof"], wy["width"]
         colour, kind, lanes, gauge, ballast, tracks = wy["colour"], wy["kind"], wy["lanes"], wy["gauge"], wy["ballast"], wy["tracks"]
-        if not w["tunnel"]:
-            prof = ground_under(pts, prof, width * 0.5, terrain)
+        cut0, cut1 = wy["cut"]
+        if cut0 > 0.0:
+            pts, prof = trim_start_vals(pts, list(prof), cut0)
+        if cut1 > 0.0:
+            pts, prof = trim_start_vals(pts[::-1], list(prof)[::-1], cut1)
+            pts, prof = pts[::-1], prof[::-1]
+        if len(pts) < 2 or along(pts)[-1] < 0.5:
+            stats["ways_inside_junctions"] += 1
+            continue
+        prof = np.asarray(prof, dtype=float)
+        ef = wy["end_frames"]
+        on_ground = not (w["tunnel"] or w["bridge"] or w.get("elevated"))
         if w.get("has_z") and w.get("elevated"):
             stats["surveyed_bridges"] += 1
         jitter = (w["id"] % 5) * 0.003
@@ -1564,14 +1877,16 @@ def main():
             by_tile[k].append(i)
         if not w.get("design"):
             # the way's source geometry for the scenery editor's Pick tool (a
-            # sidecar per tile; the same way may appear in several tiles)
+            # sidecar per tile; the same way may appear in several tiles):
+            # the full way to its nodes, not the ribbon trimmed at junctions
+            full = wy["pts"]
             tag_w = parse_num(w.get("width"), 0)
             rec = {"id": w["id"], "kind": w["kind"], "cls": w["cls"], "lanes": lanes or 0, "oneway": bool(w["oneway"]),
                    "width": tag_w if 3.0 <= tag_w <= 60.0 else 0,
                    "gauge": int(round(gauge * 1000)) if gauge else 0, "tracks": tracks or 0,
-                   "bridge": bool(w["bridge"]), "tunnel": bool(w["tunnel"]),
-                   "pts": [[round(e, 1), round(n, 1)] for e, n in pts[::2]] + ([[round(pts[-1][0], 1), round(pts[-1][1], 1)]] if len(pts) % 2 == 0 else [])}
-            for k in by_tile:
+                   "bridge": bool(w["bridge"] or w.get("elevated")), "tunnel": bool(w["tunnel"]),
+                   "pts": [[round(e, 1), round(n, 1)] for e, n in full[::2]] + ([[round(full[-1][0], 1), round(full[-1][1], 1)]] if len(full) % 2 == 0 else [])}
+            for k in set(by_tile) | {(int(math.floor(e / TILE_M)) * TILE_M, int(math.floor(n / TILE_M)) * TILE_M) for e, n in (full[0], full[-1])}:
                 sidecars[k].append(rec)
         for k, idxs in by_tile.items():
             lo, hi = max(0, idxs[0] - 1), min(len(pts) - 1, idxs[-1] + 1)
@@ -1581,30 +1896,37 @@ def main():
                 continue
             xz = [(CONV_E - e, n - CONV_N) for e, n in seg]
             s = along(xz)
+            frames_end = (ef[0] if lo == 0 else None, ef[1] if hi == len(pts) - 1 else None)
             buf = tiles[k]
             buf.current_way = 0 if w.get("design") else int(w["id"])
             cu = tuple(int(c * 255) for c in (colour if w["kind"] == "road" else (0.5, 0.48, 0.45)))
             if w["kind"] == "road":
                 buf.ribbon(xz, [h + road_lift for h in seg_h], width, cu, kind, 0.0, s, float(lanes),
-                           halves_full[lo:hi + 1] if halves_full else None)
+                           halves_full[lo:hi + 1] if halves_full else None, frames_end)
                 stats["road_m"] += s[-1]
+                if on_ground:
+                    stats["skirt_m"] += emit_skirts(buf, xz, seg_h, s, width * 0.5, road_lift, terrain, frames_end)
             else:
                 ys_b = [h + ballast_lift for h in seg_h]
                 if ballast:
-                    buf.ribbon(xz, ys_b, width, cu, KIND_BALLAST, 0.0, s, float(tracks))
+                    buf.ribbon(xz, ys_b, width, cu, KIND_BALLAST, 0.0, s, float(tracks), None, frames_end)
+                    if on_ground:
+                        stats["skirt_m"] += emit_skirts(buf, xz, seg_h, s, width * 0.5, ballast_lift, terrain, frames_end)
                 rail_c = (120, 118, 110)
                 for tr in range(tracks):
                     centre = (tr - (tracks - 1) / 2.0) * TRACK_SPACING_M
                     for side in (-1, 1):
-                        buf.profile(xz, ys_b, RAIL_PROFILE, rail_c, KIND_RAIL, centre + side * gauge / 2.0, s, RAIL_FOOT_M / 2, 1.0)
+                        buf.profile(xz, ys_b, RAIL_PROFILE, rail_c, KIND_RAIL, centre + side * gauge / 2.0, s, RAIL_FOOT_M / 2, 1.0, None, frames_end)
                 stats["rail_m"] += s[-1]
             if w.get("elevated") and w["kind"] == "road":
-                # bridge structure: parapets along both edges, a pier every PIER_SPACING_M
+                # bridge structure: parapets along both edges, a pier every
+                # PIER_SPACING_M where the deck is clear of the ground and
+                # nothing passes underneath
                 ys = [h + road_lift for h in seg_h]
                 half_e = width * 0.5
                 for side in (-1.0, 1.0):
                     buf.profile(xz, ys, ((-PARAPET_W_M / 2, 0.0), (-PARAPET_W_M / 2, PARAPET_H_M), (PARAPET_W_M / 2, PARAPET_H_M), (PARAPET_W_M / 2, 0.0)),
-                                CONCRETE_U8, KIND_CONCRETE, side * (half_e - PARAPET_W_M / 2), s, 0.0, 0.0)
+                                CONCRETE_U8, KIND_CONCRETE, side * (half_e - PARAPET_W_M / 2), s, 0.0, 0.0, None, frames_end)
                 since = PIER_SPACING_M if lo == 0 else 0.0
                 for i in range(len(xz)):
                     if i > 0:
@@ -1620,19 +1942,39 @@ def main():
                     nx, nz = -dz, dx
                     wpier = max(width - 2.0, PIER_W_M)
                     t = PIER_W_M / 2
-                    ground = terrain.sample(seg[i][0], seg[i][1])
+                    ground = terrain.sample(seg[i][0], seg[i][1], tri=True)
                     if math.isnan(ground):
                         continue
                     top, bottom = ys[i] - ROAD_LIFT_M, ground - 0.5 + RUNTIME_DROP_M
+                    if top - ground < PIER_MIN_H_M:
+                        stats["piers_low"] += 1
+                        continue
+                    if way_under(station_index, ways, wi, seg[i][0], seg[i][1], float(seg_h[i]), wpier * 0.5 + 0.5):
+                        stats["piers_over_ways"] += 1
+                        continue
                     c = [(x + nx * wpier / 2 * sx + dx * t * sz, z + nz * wpier / 2 * sx + dz * t * sz) for sx, sz in ((-1, -1), (-1, 1), (1, 1), (1, -1))]
-                    for k in range(4):
-                        buf.wall(c[k], c[(k + 1) % 4], bottom, top, CONCRETE_U8, KIND_CONCRETE)
+                    for k2 in range(4):
+                        buf.wall(c[k2], c[(k2 + 1) % 4], bottom, top, CONCRETE_U8, KIND_CONCRETE)
                     stats["piers"] += 1
+    # junction pavements of the baked network: one flat fan per node at the
+    # height of its highest leg end
+    for centre, poly, best_cls, legs in baked_fans:
+        ce, cn = centre
+        hs = [float(ways[wi]["prof"][0 if at_start else -1]) for wi, at_start, _h in legs]
+        hs += [terrain.sample(e, n, tri=True) for e, n in poly] + [terrain.sample(ce, cn, tri=True)]
+        y = max(h for h in hs if not math.isnan(h)) + ROAD_LIFT_M - CLASS_DROP_M.get(best_cls, 0.0) + 0.005
+        k = (int(math.floor(ce / TILE_M)) * TILE_M, int(math.floor(cn / TILE_M)) * TILE_M)
+        colour = ROAD_CLASSES[best_cls][1] if best_cls in ROAD_CLASSES else (0.34, 0.34, 0.35)
+        cu = tuple(int(c * 255) for c in colour)
+        widest = max(legs, key=lambda L: L[2])
+        tiles[k].current_way = 0 if ways[widest[0]]["w"].get("design") else int(ways[widest[0]]["w"]["id"])
+        tiles[k].fan((CONV_E - ce, cn - CONV_N), [(CONV_E - e, n - CONV_N) for e, n in poly], y, cu, KIND_JUNCTION)
+        stats["junctions_baked"] += 1
     # junction pavements of the designs: one flat fan per node on the final ground
     for d in designs:
         for j in d.junctions:
             ce, cn = j["centre"]
-            hs = [terrain.sample(ce, cn)] + [terrain.sample(e, n) for e, n in j["poly"]]
+            hs = [terrain.sample(ce, cn, tri=True)] + [terrain.sample(e, n, tri=True) for e, n in j["poly"]]
             hs = [h for h in hs if not math.isnan(h)]
             if not hs:
                 continue
@@ -1706,8 +2048,11 @@ def main():
     size = sum((out_dir / t["file"]).stat().st_size for t in manifest["tiles"].values())
     print(f"roads: {len(tiles)} tiles, {size / 1e6:.1f} MB, road {stats['road_m'] / 1000:.0f} km, rail {stats['rail_m'] / 1000:.0f} km, "
           f"no-terrain ways {stats['no_terrain']}; bridges lifted {stats['bridges_lifted']} over {stats['bridge_crossings']} crossings, "
-          f"ramps {stats['ramps']}, tunnels {stats['tunnels']} (+{stats['underpasses']} short ones at grade); "
-          f"surveyed heights {stats['ways_with_heights']} ways, surveyed bridges {stats['surveyed_bridges']}; designs {len(designs)} (junctions {stats['junctions']}, OSM ways cut {stats['osm_ways_cut']}, replaced by id {stats['osm_ways_replaced']}, plateaus {stats['plateaus']} = {stats['flatten_px']} px, areas {stats['areas']}, piers {stats['piers']}); corridor: {corridor_px} px in {n_terrain} terrain tiles -> {out_dir}")
+          f"ramps {stats['ramps']}, tunnels {stats['tunnels']} (+{stats['underpasses']} underpasses); "
+          f"surveyed heights {stats['ways_with_heights']} ways, surveyed bridges {stats['surveyed_bridges']}; "
+          f"network: junction fans {stats['junctions_baked']}, mitred joins {stats['mitres']}, ways inside junctions {stats['ways_inside_junctions']}, embankments {stats['skirt_m'] / 1000:.0f} km, "
+          f"piers {stats['piers']} (skipped: {stats['piers_low']} low decks, {stats['piers_over_ways']} over ways); "
+          f"designs {len(designs)} (junctions {stats['junctions']}, OSM ways cut {stats['osm_ways_cut']}, replaced by id {stats['osm_ways_replaced']}, plateaus {stats['plateaus']} = {stats['flatten_px']} px, areas {stats['areas']}); corridor: {corridor_px} px in {n_terrain} terrain tiles -> {out_dir}")
 
 
 if __name__ == "__main__":

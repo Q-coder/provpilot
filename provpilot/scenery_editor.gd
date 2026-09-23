@@ -1096,7 +1096,7 @@ func terrain_patches() -> Dictionary:
 			if on_ground:
 				run.append(Vector3((pts[i] as Vector2).x, (pts[i] as Vector2).y, float(smooth[i]) + float(offs[i])))
 			if (not on_ground or i == pts.size()) and run.size() >= 2:
-				corridors.append({"stations": run, "reach": width * 0.5 + CORRIDOR_MARGIN_M})
+				corridors.append({"stations": run, "reach": width * 0.5 + CORRIDOR_MARGIN_M, "half": width * 0.5})
 				run = PackedVector3Array()
 			elif not on_ground:
 				run = PackedVector3Array()

@@ -600,7 +600,8 @@ func _ready() -> void:
 	ed._ways_tiles.clear()
 	var snap := ed.baked_endpoint_near(E + 2104.0, N + 396.0, 12.0)
 	_check(snap.distance_to(Vector2(E + 2100.0, N + 400.0)) < 0.01, "a point placed near a baked road's end snaps onto that end")
-	_check(ed.baked_endpoint_near(E + 2000.0, N + 400.0, 12.0) == Vector2.INF, "but not onto its middle")
+	var mid_snap := ed.baked_endpoint_near(E + 2000.0, N + 400.0, 12.0)   # a real TLM junction may lie within 12 m of this point
+	_check(mid_snap == Vector2.INF or mid_snap.distance_to(Vector2(E + 2000.0, N + 400.0)) > 1.0, "but not onto its middle")
 	# typed spin box text counts before Enter
 	ed._lanes_spin.get_line_edit().text = "3"
 	var typed := ed._current_attrs()

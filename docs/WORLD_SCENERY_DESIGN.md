@@ -1775,8 +1775,8 @@ interpolated across such a cell rises through the ribbon (found 2026-09-22:
 price of a 30 m posting. Pass 2, after every corridor is written: each
 ribbon re-samples the final ground at five points across its width and
 takes the maximum with its own profile — corridors of parallel tracks, of a
-road beside a railway and of crossings overwrite each other (last wins), so
-no ribbon may trust its own profile; bridges are lifted the same way. Result
+road beside a railway and of crossings overlap, so no ribbon may trust its
+own profile; bridges are lifted the same way. Result
 over the box: no vertex below the ground, ballast 0.15 m and roads 0.20 m
 above it. **Bridges and tunnels** (gery 2026-09-22, after spotting broken
 railway lines and flat interchanges: "make a good guess" for the missing
@@ -1859,6 +1859,67 @@ terrain, so the TLM bake needs `--corridor`, which then reproduces the
 real embankments. OSM stays the source for the other regions. Not
 covered: paths, squares, the OSM-id deletions of a design made on OSM
 tiles (they do not match TLM ids).
+
+**Clean network (2026-09-23).** gery's check of the Zürich TLM box found
+piers standing on the motorway, roads swallowed by the terrain and
+patchy joins ("as clean as the taxiways"). Measured on the tiles: 1.3 %
+of the road vertices were below the runtime surface although none was
+below the *bilinear* terrain — `S3DTile` triangulates every pixel quad
+along one diagonal, and on a stepped corridor edge the two surfaces
+differ by up to a metre; and 10–30 % of the vertices floated more than
+1 m because a corridor written later overwrote the ground under an
+earlier way (a tertiary 30 m from a motorway cut floated 8 m). Rules
+now in `build_world_roads.py`:
+- `Terrain.sample(tri=True)` reproduces the runtime triangulation; the
+  final-ground pass, piers, fans and embankments use it, and the pass
+  also samples halfway between stations (a terrain vertex between two
+  stations bulges above the straight ribbon). Result: 0.00 % buried.
+- Where corridors overlap, the pixel takes the mean of the ways' heights
+  weighted by 1 / (distance from each ribbon *edge* + 3 m)²
+  (`Terrain.corridor_acc` / `resolve_corridors`): under a ribbon the
+  ground is its own, between two ways the step is spread over the overlap
+  instead of jumping at a jagged pixel boundary (nearest-edge ownership
+  drew sawtooth cliffs beside the Wallisellen rail embankment; lowest-wins
+  floated 43 % of the vertices in the dense LSMD network). The runtime
+  patches (`s3d_terrain_patches.h`, corridors carry `half`) blend the same
+  way. What remains is the shelf itself: a 5 m embankment becomes one
+  31 m pixel of slope, lit like any slope — finer terrain near the
+  network is the only cure (open, see the swissALTI3D idea).
+- A 31 m pixel shared by two ways at different heights still lifts the
+  farther one, so every on-ground ribbon that rides more than 0.3 m over
+  the runtime surface gets an **embankment strip** (kind 16, the
+  terrain's own flat green, up normals and the terrain material's
+  response so only its outline shows) from just under its edge outward:
+  the strip walks down a 1:1.5 slope line in 0.5 m steps, at most 15 m,
+  until the ground meets it (interpolated, so the outer edge is smooth; a
+  cut side ends it at once), so it never becomes a flat flap where the
+  ground rises again; runs are padded by one station so the strip tapers
+  out (`emit_skirts`; 6 800 km over the Zürich box, tiles 362 → 511 MB).
+- Sidecars (`roads_E_N.ways.json`) carry the *untrimmed* way to its
+  nodes, so the editor snaps to the junction, not to a cut-back ribbon
+  end; a way is also listed in the tiles of both its end nodes.
+- The **baked network has junctions**: way ends meeting at one LV95
+  point are a node (OSM shares node ids; swissTLM3D splits every line at
+  a junction, so the point is the key). Three or more road legs get the
+  corner-fan pavement a design junction gets (`junction_fan`, shared
+  with `Design`) and their ribbons are cut back to it, at the height of
+  the highest leg end / fan corner; two legs of one kind (roads or
+  rails, any width) meet on a **mitre** — both ribbons end on the
+  bisector (`end_frames` in `MeshBuf.profile`, rails included), so
+  curves made of many TLM segments no longer show wedge gaps.
+- **Piers** are skipped where the deck is less than 1 m over the ground
+  and where another way passes underneath more than 1 m lower
+  (`StationIndex` of the stations near elevated ways, `way_under`), so a
+  bridge over the A1 has piers on the verges only.
+- swissTLM3D `Unterfuehrung` ways are drawn like tunnels (surveyed axis,
+  no corridor): the ground at a crossing belongs to the way on top.
+- `roads.gdshader` pulls every vertex 0.6 % of its distance towards the
+  camera beyond 300 m (full from 2.5 km): the block-averaged coarser
+  terrain LODs of the far rings no longer bury roads seen from altitude.
+Verification: `scratchpad verify.py` style check of ribbons, fans and
+strips against the triangulated terrain — LSMD test box after the
+change: road ribbons median +0.24 m, 0.00 % buried, 11 % more than 0.5 m
+up (was 21–39 %), 1 % more than 2 m up (was 5–22 %).
 
 Order of work stays as above: far files + chunk archives in the bake,
 cache-or-fetch + far-file support in the streamer, per-airport runway
