@@ -39,6 +39,41 @@ switches).
   went to the Norway pack's parent). At every flight start it is meshed
   once the terrain around is in, so edits are part of the scenery, not of
   the editing session.
+- **Replaced ways vanish without a bake.** Every baked vertex carries its
+  OSM way id (`_WAYID`, uint32). The editor hands the road manager the set
+  of replaced ways (picked or deleted ids, plus every sidecar way with a
+  point inside a replace polygon); `S3DRoadManager.set_hidden_ways`
+  reloads the tiles and drops those ways' triangles as each tile is
+  built. So a pick or a delete shows at once, in the editor and in normal
+  flight (the design is applied at every start), and the bake only makes
+  it permanent in the streamed tiles (option 2 of the "alternatives to
+  baking" discussion, 2026-09-23; terrain patches at tile load are the
+  second step, done the same day).
+- **Terrain follows the design without a bake.** The tile loader takes
+  the design's plateaus and corridors (`S3DTileManager.set_terrain_patches`)
+  and writes them into every close tile's heights as it is decoded, before
+  the mesh and the elevation query see them — the bake's `--corridor`
+  rules at load time: plateaus at their height, the smoothed ground profile
+  plus node offsets under every road and track run that is not elevated,
+  reach = half width + 45 m. The editor rebuilds the patches on every
+  change; the close tiles reload (about a second) and the live meshes
+  re-sample the patched ground. The patches are computed only in the
+  editor, where the terrain around the edits is loaded, and kept in the
+  design file (`patches`); a flight or an Edit Mode session applies that
+  cache **before its first tile loads**, so nothing ever reloads under a
+  placed aircraft (gery 2026-09-23: the Cessna on LSMD's runway was thrown
+  into the air and landed on its roof when the tiles reloaded a few
+  seconds after placement). Should a reload still happen while an
+  aircraft is on the ground — an edit in the F8 editor, say — the
+  teleport pin holds the aircraft until the terrain has settled. Far chunks stay unpatched
+  until they come close. **Airport plateaus are protected**: runway strips
+  (+60 m), taxiways (+25 m) and aprons of every known airport are handed
+  over as protection shapes, and neither a live corridor nor the bake's
+  `--corridor` changes a pixel inside them — gery's A-10 dropped onto
+  Dübendorf's runway on 2026-09-23 after a design road's corridor had cut
+  the plateau the runway plane sits on; the plateaus were restored with
+  `build_world_terrain.py flatten` and the roads re-baked with protection.
+  A designer's Flatten plateau still wins (it is explicit).
 - **Baked ways can be picked.** Every bake writes `roads_E_N.ways.json`
   next to each tile: the source ways (id, class, lanes, one-way, gauge,
   bridge / tunnel flags, LV95 polyline every 20 m). The editor reads the
@@ -78,17 +113,18 @@ where Fly! starts a normal flight.
 | axis gizmo (right edge) | Blender-style: X (east, red), Y (north, green), Z (up, blue) as the camera sees them, hollow circles for the opposites. Click Z for the top view, −Z for a level view, X / −X / Y / −Y for a side view from the east / west / north / south; drag anywhere on it to orbit around the point in the middle of the screen |
 | mouse wheel | closer / farther along the view |
 | 1 2 3 4 5 6 7 8 9 | tool: Select (drag a node), Road, Rail, Delete, Circle, Switch, Replace, Flatten, Area |
-| Pick tool (0) | click a baked OSM road or track: it becomes design nodes and edges with the way's class, lanes and gauge (ends snap to existing design nodes), draws 3 cm above the original, and its OSM id goes to `replace_ids` so the bake drops the original. The panel names the way under the cursor. Needs the tiles' `roads_E_N.ways.json` sidecars (bakes from 2026-09-22 on) |
+| Pick tool (0) | click a baked OSM road or track (a design road under the cursor is named instead, with a pointer to Select / Delete): it becomes design nodes and edges with the way's class, lanes and gauge (ends snap to existing design nodes); the original disappears from the tiles at once and its OSM id goes to `replace_ids` so the bake drops it for good. The panel names the way under the cursor. Needs the tiles' `roads_E_N.ways.json` sidecars (bakes from 2026-09-22 on) |
 | Area tool | clicks add the corners of a patch, Enter closes it: grass, forest floor, field (flat on the highest ground under it), water (flat on the lowest), or a building (roof at the panel height, walls to the ground); Delete on a corner removes it |
-| [ ] | Select: lower / raise the selected node's height offset by 0.5 m (Shift 5 m) — a deck, an embankment or a cut, interpolated along the edges; Flatten while drawing: the plateau height |
+| R | Select with a road selected: reverse its direction (the whole run of equal segments). Direction: a design road flows in the order its points were placed, first click to last; a baked road flows in its OSM way direction (the arrows on the OSM map). One-way roads show cyan (design) or green (baked) arrows every 40 m within 1.5 km of the camera; the panel prints the flow heading of the road under the cursor and, while drawing, the heading the next segment will flow |
+| [ ] | Select: lower / raise the selected node's height offset by 0.5 m (Shift 5 m) — a deck, an embankment or a cut, interpolated along the edges; with a selected edge (click a design road away from its nodes) both its ends move; Flatten while drawing: the plateau height |
 | Flatten tool | clicks add the corners of a plateau, the height starts at the ground of the first corner ([ ] adjusts it), Enter closes it (blue outline at the target height with drop lines at the corners): the bake writes the plateau into the terrain tiles like the runway flatten; Delete on a corner removes it |
 | Replace tool | clicks add the corners of an area, Enter closes it (red outline): the bake cuts every OSM road and track inside it, so the design's own roads take their place; Delete on a corner removes the area |
 | Switch tool | click a track (the toe of the turnout), then the end of the diverging track: the track is split there and the diverging track leaves as the arc tangent to it (radius shown; below 150 m it is refused, 190 m is the tightest standard turnout); continue it with the Rail tool |
 | C | curved: each new Road / Rail segment continues the last one as a tangent arc (the panel shows the radius) |
 | Circle tool | click the centre, then a point on the ring (a second click on the centre takes the panel radius): a one-way ring of eight arcs, counter-clockwise, i.e. a roundabout for right-hand traffic |
-| left click | place the next point of a line (snaps to a node within 6 m, splits a crossed line within 4 m into a junction), pick a node (Select), remove a line (Delete) |
+| left click | place the next point of a line (snaps to a design node on screen, to the end of a baked road within 12 m so the two join exactly, or splits a crossed design line into a junction), pick a node (Select), remove a line (Delete) |
 | Enter, right click | finish the line |
-| Esc | cancel the open line |
+| Esc | cancel the open line, else drop the selection, else leave the editor (the host ignores that same press, so the welcome screen does not open on top — a 2026-09-23 fix after it did and swallowed the keys) |
 | Ctrl+Z, Ctrl+S | undo, save |
 | Bake area (Ctrl+B) | saves, then runs `build_world_roads.py` for the 7 × 7 km of tiles around the camera with this design in the background (`--corridor` when the design has roads, tracks or plateaus), and reloads the road tiles when it finishes: picked or deleted OSM roads leave the tiles, designed roads and plateaus become part of them. The panel shows the running time and the bake's last log line (log in the user data dir). Needs Python with the bake's libraries on this machine |
 
@@ -103,8 +139,23 @@ and only then by a 6 m ground distance. Every design node shows as a
 yellow sphere (white when selected) scaled with distance, and design
 roads are drawn with a blue tint while the editor is on so they stand
 apart from the baked ones. Delete on a baked road that is not in the
-design marks its OSM id for removal: baked tiles cannot change before
-the next bake, the panel says so.
+design hides it in the tiles at once and lists its OSM id, which the
+next bake drops for good.
+
+A point placed on the end of a baked road (12 m snap) joins it: the line
+takes that road's class, lanes, direction and width, and when the road is
+one-way the line is turned to flow with it — into the road when it joins
+the road's start, out of it when it joins the road's end (gery 2026-09-23:
+a 3-lane one-way motorway drawn towards the end of its continuation had
+its hard shoulder on the wrong side). Typed panel values count as soon as
+they are typed, Enter is not needed (a typed "3" that was lost on focus
+change produced the "single lane" of the same report). Picking a road,
+selecting a design road, or selecting one of its nodes
+loads its class, lanes, direction and width into the panel, so a segment
+drawn from there continues it with the same settings (gery 2026-09-23:
+the extension of a picked motorway "won't fit"). The panel's fields drop
+keyboard focus as soon as the mouse leaves the panel, so WASD never types
+into the lanes field.
 
 The cursor is the mouse ray marched against the terrain (the scenery
 elevation query, so it works on every pack and on the coarse globe); the
@@ -160,6 +211,10 @@ tool turns the baked way into design geometry you can edit.
             "lanes": 2, "oneway": false, "gauge": 0, "tracks": 0}]}
 ```
 
+- An edge may carry an explicit `width` (metres; 0 = from the lanes). A
+  picked OSM way brings its `width` tag along (the sidecars carry it), so
+  the design copy is as wide as the baked original; the panel has a width
+  field for drawing.
 - A node is a point, optionally with a height offset `h` (metres above
   the ground, negative below): a deck, an embankment or a cut; offsets are
   interpolated along the edges by arc length and junction pavements take

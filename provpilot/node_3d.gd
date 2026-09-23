@@ -113,6 +113,7 @@ var _slew_mode := SlewMode.new()
 # free camera + terrain cursor + road / rail tools on a saved SceneryDesign.
 var _scenery_editor := SceneryEditor.new()
 var _edit_session := false   # Edit Mode from the welcome screen (no flight)
+var _escape_held := false    # Escape seen and acted on; cleared on release
 
 # Cinematic space→spot intro zoom (world3d globe) lives in the C++ IntroZoom
 # module (src/intro_zoom.cpp). GDScript keeps the scene-side gates (globe
@@ -1489,14 +1490,21 @@ func _process(delta: float) -> void:
 	if _scenery_editor.is_active():
 		return
 
-	# Escape key: return to welcome screen
+	# Escape key: return to welcome screen (edge-detected: the scenery editor
+	# leaves on the same key press and sets _escape_held so the still-held
+	# key does not open the welcome screen a frame later)
 	if Input.is_key_pressed(KEY_ESCAPE):
-		if _welcome_screen:
+		if _escape_held:
+			pass
+		elif _welcome_screen:
+			_escape_held = true
 			# Once at least one flight has started, offer "Continue" so the
 			# user can return to the cockpit without re-teleporting.
 			_welcome_screen.set_continue_enabled(not _first_flight)
 			_welcome_screen.show_welcome()
 			return
+	else:
+		_escape_held = false
 	
 	# Update FPS label
 	if _fps_label and _fps_visible:
@@ -2552,6 +2560,10 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 	# and initialise the simulation.
 	_apply_selected_aircraft(aircraft_id)
 
+	# The scenery design (replaced roads, terrain patches) is applied before
+	# the first tile of this flight loads: no reload under the aircraft later.
+	_scenery_editor.apply_startup_design()
+
 	# Loading state while the destination streams in: the intro zoom shows the
 	# progress; the flight logic waits for _loading_progress (below).
 	_fly_loading = true
@@ -2614,6 +2626,7 @@ func _on_welcome_edit_requested(swiss_e: float, swiss_n: float, heading_deg: flo
 		ac_node.visible = false
 	if jsb_node and jsb_node.has_method("set_slew_mode"):
 		jsb_node.set_slew_mode(true)
+	_scenery_editor.apply_startup_design()
 	_set_scenery_streaming(true)
 	_scenery_editor.enter_at(swiss_e, swiss_n, heading_deg)
 

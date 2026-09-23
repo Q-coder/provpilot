@@ -73,7 +73,7 @@ class _Buf:
 
 ## Road width (m), shader kind and lane count from the attributes, the same
 ## rules as road_geometry() in scripts/build_world_roads.py.
-static func road_geometry(cls: String, lanes: int, oneway: bool) -> Array:
+static func road_geometry(cls: String, lanes: int, oneway: bool, width_m: float = 0.0) -> Array:
 	var lane_m: float = LANE_M.get(cls, 3.0)
 	lanes = clampi(lanes if lanes > 0 else (1 if cls.ends_with("_link") else 2), 1, 6)
 	var link := cls.ends_with("_link")
@@ -96,6 +96,10 @@ static func road_geometry(cls: String, lanes: int, oneway: bool) -> Array:
 	else:
 		width = lanes * lane_m + 2 * VERGE_M
 		kind = KIND_TWOWAY_LINED if cls in ["trunk", "primary"] else KIND_TWOWAY
+	if width_m >= 3.0 and width_m <= 60.0:
+		width = width_m   # an explicit width (OSM width tag) wins, as in the bake
+		if width < 5.0 and kind != KIND_ONEWAY:
+			kind = KIND_LINK   # a narrow road has no centre line
 	return [width, kind, lanes]
 
 
@@ -150,7 +154,7 @@ static func edge_width(design: SceneryDesign, eid: int) -> float:
 	var ed: Dictionary = design.edges[eid]
 	if ed["kind"] != SceneryDesign.KIND_ROAD:
 		return 0.0
-	return float(road_geometry(str(ed["cls"]), int(ed["lanes"]), bool(ed["oneway"]))[0])
+	return float(road_geometry(str(ed["cls"]), int(ed["lanes"]), bool(ed["oneway"]), float(ed.get("width", 0.0)))[0])
 
 
 ## Pavement geometry of a node with three or more road edges: legs sorted
@@ -433,7 +437,7 @@ func _build_chain(design: SceneryDesign, chain: Dictionary) -> MeshInstance3D:
 	var count: float
 	var gauge_m := 1.435
 	if is_road:
-		var g := road_geometry(str(attrs["cls"]), int(attrs["lanes"]), bool(attrs["oneway"]))
+		var g := road_geometry(str(attrs["cls"]), int(attrs["lanes"]), bool(attrs["oneway"]), float(attrs.get("width", 0.0)))
 		width = g[0]
 		kind = g[1]
 		count = float(g[2])

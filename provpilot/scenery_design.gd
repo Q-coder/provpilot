@@ -12,7 +12,7 @@ const KIND_RAIL := "rail"
 const ROAD_CLASSES := ["motorway", "trunk", "primary", "secondary", "tertiary",
 	"motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link"]
 const RAIL_CLASSES := ["rail", "narrow_gauge", "light_rail", "tram"]
-const EDGE_ATTRS := ["kind", "cls", "lanes", "oneway", "gauge", "tracks"]
+const EDGE_ATTRS := ["kind", "cls", "lanes", "oneway", "gauge", "tracks", "width"]   # width m: 0 = from the lanes
 
 const ARC_STEP_M := 10.0
 const ARC_MIN_SEGMENTS := 4
@@ -21,6 +21,7 @@ var replace: Array = []        # polygons [[Vector2, ...], ...]: OSM ways inside
 var replace_ids: Array = []    # OSM way ids the design replaces outright (picked into the design)
 var flatten: Array = []        # [{"poly": [Vector2, ...], "h": metres ASL}]: plateaus the bake writes into the terrain
 var areas: Array = []          # [{"poly": [Vector2, ...], "type": AREA_TYPES, "h": building height m}]
+var patch_cache: Dictionary = {}   # terrain patches computed by the editor (needs terrain): used at flight start
 const AREA_TYPES := ["grass", "forest", "field", "water", "building"]
 var nodes: Dictionary = {}     # id -> {"e": float, "n": float, "h": height offset m (optional)}
 var edges: Dictionary = {}     # id -> {"a": int, "b": int, kind, cls, lanes, oneway, gauge, tracks, "via": [e, n] for an arc}
@@ -30,12 +31,12 @@ var dirty: bool = false
 var _undo: Array = []
 
 
-static func road_attrs(cls: String, lanes: int, oneway: bool) -> Dictionary:
-	return {"kind": KIND_ROAD, "cls": cls, "lanes": lanes, "oneway": oneway, "gauge": 0, "tracks": 0}
+static func road_attrs(cls: String, lanes: int, oneway: bool, width: float = 0.0) -> Dictionary:
+	return {"kind": KIND_ROAD, "cls": cls, "lanes": lanes, "oneway": oneway, "gauge": 0, "tracks": 0, "width": width}
 
 
 static func rail_attrs(cls: String, gauge_mm: int, tracks: int = 1) -> Dictionary:
-	return {"kind": KIND_RAIL, "cls": cls, "lanes": 0, "oneway": false, "gauge": gauge_mm, "tracks": tracks}
+	return {"kind": KIND_RAIL, "cls": cls, "lanes": 0, "oneway": false, "gauge": gauge_mm, "tracks": tracks, "width": 0.0}
 
 
 func node_count() -> int:
@@ -117,7 +118,7 @@ func import_way(rec: Dictionary) -> Array:
 	if str(rec.get("kind", "road")) == KIND_RAIL:
 		attrs = rail_attrs(str(rec.get("cls", "rail")), int(rec.get("gauge", 1435)), maxi(1, int(rec.get("tracks", 1))))
 	else:
-		attrs = road_attrs(str(rec.get("cls", "secondary")), int(rec.get("lanes", 0)), bool(rec.get("oneway", false)))
+		attrs = road_attrs(str(rec.get("cls", "secondary")), int(rec.get("lanes", 0)), bool(rec.get("oneway", false)), float(rec.get("width", 0.0)))
 	var ids: Array = []
 	for i in range(pts.size()):
 		var p: Vector2 = pts[i]
@@ -167,7 +168,7 @@ func add_edge(a: int, b: int, attrs: Dictionary) -> int:
 	next_id += 1
 	var ed := {"a": a, "b": b}
 	for k in EDGE_ATTRS:
-		ed[k] = attrs.get(k, 0 if k in ["lanes", "gauge", "tracks"] else ("" if k in ["kind", "cls"] else false))
+		ed[k] = attrs.get(k, 0.0 if k == "width" else (0 if k in ["lanes", "gauge", "tracks"] else ("" if k in ["kind", "cls"] else false)))
 	edges[id] = ed
 	dirty = true
 	return id
@@ -354,6 +355,24 @@ func add_switch(edge_id: int, e: float, n: float, q: Vector2) -> Dictionary:
 	var div := add_edge(snode, end, attrs)
 	set_edge_via(div, via["via"])
 	return {"node": snode, "edge": div, "radius": float(via["radius"]), "end": end}
+
+
+## Reverses the direction of the chain an edge belongs to (every edge with
+## the same attributes through degree-2 nodes): a one-way road then flows
+## the other way. Returns the number of edges flipped.
+func reverse_chain(edge_id: int) -> int:
+	if not edges.has(edge_id):
+		return 0
+	for chain in chains():
+		if edge_id in chain["edges"]:
+			for eid in chain["edges"]:
+				var ed: Dictionary = edges[eid]
+				var a: int = ed["a"]
+				ed["a"] = ed["b"]
+				ed["b"] = a
+			dirty = true
+			return chain["edges"].size()
+	return 0
 
 
 ## Removes an edge and any node it leaves without edges.
@@ -589,7 +608,60 @@ func to_dict() -> Dictionary:
 		for p in a["poly"]:
 			pl.append([(p as Vector2).x, (p as Vector2).y])
 		al.append({"poly": pl, "type": str(a["type"]), "h": float(a.get("h", 0.0))})
-	return {"schema": SCHEMA, "crs": "EPSG:2056", "next_id": next_id, "nodes": nl, "edges": el, "replace": rl, "replace_ids": replace_ids.duplicate(), "flatten": fl, "areas": al}
+	var out := {"schema": SCHEMA, "crs": "EPSG:2056", "next_id": next_id, "nodes": nl, "edges": el, "replace": rl, "replace_ids": replace_ids.duplicate(), "flatten": fl, "areas": al}
+	if not patch_cache.is_empty():
+		out["patches"] = _patches_to_json(patch_cache)
+	return out
+
+
+static func _patches_to_json(pc: Dictionary) -> Dictionary:
+	var out := {"plateaus": [], "corridors": [], "protect_polys": [], "protect_corridors": []}
+	for pl in pc.get("plateaus", []):
+		var poly: Array = []
+		for p in pl["poly"]:
+			poly.append([(p as Vector2).x, (p as Vector2).y])
+		out["plateaus"].append({"poly": poly, "h": float(pl["h"])})
+	for c in pc.get("corridors", []):
+		var st: Array = []
+		for v in c["stations"]:
+			st.append([(v as Vector3).x, (v as Vector3).y, (v as Vector3).z])
+		out["corridors"].append({"stations": st, "reach": float(c["reach"])})
+	for poly in pc.get("protect_polys", []):
+		var pl: Array = []
+		for p in poly:
+			pl.append([(p as Vector2).x, (p as Vector2).y])
+		out["protect_polys"].append(pl)
+	for c in pc.get("protect_corridors", []):
+		var st: Array = []
+		for v in c["stations"]:
+			st.append([(v as Vector2).x, (v as Vector2).y])
+		out["protect_corridors"].append({"stations": st, "reach": float(c["reach"])})
+	return out
+
+
+static func _patches_from_json(d: Dictionary) -> Dictionary:
+	var out := {"plateaus": [], "corridors": [], "protect_polys": [], "protect_corridors": []}
+	for pl in d.get("plateaus", []):
+		var poly := PackedVector2Array()
+		for p in pl.get("poly", []):
+			poly.append(Vector2(float(p[0]), float(p[1])))
+		out["plateaus"].append({"poly": poly, "h": float(pl.get("h", 0.0))})
+	for c in d.get("corridors", []):
+		var st := PackedVector3Array()
+		for v in c.get("stations", []):
+			st.append(Vector3(float(v[0]), float(v[1]), float(v[2])))
+		out["corridors"].append({"stations": st, "reach": float(c.get("reach", 20.0))})
+	for poly in d.get("protect_polys", []):
+		var pl := PackedVector2Array()
+		for p in poly:
+			pl.append(Vector2(float(p[0]), float(p[1])))
+		out["protect_polys"].append(pl)
+	for c in d.get("protect_corridors", []):
+		var st := PackedVector2Array()
+		for v in c.get("stations", []):
+			st.append(Vector2(float(v[0]), float(v[1])))
+		out["protect_corridors"].append({"stations": st, "reach": float(c.get("reach", 20.0))})
+	return out
 
 
 func from_dict(d: Dictionary) -> void:
@@ -602,8 +674,8 @@ func from_dict(d: Dictionary) -> void:
 	for rec in d.get("edges", []):
 		var ed := {"a": int(rec["a"]), "b": int(rec["b"])}
 		for k in EDGE_ATTRS:
-			var v = rec.get(k, 0 if k in ["lanes", "gauge", "tracks"] else ("" if k in ["kind", "cls"] else false))
-			ed[k] = int(v) if k in ["lanes", "gauge", "tracks"] else v
+			var v = rec.get(k, 0.0 if k == "width" else (0 if k in ["lanes", "gauge", "tracks"] else ("" if k in ["kind", "cls"] else false)))
+			ed[k] = int(v) if k in ["lanes", "gauge", "tracks"] else (float(v) if k == "width" else v)
 		if rec.has("via") and rec["via"] is Array and rec["via"].size() == 2:
 			ed["via"] = [float(rec["via"][0]), float(rec["via"][1])]
 		edges[int(rec["id"])] = ed
@@ -631,6 +703,7 @@ func from_dict(d: Dictionary) -> void:
 			pl.append(Vector2(float(p[0]), float(p[1])))
 		if pl.size() >= 3 and str(a.get("type", "")) in AREA_TYPES:
 			areas.append({"poly": pl, "type": str(a["type"]), "h": float(a.get("h", 0.0))})
+	patch_cache = _patches_from_json(d["patches"]) if d.get("patches") is Dictionary else {}
 	next_id = int(d.get("next_id", 1))
 	for nid in nodes:
 		next_id = maxi(next_id, nid + 1)

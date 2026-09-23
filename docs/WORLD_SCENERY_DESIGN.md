@@ -1834,6 +1834,32 @@ sky/ambient like everything else. Corrections by hand: the scenery editor
 in with `--design <file>` (its junctions, tapers and replace polygons
 included; the manifest lists the baked designs' sha256).
 
+**swissTLM3D for Switzerland (2026-09-23).** gery asked for better road
+data than OSM; swisstopo's landscape model has it: `build_world_roads.py
+--source tlm --bbox …` reads `tlm_strassen_strasse` and
+`tlm_oev_eisenbahn` from the LV95 GeoPackage
+(`/Volumes/Data1/scenery_in_world/swisstlm3d/SWISSTLM3D_2026_LV95_LN02.gpkg`,
+10.8 GB, release 2026-02, open data) with pyogrio. Every vertex carries
+a surveyed height, so a way's profile is the data itself: no terrain
+smoothing, no bridge deck or tunnel guessing. Structures come from
+`kunstbaute` (Bruecke → elevated with piers, Tunnel → drawn at its true
+axis, Unterfuehrung → at grade, the corridor digs the underpass), road
+classes from `objektart` with their nominal widths (10m / 8m / 6m / 4m /
+3m Strasse → primary … tertiary with `width`; Autobahn → one-way
+motorway carriageways; Autostrasse → trunk; Ein-/Ausfahrt → motorway
+links; Zufahrt / Verbindung → tertiary links; 1m / 2m Weg, Platz, Treppe
+skipped), one-way from `richtungsgetrennt` and `kreisel`, railways with
+gauge from `objektart`, `anzahl_spuren` tracks, trams and rails in
+streets without ballast, closed lines and funiculars skipped. Way ids are
+32-bit hashes of the swisstopo uuid (the `_WAYID` attribute and the
+sidecars). Roads narrower than 5 m draw edge lines only. Zürich box test
+(12 × 12 km): 15 701 ways in 1 s, 351 surveyed bridges, 575 piers; without
+a corridor a third of the vertices float more than 1 m over the 30 m
+terrain, so the TLM bake needs `--corridor`, which then reproduces the
+real embankments. OSM stays the source for the other regions. Not
+covered: paths, squares, the OSM-id deletions of a design made on OSM
+tiles (they do not match TLM ids).
+
 Order of work stays as above: far files + chunk archives in the bake,
 cache-or-fetch + far-file support in the streamer, per-airport runway
 files, then the welcome markers and the Scenery tab.

@@ -15,8 +15,16 @@ func _check(ok: bool, what: String) -> void:
 		printerr("  FAIL: " + what)
 
 func _ready() -> void:
-	if OS.get_environment("PVP_DESIGN_FILE") == "":
-		OS.set_environment("PVP_DESIGN_FILE", OS.get_user_data_dir().path_join("smoke_edit_mode.json"))
+	# a design with a cached plateau near the airport: it must be in the terrain
+	# from the first tile on, with no reload under a placed aircraft
+	var design_file := OS.get_user_data_dir().path_join("smoke_edit_mode.json")
+	OS.set_environment("PVP_DESIGN_FILE", design_file)
+	var pe := E - 700.0
+	var pn := N - 700.0
+	var df := FileAccess.open(design_file, FileAccess.WRITE)
+	df.store_string(JSON.stringify({"schema": 1, "crs": "EPSG:2056", "next_id": 1, "nodes": [], "edges": [], "replace": [], "replace_ids": [], "flatten": [{"poly": [[pe - 60, pn - 60], [pe + 60, pn - 60], [pe + 60, pn + 60], [pe - 60, pn + 60]], "h": 452.0}], "areas": [],
+		"patches": {"plateaus": [{"poly": [[pe - 60, pn - 60], [pe + 60, pn - 60], [pe + 60, pn + 60], [pe - 60, pn + 60]], "h": 452.0}], "corridors": [], "protect_polys": [], "protect_corridors": []}}))
+	df.close()
 	var root: Node = (load("res://node_3d.tscn") as PackedScene).instantiate()
 	add_child(root)
 	await get_tree().create_timer(3.0).timeout
@@ -58,6 +66,16 @@ func _ready() -> void:
 		waited += 0.5
 	_check(root.terrain_initialized, "Fly! after an edit session initialises the flight")
 	_check(ac.visible, "aircraft visible again for the flight")
+	# the cached plateau was applied before the tiles loaded: no tile reload after the terrain initialised
+	var tm = root._get_tile_manager()
+	var reloads_at_init: int = tm.get_reload_count()
+	var h_plateau: float = root._scenery_elevation_geodetic(Geo.lv95_to_wgs84(pe, pn).x, Geo.lv95_to_wgs84(pe, pn).y)
+	print("  [diag] plateau terrain %.2f (cached patch), reloads so far %d" % [h_plateau, reloads_at_init])
+	_check(absf(h_plateau - 452.0) < 0.05, "the cached plateau is in the terrain of the flight")
+	for i in range(6):
+		await get_tree().create_timer(1.0).timeout
+		root._scenery_editor.poll(0.016)
+	_check(tm.get_reload_count() == reloads_at_init, "no tile reload under the placed aircraft (%d)" % (tm.get_reload_count() - reloads_at_init))
 	if _fails.is_empty():
 		print("smoke_edit_mode: OK")
 		get_tree().quit(0)

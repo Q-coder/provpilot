@@ -15,6 +15,24 @@ func _check(ok: bool, what: String) -> void:
 		_fails.append(what)
 		printerr("  FAIL: " + what)
 
+## After a terrain-patch reload the precise terrain is gone for a moment:
+## wait for the point, the design's whole box, and an idle streamer.
+func _wait_terrain(ed: SceneryEditor, e: float, n: float) -> void:
+	var waited := 0.0
+	var root: Node = ed.host
+	while waited < 60.0:
+		var ok: bool = not is_nan(ed.elevation_lv95_precise(e, n))
+		for dx in [-1200.0, 0.0, 1300.0]:
+			for dy in [-900.0, 0.0, 700.0]:
+				if is_nan(ed.elevation_lv95_precise(E + dx, N + dy)):
+					ok = false
+		if ok and not root._scenery_streamer_busy():
+			break
+		await get_tree().create_timer(0.5).timeout
+		waited += 0.5
+	await get_tree().process_frame
+
+
 func _ready() -> void:
 	var design_file: String = OS.get_environment("PVP_DESIGN_FILE")
 	if design_file == "":
@@ -200,6 +218,7 @@ func _ready() -> void:
 	# junction: a third road at node b makes a T; its legs are cut back to the pavement
 	var side := d0.add_node(E + 700.0, N - 450.0)
 	d0.add_edge(b, side, SceneryDesign.road_attrs("tertiary", 2, false))
+	await _wait_terrain(ed, E + 700.0, N - 450.0)
 	ed.mesher.rebuild(d0)
 	_check(ed.mesher.junction_count == 1, "one junction pavement at the T (%d)" % ed.mesher.junction_count)
 	var jn: Node = ed.mesher.get_node_or_null("Junction_%d" % b)
@@ -213,6 +232,13 @@ func _ready() -> void:
 	for mi in ed.mesher.get_children():
 		if mi.has_meta("edges") and d0.edges_of(side)[0] in mi.get_meta("edges"):
 			side_mi = mi
+	_check(side_mi != null, "side leg mesh present")
+	if side_mi == null and ed.mesher.get_child_count() > 0:
+		side_mi = ed.mesher.get_children()[0]
+	if side_mi == null:
+		_check(false, "no mesh to measure the side leg on")
+		side_mi = MeshInstance3D.new()
+		side_mi.mesh = BoxMesh.new()
 	var sv0: Vector3 = side_mi.global_transform * ((side_mi.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array)[0]
 	var sg0: Vector3 = W3DCoords.ecef_to_geodetic(sv0)
 	var sen0: Vector2 = Geo.wgs84_to_lv95(sg0.x, sg0.y)
@@ -271,6 +297,97 @@ func _ready() -> void:
 			ok_uv = true
 	_check(ok_pos, "a mesh vertex sits just above the terrain")
 	_check(ok_uv, "UV2 carries the half width")
+	# hidden ways: a replaced OSM way vanishes from its road tile without a bake
+	var rms_h: Array = get_tree().root.find_children("*", "S3DRoadManager", true, false)
+	var real_way: Dictionary = {}
+	var real_tile := ""
+	var real_dir := ""
+	if rms_h.size() > 0:
+		for dir in rms_h[0].get_road_paths():
+			if "switzerland-base" in str(dir):
+				real_dir = str(dir)
+		var te_h: int = int(floor(E / 1024.0)) * 1024
+		var tn_h: int = int(floor(N / 1024.0)) * 1024
+		real_tile = "%d_%d" % [te_h, tn_h]
+		var sc := real_dir.path_join("roads_%s.ways.json" % real_tile)
+		if FileAccess.file_exists(sc):
+			var recs = JSON.parse_string(FileAccess.get_file_as_string(sc))
+			if recs is Array and recs.size() > 0:
+				real_way = recs[0]
+	_check(not real_way.is_empty(), "a real tile sidecar next to the airport lists its ways (%s)" % real_tile)
+	if not real_way.is_empty():
+		var tile_node: MeshInstance3D = null
+		for ch_node in rms_h[0].get_children():
+			if ch_node is MeshInstance3D and str(ch_node.name).ends_with("_" + real_tile):
+				tile_node = ch_node
+		var before_idx: int = (tile_node.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_INDEX].size() if tile_node else -1
+		var wid_h := int(real_way["id"])
+		d0.replace_ids.append(wid_h)
+		ed.apply_hidden_ways()
+		_check(wid_h in rms_h[0].get_hidden_ways(), "road manager holds the replaced way id")
+		var waited_h := 0.0
+		tile_node = null
+		while tile_node == null and waited_h < 30.0:
+			await get_tree().create_timer(0.5).timeout
+			waited_h += 0.5
+			for ch_node in rms_h[0].get_children():
+				if ch_node is MeshInstance3D and str(ch_node.name).ends_with("_" + real_tile) and ch_node.mesh != null:
+					tile_node = ch_node
+		var after_idx: int = (tile_node.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_INDEX].size() if tile_node else -1
+		print("  [diag] tile %s: %d indices before, %d after hiding way %d (%.1f s)" % [real_tile, before_idx, after_idx, wid_h, waited_h])
+		_check(before_idx > 0 and after_idx > 0 and after_idx < before_idx, "the replaced way's triangles are gone from the reloaded tile")
+		d0.replace_ids.erase(wid_h)
+		ed.apply_hidden_ways()
+	# terrain patches at tile load: a plateau and a road corridor change the precise terrain without a bake
+	var tm = root._get_tile_manager()
+	_check(tm != null and tm.has_method("set_terrain_patches"), "tile manager takes terrain patches")
+	var pe := E - 700.0
+	var pn := N - 700.0
+	var before_h: float = ed.elevation_lv95_precise(pe, pn)
+	d0.flatten.append({"poly": [Vector2(pe - 60.0, pn - 60.0), Vector2(pe + 60.0, pn - 60.0), Vector2(pe + 60.0, pn + 60.0), Vector2(pe - 60.0, pn + 60.0)], "h": 450.0})
+	var s0 := d0.add_node(E - 1200.0, N + 400.0)
+	var s1 := d0.add_node(E - 800.0, N + 700.0)
+	d0.add_edge(s0, s1, SceneryDesign.road_attrs("secondary", 2, false))
+	ed.apply_terrain_patches(true)
+	_check(tm.get_terrain_patch_count() >= 2, "plateau and corridor handed over (%d patches)" % tm.get_terrain_patch_count())
+	var waited_p := 0.0
+	while (is_nan(ed.elevation_lv95_precise(pe, pn)) or absf(ed.elevation_lv95_precise(pe, pn) - 450.0) > 0.05) and waited_p < 40.0:
+		await get_tree().create_timer(0.5).timeout
+		waited_p += 0.5
+	var after_h: float = ed.elevation_lv95_precise(pe, pn)
+	print("  [diag] plateau: terrain %.2f -> %.2f after %.1f s" % [before_h, after_h, waited_p])
+	_check(absf(after_h - 450.0) < 0.05, "the precise terrain inside the plateau is at its height after the reload")
+	var patches := ed.terrain_patches()
+	var corr: Array = patches["corridors"]
+	_check(corr.size() >= 1, "the road became a corridor of stations")
+	if corr.size() >= 1:
+		var st: PackedVector3Array = corr[0]["stations"]
+		var mid_st: Vector3 = st[st.size() / 2]
+		var g_mid: float = ed.elevation_lv95_precise(mid_st.x, mid_st.y)
+		print("  [diag] corridor: %d stations, mid station h %.2f, terrain there %.2f" % [st.size(), mid_st.z, g_mid])
+		_check(absf(g_mid - mid_st.z) < 0.5, "the ground under the road follows the corridor profile (within the 31 m posting)")
+	# airport protection: a corridor across a runway strip leaves the strip's terrain alone
+	var prot := ed.airport_protection()
+	print("  [diag] protection: %d strips / taxiways, %d aprons" % [(prot["corridors"] as Array).size(), (prot["polys"] as Array).size()])
+	_check((prot["corridors"] as Array).size() > 0, "runway strips of the known airports become protection corridors")
+	var rw_pt := Vector2(E, N)   # the spawn: on the LSZH runway
+	var rw_before: float = ed.elevation_lv95_precise(rw_pt.x, rw_pt.y)
+	var x0 := d0.add_node(E - 300.0, N)
+	var x1 := d0.add_node(E + 300.0, N)
+	d0.add_edge(x0, x1, SceneryDesign.road_attrs("secondary", 2, false))
+	d0.set_node_offset(x0, -3.0)
+	d0.set_node_offset(x1, -3.0)
+	ed.apply_terrain_patches(true)
+	await _wait_terrain(ed, rw_pt.x, rw_pt.y)
+	await get_tree().create_timer(1.0).timeout
+	var rw_after: float = ed.elevation_lv95_precise(rw_pt.x, rw_pt.y)
+	print("  [diag] runway terrain under a 3 m cut corridor: %.2f -> %.2f" % [rw_before, rw_after])
+	_check(absf(rw_after - rw_before) < 0.05, "the runway plateau is not touched by a design corridor")
+	d0.remove_edge(d0.edges_of(x0)[0])
+	d0.flatten.pop_back()
+	d0.remove_edge(d0.edges_of(s0)[0])
+	ed.apply_terrain_patches(true)
+	await _wait_terrain(ed, E + 400.0, N - 250.0)
 	# bake from the editor: the command names the region, the box around the camera and the design
 	var cmd: Array = ed.bake_command()
 	print("  [diag] bake command: %s" % " ".join(cmd))
@@ -347,6 +464,8 @@ func _ready() -> void:
 	ed._apply_camera()
 	d0.set_node_offset(b, 6.0)
 	ed._rebuild_live()
+	await _wait_terrain(ed, E + 400.0, N - 250.0)
+	ed.mesher.rebuild(d0)
 	var sp_b: Vector2 = ed._cam.unproject_position(ed.node_world(b))
 	_check(ed.node_at_screen(sp_b + Vector2(6, -5)) == b, "an elevated node is picked within a few pixels on screen")
 	_check(ed.node_at_screen(sp_b + Vector2(60, 0)) != b, "and not from far away on screen")
@@ -362,10 +481,35 @@ func _ready() -> void:
 	_check(not eh.is_empty() and int(eh["id"]) == ab_edge and Vector2(eh["e"], eh["n"]).distance_to(mid) < 20.0, "an edge is picked on screen with the point under the mouse")
 	_check(ed.node_markers_count() == d0.node_count(), "one marker per design node")
 	d0.set_node_offset(b, 0.0)
+	# Select on a design edge: [ ] lifts both its ends
+	ed._set_tool(SceneryEditor.Tool.SELECT)
+	var sel_edge: int = ab_edge
+	var sel_pt := d0.node_pos(a).lerp(d0.node_pos(d0.edges[sel_edge]["b"] if d0.edges[sel_edge]["a"] == a else d0.edges[sel_edge]["a"]), 0.25)
+	var sel_scr: Vector2 = ed._cam.unproject_position(ed._world_of(sel_pt.x, sel_pt.y, ed.elevation_lv95(sel_pt.x, sel_pt.y) + 0.3))
+	var mbe := InputEventMouseButton.new()
+	mbe.button_index = MOUSE_BUTTON_LEFT
+	mbe.pressed = true
+	mbe.position = sel_scr
+	ed._mouse = sel_scr
+	ed._unhandled_input(mbe)
+	mbe.pressed = false
+	ed._unhandled_input(mbe)
+	_check(ed._selected_edge == sel_edge, "Select picks a design edge on screen (%d)" % ed._selected_edge)
+	ed.nudge_height(2.0)
+	var ea: int = d0.edges[sel_edge]["a"]
+	var eb: int = d0.edges[sel_edge]["b"]
+	_check(absf(d0.node_offset(ea) - 2.0) < 0.01 and absf(d0.node_offset(eb) - 2.0) < 0.01, "[ ] on a selected edge raises both ends")
+	d0.set_node_offset(ea, 0.0)
+	d0.set_node_offset(eb, 0.0)
+	ed._selected_edge = -1
+	ed._set_tool(SceneryEditor.Tool.ROAD)
+	ed.apply_terrain_patches(true)                 # the offsets changed the patches: tiles reload
+	await _wait_terrain(ed, E + 400.0, N - 250.0)
 	# bridge structures under a deck, areas (patch + building), clear air
 	_check(root._sky.clear_air, "no fog while the editor is on")
 	d0.set_node_offset(b, 6.0)
 	d0.set_node_offset(c, 6.0)
+	await _wait_terrain(ed, E + 400.0, N - 250.0)
 	ed.mesher.rebuild(d0)
 	print("  [diag] piers under the deck: %d" % ed.mesher.pier_count)
 	_check(ed.mesher.pier_count >= 8, "piers every 25 m under the elevated run (%d)" % ed.mesher.pier_count)
@@ -419,6 +563,8 @@ func _ready() -> void:
 	d0.add_node(E - 900.0, N - 900.0)
 	_check(not ed.design_is_baked(), "an edit (dirty) turns the live meshes back on")
 	ed._rebuild_live()
+	await _wait_terrain(ed, E + 400.0, N - 250.0)
+	ed._rebuild_live()
 	_check(ed.mesher.get_child_count() > 0, "live meshes rebuilt after the edit")
 	# Pick: a sidecar in that roads directory describes a baked OSM way near the aircraft
 	var te: int = int(floor((E + 2000.0) / 1024.0)) * 1024
@@ -434,7 +580,76 @@ func _ready() -> void:
 	var picked := d0.import_way(found)
 	_check(picked.size() >= 2 and d0.edge_count() == before_edges + picked.size() - 1 and 4242 in d0.replace_ids, "picking imports the way as nodes / edges and lists its id for the bake")
 	_check(d0.edges[d0.edges_of(picked[0])[0]]["cls"] == "primary", "imported edges carry the way's class")
+	ed.adopt_attrs(found)
+	_check(SceneryDesign.ROAD_CLASSES[ed._cls_option.selected] == "primary" and int(ed._lanes_spin.value) == 2 and not ed._oneway_check.button_pressed, "the panel adopts a picked way's class, lanes and direction")
+	# an explicit width survives the pick and sets the ribbon width
+	var wide := {"id": 4444, "kind": "road", "cls": "secondary", "lanes": 2, "oneway": false, "gauge": 0, "tracks": 0, "width": 9.0, "bridge": false, "tunnel": false,
+		"pts": [[E + 1900.0, N + 600.0], [E + 2200.0, N + 600.0]]}
+	var wtag_ids := d0.import_way(wide)
+	var wtag_edge: int = d0.edges_of(wtag_ids[0])[0]
+	_check(absf(float(d0.edges[wtag_edge]["width"]) - 9.0) < 0.01 and absf(SceneryDesignMesher.edge_width(d0, wtag_edge) - 9.0) < 0.01, "a way's width tag becomes the edge width (9 m instead of 7 m from the lanes)")
+	var tmp5 := SceneryDesign.new()
+	tmp5.from_dict(d0.to_dict())
+	_check(absf(float(tmp5.edges[wtag_edge]["width"]) - 9.0) < 0.01, "edge widths survive the JSON round trip")
 	_check(ed.way_near(E + 2050.0, N - 6.0).is_empty(), "a picked way is not offered again")
+	# snapping to the end of a baked road (a way not yet picked)
+	var sf3 := FileAccess.open(fake_dir.path_join("roads_%d_%d.ways.json" % [te, tn]), FileAccess.WRITE)
+	sf3.store_string(JSON.stringify([{"id": 4545, "kind": "road", "cls": "tertiary", "lanes": 2, "oneway": false, "gauge": 0, "tracks": 0, "bridge": false, "tunnel": false,
+		"pts": [[E + 1900.0, N + 400.0], [E + 2000.0, N + 400.0], [E + 2100.0, N + 400.0]]}]))
+	sf3.close()
+	ed._ways_tiles.clear()
+	var snap := ed.baked_endpoint_near(E + 2104.0, N + 396.0, 12.0)
+	_check(snap.distance_to(Vector2(E + 2100.0, N + 400.0)) < 0.01, "a point placed near a baked road's end snaps onto that end")
+	_check(ed.baked_endpoint_near(E + 2000.0, N + 400.0, 12.0) == Vector2.INF, "but not onto its middle")
+	# typed spin box text counts before Enter
+	ed._lanes_spin.get_line_edit().text = "3"
+	var typed := ed._current_attrs()
+	_check(int(typed["lanes"]) == 3, "a lane count typed into the panel is used without Enter (%d)" % int(typed["lanes"]))
+	# a line drawn towards the END of a one-way baked road flows out of it: reversed, with the road's settings
+	var sf4 := FileAccess.open(fake_dir.path_join("roads_%d_%d.ways.json" % [te, tn]), FileAccess.WRITE)
+	sf4.store_string(JSON.stringify([{"id": 4646, "kind": "road", "cls": "motorway", "lanes": 3, "oneway": true, "gauge": 0, "tracks": 0, "bridge": false, "tunnel": false, "width": 0,
+		"pts": [[E + 1700.0, N + 800.0], [E + 1800.0, N + 800.0], [E + 1900.0, N + 800.0]]}]))
+	sf4.close()
+	ed._ways_tiles.clear()
+	ed._ways.clear()
+	ed._set_tool(SceneryEditor.Tool.ROAD)
+	ed._cls_option.selected = SceneryDesign.ROAD_CLASSES.find("secondary")
+	ed._oneway_check.button_pressed = false
+	ed._cursor_valid = true
+	ed._mouse = Vector2(-1000, -1000)
+	ed._cursor_e = E + 2200.0
+	ed._cursor_n = N + 800.0
+	ed.place_point()
+	ed._cursor_e = E + 1900.0     # exactly the way's end
+	ed._cursor_n = N + 800.0
+	ed.place_point()
+	var line_nodes: Array = ed._line_nodes.duplicate()
+	ed.finish_line()
+	var jedge: int = -1
+	for eid in d0.edges_of(line_nodes[0]):
+		var ed_: Dictionary = d0.edges[eid]
+		if ed_["a"] == line_nodes[1] or ed_["b"] == line_nodes[1]:
+			jedge = eid
+	_check(jedge >= 0 and d0.edges[jedge]["cls"] == "motorway" and int(d0.edges[jedge]["lanes"]) == 3 and bool(d0.edges[jedge]["oneway"]), "a line joining a baked road takes its class, lanes and direction")
+	_check(jedge >= 0 and d0.edges[jedge]["a"] == line_nodes[1] and d0.edges[jedge]["b"] == line_nodes[0], "drawn towards the end of a one-way road, the line is reversed to flow out of it")
+	# the Ctrl+S test above released S with Ctrl still down; the Ctrl release itself clears the flag
+	var kctrl := InputEventKey.new()
+	kctrl.keycode = KEY_CTRL
+	kctrl.pressed = false
+	Input.parse_input_event(kctrl)
+	await get_tree().process_frame
+	_check(not ed._modifier_down, "the modifier flag follows the last key event (Ctrl released)")
+	ed._modifier_down = true
+	ed._enter_common(true)
+	_check(not ed._modifier_down, "entering the editor clears a stuck modifier")
+	# direction: R reverses the joined one-way line, the panel heading follows, arrows are drawn
+	var before_a: int = d0.edges[jedge]["a"]
+	var flipped := d0.reverse_chain(jedge)
+	_check(flipped >= 1 and d0.edges[jedge]["b"] == before_a, "R reverses every edge of the selected road's chain (%d)" % flipped)
+	var hdg := SceneryEditor.heading_at([Vector2(0, 0), Vector2(100, 0)], Vector2(50, 1))
+	_check(absf(hdg - 90.0) < 0.01, "flow heading east = 90 degrees")
+	ed._update_direction_arrows()
+	_check(ed._dir_overlay_mesh.get_surface_count() >= 1, "direction arrows drawn for one-way roads")
 	var tmp4 := SceneryDesign.new()
 	tmp4.from_dict(d0.to_dict())
 	_check(4242 in tmp4.replace_ids, "replaced way ids survive the JSON round trip")

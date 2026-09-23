@@ -61,6 +61,8 @@ var _marker: MeshInstance3D = null
 var _preview: MeshInstance3D = null
 var _preview_mesh := ImmediateMesh.new()
 var _line_last_node := -1          # node the next segment continues from
+var _line_nodes: Array = []        # nodes placed in the line being drawn, in order
+var _line_join: Dictionary = {}    # baked way joined by the line's first / last point: {"start": rec+end, "end": rec+end}
 var _drag_node := -1
 var _built_once := false
 var _save_note := ""
@@ -76,6 +78,8 @@ var _lanes_spin: SpinBox = null
 var _oneway_check: CheckBox = null
 var _gauge_option: OptionButton = null
 var _road_box: Control = null
+var _panel: PanelContainer = null
+var _width_spin: SpinBox = null
 var _rail_box: Control = null
 var _curved_check: CheckBox = null
 var _radius_spin: SpinBox = null
@@ -86,6 +90,7 @@ var _switch_toe: Dictionary = {}     # {"edge", "e", "n"} after the first Switch
 var _poly_points: Array = []         # replace / flatten polygon being drawn
 var _flatten_h := NAN                # target height of the flatten polygon being drawn
 var _selected_node := -1             # Select tool: the node whose height offset [ ] edit
+var _selected_edge := -1             # Select tool: a design edge picked on screen ([ ] moves both ends)
 var _area_type: OptionButton = null
 var _area_h: SpinBox = null
 var _area_box: Control = null
@@ -95,6 +100,10 @@ var _ways_tiles: Dictionary = {}     # "dir|E_N" -> true once a sidecar was read
 var _hover_way: Dictionary = {}      # the way under the cursor with the Pick tool
 var _node_markers: MultiMeshInstance3D = null
 var _bake_pid := -1
+var _hidden_applied: PackedInt64Array = PackedInt64Array()   # last set given to the road managers
+var _patches_applied := ""            # signature of the terrain patches given to the tile manager
+var _patches_stale := true            # the design changed since the patches were computed
+const CORRIDOR_MARGIN_M := 45.0       # as the bake: half width + the 31 m pixel diagonal
 var _bake_log := ""
 var _bake_started := 0
 const BAKE_HALF_KM := 3          # the bake covers this many km each side of the camera
@@ -103,6 +112,11 @@ var _overlay: MeshInstance3D = null  # existing replace polygons (red)
 var _overlay_mesh := ImmediateMesh.new()
 var _flat_overlay: MeshInstance3D = null   # existing flatten polygons (blue)
 var _flat_overlay_mesh := ImmediateMesh.new()
+var _dir_overlay: MeshInstance3D = null    # direction arrows on one-way roads (cyan design, green baked)
+var _dir_overlay_mesh := ImmediateMesh.new()
+var _dir_overlay_pos := Vector3.ZERO       # camera position the arrows were built for
+const ARROW_EVERY_M := 40.0
+const ARROW_RADIUS_M := 1500.0
 var _baked_sha := ""                 # sha256 of the design the loaded road tiles carry
 var _tool_note := ""
 
@@ -155,6 +169,15 @@ func setup(p_host: Node3D) -> void:
 	_flat_overlay.material_override = fm
 	_flat_overlay.visible = false
 	host.add_child(_flat_overlay)
+	_dir_overlay = MeshInstance3D.new()
+	_dir_overlay.mesh = _dir_overlay_mesh
+	var dm := StandardMaterial3D.new()
+	dm.vertex_color_use_as_albedo = true
+	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_dir_overlay.material_override = dm
+	_dir_overlay.visible = false
+	host.add_child(_dir_overlay)
 	_node_markers = MultiMeshInstance3D.new()
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -202,6 +225,7 @@ func _ensure_loaded() -> void:
 		design.load(p)
 		_built_once = false
 		_baked_sha = ""
+		_patches_stale = true
 
 
 ## True when the road tiles of an enabled scenery area were baked from
@@ -230,11 +254,19 @@ func design_is_baked() -> bool:
 
 
 ## Live meshes: everything, or nothing while the tiles already carry the design.
+## Called by every tool before it changes the design (undo point + patches).
+func _edit_begins() -> void:
+	design.snapshot()
+	_patches_stale = true
+
+
 func _rebuild_live() -> void:
 	if design_is_baked():
 		mesher.clear()
 	else:
 		mesher.rebuild(design)
+	apply_hidden_ways()
+	apply_terrain_patches()
 	_update_overlay()
 	_update_markers()
 
@@ -262,7 +294,8 @@ func _update_markers() -> void:
 		var w := node_world(nid)
 		var sc: float = clampf(_pos.distance_to(w) / 120.0, 0.6, 12.0)
 		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3(sc, sc, sc)), w))
-		mm.set_instance_color(i, Color(1.0, 1.0, 1.0) if nid == _selected_node else Color(1.0, 0.85, 0.1))
+		var on_edge: bool = _selected_edge >= 0 and design.edges.has(_selected_edge) and (design.edges[_selected_edge]["a"] == nid or design.edges[_selected_edge]["b"] == nid)
+		mm.set_instance_color(i, Color(1.0, 1.0, 1.0) if (nid == _selected_node or on_edge) else Color(1.0, 0.85, 0.1))
 
 
 func node_markers_count() -> int:
@@ -353,6 +386,10 @@ func poll(delta: float) -> void:
 	_toggle_held = pressed
 	if active:
 		update(delta)
+	elif host.terrain_initialized and design.edge_count() == 0 and not _built_once:
+		_built_once = true
+		apply_hidden_ways()   # a design of deletions only: hide them in the tiles
+		apply_terrain_patches()
 	elif host.terrain_initialized and design.edge_count() > 0:
 		# in flight: build once the streamer is idle, and again whenever new
 		# tiles have landed (a chain without precise terrain is left out
@@ -392,9 +429,19 @@ func enter_at(e: float, n: float, heading_deg: float, agl: float = 300.0) -> voi
 	_enter_common(true)
 
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		_modifier_down = false   # the release of Cmd / Ctrl went to another app
+		_looking = false
+
+
 func _enter_common(placed: bool = false) -> void:
 	_ensure_loaded()
 	active = true
+	_modifier_down = false
+	_looking = false
+	_line_nodes.clear()
+	_line_join = {}
 	_streamer_was_busy = true   # re-mesh once the tiles around have streamed in
 	var cur: Camera3D = host.get_viewport().get_camera_3d()
 	var ac: Node3D = host.get_node_or_null("AC")
@@ -437,6 +484,7 @@ func _enter_common(placed: bool = false) -> void:
 		_rebuild_pending = false
 	_overlay.visible = true
 	_flat_overlay.visible = true
+	_dir_overlay.visible = true
 	_update_overlay()
 	_set_tool(tool)
 	mesher.tint = EDITOR_TINT
@@ -460,6 +508,7 @@ func exit() -> void:
 	_marker.visible = false
 	_overlay.visible = false
 	_flat_overlay.visible = false
+	_dir_overlay.visible = false
 	_ui.visible = false
 	host._sky.clear_air = false
 	if host._clouds:
@@ -513,7 +562,7 @@ func update(delta: float) -> void:
 	var right: Vector3 = yaw_b * Vector3(-1, 0, 0)   # east at heading 0
 	var mv := Vector3.ZERO
 	# a shortcut (Ctrl+S, Cmd+Z ...) is never a move
-	var modifier: bool = _modifier_down or Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)
+	var modifier: bool = _modifier_down   # from the last key event only: a missed release never sticks
 	if not modifier:
 		if Input.is_key_pressed(KEY_W):
 			mv += fwd
@@ -545,6 +594,13 @@ func update(delta: float) -> void:
 		_gizmo.queue_redraw()
 	if Engine.get_process_frames() % 10 == 0:
 		_update_markers()
+	if Engine.get_process_frames() % 30 == 0 and _pos.distance_to(_dir_overlay_pos) > 300.0:
+		_update_direction_arrows()
+	if _panel and not _panel.get_global_rect().has_point(_mouse):
+		var owner: Control = host.get_viewport().gui_get_focus_owner()
+		if owner and _panel.is_ancestor_of(owner):
+			_commit_spins()
+			host.get_viewport().gui_release_focus()
 	if _bake_pid > 0 and not OS.is_process_running(_bake_pid):
 		_bake_pid = -1
 		_bake_finished()
@@ -676,14 +732,24 @@ func _update_cursor() -> void:
 		_cursor_n = hit["n"]
 		_cursor_h = hit["h"]
 		_cursor_world = hit["world"]
-		# snap to a node (on screen, so elevated nodes and zoomed-out views work too)
+		# snap to a node (on screen, so elevated nodes and zoomed-out views work
+		# too), never to the node being dragged; else to the end of a baked road
 		var nid := node_at_screen(mouse)
+		if nid == _drag_node:
+			nid = -1
 		if nid < 0:
 			nid = design.node_near(_cursor_e, _cursor_n, SNAP_NODE_M)
+			if nid == _drag_node:
+				nid = -1
 		if nid >= 0:
 			var np := design.node_pos(nid)
 			_cursor_e = np.x
 			_cursor_n = np.y
+		elif tool in [Tool.ROAD, Tool.RAIL, Tool.SELECT]:
+			var bp := baked_endpoint_near(_cursor_e, _cursor_n, SNAP_NODE_M * 2.0)
+			if bp != Vector2.INF:
+				_cursor_e = bp.x
+				_cursor_n = bp.y
 		_marker.global_position = _world_of(_cursor_e, _cursor_n, _cursor_h + 0.5)
 		var agl := _agl()
 		var sc: float = clampf((0.0 if is_nan(agl) else agl) / 150.0, 1.0, 12.0)
@@ -747,7 +813,87 @@ func _switch_preview_points() -> Array:
 
 
 ## Outlines of the replace polygons (red, always on top while editing).
+## Direction arrows every ARROW_EVERY_M along one-way roads within
+## ARROW_RADIUS_M of the camera: cyan for design roads, green for baked ones.
+func _update_direction_arrows() -> void:
+	_dir_overlay_mesh.clear_surfaces()
+	_dir_overlay_pos = _pos
+	var cam_g: Vector3 = W3DCoords.ecef_to_geodetic(_pos)
+	var cam_en: Vector2 = Geo.wgs84_to_lv95(cam_g.x, cam_g.y)
+	var lines: Array = []   # [polyline (Array of Vector2), colour]
+	for chain in design.chains():
+		if not bool(chain["attrs"].get("oneway", false)):
+			continue
+		lines.append([SceneryDesignMesher.chain_polyline(design, chain), Color(0.3, 0.9, 1.0)])
+	_load_ways_near(cam_en.x, cam_en.y)
+	for wid in _ways:
+		if wid in design.replace_ids:
+			continue
+		var rec: Dictionary = _ways[wid]
+		if not bool(rec.get("oneway", false)):
+			continue
+		var pts: Array = []
+		for p in rec.get("pts", []):
+			pts.append(Vector2(float(p[0]), float(p[1])))
+		if pts.size() >= 2 and (pts[0] as Vector2).distance_to(cam_en) < ARROW_RADIUS_M * 2.0:
+			lines.append([pts, Color(0.35, 1.0, 0.35)])
+	if lines.is_empty():
+		return
+	_dir_overlay_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	var drawn := 0
+	for item in lines:
+		var pts: Array = item[0]
+		var col: Color = item[1]
+		var since := ARROW_EVERY_M * 0.5
+		for i in range(pts.size() - 1):
+			var a: Vector2 = pts[i]
+			var b: Vector2 = pts[i + 1]
+			var seg := a.distance_to(b)
+			var d := (b - a) / maxf(seg, 0.001)
+			var t := 0.0
+			while t < seg:
+				var step: float = minf(ARROW_EVERY_M - since, seg - t)
+				t += step
+				since += step
+				if since >= ARROW_EVERY_M - 0.001 and t < seg + 0.001:
+					since = 0.0
+					var c: Vector2 = a + d * t
+					if c.distance_to(cam_en) > ARROW_RADIUS_M or drawn > 4000:
+						continue
+					var h := elevation_lv95(c.x, c.y)
+					if is_nan(h):
+						continue
+					var n := Vector2(-d.y, d.x)
+					var tip := c + d * 2.5
+					var l := c - d * 1.5 + n * 1.5
+					var r := c - d * 1.5 - n * 1.5
+					_dir_overlay_mesh.surface_set_color(col)
+					_dir_overlay_mesh.surface_add_vertex(_world_of(tip.x, tip.y, h + 0.9))
+					_dir_overlay_mesh.surface_add_vertex(_world_of(l.x, l.y, h + 0.9))
+					_dir_overlay_mesh.surface_add_vertex(_world_of(r.x, r.y, h + 0.9))
+					drawn += 1
+	if drawn == 0:
+		_dir_overlay_mesh.clear_surfaces()
+	else:
+		_dir_overlay_mesh.surface_end()
+
+
+## Flow heading (true, degrees) of a polyline at its point nearest to q.
+static func heading_at(pts: Array, q: Vector2) -> float:
+	var best_d := 1e12
+	var best := 0.0
+	for i in range(pts.size() - 1):
+		var p := SceneryDesign._nearest_on_segment(pts[i], pts[i + 1], q)
+		var d := p.distance_to(q)
+		if d < best_d:
+			best_d = d
+			var v: Vector2 = (pts[i + 1] as Vector2) - (pts[i] as Vector2)
+			best = fposmod(rad_to_deg(atan2(v.x, v.y)), 360.0)   # east = 90
+	return best
+
+
 func _update_overlay() -> void:
+	_update_direction_arrows()
 	_overlay_mesh.clear_surfaces()
 	for poly in design.replace:
 		_overlay_mesh.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
@@ -845,6 +991,262 @@ func way_near(e: float, n: float) -> Dictionary:
 	return best
 
 
+## The OSM ways the design replaces: the picked / deleted ids plus every
+## sidecar way with a point inside a replace polygon (their tiles' sidecars
+## are read for that).
+func hidden_way_set() -> PackedInt64Array:
+	var ids := {}
+	for wid in design.replace_ids:
+		ids[int(wid)] = true
+	for poly in design.replace:
+		var lo := Vector2(1e12, 1e12)
+		var hi := Vector2(-1e12, -1e12)
+		for p in poly:
+			lo = lo.min(p)
+			hi = hi.max(p)
+		var e := lo.x
+		while e <= hi.x + TILE_M:
+			var n := lo.y
+			while n <= hi.y + TILE_M:
+				_load_ways_near(e, n)
+				n += TILE_M
+			e += TILE_M
+		for wid in _ways:
+			if ids.has(int(wid)):
+				continue
+			for pt in _ways[wid].get("pts", []):
+				if Geometry2D.is_point_in_polygon(Vector2(float(pt[0]), float(pt[1])), PackedVector2Array(poly)):
+					ids[int(wid)] = true
+					break
+	var out := PackedInt64Array()
+	var keys: Array = ids.keys()
+	keys.sort()
+	for k in keys:
+		out.append(int(k))
+	return out
+
+
+## Give the road managers the replaced ways: their triangles are dropped as
+## the tiles (re)load, so a pick or a delete shows at once, without a bake.
+func apply_hidden_ways() -> void:
+	var ids := hidden_way_set()
+	if ids == _hidden_applied:
+		return
+	_hidden_applied = ids
+	for rm in host.get_tree().root.find_children("*", "S3DRoadManager", true, false):
+		if rm.has_method("set_hidden_ways"):
+			rm.set_hidden_ways(ids)
+	print("SceneryEditor: %d replaced OSM ways hidden in the road tiles" % ids.size())
+
+
+## Terrain patches of the design for the tile loader (the bake's plateau
+## and corridor rules): every plateau, and along every road / track chain
+## the smoothed ground profile plus the node offsets, except elevated runs
+## (a deck leaves the ground alone). Stations every 10 m with their
+## height, reach = half width + 45 m.
+func terrain_patches() -> Dictionary:
+	var plateaus: Array = []
+	for f in design.flatten:
+		plateaus.append({"poly": PackedVector2Array(f["poly"]), "h": float(f["h"])})
+	var corridors: Array = []
+	for chain in design.chains():
+		var attrs: Dictionary = chain["attrs"]
+		var po := SceneryDesignMesher.chain_polyline_offsets(design, chain)
+		var dens := SceneryDesignMesher._densify_with(po["pts"], po["offs"])
+		var pts: Array = dens["pts"]
+		var offs: Array = dens["vals"]
+		if pts.size() < 2:
+			continue
+		var is_road: bool = attrs["kind"] == SceneryDesign.KIND_ROAD
+		var width: float = SceneryDesignMesher.edge_width(design, chain["edges"][0]) if is_road else SceneryDesignMesher.BALLAST_WIDTH_M
+		var window: float = 250.0 if not is_road else (120.0 if str(attrs["cls"]).begins_with("motorway") else 80.0)
+		# ground along the chain, Gaussian-smoothed like the bake's profile
+		var ground: Array = []
+		var along: Array = [0.0]
+		for i in range(pts.size()):
+			if i > 0:
+				along.append(float(along[i - 1]) + (pts[i] as Vector2).distance_to(pts[i - 1]))
+			var h := elevation_lv95_precise((pts[i] as Vector2).x, (pts[i] as Vector2).y)
+			ground.append(h)
+		var known := 0
+		for h in ground:
+			if not is_nan(h):
+				known += 1
+		if known < 2:
+			continue
+		var smooth: Array = []
+		var sig: float = window * 0.5
+		for i in range(pts.size()):
+			var wsum := 0.0
+			var hsum := 0.0
+			for j in range(pts.size()):
+				if is_nan(ground[j]):
+					continue
+				var d: float = (float(along[j]) - float(along[i])) / sig
+				if absf(d) > 3.0:
+					continue
+				var wgt: float = exp(-0.5 * d * d)
+				wsum += wgt
+				hsum += wgt * float(ground[j])
+			smooth.append(hsum / wsum if wsum > 0.0 else NAN)
+		# runs on the ground (offset <= 0.3 m): one corridor each
+		var run: PackedVector3Array = PackedVector3Array()
+		for i in range(pts.size() + 1):
+			var on_ground: bool = i < pts.size() and float(offs[i]) <= 0.3 and not is_nan(smooth[i])
+			if on_ground:
+				run.append(Vector3((pts[i] as Vector2).x, (pts[i] as Vector2).y, float(smooth[i]) + float(offs[i])))
+			if (not on_ground or i == pts.size()) and run.size() >= 2:
+				corridors.append({"stations": run, "reach": width * 0.5 + CORRIDOR_MARGIN_M})
+				run = PackedVector3Array()
+			elif not on_ground:
+				run = PackedVector3Array()
+	# protection only where it can matter: shapes within 3 km of a corridor
+	var prot := airport_protection()
+	var boxes: Array = []
+	for c in corridors:
+		var lo := Vector2(1e12, 1e12)
+		var hi := Vector2(-1e12, -1e12)
+		for st in c["stations"]:
+			lo = lo.min(Vector2(st.x, st.y))
+			hi = hi.max(Vector2(st.x, st.y))
+		boxes.append(Rect2(lo - Vector2(3000, 3000), hi - lo + Vector2(6000, 6000)))
+	var near_polys: Array = []
+	var near_corr: Array = []
+	if not boxes.is_empty():
+		for poly in prot["polys"]:
+			for b in boxes:
+				if b.has_point(poly[0]):
+					near_polys.append(poly)
+					break
+		for c in prot["corridors"]:
+			for b in boxes:
+				if b.has_point(c["stations"][0]):
+					near_corr.append(c)
+					break
+	return {"plateaus": plateaus, "corridors": corridors, "protect_polys": near_polys, "protect_corridors": near_corr}
+
+
+## Runway strips, taxiways (corridors) and aprons (polygons) of every
+## airport the host knows: a design corridor never changes the terrain
+## inside them (their plateaus carry the aircraft, D18).
+func airport_protection() -> Dictionary:
+	var polys: Array = []
+	var corridors: Array = []
+	var merged: Dictionary = host._runways_merged if "_runways_merged" in host else {}
+	for icao in merged:
+		var ap: Dictionary = merged[icao]
+		for rw in ap.get("runways", []):
+			var ends: Array = rw.get("ends", [])
+			if ends.size() != 2 or not ends[0].has("pavement") or not ends[1].has("pavement"):
+				continue
+			var a: Vector2 = Geo.wgs84_to_lv95(float(ends[0]["pavement"][0]), float(ends[0]["pavement"][1]))
+			var b: Vector2 = Geo.wgs84_to_lv95(float(ends[1]["pavement"][0]), float(ends[1]["pavement"][1]))
+			corridors.append({"stations": PackedVector2Array([a, b]), "reach": 0.5 * float(rw.get("width_m", 45.0)) + 60.0})
+		for apn in ap.get("aprons", []):
+			var poly := PackedVector2Array()
+			for pt in apn.get("polygon", []):
+				if pt is Array and pt.size() >= 2 and pt[0] != null:
+					poly.append(Geo.wgs84_to_lv95(float(pt[0]), float(pt[1])))
+			if poly.size() >= 3:
+				polys.append(poly)
+		for tw in ap.get("taxiways", []):
+			var path := PackedVector2Array()
+			for pt in tw.get("path", []):
+				if pt is Array and pt.size() >= 2:
+					path.append(Geo.wgs84_to_lv95(float(pt[0]), float(pt[1])))
+			if path.size() >= 2:
+				corridors.append({"stations": path, "reach": 0.5 * float(tw.get("width_m", 23.0)) + 25.0})
+	return {"polys": polys, "corridors": corridors}
+
+
+## Hand the tile manager the patches when they changed: the close tiles
+## reload with the plateaus and corridors in their heights.
+func apply_terrain_patches(force: bool = false) -> void:
+	# only after an edit: the corridor heights are read from the terrain, which
+	# the patches themselves change, so recomputing on every tile reload would
+	# chase its own tail
+	if not (force or _patches_stale):
+		return
+	var tm = host._get_tile_manager()
+	if tm == null or not tm.has_method("set_terrain_patches"):
+		return
+	_patches_stale = false
+	var patches: Dictionary
+	if active:
+		# the editor has the terrain around the edits: compute, and keep the
+		# result in the design so a flight can apply it before any tile loads
+		patches = terrain_patches()
+		design.patch_cache = patches
+	else:
+		patches = design.patch_cache if not design.patch_cache.is_empty() else terrain_patches()
+	var sig := JSON.stringify(patches)
+	if sig == _patches_applied:
+		return
+	_patches_applied = sig
+	if host.terrain_initialized and not host._edit_session and host.has_node("AC"):
+		# tiles under a placed aircraft are about to reload: pin it until the
+		# terrain and the flight model have settled (the teleport mechanism)
+		host._terrain_elevation.start_rebase(host.get_node("AC").global_position)
+	tm.set_terrain_patches(patches)
+	_streamer_was_busy = true   # re-mesh once the patched tiles are back
+	print("SceneryEditor: terrain patches applied: %d plateaus, %d corridors%s" % [(patches["plateaus"] as Array).size(), (patches["corridors"] as Array).size(), "" if active else " (from the design's cache)"])
+
+
+## Before a flight or an edit session streams its first tile: the design's
+## replaced ways and cached terrain patches go to the managers now, so the
+## tiles load already patched and never reload under the aircraft.
+func apply_startup_design() -> void:
+	_ensure_loaded()
+	apply_hidden_ways()
+	apply_terrain_patches(true)
+
+
+## The chain (as design.chains() builds it) containing an edge.
+func _chain_of(eid: int) -> Dictionary:
+	for chain in design.chains():
+		if eid in chain["edges"]:
+			return chain
+	return {"attrs": design.edges.get(eid, {}), "nodes": [design.edges[eid]["a"], design.edges[eid]["b"]], "edges": [eid]}
+
+
+## Short description of a design edge for the panel.
+func edge_label(eid: int) -> String:
+	if not design.edges.has(eid):
+		return "edge"
+	var ed: Dictionary = design.edges[eid]
+	if ed["kind"] == SceneryDesign.KIND_RAIL:
+		return "design track %s (edge %d)" % [str(ed["cls"]), eid]
+	return "design road %s, %d lanes%s (edge %d)" % [str(ed["cls"]), int(ed["lanes"]), ", one-way" if bool(ed["oneway"]) else "", eid]
+
+
+## The end point of a baked (not yet picked) way within `radius` m of
+## (e, n), or Vector2.INF: a design road can be joined to it exactly.
+func baked_endpoint_near(e: float, n: float, radius: float) -> Vector2:
+	var j := baked_join_near(e, n, radius)
+	return j["point"] if not j.is_empty() else Vector2.INF
+
+
+## The same with the way: {"point", "rec", "at_start": the way begins here}.
+func baked_join_near(e: float, n: float, radius: float) -> Dictionary:
+	_load_ways_near(e, n)
+	var q := Vector2(e, n)
+	var best := {}
+	var best_d := radius
+	for wid in _ways:
+		if wid in design.replace_ids:
+			continue
+		var pts: Array = _ways[wid].get("pts", [])
+		if pts.size() < 2:
+			continue
+		for idx in [0, pts.size() - 1]:
+			var p := Vector2(float(pts[idx][0]), float(pts[idx][1]))
+			var d := p.distance_to(q)
+			if d < best_d:
+				best_d = d
+				best = {"point": p, "rec": _ways[wid], "at_start": idx == 0}
+	return best
+
+
 static func way_label(rec: Dictionary) -> String:
 	if rec.is_empty():
 		return "no baked road within %.0f m" % PICK_M
@@ -866,16 +1268,25 @@ func pick_way() -> bool:
 	if rec.is_empty():
 		_tool_note = way_label(rec)
 		return false
-	design.snapshot()
+	_edit_begins()
 	var ids := design.import_way(rec)
-	_tool_note = "picked %s: %d nodes; edit them with Select, [ ] for heights" % [way_label(rec), ids.size()]
+	adopt_attrs(rec)
+	_tool_note = "picked %s: %d nodes; the panel now has its settings, extend it with 2 Road from an end node" % [way_label(rec), ids.size()]
 	mesher.rebuild(design)
 	return true
 
 
 # ── tools ───────────────────────────────────────────────────────────────
 
+## Typed spin box values count even before Enter: apply the text.
+func _commit_spins() -> void:
+	for sp in [_lanes_spin, _width_spin, _radius_spin, _area_h]:
+		if sp:
+			sp.apply()
+
+
 func _current_attrs() -> Dictionary:
+	_commit_spins()
 	if tool == Tool.RAIL:
 		var gauge := 1435
 		if _gauge_option and _gauge_option.selected == 1:
@@ -884,7 +1295,26 @@ func _current_attrs() -> Dictionary:
 	var cls: String = SceneryDesign.ROAD_CLASSES[_cls_option.selected] if _cls_option else "secondary"
 	var lanes: int = int(_lanes_spin.value) if _lanes_spin else 2
 	var oneway: bool = _oneway_check.button_pressed if _oneway_check else false
-	return SceneryDesign.road_attrs(cls, lanes, oneway)
+	var width: float = float(_width_spin.value) if _width_spin else 0.0
+	return SceneryDesign.road_attrs(cls, lanes, oneway, width)
+
+
+## Load a road's or track's attributes into the panel, so the next segment
+## drawn continues it with the same class, lanes, direction and width.
+func adopt_attrs(attrs: Dictionary) -> void:
+	if str(attrs.get("kind", "")) == SceneryDesign.KIND_RAIL:
+		if _gauge_option:
+			_gauge_option.selected = 1 if int(attrs.get("gauge", 1435)) == 1000 else 0
+		return
+	var cls := str(attrs.get("cls", "secondary"))
+	if _cls_option and cls in SceneryDesign.ROAD_CLASSES:
+		_cls_option.selected = SceneryDesign.ROAD_CLASSES.find(cls)
+	if _lanes_spin:
+		_lanes_spin.value = maxi(1, int(attrs.get("lanes", 2)))
+	if _oneway_check:
+		_oneway_check.button_pressed = bool(attrs.get("oneway", false))
+	if _width_spin:
+		_width_spin.value = float(attrs.get("width", 0.0))
 
 
 ## Node at the cursor: an existing one when snapped, a split of a crossed
@@ -907,18 +1337,67 @@ func _node_at_cursor() -> int:
 func place_point() -> bool:
 	if not _cursor_valid:
 		return false
-	design.snapshot()
+	_edit_begins()
 	var via := {}
 	if _line_last_node >= 0:
 		via = _next_segment_via(design.node_pos(_line_last_node), Vector2(_cursor_e, _cursor_n))
+	# joining a baked road's end: the line takes that road's settings
+	var join := baked_join_near(_cursor_e, _cursor_n, 0.5)
+	if not join.is_empty():
+		adopt_attrs(join["rec"])
+		_line_join["end" if _line_last_node >= 0 else "start"] = join
 	var nid := _node_at_cursor()
 	if _line_last_node >= 0 and nid != _line_last_node:
 		var eid := design.add_edge(_line_last_node, nid, _current_attrs())
 		if eid > 0 and not via.is_empty():
 			design.set_edge_via(eid, via["via"])
 		mesher.rebuild(design)
+	if _line_last_node < 0:
+		_line_nodes.clear()
+	_line_nodes.append(nid)
 	_line_last_node = nid
 	return true
+
+
+## A line that joins a one-way baked road must flow with it: into the road
+## when it joins the road's start, out of it when it joins the road's end.
+## The line's edges are reversed when they were drawn the other way, and
+## every edge of the line takes the joined road's settings.
+func _orient_line_to_join() -> void:
+	if _line_nodes.size() < 2:
+		return
+	var join: Dictionary = _line_join.get("end", _line_join.get("start", {}))
+	if join.is_empty():
+		return
+	var rec: Dictionary = join["rec"]
+	var attrs := {}
+	if str(rec.get("kind", "road")) == SceneryDesign.KIND_RAIL:
+		attrs = SceneryDesign.rail_attrs(str(rec.get("cls", "rail")), int(rec.get("gauge", 1435)), maxi(1, int(rec.get("tracks", 1))))
+	else:
+		attrs = SceneryDesign.road_attrs(str(rec.get("cls", "secondary")), int(rec.get("lanes", 0)), bool(rec.get("oneway", false)), float(rec.get("width", 0.0)))
+	var edges: Array = []
+	for i in range(_line_nodes.size() - 1):
+		for eid in design.edges_of(_line_nodes[i]):
+			var ed: Dictionary = design.edges[eid]
+			if (ed["a"] == _line_nodes[i] and ed["b"] == _line_nodes[i + 1]) or (ed["b"] == _line_nodes[i] and ed["a"] == _line_nodes[i + 1]):
+				edges.append(eid)
+	for eid in edges:
+		design.set_edge_attrs(eid, attrs)
+	if not bool(attrs.get("oneway", false)):
+		return
+	# drawn towards the join ("end") and the road starts there: flows in, fine;
+	# drawn towards the road's end: must flow out of it -> reverse
+	var joined_at_end: bool = _line_join.has("end")
+	var road_starts_here: bool = bool(join["at_start"])
+	var reverse: bool = (joined_at_end and not road_starts_here) or (not joined_at_end and road_starts_here)
+	if reverse:
+		for eid in edges:
+			var ed: Dictionary = design.edges[eid]
+			var a: int = ed["a"]
+			ed["a"] = ed["b"]
+			ed["b"] = a
+		design.dirty = true
+		_tool_note = "line reversed to flow with the one-way road it joins"
 
 
 ## Switch tool: first click on a track = the toe of the turnout, second
@@ -934,7 +1413,7 @@ func place_switch_point() -> bool:
 		_switch_toe = {"edge": int(hit["id"]), "e": float(hit["e"]), "n": float(hit["n"])}
 		_tool_note = "now click the end of the diverging track"
 		return true
-	design.snapshot()
+	_edit_begins()
 	var res := design.add_switch(int(_switch_toe["edge"]), float(_switch_toe["e"]), float(_switch_toe["n"]), Vector2(_cursor_e, _cursor_n))
 	if res.has("error"):
 		design.undo()
@@ -966,7 +1445,7 @@ func place_polygon_point() -> bool:
 
 func finish_polygon() -> void:
 	if _poly_points.size() >= 3:
-		design.snapshot()
+		_edit_begins()
 		if tool == Tool.FLATTEN:
 			design.flatten.append({"poly": _poly_points.duplicate(), "h": _flatten_h if not is_nan(_flatten_h) else _cursor_h})
 			_tool_note = "plateau added at %.1f m (%d), baked with --design --corridor" % [float(design.flatten[-1]["h"]), design.flatten.size()]
@@ -993,10 +1472,18 @@ func nudge_height(delta: float) -> void:
 		_tool_note = "plateau height %.1f m" % _flatten_h
 		return
 	if tool == Tool.SELECT and _selected_node >= 0 and design.nodes.has(_selected_node):
-		design.snapshot()
+		_edit_begins()
 		design.set_node_offset(_selected_node, design.node_offset(_selected_node) + delta)
 		_tool_note = "node %d height offset %+.1f m" % [_selected_node, design.node_offset(_selected_node)]
-		mesher.rebuild(design)
+		_rebuild_live()
+		return
+	if tool == Tool.SELECT and _selected_edge >= 0 and design.edges.has(_selected_edge):
+		_edit_begins()
+		var ed: Dictionary = design.edges[_selected_edge]
+		for nid in [ed["a"], ed["b"]]:
+			design.set_node_offset(nid, design.node_offset(nid) + delta)
+		_tool_note = "%s: both ends now %+.1f / %+.1f m" % [edge_label(_selected_edge), design.node_offset(ed["a"]), design.node_offset(ed["b"])]
+		_rebuild_live()
 
 
 ## Circle tool: first click = centre, second click = a point on the ring
@@ -1013,7 +1500,7 @@ func place_circle_point() -> bool:
 	var r: float = _circle_centre.distance_to(p)
 	if r < 5.0:
 		r = float(_radius_spin.value) if _radius_spin else 20.0
-	design.snapshot()
+	_edit_begins()
 	var cls: String = SceneryDesign.ROAD_CLASSES[_cls_option.selected] if _cls_option else "secondary"
 	var lanes: int = int(_lanes_spin.value) if _lanes_spin else 1
 	design.add_circle(_circle_centre, r, SceneryDesign.road_attrs(cls, lanes, true))
@@ -1028,7 +1515,12 @@ func place_circle_point() -> bool:
 func finish_line() -> void:
 	if _line_last_node >= 0 and design.degree(_line_last_node) == 0:
 		design.nodes.erase(_line_last_node)   # a lone first click
+	if _line_last_node >= 0:
+		_orient_line_to_join()
+		_rebuild_live()
 	_line_last_node = -1
+	_line_nodes.clear()
+	_line_join = {}
 	_preview_mesh.clear_surfaces()
 
 
@@ -1041,10 +1533,11 @@ func delete_at_cursor() -> bool:
 		# but its id goes to the design so the bake drops it
 		var rec := way_near(_cursor_e, _cursor_n)
 		if not rec.is_empty():
-			design.snapshot()
+			_edit_begins()
 			design.replace_ids.append(int(rec["id"]))
 			design.dirty = true
-			_tool_note = "%s marked for removal: baked roads stay visible until the next bake" % way_label(rec)
+			_tool_note = "%s removed (hidden in the tiles; the next bake drops it for good)" % way_label(rec)
+			apply_hidden_ways()
 			return true
 	if not _cursor_valid:
 		return false
@@ -1054,7 +1547,7 @@ func delete_at_cursor() -> bool:
 		var ai := design.area_near(_cursor_e, _cursor_n, SNAP_NODE_M)
 		if pi < 0 and fi < 0 and ai < 0:
 			return false
-		design.snapshot()
+		_edit_begins()
 		if pi >= 0:
 			design.replace.remove_at(pi)
 		elif fi >= 0:
@@ -1065,7 +1558,7 @@ func delete_at_cursor() -> bool:
 		design.dirty = true
 		_update_overlay()
 		return true
-	design.snapshot()
+	_edit_begins()
 	design.remove_edge(int(hit["id"]))
 	_tool_note = "edge removed"
 	_rebuild_live()
@@ -1075,7 +1568,8 @@ func delete_at_cursor() -> bool:
 func undo() -> void:
 	if design.undo():
 		_line_last_node = -1
-		mesher.rebuild(design)
+		_patches_stale = true
+		_rebuild_live()
 
 
 func save() -> bool:
@@ -1095,6 +1589,9 @@ func _set_tool(t: int) -> void:
 	_poly_points.clear()
 	_flatten_h = NAN
 	_selected_node = -1
+	_selected_edge = -1
+	_line_nodes.clear()
+	_line_join = {}
 	_tool_note = ""
 	_preview_mesh.clear_surfaces()
 	for k in _tool_buttons:
@@ -1154,13 +1651,23 @@ func _unhandled_input(event: InputEvent) -> void:
 						if nid < 0 and _cursor_valid:
 							nid = design.node_near(_cursor_e, _cursor_n, SNAP_NODE_M)
 						_selected_node = nid
-						_update_markers()
+						_selected_edge = -1
 						if nid >= 0:
-							design.snapshot()
+							_edit_begins()
 							_drag_node = nid
+							var adj := design.edges_of(nid)
+							if adj.size() > 0:
+								adopt_attrs(design.edges[adj[0]])   # extending from here continues the same road
 							_tool_note = "node %d selected, height offset %+.1f m ([ ] to change, drag to move)" % [nid, design.node_offset(nid)]
 						else:
-							_tool_note = "no node under the mouse (yellow spheres are nodes)"
+							var eh := edge_at_screen(mb.position)
+							if not eh.is_empty():
+								_selected_edge = int(eh["id"])
+								adopt_attrs(design.edges[_selected_edge])
+								_tool_note = "%s selected ([ ] raises / lowers both ends, 4 deletes); its settings are in the panel" % edge_label(_selected_edge)
+							else:
+								_tool_note = "nothing under the mouse (yellow spheres are nodes, blue roads are design roads)"
+						_update_markers()
 			else:
 				if _drag_node >= 0:
 					_drag_node = -1
@@ -1208,6 +1715,14 @@ func _input(event: InputEvent) -> void:
 				_set_tool(Tool.PICK)
 			KEY_SPACE:
 				view_top(k.shift_pressed)
+			KEY_R:
+				if _selected_edge >= 0 and design.edges.has(_selected_edge):
+					_edit_begins()
+					var n := design.reverse_chain(_selected_edge)
+					_tool_note = "%s reversed (%d edges): it now flows %.0f° at the selected point" % [edge_label(_selected_edge), n, heading_at(SceneryDesignMesher.chain_polyline(design, _chain_of(_selected_edge)), Vector2(_cursor_e, _cursor_n))]
+					_rebuild_live()
+				else:
+					_tool_note = "R reverses a road: select one with 1 Select first"
 			KEY_BRACKETLEFT:
 				nudge_height(-(HEIGHT_STEP_M * (10.0 if k.shift_pressed else 1.0)))
 			KEY_BRACKETRIGHT:
@@ -1228,7 +1743,12 @@ func _input(event: InputEvent) -> void:
 					_switch_toe = {}
 					_poly_points.clear()
 					_preview_mesh.clear_surfaces()
+				elif _selected_node >= 0 or _selected_edge >= 0:
+					_selected_node = -1
+					_selected_edge = -1
+					_update_markers()
 				else:
+					host._escape_held = true   # the host must not open the welcome screen on this press
 					exit()
 			KEY_Z:
 				if k.ctrl_pressed or k.meta_pressed:
@@ -1349,7 +1869,11 @@ func _build_ui() -> void:
 	var panel := PanelContainer.new()
 	panel.position = Vector2(12, 12)
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.mouse_exited.connect(func() -> void:
+		_commit_spins()
+		host.get_viewport().gui_release_focus())   # keys go back to the editor
 	_ui.add_child(panel)
+	_panel = panel
 	var box := VBoxContainer.new()
 	panel.add_child(box)
 	var title := Label.new()
@@ -1387,6 +1911,15 @@ func _build_ui() -> void:
 	_oneway_check.text = "one-way"
 	_oneway_check.focus_mode = Control.FOCUS_NONE
 	_road_box.add_child(_oneway_check)
+	var wl := Label.new()
+	wl.text = " width m (0 = from lanes)"
+	_road_box.add_child(wl)
+	_width_spin = SpinBox.new()
+	_width_spin.min_value = 0
+	_width_spin.max_value = 60
+	_width_spin.step = 0.5
+	_width_spin.value = 0
+	_road_box.add_child(_width_spin)
 	_curved_check = CheckBox.new()
 	_curved_check.text = "curved (C)"
 	_curved_check.tooltip_text = "Each new segment continues the last one as a tangent arc"
@@ -1491,8 +2024,26 @@ func _update_status() -> void:
 			var toe: Vector2 = design._nearest_on_edge(eid, Vector2(float(_switch_toe["e"]), float(_switch_toe["n"])))["p"]
 			var via := SceneryDesign.tangent_arc_via(toe, t, q)
 			line = "\nturnout radius %s" % (("%.0f m%s" % [float(via["radius"]), "" if float(via["radius"]) >= SceneryDesign.SWITCH_MIN_RADIUS_M else "  (too tight, min %.0f)" % SceneryDesign.SWITCH_MIN_RADIUS_M]) if not via.is_empty() else "—")
-	if tool == Tool.PICK and _cursor_valid:
-		line += "\nunder the cursor: " + way_label(way_near(_cursor_e, _cursor_n))
+	if (tool == Tool.PICK or tool == Tool.SELECT) and _cursor_valid:
+		var deh := edge_at_screen(_mouse)
+		if not deh.is_empty():
+			var ch := _chain_of(int(deh["id"]))
+			var flow := heading_at(SceneryDesignMesher.chain_polyline(design, ch), Vector2(_cursor_e, _cursor_n))
+			line += "\nunder the cursor: %s, flows %.0f°%s (R reverses it when selected)" % [edge_label(int(deh["id"])), flow, "" if bool(design.edges[int(deh["id"])]["oneway"]) else " (two-way)"]
+		else:
+			var rec := way_near(_cursor_e, _cursor_n)
+			if rec.is_empty():
+				line += "\nunder the cursor: " + way_label(rec)
+			else:
+				var pts: Array = []
+				for p in rec.get("pts", []):
+					pts.append(Vector2(float(p[0]), float(p[1])))
+				line += "\nunder the cursor: %s, flows %.0f°" % [way_label(rec), heading_at(pts, Vector2(_cursor_e, _cursor_n))]
+	if _line_last_node >= 0 and _cursor_valid:
+		var a := design.node_pos(_line_last_node)
+		var v := Vector2(_cursor_e, _cursor_n) - a
+		if v.length() > 1.0:
+			line += "\ndrawing towards %.0f°: a one-way road flows this way (first click -> last click)" % fposmod(rad_to_deg(atan2(v.x, v.y)), 360.0)
 	if bake_running():
 		line += "\nbaking… %.0f s" % ((Time.get_ticks_msec() - _bake_started) / 1000.0)
 	if _tool_note != "":

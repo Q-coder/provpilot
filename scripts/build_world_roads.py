@@ -147,6 +147,8 @@ def road_geometry(cls: str, lanes_tag, width_tag, oneway: bool):
     tag_w = parse_num(width_tag, 0)
     if 3.0 <= tag_w <= 60.0:
         width = tag_w
+        if width < 5.0 and kind != KIND_ONEWAY:
+            kind = KIND_LINK   # a narrow road has no centre line
     return width, kind, lanes
 
 
@@ -284,6 +286,124 @@ class Collector(osmium.SimpleHandler):
             "layer": t.get("layer", "0"), "lanes": t.get("lanes"), "width": t.get("width"),
             "gauge": t.get("gauge"), "tracks": t.get("tracks"), "oneway": t.get("oneway") == "yes",
         })
+
+
+# ── swissTLM3D (swisstopo landscape model, Switzerland) ─────────────────────
+# Layers tlm_strassen_strasse / tlm_oev_eisenbahn of the LV95 GeoPackage:
+# 3D lines (a height on every vertex), structures as attributes, road
+# classes with nominal widths. Ways get "z": the true profile, so the
+# terrain smoothing, the bridge deck guessing and the tunnel dive of the OSM
+# path are not used: at-grade ways get a corridor to their true height,
+# bridges are elevated (no corridor, piers), tunnels run at their true axis.
+TLM_GPKG_DEFAULT = "/Volumes/Data1/scenery_in_world/swisstlm3d/SWISSTLM3D_2026_LV95_LN02.gpkg"
+TLM_REF_BASE = 10 ** 14
+# objektart -> (class, lanes, nominal width m or None, oneway)
+TLM_ROAD_CLASSES = {
+    "Autobahn":       ("motorway", 2, None, True),
+    "Autostrasse":    ("trunk", 1, None, None),        # oneway from richtungsgetrennt
+    "10m Strasse":    ("primary", 2, 10.0, None),
+    "8m Strasse":     ("secondary", 2, 8.0, None),
+    "6m Strasse":     ("tertiary", 2, 6.0, None),
+    "4m Strasse":     ("tertiary", 1, 4.0, None),
+    "3m Strasse":     ("tertiary", 1, 3.0, None),
+    "Ausfahrt":       ("motorway_link", 1, None, True),
+    "Einfahrt":       ("motorway_link", 1, None, True),
+    "Zufahrt":        ("tertiary_link", 1, 4.0, None),
+    "Verbindung":     ("tertiary_link", 1, 5.0, None),
+}
+TLM_BRIDGE = {"Bruecke", "Gedeckte Bruecke", "Bruecke mit Treppe"}
+TLM_TUNNEL = {"Tunnel"}
+TLM_UNDERPASS = {"Unterfuehrung", "Unterfuehrung mit Treppe"}
+
+
+def _tlm_bool(v):
+    return str(v) == "Wahr"
+
+
+def collect_tlm(gpkg: Path, bbox_lv95):
+    """Ways (the OSM collector's record layout + "z") from swissTLM3D inside an LV95 box."""
+    import pyogrio
+    import hashlib
+    e0, n0, e1, n1 = bbox_lv95
+    ways = []
+    counter = [0]
+
+    def uid(uuid_str):
+        return int(hashlib.md5(str(uuid_str).encode()).hexdigest()[:7], 16) + 1   # fits uint32, never 0
+
+    def refs(n):
+        out = []
+        for _ in range(n):
+            counter[0] += 1
+            out.append(TLM_REF_BASE + counter[0])
+        return out
+
+    roads = pyogrio.read_dataframe(str(gpkg), layer="tlm_strassen_strasse", bbox=(e0, n0, e1, n1),
+                                   columns=["uuid", "objektart", "kunstbaute", "befahrbarkeit", "richtungsgetrennt", "kreisel", "stufe"])
+    for row in roads.itertuples(index=False):
+        spec = TLM_ROAD_CLASSES.get(str(row.objektart))
+        if spec is None or str(row.befahrbarkeit) == "Falsch":
+            continue
+        cls, lanes, width, oneway = spec
+        if oneway is None:
+            oneway = _tlm_bool(row.richtungsgetrennt) or _tlm_bool(row.kreisel)
+        kb = str(row.kunstbaute)
+        if kb in ("Treppe",):
+            continue
+        for geom in getattr(row.geometry, "geoms", [row.geometry]):
+            coords = list(geom.coords)
+            if len(coords) < 2:
+                continue
+            pts = [wgs.transform(c[0], c[1]) for c in coords]
+            ways.append({
+                "id": uid(row.uuid), "kind": "road", "cls": cls,
+                "pts": pts, "refs": refs(len(pts)), "z": [float(c[2]) for c in coords], "has_z": True,
+                "bridge": False, "elevated": kb in TLM_BRIDGE, "tunnel": kb in TLM_TUNNEL, "underpass": kb in TLM_UNDERPASS,
+                "layer": str(row.stufe), "lanes": str(lanes), "width": str(width) if width else None,
+                "gauge": None, "tracks": None, "oneway": bool(oneway), "source": "tlm",
+            })
+    n_roads = len(ways)
+    rails = pyogrio.read_dataframe(str(gpkg), layer="tlm_oev_eisenbahn", bbox=(e0, n0, e1, n1),
+                                   columns=["uuid", "objektart", "kunstbaute", "anzahl_spuren", "verkehrsmittel", "ausser_betrieb", "standseilbahn", "zahnradbahn", "auf_strasse"])
+    for row in rails.itertuples(index=False):
+        if _tlm_bool(row.ausser_betrieb) or _tlm_bool(row.standseilbahn):
+            continue
+        vm = str(row.verkehrsmittel)
+        cls = "tram" if vm == "Tram" else ("light_rail" if vm == "Metro" else ("narrow_gauge" if str(row.objektart) == "Schmalspur" else "rail"))
+        if _tlm_bool(row.auf_strasse):
+            cls = "tram"   # rails in a street: no ballast
+        gauge = 1000 if str(row.objektart) == "Schmalspur" else 1435
+        tracks = int(row.anzahl_spuren) if str(row.anzahl_spuren) not in ("None", "nan", "") else 1
+        kb = str(row.kunstbaute)
+        for geom in getattr(row.geometry, "geoms", [row.geometry]):
+            coords = list(geom.coords)
+            if len(coords) < 2:
+                continue
+            pts = [wgs.transform(c[0], c[1]) for c in coords]
+            ways.append({
+                "id": uid(row.uuid), "kind": "rail", "cls": cls,
+                "pts": pts, "refs": refs(len(pts)), "z": [float(c[2]) for c in coords], "has_z": True,
+                "bridge": False, "elevated": kb in TLM_BRIDGE, "tunnel": kb in TLM_TUNNEL or kb == "in/auf Gebaeude", "underpass": False,
+                "layer": "0", "lanes": None, "width": None, "gauge": str(gauge), "tracks": str(tracks),
+                "oneway": False, "source": "tlm",
+            })
+    return ways, n_roads, len(ways) - n_roads
+
+
+def densify_z(pts, zs, step=DENSIFY_M):
+    """densify() for (e, n) points with a parallel height list."""
+    out_p, out_z = [], []
+    for i in range(len(pts) - 1):
+        (x0, y0), (x1, y1) = pts[i], pts[i + 1]
+        d = math.hypot(x1 - x0, y1 - y0)
+        n = max(1, int(math.ceil(d / step)))
+        for k in range(n):
+            t = k / n
+            out_p.append((x0 + (x1 - x0) * t, y0 + (y1 - y0) * t))
+            out_z.append(zs[i] + (zs[i + 1] - zs[i]) * t)
+    out_p.append(pts[-1])
+    out_z.append(zs[-1])
+    return out_p, out_z
 
 
 def parse_num(s, default):
@@ -546,7 +666,7 @@ CONCRETE_U8 = (158, 156, 148)
 JUNCTION_MIN_CUT_M = 1.0
 TAPER_PER_LANE_M = 30.0
 ARC_STEP_M = 10.0
-DESIGN_EDGE_ATTRS = ("kind", "cls", "lanes", "oneway", "gauge", "tracks")
+DESIGN_EDGE_ATTRS = ("kind", "cls", "lanes", "oneway", "gauge", "tracks", "width")
 
 
 def circle_through(a, v, b):
@@ -663,6 +783,7 @@ class Design:
             ed = {k: rec.get(k) for k in DESIGN_EDGE_ATTRS}
             ed["a"], ed["b"] = int(rec["a"]), int(rec["b"])
             ed["lanes"], ed["gauge"], ed["tracks"] = int(ed["lanes"] or 0), int(ed["gauge"] or 0), int(ed["tracks"] or 0)
+            ed["width"] = float(ed["width"] or 0.0)
             ed["oneway"] = bool(ed["oneway"])
             if rec.get("via"):
                 ed["via"] = (float(rec["via"][0]), float(rec["via"][1]))
@@ -687,7 +808,7 @@ class Design:
         ed = self.edges[eid]
         if ed["kind"] != "road":
             return 0.0
-        return road_geometry(ed["cls"], str(ed["lanes"]) if ed["lanes"] else None, None, ed["oneway"])[0]
+        return road_geometry(ed["cls"], str(ed["lanes"]) if ed["lanes"] else None, str(ed["width"]) if ed["width"] else None, ed["oneway"])[0]
 
     def chains(self):
         used, out = set(), []
@@ -858,7 +979,7 @@ class Design:
                     "id": DESIGN_REF_BASE + ci * 64 + pi, "kind": at["kind"], "cls": at["cls"],
                     "pts": [wgs.transform(e, n) for e, n in p_run], "refs": r_run,
                     "bridge": False, "tunnel": False, "layer": "0",
-                    "lanes": str(at["lanes"]) if at["lanes"] else None, "width": None,
+                    "lanes": str(at["lanes"]) if at["lanes"] else None, "width": str(at["width"]) if at.get("width") else None,
                     "gauge": str(at["gauge"]) if at["gauge"] else None, "tracks": str(at["tracks"]) if at["tracks"] else None,
                     "oneway": bool(at["oneway"]), "design": True, "taper": taper,
                     "offsets": (along(p_run), o_run) if any(abs(o) > 0.005 for o in o_run) else None,
@@ -926,6 +1047,11 @@ def triangulate(poly):
 class MeshBuf:
     def __init__(self):
         self.v, self.n, self.c, self.uv, self.uv2, self.idx = [], [], [], [], [], []
+        self.w = []              # per vertex: the OSM way id (0 for design geometry): _WAYID
+        self.current_way = 0     # set by the emitter before adding a way's vertices
+
+    def _tag(self, count):
+        self.w.extend([self.current_way] * count)
 
     @staticmethod
     def frames(pts_xz):
@@ -976,6 +1102,7 @@ class MeshBuf:
             self.c.append(cu)
             self.uv.append((x, z))
             self.uv2.append((0.0, 0.0))
+        self._tag(len(poly_xz))
         for a, b, c in tris:
             self.idx.extend([base + a, base + b, base + c])
 
@@ -992,6 +1119,7 @@ class MeshBuf:
             self.c.append(cu)
             self.uv.append((u, y - y0))
             self.uv2.append((0.0, 0.0))
+        self._tag(4)
         self.idx.extend([base, base + 1, base + 2, base, base + 2, base + 3])
 
     def fan(self, centre_xz, poly_xz, y, colour_u8, kind):
@@ -1004,6 +1132,7 @@ class MeshBuf:
             self.c.append(cu)
             self.uv.append((x - centre_xz[0], z - centre_xz[1]))
             self.uv2.append((0.0, 0.0))
+        self._tag(1 + len(poly_xz))
         n = len(poly_xz)
         for i in range(n):
             self.idx.extend([base, base + 1 + i, base + 1 + (i + 1) % n])
@@ -1020,6 +1149,7 @@ class MeshBuf:
         s = along_s or along(pts_xz)
         frames = self.frames(pts_xz)
         m = len(section)
+        self._tag(n * m)
         # section normals: perpendicular to the segment to the next point, averaged
         sn = []
         for j in range(m):
@@ -1058,7 +1188,8 @@ def write_glb(path: Path, buf: MeshBuf):
     uv2 = np.array(buf.uv2, dtype="<f4")
     use32 = nv > 65535
     idx = np.array(buf.idx, dtype="<u4" if use32 else "<u2")
-    blobs = [pos.tobytes(), nrm.tobytes(), col.tobytes(), uv.tobytes(), uv2.tobytes(), idx.tobytes()]
+    way = np.array(buf.w if len(buf.w) == nv else [0] * nv, dtype="<u4")   # _WAYID per vertex
+    blobs = [pos.tobytes(), nrm.tobytes(), col.tobytes(), uv.tobytes(), uv2.tobytes(), idx.tobytes(), way.tobytes()]
     views, accs, off = [], [], 0
     for i, b in enumerate(blobs):
         pad = (4 - len(b) % 4) % 4
@@ -1073,10 +1204,11 @@ def write_glb(path: Path, buf: MeshBuf):
         {"bufferView": 3, "componentType": 5126, "count": nv, "type": "VEC2"},
         {"bufferView": 4, "componentType": 5126, "count": nv, "type": "VEC2"},
         {"bufferView": 5, "componentType": 5125 if use32 else 5123, "count": len(idx), "type": "SCALAR"},
+        {"bufferView": 6, "componentType": 5125, "count": nv, "type": "SCALAR"},
     ]
     gltf = {"asset": {"version": "2.0", "generator": "build_world_roads.py"},
             "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0}],
-            "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1, "COLOR_0": 2, "TEXCOORD_0": 3, "TEXCOORD_1": 4},
+            "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1, "COLOR_0": 2, "TEXCOORD_0": 3, "TEXCOORD_1": 4, "_WAYID": 6},
                                          "indices": 5, "mode": 4}]}],
             "buffers": [{"byteLength": off}], "bufferViews": views, "accessors": accs}
     js = json.dumps(gltf, separators=(",", ":")).encode()
@@ -1089,8 +1221,80 @@ def write_glb(path: Path, buf: MeshBuf):
         f.write(struct.pack("<II", len(binb), 0x004E4942)); f.write(binb)
 
 
+# ── airport protection ──────────────────────────────────────────────────────
+# Runway plateaus, aprons and taxiways (runway_plateau.py, design §12 D18)
+# are never touched by a road corridor: a corridor's 45 m margin next to a
+# runway would cut its plateau and the aircraft placed on the runway plane
+# drops or bounces (gery, LSMD, 2026-09-23).
+RUNWAY_PROTECT_MARGIN_M = 60.0
+TAXI_PROTECT_MARGIN_M = 25.0
+
+
+def airport_protection(region_dir: Path):
+    """{"polys": [[(e,n),...]], "corridors": [{"st": [(e,n),...], "reach": m}]} from airports/runways.json."""
+    rj = region_dir / "airports" / "runways.json"
+    out = {"polys": [], "corridors": []}
+    if not rj.exists():
+        return out
+    data = json.load(open(rj))
+    for ap in data.get("airports", []):
+        for rw in ap.get("runways", []):
+            ends = rw.get("ends", [])
+            if len(ends) != 2 or "pavement" not in ends[0] or "pavement" not in ends[1]:
+                continue
+            e0, n0 = lv95.transform(ends[0]["pavement"][1], ends[0]["pavement"][0])
+            e1, n1 = lv95.transform(ends[1]["pavement"][1], ends[1]["pavement"][0])
+            half = 0.5 * float(rw.get("width_m", 45.0)) + RUNWAY_PROTECT_MARGIN_M
+            out["corridors"].append({"st": [(e0, n0), (e1, n1)], "reach": half})
+        for apn in ap.get("aprons", []):
+            poly = [lv95.transform(float(p[1]), float(p[0])) for p in apn.get("polygon", []) if p and p[0] is not None]
+            if len(poly) >= 3:
+                out["polys"].append(poly)
+        for tw in ap.get("taxiways", []):
+            path = [lv95.transform(float(p[1]), float(p[0])) for p in tw.get("path", [])]
+            if len(path) >= 2:
+                out["corridors"].append({"st": path, "reach": 0.5 * float(tw.get("width_m", 23.0)) + TAXI_PROTECT_MARGIN_M})
+    return out
+
+
+def protection_mask(protect, E, N):
+    """True for the pixels (arrays E, N) inside a protected shape."""
+    mask = np.zeros(E.shape, dtype=bool)
+    emin, emax, nmin, nmax = E.min(), E.max(), N.min(), N.max()
+    for c in protect["corridors"]:
+        st = c["st"]
+        xs = [p[0] for p in st]; ys = [p[1] for p in st]
+        r = c["reach"]
+        if max(xs) + r < emin or min(xs) - r > emax or max(ys) + r < nmin or min(ys) - r > nmax:
+            continue
+        best = np.full(E.shape, np.inf)
+        for i in range(len(st) - 1):
+            x0, y0 = st[i]; x1, y1 = st[i + 1]
+            dx, dy = x1 - x0, y1 - y0
+            L2 = dx * dx + dy * dy
+            if L2 < 1e-9:
+                continue
+            t = np.clip(((E - x0) * dx + (N - y0) * dy) / L2, 0.0, 1.0)
+            d = np.hypot(E - (x0 + t * dx), N - (y0 + t * dy))
+            best = np.minimum(best, d)
+        mask |= best <= r
+    for poly in protect["polys"]:
+        xs = [p[0] for p in poly]; ys = [p[1] for p in poly]
+        if max(xs) < emin or min(xs) > emax or max(ys) < nmin or min(ys) > nmax:
+            continue
+        inside = np.zeros(E.shape, dtype=bool)
+        j = len(poly) - 1
+        for i in range(len(poly)):
+            xi, yi = poly[i]; xj, yj = poly[j]
+            cond = ((yi > N) != (yj > N)) & (E < (xj - xi) * (N - yi) / ((yj - yi) or 1e-12) + xi)
+            inside ^= cond
+            j = i
+        mask |= inside
+    return mask
+
+
 # ── corridor bake ───────────────────────────────────────────────────────────
-def bake_corridor(terrain: Terrain, pts, prof, half_width):
+def bake_corridor(terrain: Terrain, pts, prof, half_width, protect=None):
     """Terrain pixels within half_width + margin of the polyline take the
     profile height of the nearest point (road cut / embankment)."""
     step = terrain.tile_m / (terrain.px - 1)
@@ -1136,6 +1340,8 @@ def bake_corridor(terrain: Terrain, pts, prof, half_width):
                 best_d[m] = d[m]
                 best_h[m] = h[m]
             m = best_d <= reach
+            if protect is not None and m.any():
+                m &= ~protection_mask(protect, E, N)   # never inside an airport plateau
             if m.any():
                 sub = a[r0:r1 + 1, c0:c1 + 1]
                 sub[m] = best_h[m]
@@ -1154,6 +1360,9 @@ def main():
     ap.add_argument("--terrain-dir", default="")
     ap.add_argument("--out", default="")
     ap.add_argument("--corridor", action="store_true", help="re-write the terrain tiles so the ground follows each road / track")
+    ap.add_argument("--source", choices=["osm", "tlm"], default="osm",
+                    help="osm: Geofabrik PBF (default); tlm: swissTLM3D GeoPackage (Switzerland, true heights)")
+    ap.add_argument("--tlm-gpkg", default=TLM_GPKG_DEFAULT)
     ap.add_argument("--design", action="append", default=[], metavar="JSON",
                     help="scenery editor design file (repeatable): its roads / tracks join the bake, OSM ways inside its replace polygons are cut")
     ap.add_argument("--dry-run", action="store_true")
@@ -1168,7 +1377,7 @@ def main():
     terrain_dir = Path(args.terrain_dir) if args.terrain_dir else region_dir / "terrain"
     out_dir = Path(args.out) if args.out else region_dir / "roads"
     pbf = Path(args.pbf) if args.pbf else OSM_CACHE / (GEOFABRIK.get(args.region, args.region).split("/")[-1] + "-latest.osm.pbf")
-    if not pbf.exists():
+    if not pbf.exists() and args.source == "osm":
         if not args.fetch:
             sys.exit(f"PBF not found: {pbf} (use --fetch)")
         url = f"https://download.geofabrik.de/{GEOFABRIK[args.region]}-latest.osm.pbf"
@@ -1184,10 +1393,20 @@ def main():
         lons, lats = zip(*[wgs.transform(e, n) for e, n in ((e0, n0), (e1, n0), (e0, n1), (e1, n1))])
         bbox_wgs = (min(lons), min(lats), max(lons), max(lats))
     t0 = time.time()
-    col = Collector(bbox_wgs)
-    col.apply_file(str(pbf), locations=True, idx="flex_mem")
-    print(f"OSM: {col.n} ways in {time.time() - t0:.0f} s "
-          f"({sum(1 for w in col.ways if w['kind'] == 'road')} roads, {sum(1 for w in col.ways if w['kind'] == 'rail')} railways)")
+    if args.source == "tlm":
+        if not args.bbox:
+            sys.exit("--source tlm needs --bbox (the GeoPackage is read by box)")
+        class _Col:
+            pass
+        col = _Col()
+        col.ways, n_r, n_t = collect_tlm(Path(args.tlm_gpkg), args.bbox)
+        col.n = len(col.ways)
+        print(f"swissTLM3D: {col.n} ways in {time.time() - t0:.0f} s ({n_r} roads, {n_t} railways) from {args.tlm_gpkg}")
+    else:
+        col = Collector(bbox_wgs)
+        col.apply_file(str(pbf), locations=True, idx="flex_mem")
+        print(f"OSM: {col.n} ways in {time.time() - t0:.0f} s "
+              f"({sum(1 for w in col.ways if w['kind'] == 'road')} roads, {sum(1 for w in col.ways if w['kind'] == 'rail')} railways)")
 
     # Scenery editor designs: their ways join the OSM set, OSM ways inside
     # their replace polygons are cut away (docs/SCENERY_EDITOR.md §6.7).
@@ -1238,7 +1457,20 @@ def main():
             pieces.append((w, pts, refs))
     for w, pts, refs in pieces:
         end_refs = (refs[0], refs[-1])
-        pts = densify(pts)
+        zs = None
+        if w.get("has_z"):
+            # keep the heights aligned with the (bbox-filtered) points, then densify both
+            zmap = {}
+            all_pts = [lv95.transform(lo, la) for lo, la in w["pts"]]
+            for p, z in zip(all_pts, w["z"]):
+                zmap[(round(p[0], 3), round(p[1], 3))] = z
+            zs = [zmap.get((round(p[0], 3), round(p[1], 3)), float("nan")) for p in pts]
+            if any(math.isnan(z) for z in zs):
+                zs = None
+        if zs is not None:
+            pts, zs = densify_z(pts, zs)
+        else:
+            pts = densify(pts)
         if w["kind"] == "road":
             _lanes, colour, hw = ROAD_CLASSES[w["cls"]]
             width, kind, lanes = road_geometry(w["cls"], w["lanes"], w["width"], w["oneway"])
@@ -1254,6 +1486,9 @@ def main():
             stats["no_terrain"] += 1
             continue
         ground, prof = tp
+        if zs is not None:
+            prof = np.array(zs, dtype=float)   # the surveyed profile: no smoothing, no guessing
+            stats["ways_with_heights"] += 1
         if w.get("offsets"):
             # a design chain's node height offsets, resampled onto the densified stations
             s_old, o_old = w["offsets"]
@@ -1263,21 +1498,23 @@ def main():
                      "tracks": tracks, "end_refs": end_refs, "ramp": False, "rise": 0.0})
 
     # Stage 2: bridge decks (lifted over what they cross), approach ramps, tunnels.
-    ramps = bridge_decks(ways, stats)
+    ramps = bridge_decks([wy for wy in ways if not wy["w"].get("has_z")], stats)
     ramp_approaches(ways, ramps, stats)
     # Short tunnels are underpasses through a road or rail embankment that a
     # 30 m posting cannot dig: keep them at grade so the line stays whole
     # from the air (the crossing way is drawn over them by its class lift).
-    for chain in _chains([wy for wy in ways if wy["w"]["tunnel"]]):
+    for chain in _chains([wy for wy in ways if wy["w"]["tunnel"] and not wy["w"].get("has_z")]):
         if sum(m["s"][-1] for m, _f in chain) < SHORT_TUNNEL_M:
             for m, _f in chain:
                 m["w"]["tunnel"] = False
                 stats["underpasses"] += 1
     surface_ends = set(r for wy in ways if not wy["w"]["tunnel"] for r in wy["end_refs"])
     for wy in ways:
-        if wy["w"]["tunnel"]:
+        if wy["w"]["tunnel"] and not wy["w"].get("has_z"):
             wy["prof"] = tunnel_profile(wy, tuple(r in surface_ends for r in wy["end_refs"]))
             stats["tunnels"] += 1
+        elif wy["w"]["tunnel"]:
+            stats["tunnels"] += 1   # surveyed axis: drawn where it is, no corridor
 
     # Stage 3: the corridor bake. Corridors of neighbouring ways overlap
     # (parallel tracks of a yard, a road beside a railway) and the last one
@@ -1285,8 +1522,10 @@ def main():
     # the bridge then cuts its own level through the embankment. Bridges
     # and tunnels leave the ground alone.
     if args.corridor:
+        protect = airport_protection(region_dir)
+        print(f"airport protection: {len(protect['corridors'])} runway / taxiway strips, {len(protect['polys'])} aprons")
         for wy in sorted((wy for wy in ways if not wy["w"]["bridge"] and not wy["w"]["tunnel"] and not wy["w"].get("elevated")), key=lambda wy: not wy["ramp"]):
-            corridor_px += bake_corridor(terrain, wy["pts"], wy["prof"], wy["width"] * 0.5)
+            corridor_px += bake_corridor(terrain, wy["pts"], wy["prof"], wy["width"] * 0.5, protect)
 
     # Stage 4: ribbons on the final ground, never below it (a bridge deck is
     # raised too where a corridor lifted the ground under it; a tunnel stays
@@ -1296,6 +1535,8 @@ def main():
         colour, kind, lanes, gauge, ballast, tracks = wy["colour"], wy["kind"], wy["lanes"], wy["gauge"], wy["ballast"], wy["tracks"]
         if not w["tunnel"]:
             prof = ground_under(pts, prof, width * 0.5, terrain)
+        if w.get("has_z") and w.get("elevated"):
+            stats["surveyed_bridges"] += 1
         jitter = (w["id"] % 5) * 0.003
         road_lift = ROAD_LIFT_M - CLASS_DROP_M.get(w["cls"], 0.0) + jitter
         ballast_lift = RUNTIME_DROP_M + BALLAST_LIFT_M + jitter
@@ -1324,7 +1565,9 @@ def main():
         if not w.get("design"):
             # the way's source geometry for the scenery editor's Pick tool (a
             # sidecar per tile; the same way may appear in several tiles)
+            tag_w = parse_num(w.get("width"), 0)
             rec = {"id": w["id"], "kind": w["kind"], "cls": w["cls"], "lanes": lanes or 0, "oneway": bool(w["oneway"]),
+                   "width": tag_w if 3.0 <= tag_w <= 60.0 else 0,
                    "gauge": int(round(gauge * 1000)) if gauge else 0, "tracks": tracks or 0,
                    "bridge": bool(w["bridge"]), "tunnel": bool(w["tunnel"]),
                    "pts": [[round(e, 1), round(n, 1)] for e, n in pts[::2]] + ([[round(pts[-1][0], 1), round(pts[-1][1], 1)]] if len(pts) % 2 == 0 else [])}
@@ -1339,6 +1582,7 @@ def main():
             xz = [(CONV_E - e, n - CONV_N) for e, n in seg]
             s = along(xz)
             buf = tiles[k]
+            buf.current_way = 0 if w.get("design") else int(w["id"])
             cu = tuple(int(c * 255) for c in (colour if w["kind"] == "road" else (0.5, 0.48, 0.45)))
             if w["kind"] == "road":
                 buf.ribbon(xz, [h + road_lift for h in seg_h], width, cu, kind, 0.0, s, float(lanes),
@@ -1396,6 +1640,7 @@ def main():
             k = (int(math.floor(ce / TILE_M)) * TILE_M, int(math.floor(cn / TILE_M)) * TILE_M)
             colour = ROAD_CLASSES[j["cls"]][1] if j["cls"] in ROAD_CLASSES else (0.34, 0.34, 0.35)
             cu = tuple(int(c * 255) for c in colour)
+            tiles[k].current_way = 0
             tiles[k].fan((CONV_E - ce, cn - CONV_N), [(CONV_E - e, n - CONV_N) for e, n in j["poly"]], y, cu, KIND_JUNCTION)
             stats["junctions"] += 1
         # areas: flat patches on the highest ground (water on the lowest), buildings as roof + walls
@@ -1408,6 +1653,7 @@ def main():
             cn = sum(p[1] for p in poly) / len(poly)
             k = (int(math.floor(ce / TILE_M)) * TILE_M, int(math.floor(cn / TILE_M)) * TILE_M)
             xz = [(CONV_E - e, n - CONV_N) for e, n in poly]
+            tiles[k].current_way = 0
             if typ == "building":
                 top = max(hs) + hb + RUNTIME_DROP_M
                 tiles[k].polygon(xz, top, (128, 128, 128), KIND_ROOF)
@@ -1422,7 +1668,7 @@ def main():
         return
     out_dir.mkdir(parents=True, exist_ok=True)
     manifest = {"schema_version": 1, "region": args.region, "built": time.strftime("%Y-%m-%d"),
-                "source": "OpenStreetMap contributors (ODbL 1.0) via Geofabrik, build_world_roads.py",
+                "source": ("swisstopo swissTLM3D (open data), build_world_roads.py" if args.source == "tlm" else "OpenStreetMap contributors (ODbL 1.0) via Geofabrik, build_world_roads.py"),
                 "conversion_origin_e": CONV_E, "conversion_origin_n": CONV_N,
                 "elevation_baked": True, "shader": "roads", "tile_size_m": TILE_M, "tiles": {}}
     mpath = out_dir / "manifest.json"
@@ -1461,7 +1707,7 @@ def main():
     print(f"roads: {len(tiles)} tiles, {size / 1e6:.1f} MB, road {stats['road_m'] / 1000:.0f} km, rail {stats['rail_m'] / 1000:.0f} km, "
           f"no-terrain ways {stats['no_terrain']}; bridges lifted {stats['bridges_lifted']} over {stats['bridge_crossings']} crossings, "
           f"ramps {stats['ramps']}, tunnels {stats['tunnels']} (+{stats['underpasses']} short ones at grade); "
-          f"designs {len(designs)} (junctions {stats['junctions']}, OSM ways cut {stats['osm_ways_cut']}, replaced by id {stats['osm_ways_replaced']}, plateaus {stats['plateaus']} = {stats['flatten_px']} px, areas {stats['areas']}, piers {stats['piers']}); corridor: {corridor_px} px in {n_terrain} terrain tiles -> {out_dir}")
+          f"surveyed heights {stats['ways_with_heights']} ways, surveyed bridges {stats['surveyed_bridges']}; designs {len(designs)} (junctions {stats['junctions']}, OSM ways cut {stats['osm_ways_cut']}, replaced by id {stats['osm_ways_replaced']}, plateaus {stats['plateaus']} = {stats['flatten_px']} px, areas {stats['areas']}, piers {stats['piers']}); corridor: {corridor_px} px in {n_terrain} terrain tiles -> {out_dir}")
 
 
 if __name__ == "__main__":
