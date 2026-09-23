@@ -233,9 +233,13 @@ func _install_sky_material() -> void:
 ## has normals facing away from the sun — a normal-independent floor keeps those
 ## surfaces readable instead of rendering black. The background stays on the sky
 ## shader (which renders space black + the atmospheric limb by itself).
+## True while the scenery editor is on: no fog at all, whatever the weather.
+var clear_air := false
+
+
 func _apply_altitude(alt: float, day: float, space: float = 0.0) -> void:
 	var t := clampf(HAZE_LAYER_M / maxf(alt, HAZE_LAYER_M), 0.0, 1.0)
-	if alt >= FOG_ZERO_ALT_M:
+	if alt >= FOG_ZERO_ALT_M or clear_air:
 		t = 0.0
 	environment.fog_density = _base_fog_density * t
 	environment.fog_enabled = t > 0.0

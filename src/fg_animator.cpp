@@ -339,6 +339,7 @@ namespace jsbgodot
             return node_index[key];
         NodeState s;
         s.node = n;
+        s.node_id = n->get_instance_id();
         s.base = n->get_transform();
         // accumulate the un-animated transforms from the model root down to the parent
         Transform3D pf;
@@ -384,8 +385,10 @@ namespace jsbgodot
 
     void FGAnimator::clear()
     {
+        // the previous model may already be freed (aircraft swap): look the
+        // node up by its ObjectID, never touch the pointer first
         for (int i = 0; i < node_states.size(); i++)
-            if (node_states[i].node != nullptr && ObjectDB::get_instance(node_states[i].node->get_instance_id()) != nullptr)
+            if (node_states[i].node != nullptr && ObjectDB::get_instance(ObjectID(node_states[i].node_id)) != nullptr)
             {
                 node_states[i].node->set_transform(node_states[i].base);
                 node_states[i].node->set_visible(true);

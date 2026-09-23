@@ -55,6 +55,7 @@ namespace jsbgodot
         void set_orbit_distance_max(double distance);
         // Jump the orbit/chase camera to a distance (clamped next frame): per-aircraft default from aircraft.cfg [camera].
         void set_orbit_distance(double distance);
+        void set_orbit_yaw(double deg);
         void set_orbit_pitch_min(double deg);
         void set_orbit_pitch_max(double deg);
         void set_chase_smooth(double smooth);

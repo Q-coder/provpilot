@@ -22,6 +22,7 @@ void CameraRig::_bind_methods()
 	ClassDB::bind_method(D_METHOD("set_orbit_distance_min", "distance"), &CameraRig::set_orbit_distance_min);
 	ClassDB::bind_method(D_METHOD("set_orbit_distance_max", "distance"), &CameraRig::set_orbit_distance_max);
 	ClassDB::bind_method(D_METHOD("set_orbit_distance", "distance"), &CameraRig::set_orbit_distance);
+	ClassDB::bind_method(D_METHOD("set_orbit_yaw", "deg"), &CameraRig::set_orbit_yaw);
 	ClassDB::bind_method(D_METHOD("set_orbit_pitch_min", "deg"), &CameraRig::set_orbit_pitch_min);
 	ClassDB::bind_method(D_METHOD("set_orbit_pitch_max", "deg"), &CameraRig::set_orbit_pitch_max);
 	ClassDB::bind_method(D_METHOD("set_chase_smooth", "smooth"), &CameraRig::set_chase_smooth);
@@ -62,6 +63,8 @@ void CameraRig::set_orbit_speed(double deg_per_sec) { orbit_speed = deg_per_sec;
 void CameraRig::set_orbit_zoom_speed(double units_per_sec) { orbit_zoom_speed = units_per_sec; }
 void CameraRig::set_orbit_distance_min(double distance) { orbit_distance_min = distance; }
 void CameraRig::set_orbit_distance_max(double distance) { orbit_distance_max = distance; }
+void CameraRig::set_orbit_yaw(double deg) { orbit_yaw = deg; }
+
 void CameraRig::set_orbit_distance(double distance)
 {
 	orbit_distance = distance;

@@ -33,6 +33,8 @@ void ControlSurfaces::_bind_methods()
 	ClassDB::bind_method(D_METHOD("register_front_wheel", "node"), &ControlSurfaces::register_front_wheel);
 	ClassDB::bind_method(D_METHOD("register_propeller", "node"), &ControlSurfaces::register_propeller);
 	ClassDB::bind_method(D_METHOD("register_propeller_cone", "node"), &ControlSurfaces::register_propeller_cone);
+	ClassDB::bind_method(D_METHOD("set_propeller_cone_always_visible", "always"), &ControlSurfaces::set_propeller_cone_always_visible);
+	ClassDB::bind_method(D_METHOD("set_propeller_cone_spins", "spins"), &ControlSurfaces::set_propeller_cone_spins);
 	ClassDB::bind_method(D_METHOD("register_propeller_blur_disc", "disc", "material"), &ControlSurfaces::register_propeller_blur_disc);
 	ClassDB::bind_method(D_METHOD("register_aileron_left", "node"), &ControlSurfaces::register_aileron_left);
 	ClassDB::bind_method(D_METHOD("register_aileron_right", "node"), &ControlSurfaces::register_aileron_right);
@@ -130,8 +132,14 @@ void ControlSurfaces::register_propeller_cone(Node3D *node)
 {
 	propeller_cone_node = node;
 	if (node)
-		node->set_visible(false); // Start hidden, like the historical code
+	{
+		propeller_cone_base = node->get_transform();
+		node->set_visible(propeller_cone_always_visible); // a swap-in cone starts hidden
+	}
 }
+
+void ControlSurfaces::set_propeller_cone_always_visible(bool always) { propeller_cone_always_visible = always; }
+void ControlSurfaces::set_propeller_cone_spins(bool spins) { propeller_cone_spins = spins; }
 
 void ControlSurfaces::register_propeller_blur_disc(MeshInstance3D *disc, Material *material)
 {
@@ -307,15 +315,20 @@ void ControlSurfaces::update(Object *jsb, double delta)
 		propeller_node->rotate_object_local(propeller_spin_axis,
 				Math::deg_to_rad(propeller_rotation));
 
+		// Above hide_blades_rpm the blades give way to the blur disc; a
+		// separate spinner-only mesh (PC-7) shows instead of the blade mesh
+		// meanwhile. A model whose spinner is part of the fuselage (C172)
+		// needs no cone.
+		bool blades_visible = propeller_hide_blades_rpm <= 0.0 || visual_rpm < propeller_hide_blades_rpm;
+		propeller_node->set_visible(blades_visible);
 		if (propeller_cone_node)
 		{
-			bool blades_visible = visual_rpm < propeller_hide_blades_rpm;
-			propeller_node->set_visible(blades_visible);
-			propeller_cone_node->set_visible(!blades_visible);
-		}
-		else
-		{
-			propeller_node->set_visible(true);
+			propeller_cone_node->set_visible(propeller_cone_always_visible || !blades_visible);
+			if (propeller_cone_spins)
+			{
+				propeller_cone_node->set_transform(propeller_cone_base);
+				propeller_cone_node->rotate_object_local(propeller_spin_axis, Math::deg_to_rad(propeller_rotation));
+			}
 		}
 
 		if (propeller_blur_disc)
@@ -444,8 +457,10 @@ void ControlSurfaces::update_gear(const JSBGodot *fdm, double delta)
 		return;
 	}
 
-	// Manual mode: rotate wheel + strut rigidly about the shared pivot.
-	for (const GearLeg &leg : gear_legs)
+	// Manual mode: rotate wheel + strut rigidly about the shared pivot; a
+	// rolling wheel spins about its axle underneath (fixed gear too).
+	double roll_delta = wheel_roll_delta(fdm, delta);
+	for (GearLeg &leg : gear_legs)
 	{
 		Basis rot(leg.axis, Math::deg_to_rad(leg.retract_deg * retract_frac));
 		Vector3 pivot = leg.pivot;
@@ -457,7 +472,13 @@ void ControlSurfaces::update_gear(const JSBGodot *fdm, double delta)
 
 		if (leg.wheel)
 		{
-			Transform3D st = apply_steer(leg.wheel_base, steer_basis,
+			Transform3D wb = leg.wheel_base;
+			if (leg.roll)
+			{
+				leg.spin = Math::wrapf(leg.spin + roll_delta / leg.radius, -Math_TAU, Math_TAU);
+				wb.basis = wb.basis * Basis(leg.roll_axis, (real_t)leg.spin);
+			}
+			Transform3D st = apply_steer(wb, steer_basis,
 					leg.steer_pivot, leg.steer);
 			leg.wheel->set_transform(Transform3D(rot * st.basis,
 					pivot + rot.xform(st.origin - pivot)));

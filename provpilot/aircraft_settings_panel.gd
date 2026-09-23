@@ -177,7 +177,7 @@ func refresh() -> void:
 		_cg_limits.text = "Limits: %.0f – %.0f %% MAC" % [cfg.get_float("performance", "cg_fwd_pct_mac", 0.0), cfg.get_float("performance", "cg_aft_pct_mac", 0.0)]
 	else:
 		_cg_limits.text = "% MAC estimates the aerodynamic centre at 25 % of the mean chord; no limits given for this aircraft."
-	_update_live()
+	_update_live(true)
 
 
 static func _fmt(v: float) -> String:
@@ -226,8 +226,9 @@ static func apply_fuel(jsb, pct: float) -> void:
 		jsb.set_tank_contents_lbs(i, jsb.get_tank_capacity_lbs(i) * clampf(pct, 0.0, 100.0) / 100.0)
 
 
-func _update_live() -> void:
-	if not is_visible_in_tree():
+func _update_live(force: bool = false) -> void:
+	# the timer skips hidden tabs; a refresh (screen opening) always fills the label
+	if not force and not is_visible_in_tree():
 		return
 	var jsb = _fdm_if_flown()
 	if jsb == null or not jsb.has_method("get_cg_info"):

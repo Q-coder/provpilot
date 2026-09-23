@@ -71,7 +71,10 @@ animation of the model with values from `fg_bridge.gd` (see
 authored in metres: the AC frame draws models at 0.2 m per unit, so `5.0`
 gives real size. Generic FlightGear models the package references
 (`/Aircraft/Instruments-3d/...`) come from `third_party/fgdata`; see
-`docs/INSTRUMENTS.md` for how instruments are built and added.
+`docs/INSTRUMENTS.md` for how instruments are built and added. A
+non-FlightGear model (the Cessna) gets instruments the same way: a
+`model/panel.xml` manifest built into the glb by `scripts/fg_panel_build.py`
+and the resulting `animations.json` under `fg_animations`.
 
 ### `[camera]`
 Cockpit camera (Camera1) placement, in AC‑node‑local meters. Omit the whole
@@ -118,10 +121,16 @@ fades in on top above `blur_start_rpm`, so hiding blades never leaves a hole.
 Interactive cockpit levers/switches, located by `find_child` under
 `model.root_node`. Each `<name>` has a `<name>_fallback` (the original,
 unrenamed mesh node) — e.g. `throttle` / `throttle_fallback`.
+`magneto_step_deg` (default 30): degrees per magneto position about the
+key's local Z; negative when the model's key turns the other way (Cessna).
+`magneto_rest_position` (default 3 = BOTH): the position the mesh's rest
+pose shows (the Cessna's key rests at OFF, 0).
 
 ### `[gear]`
 Retractable landing gear (toggled with **G**; JSBSim drives drag + weight‑on‑
-wheels from `gear/gear-pos-norm`).
+wheels from `gear/gear-pos-norm`). Fixed gear (`retractable false`) may list
+`legs` as well, with `retract_deg 0`, to get rolling (`<leg>_roll`) and
+steering wheels (the Cessna's tyres, split out by `scripts/fg_panel_build.py`).
 - `retractable` (bool), `retract_seconds`, `legs "nose, left, right"`.
 - Per leg `<leg>_`: `wheel`, `strut`, `pivot "x,y,z"`, `axis x|y|z`, `retract_deg`.
   Each leg’s wheel + strut rotate **rigidly about a shared pivot** because the
@@ -158,7 +167,7 @@ centre and follows the node, so lights on animated gear retract with it.
 | `strobe` | white double flash (1.2 s) | airborne (no weight on wheels) |
 | `beacon` | red flash (1 Hz) | always |
 | `landing`, `taxi` | white sprite + `SpotLight3D` on the ground | **L** toggles both; out while the gear is retracted |
-| `<kind>_pos` | `"x, y, z"` in model-root units | alternative for models without a lens mesh |
+| `<kind>_pos` | `"x, y, z"` in model-root units | alternative for models without a lens mesh (the Cessna's cowl lights) |
 | `<kind>_anchor` | animated part the lens rides on | for lens meshes without animation tracks (the A-10 nose-gear lights): the lens is reparented under the part with the offset from the clip pose in which they coincide |
 | `landing_pitch_deg` | spot aim below the aircraft's forward axis (default 5) | |
 | `landing_range_m`, `taxi_range_m` | spot ranges (300 / 90) | |
@@ -191,6 +200,17 @@ the aerodynamic centre taken at 25 % MAC, weight).
 
 ### `[sound]`
 `engine` (ogg path) and RPM‑mapped `pitch_*` / volume tuning.
+
+### `[propeller]`
+`blur_start_rpm` shows the translucent disc, `hide_blades_rpm` hides the
+blade mesh above that rpm (0 keeps the blades). `[animation] propeller_cone`
+names a spinner cone: by default a swap-in mesh shown only while the blades
+hide (PC-7, whose blade mesh includes its spinner); with
+`cone_always_visible true` it is a separate part shown at every rpm, and
+`cone_spins true` turns it with the blades about `spin_axis` (its node
+origin must sit on the axis — the Cessna's `Spinner_Pivot` empty from
+`scripts/fg_panel_build.py`). `disc_radius_m`, `spin_axis`, `disc_offset`
+tune the disc.
 
 ## Flap pitch “feel”
 

@@ -56,6 +56,7 @@ var debug_all_on := false         # probes: hold strobes and beacon lit for scre
 var nav_enabled := true           # cockpit switches (FlightGear controls) gate these
 var strobe_enabled := true
 var beacon_enabled := true
+var taxi_enabled := true          # taxi light switch (the L key / landing switch still gates it)
 var powered := true               # electrical bus (FGBridge): nothing lights without it
 var _pair_meshes := true
 
@@ -319,7 +320,7 @@ func _apply_states() -> void:
 			"beacon":
 				on = bright if beacon_on and beacon_enabled else 0.0
 			"landing", "taxi":
-				on = 1.0 if landing_on and powered else 0.0
+				on = 1.0 if landing_on and powered and (f.kind == "landing" or taxi_enabled) else 0.0
 		f.mat.set_shader_parameter("on", on)
 		if f.on_mesh != null and is_instance_valid(f.on_mesh):
 			f.on_mesh.visible = on > 0.01

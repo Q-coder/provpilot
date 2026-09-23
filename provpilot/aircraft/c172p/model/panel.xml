@@ -1,0 +1,105 @@
+<?xml version="1.0"?>
+<!-- ProvPilot panel manifest for the Cessna 172P (docs/INSTRUMENTS.md).
+     Generic FlightGear instruments (third_party/fgdata) placed into the
+     holes of the Sketchfab panel. Offsets are FlightGear model-frame metres
+     relative to the aircraft origin: x-m aft (Blender +Y), y-m right
+     (Blender -X), z-m up. The panel face sits at Blender y = -0.785 and
+     leans back 3.5 deg; the pilot side is Blender +X (y-m negative).
+     <scale> is a ProvPilot extension (uniform, fits a smaller hole).
+     Built by scripts/fg_panel_build.py. -->
+<PropertyList>
+  <!-- top row -->
+  <model><name>clock</name><path>Aircraft/Instruments-3d/clock/clock.xml</path>
+    <offsets><x-m>-0.790</x-m><y-m>-0.444</y-m><z-m>1.742</z-m><pitch-deg>3.5</pitch-deg></offsets></model>
+  <model><name>asi</name><path>Aircraft/Instruments-3d/asi/asi.xml</path>
+    <offsets><x-m>-0.790</x-m><y-m>-0.358</y-m><z-m>1.754</z-m><pitch-deg>3.5</pitch-deg></offsets></model>
+  <model><name>ai</name><path>Aircraft/Instruments-3d/ai/ai.xml</path>
+    <offsets><x-m>-0.790</x-m><y-m>-0.256</y-m><z-m>1.755</z-m><pitch-deg>3.5</pitch-deg></offsets></model>
+  <model><name>altimeter</name><path>Aircraft/Instruments-3d/altimeter/altimeter.xml</path>
+    <offsets><x-m>-0.790</x-m><y-m>-0.153</y-m><z-m>1.756</z-m><pitch-deg>3.5</pitch-deg></offsets></model>
+  <!-- middle row -->
+  <model><name>tc</name><path>Aircraft/Instruments-3d/tc/tc.xml</path>
+    <offsets><x-m>-0.785</x-m><y-m>-0.356</y-m><z-m>1.649</z-m><pitch-deg>3.5</pitch-deg></offsets></model>
+  <model><name>hi</name><path>Aircraft/Instruments-3d/hi/hi.xml</path>
+    <offsets><x-m>-0.785</x-m><y-m>-0.256</y-m><z-m>1.650</z-m><pitch-deg>3.5</pitch-deg></offsets></model>
+  <model><name>vsi</name><path>Aircraft/Instruments-3d/vsi/vsi.xml</path>
+    <offsets><x-m>-0.785</x-m><y-m>-0.152</y-m><z-m>1.651</z-m><pitch-deg>3.5</pitch-deg></offsets></model>
+  <!-- bottom row -->
+  <model><name>tach</name><path>Aircraft/Instruments-3d/tach/tach.xml</path>
+    <offsets><x-m>-0.778</x-m><y-m>-0.357</y-m><z-m>1.541</z-m><pitch-deg>3.5</pitch-deg></offsets></model>
+  <!-- blanking plates (ProvPilot extension): black discs just behind every
+       hole, so the cowling does not show through gaps around an instrument
+       or through the holes that have no instrument yet: 10 mm forward of
+       the instrument face or the panel plate (x-m more negative = further
+       from the pilot), 12 mm wider than the hole (parallax). Same frame as the offsets; radius in
+       metres. -->
+  <blank><offsets><x-m>-0.800</x-m><y-m>-0.444</y-m><z-m>1.742</z-m></offsets><radius-m>0.054</radius-m></blank>
+  <blank><offsets><x-m>-0.800</x-m><y-m>-0.358</y-m><z-m>1.754</z-m></offsets><radius-m>0.054</radius-m></blank>
+  <blank><offsets><x-m>-0.800</x-m><y-m>-0.256</y-m><z-m>1.755</z-m></offsets><radius-m>0.054</radius-m></blank>
+  <blank><offsets><x-m>-0.800</x-m><y-m>-0.153</y-m><z-m>1.756</z-m></offsets><radius-m>0.054</radius-m></blank>
+  <blank><offsets><x-m>-0.795</x-m><y-m>-0.356</y-m><z-m>1.649</z-m></offsets><radius-m>0.054</radius-m></blank>
+  <blank><offsets><x-m>-0.795</x-m><y-m>-0.256</y-m><z-m>1.650</z-m></offsets><radius-m>0.054</radius-m></blank>
+  <blank><offsets><x-m>-0.795</x-m><y-m>-0.152</y-m><z-m>1.651</z-m></offsets><radius-m>0.054</radius-m></blank>
+  <blank><offsets><x-m>-0.788</x-m><y-m>-0.357</y-m><z-m>1.541</z-m></offsets><radius-m>0.054</radius-m></blank>
+  <blank><offsets><x-m>-0.795</x-m><y-m>-0.051</y-m><z-m>1.757</z-m></offsets><radius-m>0.058</radius-m></blank>
+  <blank><offsets><x-m>-0.789</x-m><y-m>-0.053</y-m><z-m>1.653</z-m></offsets><radius-m>0.058</radius-m></blank>
+  <blank><offsets><x-m>-0.781</x-m><y-m>-0.474</y-m><z-m>1.527</z-m></offsets><radius-m>0.037</radius-m></blank>
+  <blank><offsets><x-m>-0.782</x-m><y-m>-0.153</y-m><z-m>1.544</z-m></offsets><radius-m>0.048</radius-m></blank>
+  <blank><offsets><x-m>-0.782</x-m><y-m>-0.051</y-m><z-m>1.543</z-m></offsets><radius-m>0.050</radius-m></blank>
+  <blank><offsets><x-m>-0.783</x-m><y-m>-0.254</y-m><z-m>1.557</z-m></offsets><radius-m>0.037</radius-m></blank>
+  <blank><offsets><x-m>-0.791</x-m><y-m>-0.249</y-m><z-m>1.371</z-m></offsets><radius-m>0.062</radius-m></blank>
+  <blank><offsets><x-m>-0.794</x-m><y-m>0.284</y-m><z-m>1.757</z-m></offsets><radius-m>0.058</radius-m></blank>
+  <blank><offsets><x-m>-0.794</x-m><y-m>0.390</y-m><z-m>1.756</z-m></offsets><radius-m>0.058</radius-m></blank>
+  <blank><offsets><x-m>-0.786</x-m><y-m>0.276</y-m><z-m>1.656</z-m></offsets><radius-m>0.053</radius-m></blank>
+  <blank><offsets><x-m>-0.787</x-m><y-m>0.360</y-m><z-m>1.413</z-m></offsets><radius-m>0.062</radius-m></blank>
+  <blank><offsets><x-m>-0.787</x-m><y-m>0.550</y-m><z-m>1.413</z-m></offsets><radius-m>0.062</radius-m></blank>
+  <!-- Model parts animated by name (ProvPilot): the runtime conjugates these
+       by the part's own parent chain, so axes and centres are this model's
+       Blender coordinates (+X left, +Y aft, +Z up).
+       Yokes (fg_panel_build.py names them Yoke_L / Yoke_R, shaft on x 0.255 /
+       -0.274, z 1.551): turn with the aileron, slide with the elevator, and
+       hide together when a shaft cone is clicked. -->
+  <animation><type>select</type><object-name>Yoke_L</object-name><object-name>Yoke_R</object-name>
+    <condition><property>sim/model/c172p/yokes-visible</property></condition></animation>
+  <animation><type>rotate</type><object-name>Yoke_L</object-name><property>controls/flight/aileron</property><factor>60</factor>
+    <center><x-m>0.255</x-m><y-m>-0.65</y-m><z-m>1.551</z-m></center><axis><x>0</x><y>-1</y><z>0</z></axis></animation>
+  <animation><type>rotate</type><object-name>Yoke_R</object-name><property>controls/flight/aileron</property><factor>60</factor>
+    <center><x-m>-0.274</x-m><y-m>-0.65</y-m><z-m>1.551</z-m></center><axis><x>0</x><y>-1</y><z>0</z></axis></animation>
+  <!-- JSBSim's elevator command is +1 nose down (yoke pushed), so pulling is negative -->
+  <animation><type>translate</type><object-name>Yoke_L</object-name><object-name>Yoke_R</object-name><property>controls/flight/elevator</property>
+    <factor>-0.06</factor><axis><x>0</x><y>1</y><z>0</z></axis></animation>
+  <animation><type>pick</type><object-name>Yoke_L_Cone</object-name><object-name>Yoke_R_Cone</object-name>
+    <action><button>0</button><binding><command>property-toggle</command><property>sim/model/c172p/yokes-visible</property></binding></action></animation>
+  <!-- rocker switches (split out of the panel base and the master rocker by
+       fg_panel_build.py, pivot = their origin, modelled in the off pose): a
+       click toggles the property and the rocker tilts 20 deg about X the
+       other way while on. ALT / BAT feed the
+       electrical model (fg_bridge.gd): with both off nothing is powered. -->
+  <animation><type>pick</type><object-name>Switch_TaxiLt</object-name>
+    <action><button>0</button><binding><command>property-toggle</command><property>controls/lighting/taxi-light</property></binding></action></animation>
+  <animation><type>pick</type><object-name>Switch_LandingLt</object-name>
+    <action><button>0</button><binding><command>property-toggle</command><property>controls/lighting/landing-lights</property></binding></action></animation>
+  <animation><type>pick</type><object-name>Switch_NavLt</object-name>
+    <action><button>0</button><binding><command>property-toggle</command><property>controls/lighting/nav-lights</property></binding></action></animation>
+  <animation><type>pick</type><object-name>Switch_BeaconLt</object-name>
+    <action><button>0</button><binding><command>property-toggle</command><property>controls/lighting/beacon</property></binding></action></animation>
+  <animation><type>pick</type><object-name>Switch_StrobeLt</object-name>
+    <action><button>0</button><binding><command>property-toggle</command><property>controls/lighting/strobe</property></binding></action></animation>
+  <animation><type>pick</type><object-name>Switch_Alt</object-name>
+    <action><button>0</button><binding><command>property-toggle</command><property>controls/electric/engine/generator</property></binding></action></animation>
+  <animation><type>pick</type><object-name>Switch_PitotHt</object-name>
+    <action><button>0</button><binding><command>property-toggle</command><property>controls/anti-ice/pitot-heat</property></binding></action></animation>
+  <animation><type>pick</type><object-name>Switch_LandingPulse</object-name>
+    <action><button>0</button><binding><command>property-toggle</command><property>controls/lighting/landing-pulse</property></binding></action></animation>
+  <animation><type>rotate</type><object-name>Switch_PitotHt</object-name><property>controls/anti-ice/pitot-heat</property><factor>-20</factor><axis><x>1</x><y>0</y><z>0</z></axis></animation>
+  <animation><type>rotate</type><object-name>Switch_LandingPulse</object-name><property>controls/lighting/landing-pulse</property><factor>-20</factor><axis><x>1</x><y>0</y><z>0</z></axis></animation>
+  <animation><type>pick</type><object-name>Switch_Bat</object-name>
+    <action><button>0</button><binding><command>property-toggle</command><property>controls/electric/battery-switch</property></binding></action></animation>
+  <animation><type>rotate</type><object-name>Switch_TaxiLt</object-name><property>controls/lighting/taxi-light</property><factor>-20</factor><axis><x>1</x><y>0</y><z>0</z></axis></animation>
+  <animation><type>rotate</type><object-name>Switch_LandingLt</object-name><property>controls/lighting/landing-lights</property><factor>-20</factor><axis><x>1</x><y>0</y><z>0</z></axis></animation>
+  <animation><type>rotate</type><object-name>Switch_NavLt</object-name><property>controls/lighting/nav-lights</property><factor>-20</factor><axis><x>1</x><y>0</y><z>0</z></axis></animation>
+  <animation><type>rotate</type><object-name>Switch_BeaconLt</object-name><property>controls/lighting/beacon</property><factor>-20</factor><axis><x>1</x><y>0</y><z>0</z></axis></animation>
+  <animation><type>rotate</type><object-name>Switch_StrobeLt</object-name><property>controls/lighting/strobe</property><factor>-20</factor><axis><x>1</x><y>0</y><z>0</z></axis></animation>
+  <animation><type>rotate</type><object-name>Switch_Alt</object-name><property>controls/electric/engine/generator</property><factor>-20</factor><axis><x>1</x><y>0</y><z>0</z></axis></animation>
+  <animation><type>rotate</type><object-name>Switch_Bat</object-name><property>controls/electric/battery-switch</property><factor>-20</factor><axis><x>1</x><y>0</y><z>0</z></axis></animation>
+</PropertyList>

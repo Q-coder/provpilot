@@ -851,26 +851,6 @@
                       </table>
                 </product>
             </function>
-            <function name="aero/coefficient/Cmdf_provpilot_fx">
-                <description>ProvPilot: exaggerated nose-up pitch when flaps extend
-                (and nose-down when they retract) so the gear/flap change is
-                clearly felt. This is a deliberate non-physical arcade boost on
-                top of the real Cmdf above; positive Cm = nose-up.</description>
-                <product>
-                    <property>aero/qbar-psf</property>
-                    <property>metrics/Sw-sqft</property>
-                    <property>metrics/cbarw-ft</property>
-                      <table>
-                          <independentVar>fcs/flap-pos-deg</independentVar>
-                          <tableData>
-                              0.0000	0.0000
-                              10.0000	0.2000
-                              20.0000	0.2900
-                              30.0000	0.3300
-                          </tableData>
-                      </table>
-                </product>
-            </function>
         </axis>
 
         <axis name="YAW">

@@ -99,6 +99,8 @@ namespace jsbgodot
         // Optional spinner cone shown in place of the blades at high RPM;
         // starts hidden, like the historical code.
         void register_propeller_cone(Node3D *node);
+        void set_propeller_cone_always_visible(bool always);
+        void set_propeller_cone_spins(bool spins);
         // Blur disc mesh + its material (shader "rpm" parameter is driven per
         // frame when the material is a ShaderMaterial).
         void register_propeller_blur_disc(MeshInstance3D *disc, Material *material);
@@ -167,6 +169,9 @@ namespace jsbgodot
         Node3D *propeller_node = nullptr;
         Transform3D propeller_base;
         Node3D *propeller_cone_node = nullptr;
+        Transform3D propeller_cone_base;
+        bool propeller_cone_always_visible = false; // C172: the spinner is its own part, shown at every rpm
+        bool propeller_cone_spins = false;          // spin the cone with the blades (its origin must be on the axis)
         MeshInstance3D *propeller_blur_disc = nullptr;
         Material *propeller_blur_material = nullptr;
         Node3D *left_aileron_node = nullptr;

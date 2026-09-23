@@ -72,6 +72,41 @@ func setup(manifest_path: String, model_root: Node, animator) -> int:
 
 
 ## The control under the screen position, or null.
+## Shift+Ctrl+M: translucent boxes on every clickable part's sense area
+## (its mesh bounds, following the part's animation).
+var debug := false
+var _debug_boxes: Array = []
+
+func set_debug(on: bool) -> void:
+	debug = on
+	for b in _debug_boxes:
+		if is_instance_valid(b):
+			b.queue_free()
+	_debug_boxes.clear()
+	if not on:
+		return
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.2, 1.0, 0.4, 0.35)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.no_depth_test = true
+	for it in _items:
+		var n: MeshInstance3D = it.node
+		if not is_instance_valid(n):
+			continue
+		var box := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		var aabb: AABB = it.aabb
+		bm.size = Vector3(maxf(aabb.size.x, 0.002), maxf(aabb.size.y, 0.002), maxf(aabb.size.z, 0.002))
+		box.mesh = bm
+		box.material_override = mat
+		box.position = aabb.get_center()
+		box.name = "HotspotDebug"
+		n.add_child(box)
+		_debug_boxes.append(box)
+
+
 func hit(camera: Camera3D, screen_pos: Vector2) -> Dictionary:
 	if camera == null:
 		return {}
@@ -90,10 +125,38 @@ func hit(camera: Camera3D, screen_pos: Vector2) -> Dictionary:
 		var p = box.intersects_ray(lf, ld)
 		if p == null:
 			continue
+		# the bounds only coarsely select: neighbouring parts (the ALT / BAT
+		# halves of a rocker) overlap in depth, so take the nearest triangle
+		# of the mesh itself; a mesh without faces keeps the box hit
+		var hit_p = _nearest_face_hit(it, lf, ld)
+		if hit_p != null:
+			p = hit_p
 		var d: float = (n.global_transform * p - from).length()
 		if d < best_d and d < 4.0:
 			best_d = d
 			best = it
+	return best
+
+
+## Nearest ray / triangle hit on the part's mesh (local space), or null.
+func _nearest_face_hit(it: Dictionary, lf: Vector3, ld: Vector3):
+	if not it.has("faces"):
+		var n: MeshInstance3D = it.node
+		it["faces"] = n.mesh.get_faces() if is_instance_valid(n) and n.mesh != null else PackedVector3Array()
+	var faces: PackedVector3Array = it["faces"]
+	if faces.is_empty():
+		return null
+	var best = null
+	var best_d := INF
+	for i in range(0, faces.size() - 2, 3):
+		var hp = Geometry3D.ray_intersects_triangle(lf, ld, faces[i], faces[i + 1], faces[i + 2])
+		if hp == null:
+			hp = Geometry3D.ray_intersects_triangle(lf, ld, faces[i], faces[i + 2], faces[i + 1])
+		if hp != null:
+			var d: float = (hp - lf).length()
+			if d < best_d:
+				best_d = d
+				best = hp
 	return best
 
 

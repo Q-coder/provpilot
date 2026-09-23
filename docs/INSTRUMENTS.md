@@ -81,45 +81,95 @@ Neither model can be animated in place; instruments have to be *added* as
 sub-models placed over (or replacing) the painted panel — exactly what the
 A-10 does with its own gauges.
 
-## 4. Plan: a generic instrument panel for any aircraft
+## 4. The Cessna 172 panel (done 2026-09-22)
 
-1. **Panel manifest per aircraft** — a small FlightGear-style XML in the
-   aircraft folder (`aircraft/c172p/panel/panel.xml`) that lists sub-models
-   and offsets, nothing else:
-   ```xml
-   <PropertyList>
-     <model><path>Aircraft/Instruments-3d/altimeter/altimeter.xml</path>
-       <offsets><x-m>..</x-m><y-m>..</y-m><z-m>..</z-m></offsets></model>
-     <model><path>Aircraft/Instruments-3d/airspeed/airspeed.xml</path> ... </model>
-   </PropertyList>
-   ```
-   Offsets in the model's frame (FlightGear x aft, y right, z up), measured
-   once in Blender against the painted panel.
-2. **Build** with the existing script (generalised from `fg_a10_build.py`:
-   `--src` any package, the panel XML as the root) → `panel.glb` +
-   `animations.json`. The Cessna's own glb stays as it is; the panel is a
-   second model loaded under the same root (`[model] fg_animations` already
-   loads a manifest for the aircraft's model; a `panel_file` key adds a
-   second glb + manifest under `root_node`).
-3. **Bridge**: already generic. The airspeed, altimeter, VSI, attitude,
-   heading, slip, RPM, fuel and oil properties are filled for every JSBSim
-   aircraft today (the A-10 needed no special cases for these). Engine
-   properties for a piston aircraft (`engines/engine/rpm`, `oil-pressure-psi`,
-   `egt-degf`) need one bridge block reading JSBSim's piston engine, next
-   to the turbine block.
-4. **Controls**: knobs (Kollsman, heading bug, OBS) come free with the
-   instrument's XML through `FGControls` picks.
-5. **Lighting**: fgdata instruments carry `material` animations on
-   `controls/lighting/instruments-norm`, already bridged (panel lighting ×
-   night).
-6. **Cover the painted gauges**: either hide the `Meter_01` mesh
-   (`[model] hide_nodes`) and add a black panel plate in the manifest, or
-   place the 3D instruments 2–3 mm in front of the paint.
+gery removed the painted instrument placeholders from the Sketchfab model in
+Blender (`provpilot/aircraft/c172p/model/C172P_1.blend`, the source of
+truth). The rest is a build step:
 
-Effort: the build-script generalisation and the second-model loader are the
-only new code (a day); each instrument afterwards is a manifest line plus
-Blender placement. The Cessna's six-pack plus RPM/fuel/oil is ~10 lines of
-XML and ~10 vendored fgdata folders.
+1. **Panel manifest** `aircraft/c172p/model/panel.xml`: a FlightGear
+   PropertyList of `<model>` entries (path into `third_party/fgdata`,
+   `<offsets>`, optional ProvPilot `<scale>`). Offsets are FlightGear
+   model-frame metres (x aft, y right, z up) relative to the aircraft
+   origin; the builder puts a `Panel_Root` empty rotated +90° about Z
+   between the FlightGear frame and the Sketchfab model's Blender frame
+   (+X left, +Y aft, +Z up). The hole centres came from the panel mesh's
+   boundary loops (four 8.6 cm holes per row on the pilot side, face at
+   Blender y = −0.785, leaning 3.5°). Layout: clock (scaled 0.78), ASI, AI,
+   altimeter on top; turn coordinator, heading indicator, VSI in the middle;
+   tachometer below.
+2. **Build** `scripts/fg_panel_build.py` (headless Blender): opens the
+   blend, imports each instrument as a `Sub_<tag>` sub-model under
+   `Panel_Root` with the A-10 builder's `import_model` (objects named
+   `<tag>__<object>`), adds the nose-gear steering pivot and the tail light
+   lens, exports the whole scene as `C172P_1.glb` and writes
+   `animations.json` next to it (42 animations, 8 knob picks); it also adds
+   `Spinner_Pivot` on the propeller axis carrying the spinner cone, so the
+   cone spins and stays while the blades give way to the blur disc. Both copies
+   (`provpilot/aircraft/c172p/model`, `aircraft/c172p/model`) must be kept.
+   Two more manifest features: `<blank>` entries (ProvPilot extension) put
+   black discs behind every hole so the cowling never shows through gaps
+   or empty holes, and textured materials whose image has transparent
+   pixels get their alpha linked (the heading indicator's front glass and
+   the turn coordinator's tube were exported opaque otherwise).
+   The builder learned one FlightGear feature on the way: an
+   `<object-name>` may name another animation (`<name>`) to nest its
+   transform group — the attitude indicator rolls its `PitchTranslation`.
+   The record is expanded to that animation's objects and kept outermost.
+3. **Bridge** (`fg_bridge.gd`, generic for every aircraft): heading
+   indicator (`indicated-heading-deg` = heading + the knob's `offset-deg`),
+   attitude indicator pitch / roll, turn coordinator (`indicated-turn-rate`
+   = yaw rate / 3°/s, 1.0 = standard rate), gyro `spin` flags, clock
+   `day-seconds`, piston `engines/engine[0]/rpm` from JSBSim `engine-rpm`,
+   `sim/model/material/instruments/factor` for the instrument lighting
+   (also with fgdata's double-slash spelling), and the electrical model
+   treats a piston alternator as online above 400 rpm.
+4. **aircraft.cfg**: `[model] fg_animations "model/animations.json"` (the
+   normal flip stays on the `Cessna_Exterior_` prefix, so the panel is not
+   flipped); `[animation] front_wheel` points at the `NoseGear_Steer` empty
+   (origin on the strut axis, carries strut + wheel); `[lights]` uses the
+   Sketchfab wingtip lenses (`_025` left, `_026` right), the fin-top lens
+   (`_009`) as the beacon and the built `TailLight_lens`.
+5. **Smoke** `tests/smoke_c172_panel.tscn`: animations and knob picks
+   loaded, every gauge part present, heading card at the heading, altimeter
+   at the altitude, tachometer on its table, airspeed at rest, clock hand
+   moving, pitch card animated, nose wheel turning right with right rudder,
+   six light fixtures.
+
+The panel manifest may also carry its own `<animation>` records for parts
+of the model that are not FlightGear sub-models, named by their Godot
+names; the runtime conjugates them by the part's own parent chain, so their
+axes and centres are the model's Blender coordinates (a rotate without
+`<center>` gets the part's own origin, i.e. the pivot set in Blender; a
+rotate's offset is FlightGear's `<offset-deg>`). Shift+Ctrl+M draws every
+clickable part's sense area. The Cessna uses this
+for the yokes (split from their shaft cones by the builder; they turn with
+the aileron, slide with the elevator, and a click on a cone hides both) and
+for the switches: the rocker grid under the glareshield (TAXI, LDG, PULSE,
+NAV, BCN, STROBE, PITOT HT — gery split them by hand in the blend with the
+pivot at each switch centre; the builder only renames them for the
+manifest, and falls back to cutting them out of the panel base by face
+boxes when the blend has none; the round bodies next to them are the
+circuit breakers) and the red master rocker split into ALT and BAT. A click toggles `controls/lighting/taxi-light`,
+`landing-lights`, `nav-lights`, `beacon`, `strobe`, or
+`controls/electric/engine/generator` / `battery-switch`; the host maps the
+lights onto the exterior fixtures, the electrical model powers everything
+from ALT / BAT, and the rocker tilts about its pivot, top in while on.
+
+Wheels roll too: the Sketchfab wheel objects hold the tyre, its sidewalls
+and hub caps as loose parts centred on the axle, next to the fairing halves
+and brackets. The builder separates every loose part centred on the axle
+(within 3 cm, taller than 10 cm) into `NoseWheel_Tyre` / `MainWheel_L_Tyre`
+/ `MainWheel_R_Tyre` with the axle as origin (the nose tyre under the
+steering pivot), and `[gear] legs` with `roll` spin them about their local
+X with the ground speed — the gear-leg system now also serves fixed gear
+(`retractable false`, `retract_deg 0`).
+
+What is not done: the fourth hole of the top and middle rows and the small
+holes stay empty (VOR / ADF / fuel and oil gauges from fgdata would fit the
+same way), and the PC-7 has no panel yet — its cockpit is unnamed geometry,
+so it needs the hole positions measured the same way and its own
+`panel.xml`.
 
 ## 5. Open points
 

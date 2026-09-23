@@ -8,6 +8,9 @@ extends CanvasLayer
 ## Emits `flight_requested(aircraft_id, swiss_e, swiss_n, heading_deg)`.
 
 signal flight_requested(aircraft_id: String, swiss_e: float, swiss_n: float, heading_deg: float)
+## "Edit Mode": the scenery editor over the selected airport, no aircraft,
+## no intro zoom (docs/SCENERY_EDITOR.md).
+signal edit_requested(swiss_e: float, swiss_n: float, heading_deg: float)
 signal settings_requested()
 ## Emitted when the user wants to resume an in-progress flight without
 ## re-teleporting to the airport. Only available once a flight has started.
@@ -409,6 +412,15 @@ func _build_bottom_bar(parent: VBoxContainer) -> void:
 	_continue_button.add_theme_color_override("font_color", Color.WHITE)
 	hbox.add_child(_continue_button)
 
+	# Edit Mode button: straight into the scenery editor at the selected airport
+	var edit_btn = Button.new()
+	edit_btn.text = "Edit Mode"
+	edit_btn.custom_minimum_size = Vector2(180, 56)
+	edit_btn.add_theme_font_size_override("font_size", FONT_MD)
+	edit_btn.tooltip_text = "Scenery editor over the selected airport (no aircraft)"
+	edit_btn.pressed.connect(_on_edit_pressed)
+	hbox.add_child(edit_btn)
+
 	# Fly button (right, prominent) — restarts the flight at the chosen airport.
 	_fly_button = Button.new()
 	_fly_button.text = "Fly!"
@@ -691,6 +703,15 @@ func _on_fly_pressed() -> void:
 		departure["swiss_n"],
 		departure["heading_deg"]
 	)
+	hide_welcome()
+
+
+func _on_edit_pressed() -> void:
+	var departure = _get_selected_departure()
+	if departure.is_empty():
+		_status_label.text = "Please select an airport."
+		return
+	edit_requested.emit(departure["swiss_e"], departure["swiss_n"], departure["heading_deg"])
 	hide_welcome()
 
 

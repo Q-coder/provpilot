@@ -1,0 +1,2081 @@
+{
+ "unresolved_targets": [],
+ "source": "ProvPilot panel manifest panel.xml with FlightGear generic instruments (fgdata, GPL-2), built by scripts/fg_panel_build.py",
+ "frame": "FlightGear model frame under Panel_Root (rotated 90 deg about Z into the model's Blender frame); glTF/Godot: y up.",
+ "root": "Panel_Root",
+ "submodels": [
+  {
+   "tag": "clock",
+   "node": "Sub_clock",
+   "xml": "../../../../third_party/fgdata/Aircraft/Instruments-3d/clock/clock.xml",
+   "ac": "clock.ac",
+   "objects": 4,
+   "offsets": {
+    "x-m": -0.79,
+    "y-m": -0.444,
+    "z-m": 1.742,
+    "heading-deg": 0.0,
+    "pitch-deg": 3.5,
+    "roll-deg": 0.0
+   },
+   "prefix": "clock"
+  },
+  {
+   "tag": "asi",
+   "node": "Sub_asi",
+   "xml": "../../../../third_party/fgdata/Aircraft/Instruments-3d/asi/asi.xml",
+   "ac": "asi.ac",
+   "objects": 2,
+   "offsets": {
+    "x-m": -0.79,
+    "y-m": -0.358,
+    "z-m": 1.754,
+    "heading-deg": 0.0,
+    "pitch-deg": 3.5,
+    "roll-deg": 0.0
+   },
+   "prefix": "asi"
+  },
+  {
+   "tag": "ai",
+   "node": "Sub_ai",
+   "xml": "../../../../third_party/fgdata/Aircraft/Instruments-3d/ai/ai.xml",
+   "ac": "ai.ac",
+   "objects": 5,
+   "offsets": {
+    "x-m": -0.79,
+    "y-m": -0.256,
+    "z-m": 1.755,
+    "heading-deg": 0.0,
+    "pitch-deg": 3.5,
+    "roll-deg": 0.0
+   },
+   "prefix": "ai"
+  },
+  {
+   "tag": "altimeter",
+   "node": "Sub_altimeter",
+   "xml": "../../../../third_party/fgdata/Aircraft/Instruments-3d/altimeter/altimeter.xml",
+   "ac": "altimeter.ac",
+   "objects": 23,
+   "offsets": {
+    "x-m": -0.79,
+    "y-m": -0.153,
+    "z-m": 1.756,
+    "heading-deg": 0.0,
+    "pitch-deg": 3.5,
+    "roll-deg": 0.0
+   },
+   "prefix": "altimeter"
+  },
+  {
+   "tag": "tc",
+   "node": "Sub_tc",
+   "xml": "../../../../third_party/fgdata/Aircraft/Instruments-3d/tc/tc.xml",
+   "ac": "tc.ac",
+   "objects": 4,
+   "offsets": {
+    "x-m": -0.785,
+    "y-m": -0.356,
+    "z-m": 1.649,
+    "heading-deg": 0.0,
+    "pitch-deg": 3.5,
+    "roll-deg": 0.0
+   },
+   "prefix": "tc"
+  },
+  {
+   "tag": "hi",
+   "node": "Sub_hi",
+   "xml": "../../../../third_party/fgdata/Aircraft/Instruments-3d/hi/hi.xml",
+   "ac": "hi.ac",
+   "objects": 13,
+   "offsets": {
+    "x-m": -0.785,
+    "y-m": -0.256,
+    "z-m": 1.65,
+    "heading-deg": 0.0,
+    "pitch-deg": 3.5,
+    "roll-deg": 0.0
+   },
+   "prefix": "hi"
+  },
+  {
+   "tag": "vsi",
+   "node": "Sub_vsi",
+   "xml": "../../../../third_party/fgdata/Aircraft/Instruments-3d/vsi/vsi.xml",
+   "ac": "vsi.ac",
+   "objects": 2,
+   "offsets": {
+    "x-m": -0.785,
+    "y-m": -0.152,
+    "z-m": 1.651,
+    "heading-deg": 0.0,
+    "pitch-deg": 3.5,
+    "roll-deg": 0.0
+   },
+   "prefix": "vsi"
+  },
+  {
+   "tag": "tach",
+   "node": "Sub_tach",
+   "xml": "../../../../third_party/fgdata/Aircraft/Instruments-3d/tach/tach.xml",
+   "ac": "tach.ac",
+   "objects": 2,
+   "offsets": {
+    "x-m": -0.778,
+    "y-m": -0.357,
+    "z-m": 1.541,
+    "heading-deg": 0.0,
+    "pitch-deg": 3.5,
+    "roll-deg": 0.0
+   },
+   "prefix": "tach"
+  }
+ ],
+ "animations": [
+  {
+   "type": "material",
+   "model": "clock",
+   "objects": [
+    "clock__Face",
+    "clock__SecondHand",
+    "clock__MinuteHand",
+    "clock__HourHand"
+   ],
+   "raw": {
+    "type": "material",
+    "object-name": [
+     "Face",
+     "SecondHand",
+     "MinuteHand",
+     "HourHand"
+    ],
+    "emission": {
+     "red": "1.0",
+     "green": "0.2",
+     "blue": "0.0",
+     "factor-prop": "/sim/model//material/instruments/factor"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "clock",
+   "objects": [
+    "clock__SecondHand"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "SecondHand",
+    "property": "/sim/time/utc/day-seconds",
+    "factor": "6",
+    "axis": {
+     "x": "-1",
+     "y": "0",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "clock",
+   "objects": [
+    "clock__MinuteHand"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "MinuteHand",
+    "property": "/sim/time/utc/day-seconds",
+    "factor": "0.1",
+    "axis": {
+     "x": "-1",
+     "y": "0",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "clock",
+   "objects": [
+    "clock__HourHand"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "HourHand",
+    "property": "/sim/time/utc/day-seconds",
+    "factor": "0.008333",
+    "axis": {
+     "x": "-1",
+     "y": "0",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "material",
+   "model": "asi",
+   "objects": [
+    "asi__Face",
+    "asi__Needle"
+   ],
+   "raw": {
+    "type": "material",
+    "object-name": [
+     "Face",
+     "Needle"
+    ],
+    "emission": {
+     "red": "1.0",
+     "green": "0.2",
+     "blue": "0.0",
+     "factor-prop": "/sim/model/material/instruments/factor"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "asi",
+   "objects": [
+    "asi__Needle"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Needle",
+    "property": "/instrumentation/airspeed-indicator/indicated-speed-kt",
+    "interpolation": {
+     "entry": [
+      {
+       "ind": "10",
+       "dep": "3"
+      },
+      {
+       "ind": "40",
+       "dep": "38"
+      },
+      {
+       "ind": "60",
+       "dep": "85"
+      },
+      {
+       "ind": "80",
+       "dep": "146"
+      },
+      {
+       "ind": "100",
+       "dep": "198"
+      },
+      {
+       "ind": "120",
+       "dep": "236"
+      },
+      {
+       "ind": "140",
+       "dep": "274"
+      },
+      {
+       "ind": "160",
+       "dep": "313"
+      },
+      {
+       "ind": "190",
+       "dep": "353"
+      }
+     ]
+    },
+    "axis": {
+     "x": "-1",
+     "y": "0",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "material",
+   "model": "ai",
+   "objects": [
+    "ai__Face",
+    "ai__Pitch",
+    "ai__Bezel",
+    "ai__Ring",
+    "ai__Front"
+   ],
+   "raw": {
+    "type": "material",
+    "object-name": [
+     "Face",
+     "Pitch",
+     "Bezel",
+     "Ring",
+     "Front"
+    ],
+    "emission": {
+     "red": "1.0",
+     "green": "0.2",
+     "blue": "0.0",
+     "factor-prop": "/sim/model//material/instruments/factor"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "ai",
+   "objects": [
+    "ai__Face",
+    "ai__Pitch"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": [
+     "Face",
+     "PitchTranslation"
+    ],
+    "property": "/instrumentation/attitude-indicator/indicated-roll-deg",
+    "factor": "-1",
+    "axis": {
+     "x": "-1",
+     "y": "0",
+     "z": "0"
+    }
+   },
+   "nests": [
+    "PitchTranslation"
+   ],
+   "unresolved": []
+  },
+  {
+   "type": "translate",
+   "model": "ai",
+   "objects": [
+    "ai__Pitch"
+   ],
+   "raw": {
+    "name": "PitchTranslation",
+    "type": "translate",
+    "object-name": "Pitch",
+    "property": "/instrumentation/attitude-indicator/indicated-pitch-deg",
+    "factor": "-0.000530",
+    "min-m": "-0.01575",
+    "max-m": "0.01575",
+    "axis": {
+     "x": "0.0",
+     "y": "0.0",
+     "z": "1.0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "translate",
+   "model": "ai",
+   "objects": [
+    "ai__Bezel"
+   ],
+   "raw": {
+    "name": "BezelTranslation",
+    "type": "translate",
+    "object-name": "Bezel",
+    "property": "/instrumentation/attitude-indicator/horizon-offset-deg",
+    "factor": "-0.000530",
+    "min-m": "-0.01575",
+    "max-m": "0.01575",
+    "axis": {
+     "x": "0.0",
+     "y": "0.0",
+     "z": "1.0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "ai",
+   "objects": [
+    "ai__Ring"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Ring",
+    "property": "/instrumentation/attitude-indicator/indicated-roll-deg",
+    "factor": "-1",
+    "axis": {
+     "x": "-1",
+     "y": "0",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "select",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__altimeter"
+   ],
+   "raw": {
+    "type": "select",
+    "object-name": "altimeter",
+    "condition": {
+     "equals": {
+      "property": "sim/current-view/name",
+      "value": "Cockpit View"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__needle"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "needle",
+    "property": "instrumentation/altimeter/indicated-altitude-ft",
+    "factor": "0.36",
+    "axis": {
+     "x": "-1",
+     "y": "0",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "textranslate",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__drum-1"
+   ],
+   "raw": {
+    "type": "textranslate",
+    "object-name": "drum-1",
+    "property": "instrumentation/altimeter/indicated-altitude-ft",
+    "factor": "0.001",
+    "offset": "-100",
+    "step": "100",
+    "scroll": "10",
+    "axis": {
+     "x": "0",
+     "y": "-1",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "textranslate",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__drum-2"
+   ],
+   "raw": {
+    "type": "textranslate",
+    "object-name": "drum-2",
+    "property": "instrumentation/altimeter/indicated-altitude-ft",
+    "factor": "0.0001",
+    "offset": "-1000",
+    "step": "1000",
+    "scroll": "25",
+    "axis": {
+     "x": "0",
+     "y": "-1",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "textranslate",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__drum-3"
+   ],
+   "raw": {
+    "type": "textranslate",
+    "object-name": "drum-3",
+    "property": "instrumentation/altimeter/indicated-altitude-ft",
+    "factor": "0.00001",
+    "offset": "-10000",
+    "step": "10000",
+    "scroll": "25",
+    "axis": {
+     "x": "0",
+     "y": "-1",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "select",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__negativ-flag"
+   ],
+   "raw": {
+    "type": "select",
+    "object-name": "negativ-flag",
+    "condition": {
+     "less-than": {
+      "property": "instrumentation/altimeter/indicated-altitude-ft",
+      "value": "0"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "select",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__below-1000-flag"
+   ],
+   "raw": {
+    "type": "select",
+    "object-name": "below-1000-flag",
+    "condition": {
+     "less-than": {
+      "property": "instrumentation/altimeter/indicated-altitude-ft",
+      "value": "1000"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "select",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__below-10000-flag"
+   ],
+   "raw": {
+    "type": "select",
+    "object-name": "below-10000-flag",
+    "condition": {
+     "less-than": {
+      "property": "instrumentation/altimeter/indicated-altitude-ft",
+      "value": "10000"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "textranslate",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__drum-inhg-1"
+   ],
+   "raw": {
+    "type": "textranslate",
+    "object-name": "drum-inhg-1",
+    "property": "instrumentation/altimeter/setting-inhg",
+    "factor": "10",
+    "offset": "-0.01",
+    "axis": {
+     "x": "0",
+     "y": "-1",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "textranslate",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__drum-inhg-2"
+   ],
+   "raw": {
+    "type": "textranslate",
+    "object-name": "drum-inhg-2",
+    "property": "instrumentation/altimeter/setting-inhg",
+    "factor": "1",
+    "offset": "-0.1",
+    "step": "0.1",
+    "scroll": "0.01",
+    "axis": {
+     "x": "0",
+     "y": "-1",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "textranslate",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__drum-inhg-3"
+   ],
+   "raw": {
+    "type": "textranslate",
+    "object-name": "drum-inhg-3",
+    "property": "instrumentation/altimeter/setting-inhg",
+    "factor": "0.1",
+    "offset": "-1",
+    "step": "1",
+    "scroll": "0.01",
+    "axis": {
+     "x": "0",
+     "y": "-1",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "textranslate",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__drum-inhg-4"
+   ],
+   "raw": {
+    "type": "textranslate",
+    "object-name": "drum-inhg-4",
+    "property": "instrumentation/altimeter/setting-inhg",
+    "factor": "0.01",
+    "offset": "-10",
+    "step": "10",
+    "scroll": "0.01",
+    "axis": {
+     "x": "0",
+     "y": "-1",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "material",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__mount"
+   ],
+   "raw": {
+    "object-name": "mount",
+    "type": "material",
+    "emission": {
+     "factor-prop": "controls/lighting/panel-norm",
+     "red": "0.55",
+     "green": "0.24",
+     "blue": "0.10"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "material",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__knobs"
+   ],
+   "raw": {
+    "object-name": "knobs",
+    "type": "material",
+    "emission": {
+     "factor-prop": "controls/lighting/panel-norm",
+     "red": "0.55",
+     "green": "0.24",
+     "blue": "0.10"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "material",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__face"
+   ],
+   "raw": {
+    "object-name": "face",
+    "type": "material",
+    "emission": {
+     "factor-prop": "controls/lighting/instruments-norm",
+     "red": "0.55",
+     "green": "0.24",
+     "blue": "0.10"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "material",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__drums"
+   ],
+   "raw": {
+    "object-name": "drums",
+    "type": "material",
+    "emission": {
+     "factor-prop": "controls/lighting/instruments-norm",
+     "red": "0.55",
+     "green": "0.24",
+     "blue": "0.10"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "material",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__needle-w"
+   ],
+   "raw": {
+    "object-name": "needle-w",
+    "type": "material",
+    "emission": {
+     "factor-prop": "controls/lighting/instruments-norm",
+     "red": "0.55",
+     "green": "0.24",
+     "blue": "0.10"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "range",
+   "model": "altimeter",
+   "objects": [],
+   "raw": {
+    "type": "range",
+    "min-m": "0",
+    "max-m": "50"
+   },
+   "unresolved": []
+  },
+  {
+   "type": "material",
+   "model": "tc",
+   "objects": [
+    "tc__Ball",
+    "tc__Face",
+    "tc__Airplane"
+   ],
+   "raw": {
+    "type": "material",
+    "object-name": [
+     "Ball",
+     "Face",
+     "Airplane"
+    ],
+    "emission": {
+     "red": "1.0",
+     "green": "0.2",
+     "blue": "0.0",
+     "factor-prop": "/sim/model//material/instruments/factor"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "tc",
+   "objects": [
+    "tc__Airplane"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Airplane",
+    "property": "/instrumentation/turn-indicator/indicated-turn-rate",
+    "factor": "20.0",
+    "axis": {
+     "x": "-1",
+     "y": "0",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "tc",
+   "objects": [
+    "tc__Ball"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Ball",
+    "property": "/instrumentation/slip-skid-ball/indicated-slip-skid",
+    "factor": "5.729",
+    "min-deg": "-5",
+    "max-deg": "5",
+    "center": {
+     "x-m": "0",
+     "y-m": "0",
+     "z-m": "0.25"
+    },
+    "axis": {
+     "x": "-1",
+     "y": "0",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "translate",
+   "model": "tc",
+   "objects": [
+    "tc__Flag"
+   ],
+   "raw": {
+    "type": "translate",
+    "object-name": "Flag",
+    "property": "/instrumentation/turn-indicator/spin",
+    "factor": "0.0040",
+    "axis": {
+     "x": "0",
+     "y": "0",
+     "z": "1"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "material",
+   "model": "hi",
+   "objects": [
+    "hi__Face",
+    "hi__Front"
+   ],
+   "raw": {
+    "type": "material",
+    "object-name": [
+     "Face",
+     "Front"
+    ],
+    "emission": {
+     "red": "1.0",
+     "green": "0.2",
+     "blue": "0.0",
+     "factor-prop": "/sim/model/material/instruments/factor"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "material",
+   "model": "hi",
+   "objects": [
+    "hi__OBS-Knob",
+    "hi__Hdg-Knob"
+   ],
+   "raw": {
+    "type": "material",
+    "object-name": [
+     "OBS-Knob",
+     "Hdg-Knob"
+    ],
+    "emission": {
+     "red": "0.45",
+     "green": "0.09",
+     "blue": "0.00001",
+     "factor-prop": "/sim/model/material/instruments/factor"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "hi",
+   "objects": [
+    "hi__Face"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Face",
+    "property": "/instrumentation/heading-indicator/indicated-heading-deg",
+    "factor": "-1",
+    "axis": {
+     "x": "-1",
+     "y": "0",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "hi",
+   "objects": [
+    "hi__HdgBug"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "HdgBug",
+    "property": "/instrumentation/heading-indicator/indicated-heading-deg",
+    "factor": "-1",
+    "axis": {
+     "x": "-1",
+     "y": "0",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "hi",
+   "objects": [
+    "hi__HdgBug"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "HdgBug",
+    "property": "/autopilot/settings/heading-bug-deg",
+    "axis": {
+     "x": "-1",
+     "y": "0",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "material",
+   "model": "vsi",
+   "objects": [
+    "vsi__Face",
+    "vsi__Needle"
+   ],
+   "raw": {
+    "type": "material",
+    "object-name": [
+     "Face",
+     "Needle"
+    ],
+    "emission": {
+     "red": "1.0",
+     "green": "0.2",
+     "blue": "0.0",
+     "factor-prop": "/sim/model//material/instruments/factor"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "vsi",
+   "objects": [
+    "vsi__Needle"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Needle",
+    "property": "/instrumentation/vertical-speed-indicator/indicated-speed-fpm",
+    "interpolation": {
+     "entry": [
+      {
+       "ind": "-2000.0",
+       "dep": "-173.5"
+      },
+      {
+       "ind": "-1500.0",
+       "dep": "-131.5"
+      },
+      {
+       "ind": "-1000.0",
+       "dep": "-81.5"
+      },
+      {
+       "ind": "-500.0",
+       "dep": "-35.3"
+      },
+      {
+       "ind": "0.0",
+       "dep": "0.0"
+      },
+      {
+       "ind": "500.0",
+       "dep": "35.7"
+      },
+      {
+       "ind": "1000.0",
+       "dep": "81.5"
+      },
+      {
+       "ind": "1500.0",
+       "dep": "131.0"
+      },
+      {
+       "ind": "2000.0",
+       "dep": "172.9"
+      }
+     ]
+    },
+    "axis": {
+     "x": "-1",
+     "y": "0",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "material",
+   "model": "tach",
+   "objects": [
+    "tach__Face",
+    "tach__Needle"
+   ],
+   "raw": {
+    "type": "material",
+    "object-name": [
+     "Face",
+     "Needle"
+    ],
+    "emission": {
+     "red": "1.0",
+     "green": "0.2",
+     "blue": "0.0",
+     "factor-prop": "/sim/model//material/instruments/factor"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "tach",
+   "objects": [
+    "tach__Needle"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Needle",
+    "property": "/engines/engine[0]/rpm",
+    "interpolation": {
+     "entry": [
+      {
+       "ind": "0.0",
+       "dep": "-128.6"
+      },
+      {
+       "ind": "0.1",
+       "dep": "-123.85"
+      },
+      {
+       "ind": "500.0",
+       "dep": "-92.85"
+      },
+      {
+       "ind": "1000.0",
+       "dep": "-57.1"
+      },
+      {
+       "ind": "1500.0",
+       "dep": "-21.1"
+      },
+      {
+       "ind": "2000.0",
+       "dep": "15.4"
+      },
+      {
+       "ind": "2500.0",
+       "dep": "51.4"
+      },
+      {
+       "ind": "3000.0",
+       "dep": "87.4"
+      },
+      {
+       "ind": "3500.0",
+       "dep": "123.4"
+      }
+     ]
+    },
+    "axis": {
+     "x": "-1",
+     "y": "0",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "select",
+   "model": "panel",
+   "objects": [
+    "Yoke_L",
+    "Yoke_R"
+   ],
+   "raw": {
+    "type": "select",
+    "object-name": [
+     "Yoke_L",
+     "Yoke_R"
+    ],
+    "condition": {
+     "property": "sim/model/c172p/yokes-visible"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "panel",
+   "objects": [
+    "Yoke_L"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Yoke_L",
+    "property": "controls/flight/aileron",
+    "factor": "60",
+    "center": {
+     "x-m": "0.255",
+     "y-m": "-0.65",
+     "z-m": "1.551"
+    },
+    "axis": {
+     "x": "0",
+     "y": "-1",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "panel",
+   "objects": [
+    "Yoke_R"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Yoke_R",
+    "property": "controls/flight/aileron",
+    "factor": "60",
+    "center": {
+     "x-m": "-0.274",
+     "y-m": "-0.65",
+     "z-m": "1.551"
+    },
+    "axis": {
+     "x": "0",
+     "y": "-1",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "translate",
+   "model": "panel",
+   "objects": [
+    "Yoke_L",
+    "Yoke_R"
+   ],
+   "raw": {
+    "type": "translate",
+    "object-name": [
+     "Yoke_L",
+     "Yoke_R"
+    ],
+    "property": "controls/flight/elevator",
+    "factor": "-0.06",
+    "axis": {
+     "x": "0",
+     "y": "1",
+     "z": "0"
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "panel",
+   "objects": [
+    "Switch_PitotHt"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Switch_PitotHt",
+    "property": "controls/anti-ice/pitot-heat",
+    "factor": "-20",
+    "axis": {
+     "x": "1",
+     "y": "0",
+     "z": "0"
+    },
+    "center": {
+     "x-m": "0.13486",
+     "y-m": "-0.77775",
+     "z-m": "1.38721"
+    }
+   },
+   "center_from_origin": true,
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "panel",
+   "objects": [
+    "Switch_LandingPulse"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Switch_LandingPulse",
+    "property": "controls/lighting/landing-pulse",
+    "factor": "-20",
+    "axis": {
+     "x": "1",
+     "y": "0",
+     "z": "0"
+    },
+    "center": {
+     "x-m": "0.07526",
+     "y-m": "-0.77309",
+     "z-m": "1.44241"
+    }
+   },
+   "center_from_origin": true,
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "panel",
+   "objects": [
+    "Switch_TaxiLt"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Switch_TaxiLt",
+    "property": "controls/lighting/taxi-light",
+    "factor": "-20",
+    "axis": {
+     "x": "1",
+     "y": "0",
+     "z": "0"
+    },
+    "center": {
+     "x-m": "0.11466",
+     "y-m": "-0.77307",
+     "z-m": "1.44243"
+    }
+   },
+   "center_from_origin": true,
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "panel",
+   "objects": [
+    "Switch_LandingLt"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Switch_LandingLt",
+    "property": "controls/lighting/landing-lights",
+    "factor": "-20",
+    "axis": {
+     "x": "1",
+     "y": "0",
+     "z": "0"
+    },
+    "center": {
+     "x-m": "0.09574",
+     "y-m": "-0.77310",
+     "z-m": "1.44239"
+    }
+   },
+   "center_from_origin": true,
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "panel",
+   "objects": [
+    "Switch_NavLt"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Switch_NavLt",
+    "property": "controls/lighting/nav-lights",
+    "factor": "-20",
+    "axis": {
+     "x": "1",
+     "y": "0",
+     "z": "0"
+    },
+    "center": {
+     "x-m": "0.11565",
+     "y-m": "-0.77775",
+     "z-m": "1.38716"
+    }
+   },
+   "center_from_origin": true,
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "panel",
+   "objects": [
+    "Switch_BeaconLt"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Switch_BeaconLt",
+    "property": "controls/lighting/beacon",
+    "factor": "-20",
+    "axis": {
+     "x": "1",
+     "y": "0",
+     "z": "0"
+    },
+    "center": {
+     "x-m": "0.09519",
+     "y-m": "-0.77775",
+     "z-m": "1.38717"
+    }
+   },
+   "center_from_origin": true,
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "panel",
+   "objects": [
+    "Switch_StrobeLt"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Switch_StrobeLt",
+    "property": "controls/lighting/strobe",
+    "factor": "-20",
+    "axis": {
+     "x": "1",
+     "y": "0",
+     "z": "0"
+    },
+    "center": {
+     "x-m": "0.07507",
+     "y-m": "-0.77774",
+     "z-m": "1.38729"
+    }
+   },
+   "center_from_origin": true,
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "panel",
+   "objects": [
+    "Switch_Alt"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Switch_Alt",
+    "property": "controls/electric/engine/generator",
+    "factor": "-20",
+    "axis": {
+     "x": "1",
+     "y": "0",
+     "z": "0"
+    },
+    "center": {
+     "x-m": "0.45988",
+     "y-m": "-0.76906",
+     "z-m": "1.43650"
+    }
+   },
+   "center_from_origin": true,
+   "unresolved": []
+  },
+  {
+   "type": "rotate",
+   "model": "panel",
+   "objects": [
+    "Switch_Bat"
+   ],
+   "raw": {
+    "type": "rotate",
+    "object-name": "Switch_Bat",
+    "property": "controls/electric/battery-switch",
+    "factor": "-20",
+    "axis": {
+     "x": "1",
+     "y": "0",
+     "z": "0"
+    },
+    "center": {
+     "x-m": "0.44611",
+     "y-m": "-0.76884",
+     "z-m": "1.43700"
+    }
+   },
+   "center_from_origin": true,
+   "unresolved": []
+  }
+ ],
+ "controls": [
+  {
+   "type": "pick",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__ingh-knob-left"
+   ],
+   "raw": {
+    "name": "ingh-knob-left-fine",
+    "type": "pick",
+    "visible": "true",
+    "object-name": "ingh-knob-left",
+    "action": {
+     "button": "0",
+     "repeatable": "true",
+     "interval-sec": "0.2",
+     "binding": {
+      "command": "property-adjust",
+      "property": "instrumentation/altimeter/setting-inhg",
+      "step": "-0.005",
+      "min": "26.0",
+      "max": "33.0",
+      "wrap": "false"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__ingh-knob-left"
+   ],
+   "raw": {
+    "name": "ingh-knob-left-coarse",
+    "type": "pick",
+    "visible": "true",
+    "object-name": "ingh-knob-left",
+    "action": {
+     "button": "1",
+     "repeatable": "true",
+     "interval-sec": "0.2",
+     "binding": {
+      "command": "property-adjust",
+      "property": "instrumentation/altimeter/setting-inhg",
+      "step": "-0.025",
+      "min": "26.0",
+      "max": "33.0",
+      "wrap": "false"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__ingh-knob-right"
+   ],
+   "raw": {
+    "name": "ingh-knob-right-fine",
+    "type": "pick",
+    "visible": "true",
+    "object-name": "ingh-knob-right",
+    "action": {
+     "button": "0",
+     "repeatable": "true",
+     "interval-sec": "0.2",
+     "binding": {
+      "command": "property-adjust",
+      "property": "instrumentation/altimeter/setting-inhg",
+      "step": "0.005",
+      "min": "26.0",
+      "max": "33.0",
+      "wrap": "false"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "altimeter",
+   "objects": [
+    "altimeter__ingh-knob-right"
+   ],
+   "raw": {
+    "name": "ingh-knob-right-coarse",
+    "type": "pick",
+    "visible": "true",
+    "object-name": "ingh-knob-right",
+    "action": {
+     "button": "1",
+     "repeatable": "true",
+     "interval-sec": "0.2",
+     "binding": {
+      "command": "property-adjust",
+      "property": "instrumentation/altimeter/setting-inhg",
+      "step": "0.025",
+      "min": "26.0",
+      "max": "33.0",
+      "wrap": "false"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "hi",
+   "objects": [
+    "hi__click-bug-L"
+   ],
+   "raw": {
+    "type": "pick",
+    "object-name": "click-bug-L",
+    "visible": "false",
+    "action": [
+     {
+      "name": "small decrease",
+      "button": "0",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/autopilot/settings/heading-bug-deg",
+       "step": "-1",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     },
+     {
+      "name": "large decrease",
+      "button": "1",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/autopilot/settings/heading-bug-deg",
+       "step": "-5",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     },
+     {
+      "name": "small decrease (scrollwheel)",
+      "button": "3",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/autopilot/settings/heading-bug-deg",
+       "step": "-1",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     },
+     {
+      "name": "small increase (scrollwheel)",
+      "button": "4",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/autopilot/settings/heading-bug-deg",
+       "step": "1",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     }
+    ]
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "hi",
+   "objects": [
+    "hi__click-bug-R"
+   ],
+   "raw": {
+    "type": "pick",
+    "object-name": "click-bug-R",
+    "visible": "false",
+    "action": [
+     {
+      "name": "small increase",
+      "button": "0",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/autopilot/settings/heading-bug-deg",
+       "step": "1",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     },
+     {
+      "name": "large increase",
+      "button": "1",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/autopilot/settings/heading-bug-deg",
+       "step": "5",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     },
+     {
+      "name": "small decrease (scrollwheel)",
+      "button": "3",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/autopilot/settings/heading-bug-deg",
+       "step": "-1",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     },
+     {
+      "name": "small increase (scrollwheel)",
+      "button": "4",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/autopilot/settings/heading-bug-deg",
+       "step": "1",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     }
+    ]
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "hi",
+   "objects": [
+    "hi__click-offset-L"
+   ],
+   "raw": {
+    "type": "pick",
+    "object-name": "click-offset-L",
+    "visible": "false",
+    "action": [
+     {
+      "name": "small decrease",
+      "button": "0",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/instrumentation/heading-indicator/offset-deg",
+       "step": "-1",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     },
+     {
+      "name": "large decrease",
+      "button": "1",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/instrumentation/heading-indicator/offset-deg",
+       "step": "-5",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     },
+     {
+      "name": "small decrease (scrollwheel)",
+      "button": "3",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/instrumentation/heading-indicator/offset-deg",
+       "step": "-1",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     },
+     {
+      "name": "small increase (scrollwheel)",
+      "button": "4",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/instrumentation/heading-indicator/offset-deg",
+       "step": "1",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     }
+    ]
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "hi",
+   "objects": [
+    "hi__click-offset-R"
+   ],
+   "raw": {
+    "type": "pick",
+    "object-name": "click-offset-R",
+    "visible": "false",
+    "action": [
+     {
+      "name": "small increase",
+      "button": "0",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/instrumentation/heading-indicator/offset-deg",
+       "step": "1",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     },
+     {
+      "name": "large increase",
+      "button": "1",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/instrumentation/heading-indicator/offset-deg",
+       "step": "5",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     },
+     {
+      "name": "small decrease (scrollwheel)",
+      "button": "3",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/instrumentation/heading-indicator/offset-deg",
+       "step": "-1",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     },
+     {
+      "name": "small increase (scrollwheel)",
+      "button": "4",
+      "repeatable": "true",
+      "binding": {
+       "command": "property-adjust",
+       "property": "/instrumentation/heading-indicator/offset-deg",
+       "step": "1",
+       "min": "0",
+       "max": "360",
+       "wrap": "1"
+      }
+     }
+    ]
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "panel",
+   "objects": [
+    "Yoke_L_Cone",
+    "Yoke_R_Cone"
+   ],
+   "raw": {
+    "type": "pick",
+    "object-name": [
+     "Yoke_L_Cone",
+     "Yoke_R_Cone"
+    ],
+    "action": {
+     "button": "0",
+     "binding": {
+      "command": "property-toggle",
+      "property": "sim/model/c172p/yokes-visible"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "panel",
+   "objects": [
+    "Switch_TaxiLt"
+   ],
+   "raw": {
+    "type": "pick",
+    "object-name": "Switch_TaxiLt",
+    "action": {
+     "button": "0",
+     "binding": {
+      "command": "property-toggle",
+      "property": "controls/lighting/taxi-light"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "panel",
+   "objects": [
+    "Switch_LandingLt"
+   ],
+   "raw": {
+    "type": "pick",
+    "object-name": "Switch_LandingLt",
+    "action": {
+     "button": "0",
+     "binding": {
+      "command": "property-toggle",
+      "property": "controls/lighting/landing-lights"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "panel",
+   "objects": [
+    "Switch_NavLt"
+   ],
+   "raw": {
+    "type": "pick",
+    "object-name": "Switch_NavLt",
+    "action": {
+     "button": "0",
+     "binding": {
+      "command": "property-toggle",
+      "property": "controls/lighting/nav-lights"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "panel",
+   "objects": [
+    "Switch_BeaconLt"
+   ],
+   "raw": {
+    "type": "pick",
+    "object-name": "Switch_BeaconLt",
+    "action": {
+     "button": "0",
+     "binding": {
+      "command": "property-toggle",
+      "property": "controls/lighting/beacon"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "panel",
+   "objects": [
+    "Switch_StrobeLt"
+   ],
+   "raw": {
+    "type": "pick",
+    "object-name": "Switch_StrobeLt",
+    "action": {
+     "button": "0",
+     "binding": {
+      "command": "property-toggle",
+      "property": "controls/lighting/strobe"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "panel",
+   "objects": [
+    "Switch_Alt"
+   ],
+   "raw": {
+    "type": "pick",
+    "object-name": "Switch_Alt",
+    "action": {
+     "button": "0",
+     "binding": {
+      "command": "property-toggle",
+      "property": "controls/electric/engine/generator"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "panel",
+   "objects": [
+    "Switch_PitotHt"
+   ],
+   "raw": {
+    "type": "pick",
+    "object-name": "Switch_PitotHt",
+    "action": {
+     "button": "0",
+     "binding": {
+      "command": "property-toggle",
+      "property": "controls/anti-ice/pitot-heat"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "panel",
+   "objects": [
+    "Switch_LandingPulse"
+   ],
+   "raw": {
+    "type": "pick",
+    "object-name": "Switch_LandingPulse",
+    "action": {
+     "button": "0",
+     "binding": {
+      "command": "property-toggle",
+      "property": "controls/lighting/landing-pulse"
+     }
+    }
+   },
+   "unresolved": []
+  },
+  {
+   "type": "pick",
+   "model": "panel",
+   "objects": [
+    "Switch_Bat"
+   ],
+   "raw": {
+    "type": "pick",
+    "object-name": "Switch_Bat",
+    "action": {
+     "button": "0",
+     "binding": {
+      "command": "property-toggle",
+      "property": "controls/electric/battery-switch"
+     }
+    }
+   },
+   "unresolved": []
+  }
+ ],
+ "counts": {
+  "material": 13,
+  "rotate": 25,
+  "translate": 4,
+  "select": 5,
+  "textranslate": 7,
+  "pick": 18,
+  "range": 1
+ },
+ "missing": [],
+ "skipped": [],
+ "extras": {
+  "nose_gear_pivot": "NoseGear_Steer",
+  "tail_light_lens": "TailLight_lens",
+  "tyres": [
+   {
+    "tyre": "NoseWheel_Tyre",
+    "axle": [
+     0.0,
+     -1.649,
+     0.197
+    ],
+    "radius_m": 0.198,
+    "faces": 396,
+    "parts": 5
+   },
+   {
+    "tyre": "MainWheel_L_Tyre",
+    "axle": [
+     1.444,
+     0.215,
+     0.23
+    ],
+    "radius_m": 0.237,
+    "faces": 396,
+    "parts": 5
+   },
+   {
+    "tyre": "MainWheel_R_Tyre",
+    "axle": [
+     -1.444,
+     0.215,
+     0.23
+    ],
+    "radius_m": 0.237,
+    "faces": 396,
+    "parts": 5
+   }
+  ],
+  "spinner_pivot": "Spinner_Pivot",
+  "yokes": [
+   {
+    "yoke": "Yoke_L",
+    "cone": "Yoke_L_Cone",
+    "cone_faces": 32,
+    "cone_origin": [
+     0.255,
+     -0.762,
+     1.555
+    ]
+   },
+   {
+    "yoke": "Yoke_R",
+    "cone": "Yoke_R_Cone",
+    "cone_faces": 32,
+    "cone_origin": [
+     -0.274,
+     -0.762,
+     1.557
+    ]
+   }
+  ],
+  "switches": [
+   "Switch_Alt",
+   "Switch_Bat",
+   "Switch_BeaconLt",
+   "Switch_LandingLt",
+   "Switch_StrobeLt",
+   "Switch_TaxiLt",
+   "Switch_NavLt",
+   "Switch_PitotHt",
+   "Switch_LandingPulse"
+  ]
+ }
+}

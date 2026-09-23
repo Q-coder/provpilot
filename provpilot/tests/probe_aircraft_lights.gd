@@ -11,7 +11,11 @@ func _ready() -> void:
 	add_child(root)
 	await get_tree().create_timer(3.0).timeout
 	var aircraft := OS.get_environment("PROBE_AIRCRAFT")
-	root._on_welcome_flight_requested(aircraft if aircraft != "" else "a10", E, N, 155.0)
+	# PROBE_E / PROBE_N / PROBE_HDG: spawn anywhere (LV95 metres, true heading)
+	var pe := float(OS.get_environment("PROBE_E")) if OS.get_environment("PROBE_E") != "" else E
+	var pn := float(OS.get_environment("PROBE_N")) if OS.get_environment("PROBE_N") != "" else N
+	var ph := float(OS.get_environment("PROBE_HDG")) if OS.get_environment("PROBE_HDG") != "" else 155.0
+	root._on_welcome_flight_requested(aircraft if aircraft != "" else "a10", pe, pn, ph)
 	var waited := 0.0
 	while not root.terrain_initialized and waited < 60.0:
 		await get_tree().create_timer(0.5).timeout
@@ -44,13 +48,24 @@ func _ready() -> void:
 		root._welcome_screen.visible = false
 	# The C++ camera rig drives the external (orbit) camera every frame, so
 	# pin its distance and pitch through the rig's clamps instead of adding a
-	# camera of our own. PROBE_DIST (AC units = 10 m each, default 1.6), PROBE_PITCH (deg, 10).
+	# camera of our own. PROBE_DIST (metres from the aircraft, default 1.6), PROBE_PITCH (deg, 10).
 	var dist := float(OS.get_environment("PROBE_DIST")) if OS.get_environment("PROBE_DIST") != "" else 1.6
 	var pitch := float(OS.get_environment("PROBE_PITCH")) if OS.get_environment("PROBE_PITCH") != "" else 10.0
 	root._camera_rig.set_orbit_distance_min(dist)
 	root._camera_rig.set_orbit_distance_max(dist)
 	root._camera_rig.set_orbit_pitch_min(pitch)
 	root._camera_rig.set_orbit_pitch_max(pitch)
+	if OS.get_environment("PROBE_YAW") != "":   # orbit azimuth, deg (135 = behind-left)
+		root._camera_rig.set_orbit_yaw(float(OS.get_environment("PROBE_YAW")))
+	if OS.get_environment("PROBE_WAIT") != "":   # extra seconds for scenery to stream in
+		await get_tree().create_timer(float(OS.get_environment("PROBE_WAIT"))).timeout
+	if OS.get_environment("PROBE_ROADS") != "":   # report the base-tier road tiles around the aircraft
+		for rm in root.get_tree().root.find_children("*", "S3DRoadManager", true, false):
+			print("  [roads] active tiles %d, paths %s" % [rm.get_active_tile_count(), str(rm.get_road_paths())])
+	if OS.get_environment("PROBE_THROTTLE") != "":   # run the engine up (brakes on) before the shot
+		root.jsb_node.set_input_brake(1.0)
+		root.jsb_node.set_input_throttle(float(OS.get_environment("PROBE_THROTTLE")))
+		await get_tree().create_timer(3.0).timeout
 	# PROBE_COCKPIT=1: the pilot's view instead of the orbit camera
 	if OS.get_environment("PROBE_COCKPIT") == "1":
 		root._camera_rig.set_mode(0)
@@ -92,6 +107,19 @@ func _ready() -> void:
 			var sp: Vector2 = vcam.unproject_position(gp)
 			var ac_p: Vector3 = ac.global_transform.affine_inverse() * gp
 			print("probe_aircraft_lights: %-9s screen (%.0f, %.0f) AC (%.2f, %.2f, %.2f) behind=%s" % [f.kind, sp.x, sp.y, ac_p.x, ac_p.y, ac_p.z, vcam.is_position_behind(gp)])
+	if OS.get_environment("PROBE_SCALE") != "" and vcam:
+		# world size of the aircraft model, camera distance and field of view
+		var mr: Node3D = root.get_node(NodePath(root._model_root_path))
+		var lo := Vector3(1e30, 1e30, 1e30)
+		var hi := -lo
+		for mi in mr.find_children("*", "MeshInstance3D", true, false):
+			if not (mi as MeshInstance3D).visible or (mi as MeshInstance3D).mesh == null:
+				continue
+			var ab: AABB = (mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).mesh.get_aabb()
+			lo = lo.min(ab.position)
+			hi = hi.max(ab.end)
+		var ext: Vector3 = hi - lo
+		print("probe_aircraft_lights: model world extent %.2f x %.2f x %.2f m, camera %.1f m from AC, fov %.1f" % [ext.x, ext.y, ext.z, vcam.global_position.distance_to(ac.global_position), vcam.fov])
 	# frame rate in this view: average over 120 frames after settling
 	var t0 := Time.get_ticks_usec()
 	for i in range(120):

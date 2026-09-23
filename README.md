@@ -41,6 +41,7 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 - **Propeller Visual Decay**: Propeller visually spins down when engine is off (ignores JSBSim windmilling)
 - **Elevator Trim**: Fine-tune pitch with Y/X buttons
 - **Slew Mode**: Reposition aircraft freely with airspeed preservation, then resume flight (Shift+Y)
+- **Scenery editor** (F8 in flight, or the welcome screen's **Edit Mode** button: no aircraft, no intro zoom, straight over the selected airport): free camera + terrain cursor, place roads and railways that are saved with the scenery — see [docs/SCENERY_EDITOR.md](docs/SCENERY_EDITOR.md)
 - **Deferred Scenery Loading**: Scenery3D starts streaming only after the user clicks Fly — instant startup
 - **HUD**: Airspeed, altitude, vertical speed, heading, throttle, Swiss/WGS84 coordinates
 - **VFR Map Frame**: Heading-up in-game map inset (C++ `VfrMap` module) with cartographic hillshade terrain, range rings, airport symbols/ICAO labels, and canton borders — toggle with N, zoom with the wheel; see [docs/VFR_MAP.md](docs/VFR_MAP.md)
@@ -67,6 +68,7 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 | Magneto Clockwise | — | I |
 | Magneto Counter-CW | — | Shift+I |
 | Slew Mode | — | Shift+Y |
+| Scenery editor (design / developer mode, docs/SCENERY_EDITOR.md) | — | F8; inside: WASD, Q/E or PgDn/PgUp, 1–9 tools, 0 pick a baked road, C curved, [ ] heights, Space top view, axis gizmo, Ctrl+S, Ctrl+B bake the tiles around; no haze while editing — tutorial in the doc |
 | VFR Map Toggle | — | N |
 | VFR Map Zoom | Wheel over map frame | − / + (=) |
 | Flap Lever Drag | — | Mouse drag (cockpit) |
@@ -83,6 +85,7 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 | Look around (cockpit) | — | hold Space + mouse |
 | Zoom cockpit view | — | hold Space + mouse wheel |
 | Cockpit knobs (Kollsman, course…) | — | click zones, or mouse wheel over the knob (Shift = coarse) |
+| Show every cockpit mouse-sense area | — | Shift+Ctrl+M |
 | Recentre cockpit view (head + zoom) | — | Space (tap) |
 | HUD overlay: off / readouts / readouts + coordinates | — | H |
 | Parking brake (set at every flight start) | — | . set / , release |

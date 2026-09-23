@@ -109,6 +109,10 @@ var _cockpit_controls := CockpitControls.new()
 # and drives per-frame updates from _process with the calibrated joystick
 # axes (JoystickConfig) and the terrain height under the aircraft.
 var _slew_mode := SlewMode.new()
+# Scenery design / developer mode (F8, scenery_editor.gd, docs/SCENERY_EDITOR.md):
+# free camera + terrain cursor + road / rail tools on a saved SceneryDesign.
+var _scenery_editor := SceneryEditor.new()
+var _edit_session := false   # Edit Mode from the welcome screen (no flight)
 
 # Cinematic space→spot intro zoom (world3d globe) lives in the C++ IntroZoom
 # module (src/intro_zoom.cpp). GDScript keeps the scene-side gates (globe
@@ -246,6 +250,7 @@ var _fg_sounds: FGSounds = null     # FlightGear sound set (aircraft.cfg [sound]
 var _parking_brake: bool = false
 var _landing_key_held: bool = false
 var _speedbrake_key_held: bool = false
+var _hotspot_key_held: bool = false
 var _hud_key_held: bool = false
 var _hud_mode: int = 0   # H cycles: 0 none, 1 bottom readouts, 2 + upper info (coordinates, time)
 var _speedbrake_out: bool = false
@@ -399,6 +404,8 @@ func _ready() -> void:
 	# cockpit base transform; _apply_camera_config re-captures it after
 	# applying any aircraft.cfg [camera] overrides).
 	_camera_rig.register_cameras(camera1, camera2, ac_node)
+	add_child(_scenery_editor)
+	_scenery_editor.setup(self)
 
 	# Position the cockpit camera per the selected aircraft (aircraft.cfg [camera]).
 	_apply_camera_config()
@@ -1444,7 +1451,10 @@ func _process(delta: float) -> void:
 	# VFR map frame (C++ module): position/heading drive + overlay gating.
 	# The map freezes under full-screen UI; input pass-through is handled in C++.
 	var _vfr_ui_up := (_welcome_screen and _welcome_screen.visible) or (_settings_screen and _settings_screen.visible)
-	if jsb_node:
+	if _edit_session and _scenery_editor.is_active():
+		# Edit Mode: no flight; the map follows the editor camera
+		_feed_vfr_map(_scenery_editor._cam.global_position, fmod(rad_to_deg(_scenery_editor._yaw) + 360.0, 360.0), _vfr_ui_up)
+	elif jsb_node:
 		if _slew_mode.is_enabled():
 			# JSBSim physics is paused while slewing, so get_godot_position()/
 			# get_heading() stay frozen at the pre-slew state; the SlewMode
@@ -1472,6 +1482,13 @@ func _process(delta: float) -> void:
 		_advance_intro(delta)
 		return
 
+	# Scenery editor (F8): free camera + tools; while active the flight
+	# controls, HUD keys and the aircraft cameras below are skipped, the
+	# flight model is frozen like in slew mode.
+	_scenery_editor.poll(delta)
+	if _scenery_editor.is_active():
+		return
+
 	# Escape key: return to welcome screen
 	if Input.is_key_pressed(KEY_ESCAPE):
 		if _welcome_screen:
@@ -1493,6 +1510,15 @@ func _process(delta: float) -> void:
 			_apply_hud_mode()
 	else:
 		_hud_key_held = false
+	# Shift+Ctrl+M: show every cockpit mouse-sense area (FlightGear controls)
+	if Input.is_key_pressed(KEY_M) and Input.is_key_pressed(KEY_CTRL) and Input.is_key_pressed(KEY_SHIFT):
+		if not _hotspot_key_held:
+			_hotspot_key_held = true
+			if _fg_controls.count > 0:
+				_fg_controls.set_debug(not _fg_controls.debug)
+				print("Cockpit hotspots: ", "SHOWN" if _fg_controls.debug else "HIDDEN")
+	else:
+		_hotspot_key_held = false
 	# Speed brakes with B (fcs/speedbrake-cmd-norm 0/1; the A-10 splits its ailerons)
 	if Input.is_key_pressed(KEY_B) and not Input.is_key_pressed(KEY_CTRL):
 		if not _speedbrake_key_held:
@@ -1512,6 +1538,8 @@ func _process(delta: float) -> void:
 				print("Landing lights: ", "ON" if on else "OFF")
 				if _fg_controls.count > 0:
 					_fg_controls.state["sim/model/A-10/controls/lighting/land-lights-switch"] = 2.0 if on else 1.0
+					if _fg_controls.state.has("controls/lighting/landing-lights"):
+						_fg_controls.state["controls/lighting/landing-lights"] = 1.0 if on else 0.0
 	else:
 		_landing_key_held = false
 	# Toggle FPS display with Ctrl+Shift+F
@@ -1765,6 +1793,11 @@ func _load_aircraft_config() -> void:
 	# C++ EngineSound RPM normalisation.)
 	_control_surfaces.set_propeller_blur_start_rpm(cfg.get_float("propeller", "blur_start_rpm", 900.0))
 	_control_surfaces.set_propeller_hide_blades_rpm(cfg.get_float("propeller", "hide_blades_rpm", 1200.0))
+	# spinner cone: swap-in mesh shown only while the blades hide (PC-7), or a
+	# separate part shown at every rpm; spins with the blades when its origin
+	# sits on the axis (fg_panel_build.py's Spinner_Pivot)
+	_control_surfaces.set_propeller_cone_always_visible(cfg.get_bool("propeller", "cone_always_visible", false))
+	_control_surfaces.set_propeller_cone_spins(cfg.get_bool("propeller", "cone_spins", false))
 	PROPELLER_DISC_RADIUS = cfg.get_float("propeller", "disc_radius_m", PROPELLER_DISC_RADIUS)
 	PROPELLER_SPIN_AXIS = _parse_axis(cfg.get_string("propeller", "spin_axis", "z"), Vector3.BACK)
 	_control_surfaces.set_propeller_spin_axis(PROPELLER_SPIN_AXIS)
@@ -1906,8 +1939,7 @@ func _resolve_aircraft_nodes() -> void:
 	var propeller_cone_node := _resolve_surface("propeller_cone")
 	if propeller_cone_node:
 		print("Propeller cone node found: ", propeller_cone_node)
-		propeller_cone_node.visible = false
-		_control_surfaces.register_propeller_cone(propeller_cone_node)
+		_control_surfaces.register_propeller_cone(propeller_cone_node)   # sets its start visibility
 
 	var left_aileron_node := _resolve_surface("left_aileron")
 	if left_aileron_node:
@@ -2019,6 +2051,10 @@ func _resolve_aircraft_nodes() -> void:
 		# Register with the C++ module (captures base transforms), then apply
 		# the initial states exactly as before.
 		_cockpit_controls.register_levers(mixture_lever_node, throttle_lever_node, magneto_switch_node, flap_lever_node)
+		# degrees per magneto position about the key's local Z (sign = model's key sense)
+		_cockpit_controls.set_magneto_step_angle(_aircraft_cfg.get_float("levers", "magneto_step_deg", 30.0) if _aircraft_cfg else 30.0)
+		# which position the mesh's rest pose shows (0 OFF .. 3 BOTH, 4 START)
+		_cockpit_controls.set_magneto_default_position(int(_aircraft_cfg.get_float("levers", "magneto_rest_position", 3.0)) if _aircraft_cfg else 3)
 		_cockpit_controls.register_debug_bodies(mixture_lever_body, throttle_lever_body)
 		if mixture_lever_node:
 			_cockpit_controls.apply_mixture_value(jsb_node)
@@ -2119,7 +2155,23 @@ func _on_fg_control(prop: String, value) -> void:
 		"controls/lighting/strobe":
 			if _aircraft_lights:
 				_aircraft_lights.strobe_enabled = float(value) > 0.5
+				# the A-10's one switch covers the beacon too; a model with its own
+				# beacon switch (Cessna) keeps them apart
+				if not _fg_animator.property_names().has("controls/lighting/beacon"):
+					_aircraft_lights.beacon_enabled = float(value) > 0.5
+		"controls/lighting/beacon":
+			if _aircraft_lights:
 				_aircraft_lights.beacon_enabled = float(value) > 0.5
+		"controls/lighting/nav-lights":
+			if _aircraft_lights:
+				_aircraft_lights.nav_enabled = float(value) > 0.5
+		"controls/lighting/landing-lights":
+			if _aircraft_lights:
+				_aircraft_lights.set_landing_lights(float(value) > 0.5)
+				print("Landing lights: ", "ON" if float(value) > 0.5 else "OFF")
+		"controls/lighting/taxi-light":
+			if _aircraft_lights:
+				_aircraft_lights.taxi_enabled = float(value) > 0.5
 		"sim/model/A-10/controls/canopy/canopy-switch":
 			_fg_bridge.canopy_target = float(value)
 		"provpilot/gear-toggle":
@@ -2197,7 +2249,10 @@ func _parse_axis(name: String, fallback: Vector3) -> Vector3:
 func _resolve_gear_legs() -> void:
 	# Both C++ modules (ControlSurfaces + CockpitControls) reset their gear
 	# state to fully down as part of reset(), called from _resolve_aircraft_nodes.
-	if _aircraft_cfg == null or not _gear_retractable:
+	# Fixed gear may list legs too (rolling tyres): they never retract.
+	if _aircraft_cfg == null:
+		return
+	if not _gear_retractable and _aircraft_cfg.get_string_array("gear", "legs", []).is_empty():
 		return
 	var axis_map := {"x": Vector3.RIGHT, "y": Vector3.UP, "z": Vector3.BACK}
 	var default_steer_max := _aircraft_cfg.get_float("control_limits", "front_wheel_max_deg", 30.0)
@@ -2391,6 +2446,8 @@ func _create_welcome_screen() -> void:
 	_welcome_screen.set_script(script)
 	add_child(_welcome_screen)
 	_welcome_screen.flight_requested.connect(_on_welcome_flight_requested)
+	_welcome_screen.edit_requested.connect(_on_welcome_edit_requested)
+	_scenery_editor.exited.connect(_on_scenery_editor_exited)
 	_welcome_screen.settings_requested.connect(_on_welcome_settings_requested)
 	_welcome_screen.continue_requested.connect(_on_welcome_continue_requested)
 	_welcome_screen.scenery_setup_requested.connect(_on_welcome_scenery_setup_requested)
@@ -2484,6 +2541,11 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 		return
 
 	_diag_jump_count += 1
+	_settings_from_welcome = false
+	_edit_session = false
+	var ac_vis := get_node_or_null("AC")
+	if ac_vis:
+		ac_vis.visible = true   # hidden during an Edit Mode session
 
 	# Adopt the airframe the user selected (reloads aircraft.cfg and asks the
 	# JSBSim extension to load the matching flight model) before we position
@@ -2522,6 +2584,47 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 		_loading_screen.set_progress(0.0)
 		_loading_screen.set_status("Loading terrain...")
 		_loading_screen.show_loading()
+
+
+## Welcome "Edit Mode": the scenery editor over the selected airport with
+## no aircraft and no intro zoom. The AC node is parked (hidden) at the
+## destination so the sun observer and the map have a position, JSBSim is
+## kept in slew, and the editor camera drives the tile streamer. Leaving
+## the editor returns to the welcome screen.
+func _on_welcome_edit_requested(swiss_e: float, swiss_n: float, heading_deg: float) -> void:
+	print("=== WELCOME: Edit Mode requested at E=%.0f N=%.0f ===" % [swiss_e, swiss_n])
+	var missing := _settings.missing_scenery_reason() if _settings else "Settings unavailable — cannot verify scenery configuration."
+	if missing != "":
+		_show_scenery_error_dialog(missing)
+		if _welcome_screen:
+			_welcome_screen.show_welcome()
+		return
+	_cancel_intro_zoom()
+	_edit_session = true
+	_settings_from_welcome = false
+	if USE_WORLD3D_GLOBE:
+		var ll: Vector2 = Geo.lv95_to_wgs84(swiss_e, swiss_n)
+		_sky.observer_lat = ll.x
+		_sky.observer_lon = ll.y
+		_suppress_dirty = true
+		_refresh_globe_suppress_rects()
+	var ac_node := get_node_or_null("AC")
+	if ac_node:
+		ac_node.global_transform = _ac_transform_at(swiss_e, swiss_n, 500.0, heading_deg, ac_node.scale)
+		ac_node.visible = false
+	if jsb_node and jsb_node.has_method("set_slew_mode"):
+		jsb_node.set_slew_mode(true)
+	_set_scenery_streaming(true)
+	_scenery_editor.enter_at(swiss_e, swiss_n, heading_deg)
+
+
+func _on_scenery_editor_exited() -> void:
+	if not _edit_session:
+		return
+	_edit_session = false
+	if _welcome_screen:
+		_welcome_screen.set_continue_enabled(not _first_flight)
+		_welcome_screen.show_welcome()
 
 
 func _cancel_intro_zoom() -> void:
@@ -2604,6 +2707,7 @@ func _do_first_flight(swiss_e: float, swiss_n: float, heading_deg: float) -> voi
 
 
 func _on_welcome_settings_requested() -> void:
+	_settings_from_welcome = true   # the Aircraft tab follows the page's selection
 	if _welcome_screen:
 		_welcome_screen.visible = false
 	if _settings_screen:
@@ -3031,10 +3135,13 @@ func _wire_aircraft_settings_panel() -> void:
 	panel.name_provider = func(id: String) -> String: return WelcomeScreenScript.aircraft_label(id) if WelcomeScreenScript else id
 
 
-## The aircraft the Aircraft tab shows: the welcome page's selection while it
-## is up, else the one being flown.
+## The aircraft the Aircraft tab shows: the welcome page's selection when the
+## settings were opened from that page (it hides itself first) or while it is
+## up, else the one being flown.
+var _settings_from_welcome := false
+
 func _settings_aircraft_id() -> String:
-	if _welcome_screen and _welcome_screen.visible and _welcome_screen.has_method("get_selected_aircraft_id"):
+	if _welcome_screen and (_welcome_screen.visible or _settings_from_welcome) and _welcome_screen.has_method("get_selected_aircraft_id"):
 		return _welcome_screen.get_selected_aircraft_id()
 	return _aircraft_id
 

@@ -189,10 +189,43 @@ class Builder:
         rec["axis_from_object"] = axis["object-name"]
 
     def collect_animations(self, root_elem, tag, prefix, frame_root=None):
+        # <object-name> may name another animation of this file (its <name>):
+        # FlightGear then nests that animation's transform group inside this
+        # one. Expand to the named animation's objects; the referencing
+        # animation is emitted first so it stays outermost in the runtime's
+        # chain (fgdata's attitude indicator rolls its PitchTranslation).
+        named = {}
+        for a in root_elem.findall("animation"):
+            nm = (a.findtext("name") or "").strip()
+            if nm:
+                named[nm] = [godot_safe((prefix + "__" if prefix else "") + (o.text or "").strip()) for o in a.findall("object-name")]
+        records = []
         for a in root_elem.findall("animation"):
             ty = (a.findtext("type") or "").strip()
-            objs = [godot_safe((prefix + "__" if prefix else "") + (o.text or "").strip()) for o in a.findall("object-name")]
+            objs = []
+            refs = []
+            for o in a.findall("object-name"):
+                on = (o.text or "").strip()
+                if on in named and on != (a.findtext("name") or "").strip():
+                    objs.extend(x for x in named[on] if x not in objs)
+                    refs.append(on)
+                else:
+                    objs.append(godot_safe((prefix + "__" if prefix else "") + on))
             rec = {"type": ty or "none", "model": tag, "objects": objs, "raw": xml_to_dict(a)}
+            if refs:
+                rec["nests"] = refs
+            records.append((a, rec))
+        # referencing animations before the ones they nest
+        order = []
+        for a, rec in records:
+            pos = len(order)
+            for i, (_, other) in enumerate(order):
+                if (other["raw"].get("name") or "") in rec.get("nests", []):
+                    pos = min(pos, i)
+            order.insert(pos, (a, rec))
+        for a, rec in order:
+            ty = rec["type"] if rec["type"] != "none" else ""
+            objs = rec["objects"]
             self.resolve_axis_object(rec, prefix, frame_root)
             for ov in OVERRIDES:
                 mt = ov["match"]

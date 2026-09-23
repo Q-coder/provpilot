@@ -42,6 +42,7 @@ var g_min := 1.0
 var sim_time_seconds := -1.0    # the simulated time of day (seconds, the HUD clock); < 0 = system UTC
 var control_state: Dictionary = {}   # FGControls.state: switch / knob values, merged last
 var canopy_target := 0.0        # canopy switch: 0 close, 1 hold, 2 open -> moves canopy_norm
+var _kollsman_seeded := -1.0    # Kollsman value last taken from the weather (untouched by the pilot)
 
 ## Defaults for properties only the cockpit switches / knobs write (seeded
 ## into FGControls.state once by the host): power is on, canopy switch held.
@@ -52,6 +53,12 @@ const SWITCH_DEFAULTS := {
 	"sim/model/A-10/controls/canopy/canopy-switch": 1.0,
 	"controls/lighting/panel-int": 0.0,
 	"controls/gear/brake-parking": 1.0,   # every flight starts with the parking brake set
+	# generic light switches (Cessna panel) and the yoke visibility toggle
+	"controls/lighting/beacon": 1.0,
+	"controls/lighting/nav-lights": 1.0,
+	"controls/lighting/landing-lights": 0.0,
+	"controls/lighting/taxi-light": 0.0,
+	"sim/model/c172p/yokes-visible": 1.0,
 }
 
 static func switch_default(prop: String) -> float:
@@ -92,6 +99,10 @@ func collect(jsb: Node, airborne: bool, night: float = 0.0) -> Dictionary:
 	p["controls/lighting/panel-norm"] = clampf(night, 0.0, 1.0) * 0.6
 	p["controls/lighting/instruments-norm"] = clampf(night, 0.0, 1.0) * 0.6
 	p["controls/lighting/panel-int"] = clampf(night, 0.0, 1.0) * 0.6
+	# fgdata generic instruments light their faces from this factor (ai.xml
+	# spells the path with a double slash)
+	p["sim/model/material/instruments/factor"] = clampf(night, 0.0, 1.0) * 0.6
+	p["sim/model//material/instruments/factor"] = clampf(night, 0.0, 1.0) * 0.6
 	# chronometer: the simulated time of day (what the HUD shows), else system UTC
 	if sim_time_seconds >= 0.0:
 		var secs := int(fposmod(sim_time_seconds, 86400.0))
@@ -153,7 +164,9 @@ func _electrical(p: Dictionary, jsb: Node) -> void:
 	for i in range(ENGINES):
 		var sw: bool = float(control_state.get("controls/electric/engine%s/generator" % ("" if i == 0 else "[%d]" % i), 1.0)) > 0.5
 		var n2: float = jsb.get_property("propulsion/engine[%d]/n2" % i) if jsb != null else 100.0
-		var online: bool = sw and n2 > 50.0
+		# a piston engine has no N2: its alternator is online above idle
+		var rpm: float = jsb.get_property("propulsion/engine[%d]/engine-rpm" % i) if jsb != null else 0.0
+		var online: bool = sw and (n2 > 50.0 or rpm > 400.0)
 		gen_on = gen_on or online
 		gen_caution[i] = 0.0 if online else 1.0
 	dc_volts = 28.0 if (gen_on or battery) else 0.0
@@ -294,6 +307,8 @@ func _engines(jsb: Node, p: Dictionary) -> void:
 		p["sim/model/A-10/engines/engine[%d]/n1" % i] = n1
 		p["engines/engine[%d]/n1" % i] = n1
 		p["engines/engine[%d]/n2" % i] = n2
+		# piston engines (tachometer): JSBSim engine-rpm, 0 for a turbine
+		p["engines/engine[%d]/rpm" % i] = jsb.get_property("propulsion/engine[%d]/engine-rpm" % i)
 		# the model's ITT gauge and hot light read a thrust fraction (its table
 		# is keyed 0 .. 0.987 for "max thrust"), not degrees
 		var thrust_norm: float = clampf(thrust / TF34_MIL_THRUST_LBF, 0.0, 1.0)
@@ -340,10 +355,13 @@ func _flight_instruments(jsb: Node, p: Dictionary, airborne: bool) -> void:
 	# elevation on the ground); the reading is the ISA inversion of JSBSim's
 	# static pressure against that setting, like FlightGear's altimeter.
 	const PSF_PER_INHG := 70.7262
-	if not control_state.has("instrumentation/altimeter/setting-inhg"):
-		# the weather's QNH as the host set it (JSBSim applies it a little later)
-		var qnh_hpa: float = float(jsb.get_weather_qnh_hpa()) if jsb.has_method("get_weather_qnh_hpa") else 1013.25
-		control_state["instrumentation/altimeter/setting-inhg"] = snappedf(qnh_hpa / 33.8639, 0.01)
+	# the Kollsman window follows the weather's QNH (live METARs arrive after
+	# the first frames) until the pilot turns the knob
+	var qnh_hpa: float = float(jsb.get_weather_qnh_hpa()) if jsb.has_method("get_weather_qnh_hpa") else 1013.25
+	var qnh_inhg: float = snappedf(qnh_hpa / 33.8639, 0.01)
+	if not control_state.has("instrumentation/altimeter/setting-inhg") or (absf(float(control_state["instrumentation/altimeter/setting-inhg"]) - _kollsman_seeded) < 1e-6 and absf(qnh_inhg - _kollsman_seeded) > 1e-6):
+		control_state["instrumentation/altimeter/setting-inhg"] = qnh_inhg
+		_kollsman_seeded = qnh_inhg
 	var setting: float = float(control_state["instrumentation/altimeter/setting-inhg"])
 	var p_psf: float = jsb.get_property("atmosphere/P-psf")
 	if p_psf > 1.0 and setting > 1.0:
@@ -351,11 +369,27 @@ func _flight_instruments(jsb: Node, p: Dictionary, airborne: bool) -> void:
 	else:
 		p["instrumentation/altimeter/indicated-altitude-ft"] = jsb.get_property("position/h-sl-ft")
 	p["instrumentation/altimeter/setting-inhg"] = setting
-	p["orientation/pitch-deg"] = jsb.get_property("attitude/theta-deg")
-	p["orientation/roll-deg"] = jsb.get_property("attitude/phi-deg")
+	var theta: float = jsb.get_property("attitude/theta-deg")
+	var phi: float = jsb.get_property("attitude/phi-deg")
+	p["orientation/pitch-deg"] = theta
+	p["orientation/roll-deg"] = phi
 	var hdg: float = fposmod(jsb.get_property("attitude/psi-deg"), 360.0)
 	p["instrumentation/heading-indicator-fg/indicated-heading-deg"] = hdg
 	p["instrumentation/magnetic-compass/indicated-heading-deg"] = hdg
+	# fgdata generic instruments (docs/INSTRUMENTS.md): directional gyro with
+	# its knob offset (control state), attitude indicator, turn coordinator
+	# (1.0 = standard rate, 3 deg/s), gyro spin flags, clock hands
+	var hdg_offset: float = float(control_state.get("instrumentation/heading-indicator/offset-deg", 0.0))
+	p["instrumentation/heading-indicator/indicated-heading-deg"] = fposmod(hdg + hdg_offset, 360.0)
+	p["instrumentation/heading-indicator/offset-deg"] = hdg_offset
+	p["instrumentation/attitude-indicator/indicated-pitch-deg"] = theta
+	p["instrumentation/attitude-indicator/indicated-roll-deg"] = phi
+	p["instrumentation/attitude-indicator/horizon-offset-deg"] = 0.0
+	p["instrumentation/turn-indicator/indicated-turn-rate"] = clampf(rad_to_deg(jsb.get_property("velocities/r-rad_sec")) / 3.0, -3.0, 3.0)
+	p["instrumentation/turn-indicator/spin"] = 1.0
+	p["instrumentation/attitude-indicator/spin"] = 1.0
+	p["instrumentation/heading-indicator/spin"] = 1.0
+	p["sim/time/utc/day-seconds"] = fposmod(sim_time_seconds, 86400.0) if sim_time_seconds >= 0.0 else float(Time.get_unix_time_from_system()) - 86400.0 * floor(Time.get_unix_time_from_system() / 86400.0)
 	p["instrumentation/slip-skid-ball/indicated-slip-skid"] = clampf(jsb.get_property("accelerations/Ny"), -1.0, 1.0)
 	var nz: float = jsb.get_property("accelerations/Nz")
 	if not airborne:

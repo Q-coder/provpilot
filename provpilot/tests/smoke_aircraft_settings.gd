@@ -22,11 +22,11 @@ func _ready() -> void:
 	var panel = screen.get_aircraft_panel()
 	_check(panel != null, "Aircraft tab panel exists")
 	_check(SettingsStore.section_for_key("aircraft_a10_fuel_pct") == "aircraft", "aircraft_* keys route to the [aircraft] section")
-	# welcome page selection -> tab
+	# welcome page selection -> tab, through the page's own Settings button
+	# (which hides the page before the settings open)
 	root._welcome_screen._on_aircraft_selected(2)   # A-10
-	screen.show_settings()
+	root._on_welcome_settings_requested()
 	await get_tree().process_frame
-	panel.refresh()
 	await get_tree().process_frame
 	_check(panel._aircraft_id == "a10" and "A-10" in panel._title.text, "tab shows the aircraft selected on the welcome page (%s)" % panel._title.text)
 	var texts: Array = []

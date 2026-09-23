@@ -1558,6 +1558,291 @@ All nine regions fetched and flattened 2026-09-20 with
 modelled beyond the two lengths; runway lights of unlit (`lighted:
 false`) runways are not drawn.
 
+## 13. Cloud streaming of the base tier — proposal 2026-09-22
+
+Trigger (gery, 2026-09-22): the Windows build runs; the goal is the **base
+tier streamed from a web server**. The 1 m Swiss and BW sceneries stay what
+D10 made them: opt-in add-ons, downloaded by hand as today's packs (they are
+not streamed). Test hosting: `https://www.md80.ch/provpilot/scenery/`
+(static ISP web space, limited in size and speed — enough for a test area).
+Related observation: 15 fps at take-off in Dübendorf dropping to 2–3 fps in
+flight with both add-ons installed; see §13.6.
+
+### 13.1 What the base tier is (measured, `/Volumes/Data1/provpilot/build`)
+
+| Region | Terrain tiles (34 px float32 `.raw`, 4.6 KB each) | Terrain | `airports/runways.json` |
+|---|---|---|---|
+| Switzerland | 47 337 | 370 MB | 11 MB |
+| Austria | 91 037 | 711 MB | 6 MB |
+| Denmark | 59 771 | 467 MB | 9 MB |
+| Germany | 368 912 | 2.8 GB | 68 MB |
+| France | 555 978 | 4.2 GB | 68 MB |
+| Italy | 329 964 | 2.5 GB | 28 MB |
+| Norway | 413 713 | 3.2 GB | 14 MB |
+| Sweden | 498 938 | 3.8 GB | 16 MB |
+| Finland | 381 898 | 2.9 GB | 9 MB |
+| **all nine** | **2.75 M** | **≈ 21 GB** | 230 MB |
+
+One file per square kilometre, no orthophoto, no buildings; runways,
+taxiways, aprons and night lights are built at runtime from the region's
+`runways.json`. The streamer reads `terrain/tile_E_N.raw` by name from the
+ordered region roots; there are no mips in the base tier — the 8 × 8 km far
+chunks composite the same 34 px files.
+
+### 13.2 What a flight touches
+
+Near and medium rings (≤ `load_radius` = 8 tiles): 17 × 17 = 289 tiles =
+1.3 MB. At 100 kt the aircraft enters ~50 new tiles a minute = **230 KB /
+min** — negligible. The problem is the horizon: far chunks out to 200 km
+cover a 400 × 400 km square = 160 000 tiles = 740 MB and 160 000 requests
+per Fly!, all from the same 34 px files. So the base tier streams only if it
+gets a **far level**: one small heightmap per 8 × 8 km chunk (the 33 × 33
+samples the chunk mesh actually uses, int16 = 2 KB) — the full 200 km
+horizon is then 1 600 chunks ≈ 3.5 MB, and each chunk's 64 tiles are only
+fetched when the chunk enters the medium ring.
+
+### 13.3 Wire format
+
+Same principle as the packs: the server hosts a directory tree, one file per
+unit, on a static host; the client cache is a region root the streamer
+already knows. Units:
+
+- `far/chunk_E_N.bin` — 33 × 33 int16 centimetres (2 KB) per 8 km chunk,
+  built once from the 64 tiles by the bake (`build_world_terrain.py far`).
+  Runtime: `S3DTileManager` builds a far chunk from this file when present
+  and falls back to compositing tiles when not (engine change, small).
+- `chunks/tiles_E_N.zst` — the chunk's 64 tiles as int16 centimetres +
+  zstd (≈ 60 KB instead of 300 KB); decoded on the client into the 64
+  `terrain/tile_E_N.raw` files the streamer reads, so it stays untouched.
+  Godot decompresses Zstd natively (`PackedByteArray.decompress`).
+- `airports/runways.json` per region as today (6–68 MB, once per region,
+  cached); the client fetches it when the region is enabled.
+- `terrain/manifest.json` (scalars only, D14) and a `stream.json` per
+  region: chunk grid, tile counts, sizes, sha256 of each chunk archive and a
+  version stamp, so the cache can validate and the UI can show what is
+  cached.
+
+Whole strip hosted this way: ≈ 4 GB of chunk archives + 25 MB of far files +
+230 MB of runways — the ISP space decides how much of it goes up; the
+Switzerland base alone is ≈ 90 MB.
+
+### 13.4 Client
+
+1. **Cache-or-fetch** in front of the tile manager's file opens: the region
+   root is a cache with a size cap (LRU by chunk, default a few GB — the
+   whole strip fits). A miss on any tile of a chunk queues that chunk
+   archive; the tiles stay "loading" until it has landed, like a slow disk.
+2. **Fetch worker**: a thread with 4 keep-alive connections (`HTTPClient`),
+   requests ordered by ring distance and heading (the chunk ahead of the
+   nose first, then the far files of the whole horizon, which are tiny).
+   Retries with backoff; a 404 is recorded as `no_data` (ocean, outside the
+   region) so the streamer does not wait for it.
+3. **Region manifest**: `scenery_manifest.json` gains a `stream` block per
+   base region (base URL, chunk grid, `stream.json` URL, version). Base
+   packs stay downloadable as ZIPs for offline installs; a streamed region
+   and an installed one are the same on disk.
+4. **Settings → Scenery**: per base region "install / stream / off", cache
+   size, and "pre-cache an area" (box on the map → fetch its chunks now).
+   The add-ons keep their manual install rows.
+
+### 13.5 Test area on the ISP web space
+
+The Switzerland base: 740 chunk archives (≈ 60 KB each, 45 MB) + 740 far
+files (1.5 MB) + `runways.json` (11 MB) ≈ **60 MB**, uploaded as the same
+tree the client caches. First measurement against the Windows install:
+bytes and requests per minute, and stalls, on a Dübendorf–Schaffhausen
+flight at 100 kt with an empty cache; then Austria and Denmark (1.2 GB
+of raw tiles → ≈ 250 MB hosted) to test crossing a region border.
+
+### 13.6 The fps drop in flight
+
+Separate from streaming, and it is the add-ons, not the base tier: 15 fps on
+the ground and 2–3 fps in flight with the CH and BW detail packs installed is
+not a GPU limit (the ground view draws more), it is streaming work and
+memory. Two pointers from this machine: the headless smokes report the
+process at **8 GB** after a few minutes with detail scenery, and every km²
+in flight brings five building sheets (1.8 MB) and a 1 MB raw heightmap
+through the decode path. Before anything else, profile one flight (Godot
+profiler + the tile manager's counters): building sheet loads per minute,
+JPEG decodes per frame, heightmaps retained, vertex budget hits. The likely
+fixes: merged buildings beyond the detail radius, dropping heightmaps of
+distant tiles after meshing (the README says so; verify it holds with two
+regions), and int16 heightmaps for the add-ons too.
+
+### 13.7 First start — recommendation 2026-09-22
+
+State: the installer is ≈ 235 MB (Windows zip / macOS dmg) with the
+aircraft and the airport catalog but no scenery. Settings → Downloads still
+mounts `scenery_downloader.gd`, but `scenery_manifest.json` on the server
+returns 404 (the scenery directory 403), so the tab looks dead. The welcome
+page already marks airports by installed base region (✓ / ✗ via
+`AirportsLib.installed_regions`).
+
+Options gery weighed: (a) a first-start screen to pick a region to
+download; (b) keep the Downloads tab and give it a world map with
+downloadable sections (X-Plane style); (c) pick an airport, and the flight
+fetches what it needs. Recommendation: **(c) as the flow, (b) as the
+management view, no gate screen** — because with §13 the "needed scenery"
+for a flight is a few MB, and a gate that asks a new user to choose a
+region before the first flight is the thing the 235 MB download avoids.
+
+- **Ship the far level in the installer.** The far files of the whole
+  strip are ≈ 25 MB (Europe ≈ 50 MB): the horizon and the globe are flyable
+  offline from the first start, only the near chunks stream.
+- **Runways per airport, not per region.** `airports/runways.json` is
+  6–68 MB per region; the runtime builds each airport from its own entry, so
+  the wire form is `airports/<ICAO>.json` (kilobytes), fetched with the
+  airport's chunks. The catalog (names, positions, ICAOs) stays in the app.
+- **Welcome page**: every airport of every region is listed; the marker
+  becomes "cached / streams / add-on installed" instead of ✓ / ✗, and Fly!
+  on an uncached airport starts the fetch during the intro zoom (the
+  zoom already waits for loading, §"intro as loading view"). Offline with
+  an empty cache: the airport is greyed with "needs a connection or a
+  pre-cached area".
+- **Settings → Downloads → "Scenery"**: cache size (default a few GB), used
+  space per region with "clear", the base regions as rows ("stream / install
+  pack / off") and, later, the map: the VFR map already draws borders from
+  a GeoJSON; painting region polygons (Natural Earth admin-0, the same
+  registry the bake uses) with status colours and a "pre-cache this box"
+  drag is the X-Plane view, worth doing once the streaming works. The
+  add-ons (CH, BW) keep their manual pack rows.
+- **Pre-cache** = the same fetch queue run over a box now (a trip without a
+  good link), stored in the same cache; ZIP base packs stay for offline
+  installs.
+
+### 13.8 Cache location — recommendation
+
+No question at first start. The app already picks an install root
+(`InstallConfig`: the executable's folder for a portable install, else
+`~/ProvPilot`, else the user data dir) and a `scenery` folder under it; the
+streaming cache is that same `scenery/<Region>` tree, so a streamed region
+and an installed pack are indistinguishable on disk and to the Scenery
+Library. The Scenery tab shows the path with **Move…** (re-points the root,
+offers to copy what is cached) and the cache size; the first-start default
+is what most users keep, and the ones who care find it in one place. A
+prompt on first start would ask for a decision before the user knows what
+the cache is for.
+
+### 13.9 Scope of the base tier — what else it should carry
+
+Terrain and airports are baked; the base tier is meant to be flyable
+everywhere, so it needs the things that make the ground readable from the
+air. Sizes below are per km² *on the wire* (compressed), with today's CH
+detail data as the yardstick where a class exists there:
+
+| Class | Source | Form | Wire size / km² | Note |
+|---|---|---|---|---|
+| terrain | SRTM (baked) | 34 px int16 zstd | ≈ 1 KB | done |
+| **land cover colour** | ESA WorldCover 10 m (CC BY 4.0, global) or Corine (Europe) | 64 px colour tile per km (JPEG / palette PNG) | ≈ 3 KB | **the biggest visual win**: fields, forest, urban, rock, water tint instead of a slope ramp; also drives procedural trees (forest class) and the far level's colour (chunk mip, 1 KB) |
+| water | OSM (`natural=water`, coastline) — §2.2 | polygons, simplified (lakes > 1 ha, rivers > 10 m), GLB per km where present | ≈ 3 KB averaged (30 KB where present) | detail CH is 186 KB / tile with every pond; the base wants the lakes you navigate by and the coast |
+| roads | OSM motorway / trunk / primary / (secondary) | ribbon GLB per km where present | ≈ 3 KB averaged | detail CH roads are 631 KB / tile with every street; base = the roads visible from 3 000 ft; railways optional |
+| cities | OSM `landuse=residential/industrial` polygons | flat patches with the urban colour + **procedural generic buildings at runtime** (density from the polygon, FlightGear-style), night lights as points | ≈ 1 KB | no building meshes in the base; the add-ons keep their real buildings |
+| airports | OurAirports + OSM (baked) | per-airport JSON | ≈ KB per airport | done; split per ICAO for streaming (§13.7) |
+
+Total ≈ **12 KB / km²** → 770 KB per 8 km chunk, ≈ 0.6 MB / min in
+flight at 100 kt (fine), and for hosting: Switzerland base ≈ 0.6 GB, the
+nine baked regions ≈ 33 GB, Europe ≈ 60–100 GB. The ISP web space holds a
+test area; the full base tier wants object storage with a CDN in front
+(Cloudflare R2 / Bunny / S3 — a few € per month at these sizes, egress is
+the cost to watch). Everything above is per-chunk archive like the terrain,
+so the streaming mechanics do not change; the bake gains one step per class
+(`build_world_landcover.py`, `build_world_water.py`, `build_world_roads.py`,
+`build_world_landuse.py`), each reusing the OSM tooling of the CH/BW packs
+(`convert_osm_bw.py`) with a "base" simplification profile.
+
+Suggested order: land cover first (one raster source, the largest effect,
+also fixes the flat colour of the far level), then water (coastline + lakes),
+then roads, then landuse + procedural buildings. Trees need no data of their
+own once land cover is in.
+
+**Roads and railways — implemented 2026-09-22** (gery: start with roads and
+rails from OSM for the Swiss base, baked not draped, taxiway quality, rails
+at their real gauge, Zürich as the starter box). `scripts/build_world_roads.py
+--region switzerland-base --bbox 2660000 1230000 2710000 1275000 --corridor`
+→ `<region>/roads/roads_E_N.glb` per 1 km tile + manifest (`"shader":
+"roads"`, `elevation_baked`). Source: Geofabrik PBF (streamed with
+pyosmium, 16 s for the box), classes motorway…tertiary (+links) and rail /
+narrow_gauge / light_rail / tram (yards and sidings dropped). Heights in
+two passes. Pass 1:
+base terrain bilinear, Gaussian-smoothed along the way (roads ±60–120 m,
+rails ±250 m), and the **corridor stage rewrites the 34 px terrain tiles**
+so the ground under every road and track follows that profile — the
+base-tier equivalent of the runway flatten (D18). The corridor reaches
+half width + 45 m (the 31 m pixel spacing × √2): anything narrower leaves
+grid cells with one untouched corner, and on a hillside the ground
+interpolated across such a cell rises through the ribbon (found 2026-09-22:
+4 % of vertices buried with a 14 m margin). The shelf that gives is the
+price of a 30 m posting. Pass 2, after every corridor is written: each
+ribbon re-samples the final ground at five points across its width and
+takes the maximum with its own profile — corridors of parallel tracks, of a
+road beside a railway and of crossings overwrite each other (last wins), so
+no ribbon may trust its own profile; bridges are lifted the same way. Result
+over the box: no vertex below the ground, ballast 0.15 m and roads 0.20 m
+above it. **Bridges and tunnels** (gery 2026-09-22, after spotting broken
+railway lines and flat interchanges: "make a good guess" for the missing
+heights, no structures yet): OSM has no heights, so a bridge deck is the
+straight chord between the grounds at the ends of its chain (a viaduct
+split into several OSM ways is joined by shared end nodes), lifted by one
+rise until it clears every way it crosses by 5.5 m (2D segment
+intersection against the other ways' profiles, approach ways excluded)
+and the ground under it by 0.3 m; every surface way ending at a lifted
+deck ramps up to it at 4 % (its embankment goes into the corridor first,
+so a road passing under then cuts its own level through it). Tunnels stay
+in the data: a chain shorter than 200 m is an underpass through an
+embankment that a 30 m posting cannot dig, so it is drawn at grade and
+the crossing way covers it; a longer one dives 8 m below the surface over
+40 m behind each portal (an end shared with another tunnel way stays deep)
+and is drawn there, hidden by the terrain, so the line only disappears
+where a real tunnel does. Ribbons of a lower class sit 1 cm lower per
+step (motorway → trunk → primary → secondary → tertiary, links 5 cm below
+their parents, plus a 0–1.2 cm per-way jitter) so merges and at-grade
+crossings draw cleanly with the higher class on top; rails' heads at
++0.32 m poke through a road at a level crossing, as they should. Zürich
+box: 1 753 bridge ways lifted over 1 489 crossings, 2 883 ramps, 313 tunnel
+ways below ground, 170 short ones at grade. Note the corridor bakes are
+cumulative on the terrain tiles: a clean slate needs the terrain rebuilt
+(`build_world_terrain.py`) before the roads bake. Geometry: road width from the lane count per carriageway
+(`lanes`, class default 2; lane 2.9–3.75 m by class, 0.5 m verges) — OSM
+maps motorways and trunks one way per carriageway, so a one-way way is
+a single carriageway with a 2.5 m hard shoulder (kind 1), the rare two-way
+motorway way gets both carriageways and a 3 m median (kind 5), links and
+one-lane one-way streets get edge lines only; the first bake drew a
+24 m dual carriageway on *each* OSM carriageway. Rails: a ballast bed per
+track (4.2 m + 3.8 m per extra track) plus two **extruded rails** per track
+(UIC 60 section: 150 mm foot, 72 mm head, 172 mm high) at the gauge (OSM
+`gauge`, default 1435 mm; narrow gauge 1000 mm), so from any angle they
+read as rails, not floating lines. Vertex data carries metres in the UVs
+(across / along; UV2 = half width and the lane or track count) and the
+surface kind in the colour alpha; `addons/scenery3d/shaders/roads.gdshader`
+draws asphalt with low specular, lane dashes / edge lines / hard shoulder
+per kind, gravel with 2.6 m sleepers under each track of a bed, and rails
+with a polished head and rusty flanks — one material for every tile
+(S3DRoadManager parses TEXCOORD_0/1 and picks the shader when the manifest
+says so; legacy tiles keep the vertex-colour material). Zürich box: 1 832
+tiles, 119 MB (≈ 53 KB / km², to be compressed per the streaming plan),
+3 364 km of road, 1 126 km of rail, 1 877 terrain tiles re-baked, 38 s per
+bake. Smoke `tests/smoke_base_roads.tscn`; renders with the real-size A-10
+(`probe_aircraft_lights`, `PROBE_E/N/DIST/PITCH/YAW`) — note the C172 and
+PC-7 are still drawn at 1/5 scale (A-10 port §4), which made the first
+renders look like giant slabs. Open: no physics surface for driving yet,
+level crossings and junctions are plain overlaps (ramp ends show as
+stair-steps where they merge), tram tracks in streets share the street
+ribbon, no bridge or tunnel structures (decks hover, portals are plain
+dives; details later per gery), colours are pale under the current
+sky/ambient like everything else. Corrections by hand: the scenery editor
+(`docs/SCENERY_EDITOR.md`, F8) edits a vector design that the bake folds
+in with `--design <file>` (its junctions, tapers and replace polygons
+included; the manifest lists the baked designs' sha256).
+
+Order of work stays as above: far files + chunk archives in the bake,
+cache-or-fetch + far-file support in the streamer, per-airport runway
+files, then the welcome markers and the Scenery tab.
+
+Nothing above is implemented yet. Proposed order: far files + chunk
+archives in the bake (they are also a smaller base pack), then the
+cache-or-fetch layer and far-file support in the streamer, then the
+manifest and the UI.
+
 ## See also
 
 - [gerys_plan.md](gerys_plan.md) — the plan this subtask serves

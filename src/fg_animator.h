@@ -108,6 +108,7 @@ namespace jsbgodot
         struct NodeState
         {
             Node3D *node = nullptr;
+            uint64_t node_id = 0;   // ObjectID: the model may be freed (aircraft swap) before clear()
             Transform3D base;
             // static (file-pose) transform of the parent relative to the model
             // root: FlightGear centres/axes are in model-file coordinates, so
