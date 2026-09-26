@@ -71,6 +71,8 @@ namespace jsbgodot
         };
 
         static void _bind_methods();
+        ControlSurfaces();
+        ~ControlSurfaces();
 
         // ── Per-aircraft tunables (defaults match the historical values) ──
         void set_rudder_max_angle(double deg);
@@ -143,8 +145,6 @@ namespace jsbgodot
         double get_visual_rpm() const;
 
     protected:
-        ControlSurfaces();
-        ~ControlSurfaces();
 
         // Tunables (defaults = historical GDScript values)
         double rudder_max_angle = 16.0;

@@ -302,7 +302,7 @@ func _process(_delta: float) -> void:
 			var ac := app.get_node("AC") as Node3D
 			# ECEF world: park the aircraft on the ellipsoid at the LV95 point,
 			# nose along the true heading (design §9.5).
-			var park_xf: Transform3D = app._ac_transform_at(AC_E, AC_N, 500.0, 250.0, ac.scale)
+			var park_xf: Transform3D = app._world.ac_transform_at(AC_E, AC_N, 500.0, 250.0, ac.scale)
 			jsb.set_godot_terrain_y_offset(-1.1)  # WHEEL_GROUND_CLEARANCE in node_3d.gd
 			jsb.initialize_at_terrain(498.0, park_xf.origin, 250.0)
 			ac.global_transform = park_xf
@@ -317,7 +317,7 @@ func _process(_delta: float) -> void:
 				check(app._slew_mode.is_enabled(), "slew mode entered via Shift+Y")
 				var ac := app.get_node("AC") as Node3D
 				# Re-park exactly (physics may have nudged AC slightly).
-				ac.global_transform = app._ac_transform_at(AC_E, AC_N, 500.0, 250.0, ac.scale)
+				ac.global_transform = app._world.ac_transform_at(AC_E, AC_N, 500.0, 250.0, ac.scale)
 				_enter_phase("slew_move")
 
 		"slew_move":
@@ -326,7 +326,7 @@ func _process(_delta: float) -> void:
 			var ac := app.get_node("AC") as Node3D
 			# Move 1 km east in LV95. JSBSim's cached position stays frozen at
 			# the park point for the rest of this phase group.
-			ac.global_transform = app._ac_transform_at(AC_E + 1000.0, AC_N, 500.0, 250.0, ac.scale)
+			ac.global_transform = app._world.ac_transform_at(AC_E + 1000.0, AC_N, 500.0, 250.0, ac.scale)
 			_enter_phase("slew_moved")
 
 		"slew_moved":

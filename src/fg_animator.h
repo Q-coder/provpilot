@@ -62,8 +62,9 @@ namespace jsbgodot
         // the node is not animated); for tests
         Transform3D animated_transform(const String &node_name) const;
 
-    protected:
         FGAnimator();
+
+    protected:
 
     private:
         enum CondKind { C_TRUE, C_PROP, C_EQ, C_NE, C_LT, C_LE, C_GT, C_GE, C_AND, C_OR, C_NOT };

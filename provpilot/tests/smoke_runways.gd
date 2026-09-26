@@ -1,6 +1,6 @@
 extends Node
 ## Headless smoke: per-pack runway data and rendering (design §12).
-##  - RunwaysLibScript.load_merged over the base packs gives Zurich its four
+##  - RunwaysLib.load_merged over the base packs gives Zurich its four
 ##    runways with thresholds at the OSM pavement ends;
 ##  - a higher-priority override pack listing LSZH with one runway wins
 ##    wholesale (D16), a lower-priority one is ignored;
@@ -9,8 +9,6 @@ extends Node
 ## Run: godot/bin/godot.macos.editor.double.arm64 --headless --path provpilot res://tests/smoke_runways.tscn
 
 const BUILD := "/Volumes/Data1/provpilot/build"
-const RunwaysLibScript := preload("res://runways_lib.gd")
-const RunwaysScript := preload("res://runways.gd")
 var fails: Array[String] = []
 
 func _fail(m: String) -> void:
@@ -40,7 +38,7 @@ func _ready() -> void:
 		areas[i]["priority"] = 10 + i
 
 	# 1. Merge of the base packs.
-	var merged: Dictionary = RunwaysLibScript.load_merged(areas)
+	var merged: Dictionary = RunwaysLib.load_merged(areas)
 	print("[runways] merged airports: %d" % merged.size())
 	if not merged.has("LSZH"):
 		_fail("LSZH missing from the merge"); _finish(); return
@@ -55,7 +53,7 @@ func _ready() -> void:
 	if zrh.get("pack_region") != "switzerland-base":
 		_fail("LSZH should come from the switzerland-base pack, got %s" % str(zrh.get("pack_region")))
 	# Germany (priority 10) also lists border airports? It must not define LSZH.
-	var cat: Array = RunwaysLibScript.catalog_runways(zrh)
+	var cat: Array = RunwaysLib.catalog_runways(zrh)
 	var r1634: Dictionary = {}
 	for c in cat:
 		if c["designator"] == "16/34":
@@ -88,22 +86,22 @@ func _ready() -> void:
 	var areas2: Array = areas.duplicate(true)
 	areas2.append({"path": tmp.path_join("hi"), "enabled": true, "priority": 1})
 	areas2.append({"path": tmp.path_join("lo"), "enabled": true, "priority": 99})
-	var merged2: Dictionary = RunwaysLibScript.load_merged(areas2)
+	var merged2: Dictionary = RunwaysLib.load_merged(areas2)
 	if merged2["LSZH"]["runways"].size() != 1 or merged2["LSZH"].get("pack_region") != "test-override":
 		_fail("higher-priority override should replace LSZH wholesale (got %d runways from %s)" % [merged2["LSZH"]["runways"].size(), str(merged2["LSZH"].get("pack_region"))])
 	var areas3: Array = areas.duplicate(true)
 	areas3.append({"path": tmp.path_join("lo"), "enabled": true, "priority": 99})
-	var merged3: Dictionary = RunwaysLibScript.load_merged(areas3)
+	var merged3: Dictionary = RunwaysLib.load_merged(areas3)
 	if merged3["LSZH"]["runways"].size() < 3:
 		_fail("lower-priority pack must not override LSZH")
 	var areas4: Array = areas.duplicate(true)
 	areas4.append({"path": tmp.path_join("hi"), "enabled": false, "priority": 1})
-	if RunwaysLibScript.load_merged(areas4)["LSZH"]["runways"].size() < 3:
+	if RunwaysLib.load_merged(areas4)["LSZH"]["runways"].size() < 3:
 		_fail("disabled pack must be ignored")
 
 	# 3. Catalog merge: Zurich's curated entry gains the pack runways.
 	var catalog: Array[Dictionary] = AirportsLib.load_default()
-	RunwaysLibScript.merge_into_catalog(catalog, merged)
+	RunwaysLib.merge_into_catalog(catalog, merged)
 	var n_zrh := 0
 	for ap in catalog:
 		if ap["icao"] == "LSZH":
@@ -112,7 +110,7 @@ func _ready() -> void:
 		_fail("catalog LSZH should list the pack runways, got %d" % n_zrh)
 
 	# 4. Rendering.
-	var rws: Node3D = RunwaysScript.new()
+	var rws: Node3D = Runways.new()
 	add_child(rws)
 	rws.build({"LSZH": zrh})
 	if rws.runway_count != zrh["runways"].size():
@@ -153,7 +151,7 @@ func _ready() -> void:
 				var w: Vector3 = mi.transform * v[i]
 				var g: Vector3 = W3DCoords.ecef_to_geodetic(w)
 				var t: float = uv[i].y / float(rec["length"])
-				var expect: float = lerpf(float(rec["h0"]), float(rec["h1"]), t) + RunwaysScript.SURFACE_LIFT_M
+				var expect: float = lerpf(float(rec["h0"]), float(rec["h1"]), t) + Runways.get_surface_lift_m()
 				worst = maxf(worst, absf(g.z - expect))
 			print("[runways] 16/34: %d vertices, worst height error vs plane %.4f m; attrs half_w %.1f len %.0f code %d" % [rec["count"], worst, c0[rec["first"] * 4], c0[rec["first"] * 4 + 1], int(c1[rec["first"] * 4 + 2])])
 			if worst > 0.05:
@@ -169,14 +167,14 @@ func _ready() -> void:
 		var first_poly: Array = zrh["aprons"][0]["polygon"]
 		var ap_first := -1
 		for i in range(v.size()):
-			if int(c1[i * 4 + 2]) == RunwaysScript.KIND_APRON * 64:
+			if int(c1[i * 4 + 2]) == Runways.KIND_APRON * 64:
 				ap_first = i
 				break
 		if ap_first < 0:
 			_fail("no apron vertices in the mesh")
 		else:
 			var g0: Vector3 = W3DCoords.ecef_to_geodetic(mi.transform * v[ap_first])
-			var d_h: float = absf(g0.z - (float(first_poly[0][2]) + RunwaysScript.APRON_LIFT_M))
+			var d_h: float = absf(g0.z - (float(first_poly[0][2]) + Runways.get_apron_lift_m()))
 			print("[runways] first apron vertex height err %.4f m; mesh %d vertices, %d indices" % [d_h, v.size(), (arr[Mesh.ARRAY_INDEX] as PackedInt32Array).size()])
 			if d_h > 0.01:
 				_fail("apron vertex off its stored height")
@@ -186,9 +184,9 @@ func _ready() -> void:
 	var tw0: Array = zrh["taxiways"][0]["path"][0]
 	var on_taxi: float = rws.surface_lift_at(W3DCoords.geodetic_to_ecef(float(tw0[0]), float(tw0[1]), float(tw0[2])))
 	print("[runways] surface lift: on 16/34 %.2f, on a taxiway node %.2f, off airport %.2f" % [on_rwy, on_taxi, off])
-	if absf(on_rwy - RunwaysScript.SURFACE_LIFT_M) > 1e-6:
-		_fail("lift on the runway should be %.2f, got %.2f" % [RunwaysScript.SURFACE_LIFT_M, on_rwy])
-	if on_taxi < RunwaysScript.APRON_LIFT_M:
+	if absf(on_rwy - Runways.get_surface_lift_m()) > 1e-6:
+		_fail("lift on the runway should be %.2f, got %.2f" % [Runways.get_surface_lift_m(), on_rwy])
+	if on_taxi < Runways.get_apron_lift_m():
 		_fail("lift on a taxiway node should be a pavement lift, got %.2f" % on_taxi)
 	if off != 0.0:
 		_fail("lift off the airport should be 0, got %.2f" % off)

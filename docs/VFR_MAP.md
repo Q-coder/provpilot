@@ -91,10 +91,11 @@ python scripts/generate_vfr_map_tiles.py --terrain-dir .../CH/terrain \
 
 ## Wiring (`provpilot/node_3d.gd`)
 
-The GDScript side is intentionally tiny: a one-time `setup()` with the Swiss
-origin + config path, `set_tile_paths()` from `_apply_scenery_sources()`
-(the `map/` subdir of each enabled scenery area), `apply_config()` after a
-settings save, and one `update(pos, heading, ui_up)` call per frame.
+The GDScript side is intentionally tiny: a one-time `setup()` with the config
+path, `set_tile_paths()` from `_apply_scenery_sources()` (the `map/` subdir of
+each enabled scenery area), `apply_config()` after a settings save, and one
+`WorldScenery.feed_vfr_map(ecef_pos, true_heading, ui_up)` call per frame
+(ECEF → LV95 + grid heading, then `update_lv95`).
 
 ## Testing
 

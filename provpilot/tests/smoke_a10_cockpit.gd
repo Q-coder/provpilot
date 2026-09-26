@@ -80,7 +80,7 @@ func _ready() -> void:
 	# engines: N1 gauge property equals the FDM, ITT reads the thrust fraction
 	_check(absf(float(fga.get_property("engines/engine/n1")) - jsb.get_property("propulsion/engine[0]/n1")) < 0.01, "engine N1 bridged (%.1f %%)" % jsb.get_property("propulsion/engine[0]/n1"))
 	# clock digits fed
-	_check(int(fga.get_property("sim/time/utc/hour")) == int(root._sky._time_seconds / 3600.0) % 24, "clock shows the simulated time (%02d:%02d)" % [int(fga.get_property("sim/time/utc/hour")), int(fga.get_property("sim/time/utc/minute"))])
+	_check(int(fga.get_property("sim/time/utc/hour")) == int(root._sky.time_seconds / 3600.0) % 24, "clock shows the simulated time (%02d:%02d)" % [int(fga.get_property("sim/time/utc/hour")), int(fga.get_property("sim/time/utc/minute"))])
 	_check(float(fga.get_property("sim/model/A-10/controls/gear/ld-gear-handle-anim")) < -0.5, "gear handle down (-1) with the gear down")
 	# stick follows the aileron command
 	root.jsb_node.set_input_aileron(1.0)

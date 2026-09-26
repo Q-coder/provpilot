@@ -8,9 +8,9 @@ func _initialize() -> void:
 	for p in ["denmark/Denmark","germany/Germany","switzerland-base/Switzerland","austria/Austria","italy/Italy","france/France","norway/Norway","sweden/Sweden","finland/Finland"]:
 		areas.append({"path": "/Volumes/Data1/provpilot/build/" + p, "enabled": true, "priority": i}); i += 1
 	var t0 := Time.get_ticks_msec()
-	var merged: Dictionary = load("res://runways_lib.gd").load_merged(areas)
+	var merged: Dictionary = RunwaysLib.load_merged(areas)
 	var t1 := Time.get_ticks_msec()
-	var rws: Node3D = load("res://runways.gd").new()
+	var rws: Node3D = Runways.new()
 	root.add_child(rws)
 	rws.set_merged(merged)
 	var cam := W3DCoords.geodetic_to_ecef(47.4647, 8.5492, 1500.0)

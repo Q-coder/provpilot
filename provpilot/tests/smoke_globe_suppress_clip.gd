@@ -50,7 +50,7 @@ func _sparse_mask() -> PackedByteArray:
 
 ## Push a synthetic mask through the production conversion path.
 func _push(mask: PackedByteArray, cam: Vector2i) -> void:
-	_scene._push_suppress_from_coverage(mask, R_TILES, cam.x, cam.y, TILE_M)
+	_scene._world.push_suppress_from_coverage(mask, R_TILES, cam.x, cam.y, TILE_M)
 
 func _process(_delta: float) -> bool:
 	_frame += 1

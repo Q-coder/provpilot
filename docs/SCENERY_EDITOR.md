@@ -1,9 +1,9 @@
 # Scenery editor (design / developer mode)
 
 Status: subtasks 1–8 implemented 2026-09-22 and a pilot of 9; the open points
-of each subtask are the plan. Owner: gery. Code: `provpilot/scenery_editor.gd` (mode, camera,
-cursor, tools, UI), `provpilot/scenery_design.gd` (document),
-`provpilot/scenery_design_mesher.gd` (live meshes), tests
+of each subtask are the plan. Owner: gery. Code (C++ GDExtension): `src/scenery_editor.cpp` (mode, camera,
+cursor, tools, UI, view gizmo), `src/scenery_design.cpp` (document),
+`src/scenery_design_mesher.cpp` (live meshes), tests
 `tests/smoke_scenery_editor.tscn` and `tests/probe_scenery_editor.tscn`.
 
 ## 1. Why

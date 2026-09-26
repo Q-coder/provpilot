@@ -34,8 +34,9 @@ node_3d
 └── AC …                     # aircraft (ECEF pose), cameras as children
 ```
 
-`node_3d.gd` helpers: `_geodetic_of(ecef)`, `_ecef_of_lv95(e, n, h)`,
-`_ac_transform_at(e, n, h, true_heading, scale)`, `_ac_true_heading(ac)`.
+C++ `WorldScenery` statics (`src/world_scenery.cpp`): `geodetic_of(ecef)`,
+`ecef_of_lv95(e, n, h)`, `ac_transform_at(e, n, h, true_heading, scale)`,
+`ac_true_heading(ac)`.
 Before the first flight the aircraft is parked on the ellipsoid at the LV95
 home point (`TERRAIN_CENTER_E/N`, Schaffhausen) so every geodetic conversion
 is well defined.
@@ -46,13 +47,13 @@ with `jsbgodot::geo::aim()`.
 
 ## Terrain elevation (ground contact)
 
-`node_3d.gd` queries terrain **patch-first, globe-fallback** so the aircraft has
+`WorldScenery` queries terrain **patch-first, globe-fallback** so the aircraft has
 ground everywhere on the planet while keeping regional precision where available:
 
-- `_scenery_elevation_geodetic(lat, lon)` — precise Scenery3D value (`NAN` if no data).
-- `_globe_elevation_geodetic(lat, lon)` — coarse whole-planet ETOPO.
-- `_terrain_elevation_geodetic(lat, lon)` / `_terrain_elevation_below(ecef)` — scenery first, else globe.
-- Spawn (`_do_deferred_terrain_init`) waits for the **precise** scenery value
+- `scenery_elevation_geodetic(lat, lon)` — precise Scenery3D value (`NAN` if no data).
+- `globe_elevation_geodetic(lat, lon)` — coarse whole-planet ETOPO.
+- `terrain_elevation_geodetic(lat, lon)` / `terrain_elevation_below(ecef)` — scenery first, else globe.
+- Spawn (`FlightSpawn::process_deferred_init`) waits for the **precise** scenery value
   (avoids a ~100 m jump from initialising on the coarse globe), falling back to
   the globe only after a timeout / outside the regions.
 
@@ -83,7 +84,7 @@ external spot view over ~6 s:
 
 ## Day/night sun + atmospheric sky
 
-The sky, sun and altitude ramps live in `provpilot/sky_atmosphere.gd` (a
+The sky, sun and altitude ramps live in `src/sky_atmosphere.cpp` (C++ `SkyAtmosphere`, a
 `RefCounted` owned by `node_3d.gd`), which replaces the old C++ `Atmosphere`
 module. `node_3d.gd::_setup_sky_atmosphere()` registers the scene
 `Environment`, the `Sun`/`Fill` `DirectionalLight3D`s and the globe, then

@@ -42,7 +42,7 @@ func _process(_d: float) -> void:
 				tm = c
 		if tm == null:
 			printerr("FAIL: no tile manager"); get_tree().quit(1); return
-		app._set_scenery_streaming(true)
+		app._world.set_streaming(true)
 		print("[probe] load_radius=%d far_radius=%d chunk_size=%d unload_margin=%d" % [tm.get_load_radius(), tm.get_far_radius(), tm.get_chunk_size(), tm.get_unload_margin()])
 		_move_to(START_E, START_N)
 		return

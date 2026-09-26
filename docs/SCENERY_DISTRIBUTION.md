@@ -127,7 +127,7 @@ Recognised filenames (regex):
 ^(?P<region>[a-z0-9-]+)-detail-(?P<quad>[a-z0-9]+)-v(?P<ver>[\w.]+)\.zip$
 ```
 
-Output schema (consumed by `scenery_downloader.gd`):
+Output schema (consumed by the C++ `SceneryDownloaderPanel`, `src/scenery_downloader_panel.cpp`):
 
 ```json
 {

@@ -1,7 +1,7 @@
-// One aircraft light as a point sprite (aircraft_lights.gd). The single
+// One aircraft light as a point sprite (src/aircraft_lights.cpp). The single
 // vertex sits at the lens centre of the model's light mesh; the sprite is
 // sized in screen pixels by view distance so a strobe reads from a few km.
-// aircraft_lights.gd places the vertex just outside the lens; here it is
+// src/aircraft_lights.cpp places the vertex just outside the lens; here it is
 // pulled a few model-centimetres (pull_m, world metres) toward the camera
 // against z-fighting with the lens. The depth test stays on, so the
 // airframe occludes lights on its far side. Never pull further: a wingtip

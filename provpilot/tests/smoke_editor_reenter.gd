@@ -21,14 +21,14 @@ func _key(code: int, pressed: bool) -> void:
 	Input.parse_input_event(k)
 
 func _moves(ed: SceneryEditor, label: String) -> void:
-	var before: Vector3 = ed._pos
+	var before: Vector3 = ed.camera_position
 	_key(KEY_W, true)
 	await get_tree().process_frame
 	for i in range(5):
 		ed.update(0.05)
 	_key(KEY_W, false)
 	await get_tree().process_frame
-	var moved: float = ed._pos.distance_to(before)
+	var moved: float = ed.camera_position.distance_to(before)
 	print("  [diag] %s: W moved the camera %.1f m" % [label, moved])
 	_check(moved > 1.0, "%s: W moves the camera" % label)
 

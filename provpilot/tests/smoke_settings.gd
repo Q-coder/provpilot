@@ -221,11 +221,11 @@ func _test_screen() -> void:
 	for i in range(tabs.get_tab_count()):
 		titles.append(tabs.get_tab_title(i))
 	check(titles == PackedStringArray(["Aircraft", "Scenery", "Downloads", "Graphics", "World", "Weather", "Map", "Sound", "Realism", "Joystick"]), "10 subject tabs: %s" % [titles])
-	check(_find_script(screen, "aircraft_settings_panel.gd") != null, "Aircraft tab hosts aircraft_settings_panel.gd")
+	check(_find_first(screen, "AircraftSettingsPanel") != null, "Aircraft tab hosts the AircraftSettingsPanel")
 
 	# GDScript panels mounted as tabs.
 	check(_find_first(screen, "SceneryDownloaderPanel") != null or _find_script(screen, "scenery_downloader.gd") != null, "Downloads tab hosts scenery_downloader.gd")
-	check(_find_script(screen, "joystick_settings_panel.gd") != null, "Joystick tab hosts joystick_settings_panel.gd")
+	check(_find_first(screen, "JoystickSettingsPanel") != null, "Joystick tab hosts the JoystickSettingsPanel")
 
 	# store -> UI (refresh) -> store (commit) round trip on a slider.
 	store.set_setting("master_volume", 45)

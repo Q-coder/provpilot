@@ -14,7 +14,7 @@ func _ray_hits(ctl, cam: Camera3D, pos: Vector2) -> Array:
 	var from: Vector3 = cam.project_ray_origin(pos)
 	var dir: Vector3 = cam.project_ray_normal(pos)
 	var out: Array = []
-	for it in ctl._items:
+	for it in ctl.get_items():
 		var n: MeshInstance3D = it.node
 		if not is_instance_valid(n) or not n.is_visible_in_tree():
 			continue

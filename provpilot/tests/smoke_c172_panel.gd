@@ -138,7 +138,7 @@ func _ready() -> void:
 		# fixture sprites sit on the lenses: left wingtip +X, right wingtip -X, beacon on the fin (aft = -Z, high), tail light further aft
 		var inv2: Transform3D = (mroot as Node3D).global_transform.affine_inverse()
 		var at := {}
-		for f in L._fixtures:
+		for f in L.get_fixtures():
 			# the sprite is a one-vertex point mesh: the vertex holds the lens position
 			var v: Vector3 = ((f.sprite as MeshInstance3D).mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array)[0]
 			at[f.kind] = inv2 * ((f.sprite as Node3D).global_transform * v)
@@ -188,7 +188,7 @@ func _ready() -> void:
 			_check(ctl.hover_name(cam, _centre_px(cam, sw_t)) == "Switch_TaxiLt", "and can be clicked again to switch it off")
 			ctl.click(cam, _centre_px(cam, sw_t), MOUSE_BUTTON_LEFT, true, false); ctl.click(cam, _centre_px(cam, sw_t), MOUSE_BUTTON_LEFT, false, false)
 		ctl.set_debug(true)
-		_check(ctl._debug_boxes.size() == ctl.count, "Shift+Ctrl+M hotspot boxes, one per clickable part (%d)" % ctl._debug_boxes.size())
+		_check(ctl.debug_box_count() == ctl.count, "Shift+Ctrl+M hotspot boxes, one per clickable part (%d)" % ctl.debug_box_count())
 		ctl.set_debug(false)
 		var sw_alt: Node3D = mroot.find_child("Switch_Alt", true, false)
 		var sw_bat: Node3D = mroot.find_child("Switch_Bat", true, false)

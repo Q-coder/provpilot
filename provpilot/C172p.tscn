@@ -1,10 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://fg5qsd8aq40k"]
-
-[ext_resource type="Script" path="res://c172p_loader.gd" id="1_loader"]
+[gd_scene format=3 uid="uid://fg5qsd8aq40k"]
 
 [node name="Node3D" type="Node3D" unique_id=252633614]
 transform = Transform3D(0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1, 0, 0, 0)
 
-[node name="C172P_1" type="Node3D" parent="." unique_id=754369261]
+[node name="C172P_1" type="AircraftModelLoader" parent="." unique_id=754369261]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.010913372, -0.11403066, 0.30434108)
-script = ExtResource("1_loader")

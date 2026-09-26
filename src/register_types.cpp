@@ -17,6 +17,32 @@
 #include "settings_store.h"
 #include "settings_screen.h"
 #include "fg_animator.h"
+#include "aircraft_config.h"
+#include "aircraft_rig.h"
+#include "world_scenery.h"
+#include "flight_hud.h"
+#include "loading_screen.h"
+#include "flight_spawn.h"
+#include "aircraft_model_loader.h"
+#include "fg_bridge.h"
+#include "fg_controls.h"
+#include "fg_sounds.h"
+#include "aircraft_lights.h"
+#include "airports_lib.h"
+#include "runways_lib.h"
+#include "live_weather.h"
+#include "joystick_bindings.h"
+#include "aircraft_installer.h"
+#include "sky_atmosphere.h"
+#include "cloud_layers.h"
+#include "aircraft_settings_panel.h"
+#include "joystick_settings_panel.h"
+#include "welcome_screen.h"
+#include "scenery_downloader_panel.h"
+#include "runways.h"
+#include "scenery_design.h"
+#include "scenery_design_mesher.h"
+#include "scenery_editor.h"
 
 using namespace godot;
 using namespace jsbgodot;
@@ -42,6 +68,33 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<FGAnimator>();
 	ClassDB::register_class<SettingsStore>();
 	ClassDB::register_class<SettingsScreen>();
+	ClassDB::register_class<AircraftConfig>();
+	ClassDB::register_class<AircraftRig>();
+	ClassDB::register_class<WorldScenery>();
+	ClassDB::register_class<FlightHud>();
+	ClassDB::register_class<LoadingScreen>();
+	ClassDB::register_class<FlightSpawn>();
+	ClassDB::register_class<AircraftModelLoader>();
+	ClassDB::register_class<FGBridge>();
+	ClassDB::register_class<FGControls>();
+	ClassDB::register_class<FGSounds>();
+	ClassDB::register_class<AircraftLights>();
+	ClassDB::register_class<AirportsLib>();
+	ClassDB::register_class<RunwaysLib>();
+	ClassDB::register_class<LiveWeather>();
+	ClassDB::register_class<JoystickBindings>();
+	ClassDB::register_class<AircraftInstaller>();
+	ClassDB::register_class<SkyAtmosphere>();
+	ClassDB::register_class<CloudLayers>();
+	ClassDB::register_class<AircraftSettingsPanel>();
+	ClassDB::register_class<JoystickSettingsPanel>();
+	ClassDB::register_class<WelcomeScreen>();
+	ClassDB::register_class<SceneryDownloaderPanel>();
+	ClassDB::register_class<Runways>();
+	ClassDB::register_class<SceneryDesign>();
+	ClassDB::register_class<SceneryDesignMesher>();
+	ClassDB::register_class<SceneryViewGizmo>();
+	ClassDB::register_class<SceneryEditor>();
 }
 
 void uninitialize_gojsb_module(ModuleInitializationLevel p_level)

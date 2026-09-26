@@ -34,7 +34,7 @@ func _ready() -> void:
 		L.debug_all_on = true
 	# the host builds airports a few per second in catalog order; force LSZH now
 	if root._runways and root._runways_merged.has("LSZH"):
-		root._runways._build_airport("LSZH", root._runways_merged["LSZH"], Callable(root, "_terrain_elevation_geodetic"))
+		root._runways.build_airport("LSZH", root._runways_merged["LSZH"], Callable(root, "_terrain_elevation_geodetic"))
 	# PROBE_GENS_OFF=1: generators off -> generator cautions and master caution lit
 	if OS.get_environment("PROBE_GENS_OFF") == "1":
 		root._fg_controls.state["controls/electric/engine/generator"] = 0.0
@@ -102,7 +102,7 @@ func _ready() -> void:
 	# where each fixture lands on screen (to match dots in the screenshot)
 	var vcam: Camera3D = get_viewport().get_camera_3d()
 	if L and vcam:
-		for f in L._fixtures:
+		for f in L.get_fixtures():
 			var gp: Vector3 = f.sprite.global_transform * f.sprite.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX][0]
 			var sp: Vector2 = vcam.unproject_position(gp)
 			var ac_p: Vector3 = ac.global_transform.affine_inverse() * gp

@@ -12,7 +12,7 @@ func _process(_d: float) -> bool:
 	if _frame == 10:
 		var ac: Node3D = _scene.get_node("AC")
 		for alt in [500.0, 7600.0, 62000.0, 400000.0, 10000000.0]:
-			ac.global_transform = _scene._ac_transform_at(2802245.0, 2686476.0, alt, 184.0, ac.scale)
+			ac.global_transform = _scene._world.ac_transform_at(2802245.0, 2686476.0, alt, 184.0, ac.scale)
 			var cam: Camera3D = _scene.get_node("AC/Camera2")
 			cam.make_current()
 			_scene._sky.update(0.016, root)

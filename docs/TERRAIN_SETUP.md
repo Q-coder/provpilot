@@ -67,15 +67,11 @@ home point before the first flight.
 
 ## Elevation Queries
 
-`node_3d.gd` asks Scenery3D for terrain height with:
-
-```gdscript
-var h: float = scenery3d_node.get_elevation(world_x, world_z)
-```
-
-Returns `NaN` if the query falls outside loaded tiles; the wrapper
-`_terrain_elevation_at(x, z)` in `node_3d.gd` replaces `NaN` with `0.0` for
-safety. JSBSim's terrain elevation is fed from the same call.
+The C++ `WorldScenery` module (`src/world_scenery.cpp`) asks Scenery3D for
+terrain height with `get_elevation_geodetic(lat, lon)`, which returns `NaN`
+(or 0.0, treated as no data) outside loaded tiles. `terrain_elevation_geodetic`
+falls back to the world3d globe there; JSBSim's ground query
+(`ground_height_geodetic`) uses the precise value plus the drawn runway lift.
 
 ## Tile Data
 

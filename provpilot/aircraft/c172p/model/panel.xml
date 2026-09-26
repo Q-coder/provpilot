@@ -74,7 +74,7 @@
        fg_panel_build.py, pivot = their origin, modelled in the off pose): a
        click toggles the property and the rocker tilts 20 deg about X the
        other way while on. ALT / BAT feed the
-       electrical model (fg_bridge.gd): with both off nothing is powered. -->
+       electrical model (src/fg_bridge.cpp): with both off nothing is powered. -->
   <animation><type>pick</type><object-name>Switch_TaxiLt</object-name>
     <action><button>0</button><binding><command>property-toggle</command><property>controls/lighting/taxi-light</property></binding></action></animation>
   <animation><type>pick</type><object-name>Switch_LandingLt</object-name>

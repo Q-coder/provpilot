@@ -28,21 +28,21 @@ func _ready() -> void:
 	root._on_welcome_settings_requested()
 	await get_tree().process_frame
 	await get_tree().process_frame
-	_check(panel._aircraft_id == "a10" and "A-10" in panel._title.text, "tab shows the aircraft selected on the welcome page (%s)" % panel._title.text)
+	_check(panel.get_aircraft_id() == "a10" and "A-10" in panel.get_title_label().text, "tab shows the aircraft selected on the welcome page (%s)" % panel.get_title_label().text)
 	var texts: Array = []
-	for c in panel._info_grid.get_children():
+	for c in panel.get_info_grid().get_children():
 		texts.append((c as Label).text)
 	_check("450 kt" in texts and "45000 ft" in texts, "reference data from [performance] (Vne 450 kt, ceiling 45000 ft)")
-	_check("Not flying" in panel._cg_label.text, "CG readout idle before the flight")
+	_check("Not flying" in panel.get_cg_label().text, "CG readout idle before the flight")
 	# fuel slider stores the setting per aircraft
-	panel._fuel_slider.value = 80.0
+	panel.get_fuel_slider().value = 80.0
 	await get_tree().process_frame
 	var store = screen.get_store()
 	_check(absf(float(store.get_setting("aircraft_a10_fuel_pct")) - 80.0) < 1e-6, "fuel slider stores aircraft_a10_fuel_pct = 80")
 	store.set_setting("aircraft_c172p_fuel_pct", 55.0)
 	root._welcome_screen._on_aircraft_selected(0)
 	panel.refresh()
-	_check(panel._aircraft_id == "c172p" and absf(panel._fuel_slider.value - 55.0) < 1e-6, "another aircraft shows its own fuel value (%.0f)" % panel._fuel_slider.value)
+	_check(panel.get_aircraft_id() == "c172p" and absf(panel.get_fuel_slider().value - 55.0) < 1e-6, "another aircraft shows its own fuel value (%.0f)" % panel.get_fuel_slider().value)
 	screen.hide_settings()
 	# fly the A-10: tanks come up at 80 %
 	root._on_welcome_flight_requested("a10", E, N, 155.0)
@@ -66,9 +66,9 @@ func _ready() -> void:
 	var cg: Dictionary = jsb.get_cg_info()
 	print("  [diag] cg ", cg)
 	_check(float(cg.get("weight_lbs", 0.0)) > 20000.0 and float(cg.get("mac_ft", 0.0)) > 1.0, "CG info from the FDM (weight %.0f lb, MAC %.2f ft)" % [float(cg.get("weight_lbs", 0.0)), float(cg.get("mac_ft", 0.0))])
-	_check(panel._cg_label.text.begins_with("CG "), "live CG readout while flying (%s)" % panel._cg_label.text)
+	_check(panel.get_cg_label().text.begins_with("CG "), "live CG readout while flying (%s)" % panel.get_cg_label().text)
 	# changing the fuel while flying applies immediately
-	panel._fuel_slider.value = 30.0
+	panel.get_fuel_slider().value = 30.0
 	await get_tree().process_frame
 	_check(absf(jsb.get_tank_contents_lbs(1) / jsb.get_tank_capacity_lbs(1) - 0.3) < 0.02, "fuel change while flying fills the tanks now (%.0f %%)" % (100.0 * jsb.get_tank_contents_lbs(1) / jsb.get_tank_capacity_lbs(1)))
 	screen.hide_settings()

@@ -40,7 +40,7 @@ func _ready() -> void:
 	if cam:
 		print("[intro] cam basis det=%.6f pos=%s" % [cam.global_transform.basis.determinant(), str(cam.global_position)])
 	if _root._clouds:
-		print("[intro] clouds det=%.6f meshes=%d" % [_root._clouds.global_transform.basis.determinant(), _root._clouds._meshes.size()])
+		print("[intro] clouds det=%.6f meshes=%d" % [_root._clouds.global_transform.basis.determinant(), _root._clouds.get_meshes().size()])
 	var out := OS.get_environment("PROBE_OUT")
 	if out != "":
 		get_viewport().get_texture().get_image().save_png(out)

@@ -105,7 +105,7 @@ stays), damage, datalink, multiplayer, sounds beyond the engine loop.
 6. **Systems (light)** — electrical buses as on/off from battery+generators
    (drives panel lighting and lamp `material` animations), landing-gear
    warning, master caution; aircraft lights driven from the switches
-   instead of the automatic rules in `aircraft_lights.gd`.
+   instead of the automatic rules in `src/aircraft_lights.cpp`.
 7. **View and camera** — cockpit eye point from the FlightGear view config
    (0, 1.5, 3.2), head limits; external camera default.
 8. **Later** — HUD on the combiner glass, MFD pages, sounds, stores.
@@ -195,7 +195,7 @@ on a fresh inode afterwards.
 
 ### Subtask 3 — exterior bridge and model swap at real size (done 2026-09-21, check flight pending)
 
-- `provpilot/fg_bridge.gd` (`FGBridge`): per-frame FlightGear property values
+- `src/fg_bridge.cpp` (C++ `FGBridge`): per-frame FlightGear property values
   from JSBSim (`fcs/*-pos-norm` incl. `speedbrake` → spoilers,
   `gear/unit[n]/pos-norm`, `compression-ft` normalised by an oleo travel
   table, `wheel-speed-fps` or ground speed on WOW → `rollspeed-ms`,
@@ -259,7 +259,7 @@ on a fresh inode afterwards.
 
 ### Subtask 4 — cockpit instruments (done 2026-09-21, check flight pending)
 
-`fg_bridge.gd` now covers every property the manifest references (0 of 210
+`src/fg_bridge.cpp` now covers every property the manifest references (0 of 210
 unbridged, `tests/smoke_a10_cockpit.tscn`):
 
 - Flight instruments from JSBSim: ASI `velocities/vc-kts`, VSI
@@ -310,7 +310,7 @@ panel and the runway lights show through the canopy.
 
 ### Subtask 5 — clickable cockpit controls (done 2026-09-21, check flight pending)
 
-`provpilot/fg_controls.gd` (`FGControls`) runs the manifest's 115 `pick` /
+`src/fg_controls.cpp` (C++ `FGControls`) runs the manifest's 115 `pick` /
 `knob` / `slider` records (126 clickable meshes; group objects contribute
 every mesh below them). Picking is a ray from the cockpit camera through
 the mouse against each control's bounding box, nearest hit within 4 m —
@@ -403,7 +403,7 @@ on a drifted rest. Dead zone 0.3 with a proportional rate in
 
 ### Settings → Aircraft tab (2026-09-21, gery's request before subtask 8)
 
-`provpilot/aircraft_settings_panel.gd`, mounted first in the C++ settings
+`src/aircraft_settings_panel.cpp` (C++ `AircraftSettingsPanel`), mounted first in the C++ settings
 screen (`SettingsScreen::_build_aircraft_tab`, `get_aircraft_panel()`), for
 the aircraft selected on the welcome page or the one being flown
 (`node_3d._settings_aircraft_id`). Per-aircraft settings are
@@ -438,7 +438,7 @@ default seeds `controls/gear/brake-parking` = 1.
 28 .wav files the package ships (9.6 MB; both copies). Five generic
 FlightGear files ($FG_ROOT/Sounds: rumble, gear, gear-lck, squeal, flaps)
 are not in the package: their 19 records are skipped and listed.
-`provpilot/fg_sounds.gd` (`FGSounds`) plays the set from the same property
+`src/fg_sounds.cpp` (C++ `FGSounds`) plays the set from the same property
 values the animator gets: looped sounds while their condition holds, once
 sounds on the condition's rising edge (switch clicks), in-transit sounds
 while the watched property moves (canopy), volume and pitch as the product

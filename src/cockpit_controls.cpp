@@ -6,8 +6,15 @@
 #include <godot_cpp/classes/input.hpp>
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/box_mesh.hpp>
+#include <godot_cpp/classes/box_shape3d.hpp>
+#include <godot_cpp/classes/collision_shape3d.hpp>
+#include <godot_cpp/classes/cylinder_shape3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/physics_direct_space_state3d.hpp>
+#include <godot_cpp/classes/physics_ray_query_parameters3d.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/world3d.hpp>
+#include <godot_cpp/classes/global_constants.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
@@ -40,6 +47,11 @@ void CockpitControls::_bind_methods()
 	ClassDB::bind_method(D_METHOD("reset"), &CockpitControls::reset);
 	ClassDB::bind_method(D_METHOD("register_levers", "mixture", "throttle", "magneto", "flap"), &CockpitControls::register_levers);
 	ClassDB::bind_method(D_METHOD("register_debug_bodies", "mixture_body", "throttle_body"), &CockpitControls::register_debug_bodies);
+	ClassDB::bind_method(D_METHOD("create_pick_bodies"), &CockpitControls::create_pick_bodies);
+	ClassDB::bind_method(D_METHOD("get_lever_node", "lever"), &CockpitControls::get_lever_node);
+	ClassDB::bind_method(D_METHOD("handle_mouse_button", "camera", "position", "button_index", "pressed", "jsb"), &CockpitControls::handle_mouse_button);
+	ClassDB::bind_method(D_METHOD("handle_mouse_motion", "position", "jsb"), &CockpitControls::handle_mouse_motion);
+	ClassDB::bind_method(D_METHOD("is_dragging"), &CockpitControls::is_dragging);
 
 	// Expose the Lever enum to GDScript (set_dragging arguments).
 	ClassDB::bind_integer_constant("CockpitControls", "Lever", "LEVER_MIXTURE", LEVER_MIXTURE);
@@ -112,6 +124,11 @@ void CockpitControls::reset()
 	flap_lever_node = nullptr;
 	mixture_debug_body = nullptr;
 	throttle_debug_body = nullptr;
+	for (int i = 0; i < 4; i++)
+	{
+		pick_body[i] = nullptr; // freed with the model subtree
+		dragging[i] = false;
+	}
 	// Mirror the historical _resolve_gear_legs reset (gear fully down).
 	gear_down = true;
 }
@@ -144,6 +161,195 @@ void CockpitControls::register_debug_bodies(Node *p_mixture_body, Node *p_thrott
 {
 	mixture_debug_body = p_mixture_body;
 	throttle_debug_body = p_throttle_body;
+}
+
+Node3D *CockpitControls::get_lever_node(int lever) const
+{
+	switch (lever)
+	{
+		case LEVER_MIXTURE: return mixture_lever_node;
+		case LEVER_THROTTLE: return throttle_lever_node;
+		case LEVER_MAGNETO: return magneto_switch_node;
+		case LEVER_FLAP: return flap_lever_node;
+		default: return nullptr;
+	}
+}
+
+// ── Mouse picking ───────────────────────────────────────────────────────────
+
+StaticBody3D *CockpitControls::make_pick_body(Node3D *lever, int layer, const Ref<Shape3D> &shape)
+{
+	if (lever == nullptr)
+	{
+		return nullptr;
+	}
+	StaticBody3D *body = memnew(StaticBody3D);
+	body->set_collision_layer(layer);
+	body->set_collision_mask(0); // never collides with anything itself
+	CollisionShape3D *cs = memnew(CollisionShape3D);
+	cs->set_shape(shape);
+	body->add_child(cs);
+	lever->add_child(body);
+	return body;
+}
+
+void CockpitControls::create_pick_bodies()
+{
+	// Levers are small knobs; model units are metres at this hierarchy level.
+	Ref<BoxShape3D> knob = memnew(BoxShape3D);
+	knob->set_size(Vector3(0.02, 0.02, 0.04));
+	Ref<CylinderShape3D> key = memnew(CylinderShape3D);
+	key->set_radius(0.015);
+	key->set_height(0.02);
+	Ref<BoxShape3D> handle = memnew(BoxShape3D); // taller along Y for the lever travel
+	handle->set_size(Vector3(0.02, 0.04, 0.02));
+
+	pick_body[LEVER_MIXTURE] = make_pick_body(mixture_lever_node, PICK_LAYER[LEVER_MIXTURE], knob);
+	pick_body[LEVER_THROTTLE] = make_pick_body(throttle_lever_node, PICK_LAYER[LEVER_THROTTLE], knob);
+	pick_body[LEVER_MAGNETO] = make_pick_body(magneto_switch_node, PICK_LAYER[LEVER_MAGNETO], key);
+	pick_body[LEVER_FLAP] = make_pick_body(flap_lever_node, PICK_LAYER[LEVER_FLAP], handle);
+	register_debug_bodies(pick_body[LEVER_MIXTURE], pick_body[LEVER_THROTTLE]);
+}
+
+bool CockpitControls::ray_hits_body(Camera3D *camera, const Vector2 &screen_pos, StaticBody3D *body, int layer) const
+{
+	if (camera == nullptr || body == nullptr)
+	{
+		return false;
+	}
+	Ref<World3D> world = camera->get_world_3d();
+	if (world.is_null())
+	{
+		return false;
+	}
+	PhysicsDirectSpaceState3D *space = world->get_direct_space_state();
+	if (space == nullptr)
+	{
+		return false;
+	}
+	const Vector3 from = camera->project_ray_origin(screen_pos);
+	const Vector3 to = from + camera->project_ray_normal(screen_pos) * 5.0;
+	Ref<PhysicsRayQueryParameters3D> query = PhysicsRayQueryParameters3D::create(from, to, layer);
+	query->set_collide_with_areas(false);
+	query->set_collide_with_bodies(true);
+	const Dictionary result = space->intersect_ray(query);
+	if (result.is_empty())
+	{
+		return false;
+	}
+	return Object::cast_to<Object>(result["collider"]) == body;
+}
+
+bool CockpitControls::is_dragging() const
+{
+	return dragging[0] || dragging[1] || dragging[2] || dragging[3];
+}
+
+bool CockpitControls::handle_mouse_button(Camera3D *camera, const Vector2 &position, int button_index, bool pressed, Object *p_jsb)
+{
+	if (button_index != MOUSE_BUTTON_LEFT)
+	{
+		return false;
+	}
+	JSBGodot *fdm = Object::cast_to<JSBGodot>(p_jsb);
+	if (pressed)
+	{
+		// Mixture first, then throttle, magneto, flaps (historical order).
+		if (mixture_lever_node != nullptr && ray_hits_body(camera, position, pick_body[LEVER_MIXTURE], PICK_LAYER[LEVER_MIXTURE]))
+		{
+			dragging[LEVER_MIXTURE] = true;
+			drag_start_px = position.y;
+			drag_start_value = mixture_value;
+			return true;
+		}
+		if (throttle_lever_node != nullptr && fdm != nullptr && ray_hits_body(camera, position, pick_body[LEVER_THROTTLE], PICK_LAYER[LEVER_THROTTLE]))
+		{
+			dragging[LEVER_THROTTLE] = true;
+			drag_start_px = position.y;
+			drag_start_value = fdm->get_input_throttle();
+			return true;
+		}
+		if (magneto_switch_node != nullptr && ray_hits_body(camera, position, pick_body[LEVER_MAGNETO], PICK_LAYER[LEVER_MAGNETO]))
+		{
+			dragging[LEVER_MAGNETO] = true;
+			drag_start_px = position.x;
+			drag_start_pos = magneto_position;
+			return true;
+		}
+		if (flap_lever_node != nullptr && ray_hits_body(camera, position, pick_body[LEVER_FLAP], PICK_LAYER[LEVER_FLAP]))
+		{
+			dragging[LEVER_FLAP] = true;
+			drag_start_px = position.y;
+			drag_start_pos = flap_position;
+			return true;
+		}
+		return false;
+	}
+	// Release ends every drag.
+	bool handled = false;
+	if (dragging[LEVER_MAGNETO])
+	{
+		dragging[LEVER_MAGNETO] = false;
+		// Spring back from START on mouse release
+		if (magneto_position == 4)
+		{
+			set_magneto_position(3, p_jsb);
+			UtilityFunctions::print("Magneto: BOTH");
+		}
+		handled = true;
+	}
+	for (int i = 0; i < 4; i++)
+	{
+		if (dragging[i])
+		{
+			dragging[i] = false;
+			handled = true;
+		}
+	}
+	return handled;
+}
+
+bool CockpitControls::handle_mouse_motion(const Vector2 &position, Object *p_jsb)
+{
+	JSBGodot *fdm = Object::cast_to<JSBGodot>(p_jsb);
+	if (dragging[LEVER_MIXTURE])
+	{
+		// Drag up = richer
+		const double delta = (drag_start_px - position.y) / DRAG_PX_PER_UNIT;
+		set_mixture_value(Math::clamp(drag_start_value + delta, 0.0, 1.0), p_jsb);
+		return true;
+	}
+	if (dragging[LEVER_THROTTLE] && fdm != nullptr)
+	{
+		const double delta = (drag_start_px - position.y) / DRAG_PX_PER_UNIT;
+		const double throttle = Math::clamp(drag_start_value + delta, 0.0, 1.0);
+		fdm->set_input_throttle(static_cast<float>(throttle));
+		apply_throttle_visual(throttle); // lever follows immediately during the drag
+		return true;
+	}
+	if (dragging[LEVER_MAGNETO])
+	{
+		// Drag right = clockwise (toward START), left = counterclockwise (toward OFF)
+		const int steps = static_cast<int>((position.x - drag_start_px) / DRAG_PX_PER_STEP);
+		const int new_pos = Math::clamp(drag_start_pos + steps, 0, 4);
+		if (new_pos != magneto_position)
+		{
+			set_magneto_position(new_pos, p_jsb);
+		}
+		return true;
+	}
+	if (dragging[LEVER_FLAP])
+	{
+		// Drag down = more flaps, up = less (vertical, like a pull-down lever)
+		const int steps = static_cast<int>((position.y - drag_start_px) / DRAG_PX_PER_STEP);
+		const int new_pos = Math::clamp(drag_start_pos + steps, 0, 3);
+		if (new_pos != flap_position)
+		{
+			set_flap_position(new_pos, p_jsb);
+		}
+		return true;
+	}
+	return false;
 }
 
 // ── Per-frame update ────────────────────────────────────────────────────────

@@ -79,7 +79,7 @@ func _setup() -> void:
 	if not _any_contains(paths, "/norway/norway/terrain"):
 		fails.append("Norway terrain path missing from data_paths — check [scenery] scenery_areas in provpilot.cfg")
 
-	app._set_scenery_streaming(true)
+	app._world.set_streaming(true)
 	phase = "oslo"
 	phase_frame = 0
 	_move_to(OSLO_E, OSLO_N)

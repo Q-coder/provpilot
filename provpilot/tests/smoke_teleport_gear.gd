@@ -47,8 +47,8 @@ func _ready() -> void:
 		var p: Vector3 = _root.get_node("AC").global_position
 		if not p.is_finite():
 			_fail("aircraft position went non-finite"); break
-		var gg: Vector3 = _root._geodetic_of(p)
-		var h: float = _root._scenery_elevation_geodetic(gg.x, gg.y)
+		var gg: Vector3 = _root._world.geodetic_of(p)
+		var h: float = _root._world.scenery_elevation_geodetic(gg.x, gg.y)
 		if not is_nan(h):
 			max_agl = maxf(max_agl, gg.z - h)
 			min_agl = minf(min_agl, gg.z - h)

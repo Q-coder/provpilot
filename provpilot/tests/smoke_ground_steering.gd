@@ -48,7 +48,7 @@ func _ready() -> void:
 	jsb.set_input_throttle(0.0)
 	# --- air: re-init at 1500 m AGL, 110 kts, right rudder ---
 	var g: Vector3 = W3DCoords.ecef_to_geodetic(ac.global_position)
-	var xf: Transform3D = _root._ac_transform_at(E, N, g.z + 1500.0, 160.0, ac.scale)
+	var xf: Transform3D = _root._world.ac_transform_at(E, N, g.z + 1500.0, 160.0, ac.scale)
 	jsb.set_slew_mode(true)
 	ac.global_transform = xf
 	jsb.reinitialize_from_pose(xf, 110.0, g.z)

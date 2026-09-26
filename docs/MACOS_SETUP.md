@@ -186,7 +186,7 @@ The `4.7-flightsim` branch contains macOS-specific optimizations to the Godot 4.
 |--------|--------|
 | Single node, no rebase | `provpilot/node_3d.tscn` uses one `Scenery3D` node. All tile lifecycle, LOD, and elevation queries happen on C++ background threads. |
 | No floating origin | `ORIGIN_REBASE_THRESHOLD` and the rebase call sites in `node_3d.gd` were removed — double-precision world coordinates stay stable. |
-| Loading screen polls progress | `node_3d.gd::_update_loading_progress()` samples `Scenery3D.get_elevation()` on a 5-point ring around the spawn position; the bar advances as the near-terrain tiles stream in. The C++ tile manager throttles JPEG decode and texture upload to `ORTHO_DECODES_PER_FRAME = 3` and `CHUNKS_PER_FRAME = 1`, so the initial fly-to-airport load can take many seconds — visible to the user instead of stalling silently. |
+| Loading screen polls progress | `node_3d.gd::_update_loading_progress()` samples `WorldScenery.count_loaded_ring()` (a 5-point ring around the spawn position; the bar advances as the near-terrain tiles stream in. The C++ tile manager throttles JPEG decode and texture upload to `ORTHO_DECODES_PER_FRAME = 3` and `CHUNKS_PER_FRAME = 1`, so the initial fly-to-airport load can take many seconds — visible to the user instead of stalling silently. |
 | Chunk → tile hand-off | A far-terrain chunk is dropped only after every individual tile inside its footprint that lies within `load_radius` has finished loading (or is marked `no_data`), preventing the world-gap that used to appear when the camera crossed a chunk boundary. |
 
 ## Distribution / Portable Install
@@ -222,13 +222,13 @@ Aircraft data is bundled inside the PCK and unpacked on first run.
 ```
 
 The `aircraft/` extraction is driven by
-[`AircraftInstaller`](../provpilot/aircraft_installer.gd) (autoload) and keyed
+`AircraftInstaller` (`src/aircraft_installer.cpp`) (autoload) and keyed
 by `BUNDLE_VERSION`. Bump that constant whenever the bundled data changes to
 force a re-extraction on existing installs.
 
 ### Loading the 3D model
 
-[`c172p_loader.gd`](../provpilot/c172p_loader.gd) prefers an on-disk
+The C++ `AircraftModelLoader` (`src/aircraft_model_loader.cpp`) prefers an on-disk
 `<install>/aircraft/c172p/model/C172P_1.glb` so users can swap the model.
 In exported builds Godot replaces source `.glb` files with the compiled
 `.scn` and the source is not reachable via `FileAccess`, so the loader

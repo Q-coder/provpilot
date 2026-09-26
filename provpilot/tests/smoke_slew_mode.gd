@@ -141,7 +141,7 @@ func _process(_delta: float) -> void:
 
 	match phase:
 		"boot":
-			if app._loading_done and app._welcome_screen != null:
+			if app._welcome_screen != null:
 				var dep := {}
 				var icao := "?"
 				for a in AirportsLib.load_default():
@@ -178,7 +178,7 @@ func _process(_delta: float) -> void:
 			var sm = app._slew_mode
 			check(sm.is_enabled(), "Shift+Y enables slew mode")
 			check(app.jsb_node.get_slew_mode() == true, "JSBSim physics paused in slew mode")
-			check("SLEW MODE" in app.airspeed_label.text, "HUD shows the slew banner (got '%s')" % app.airspeed_label.text)
+			check("SLEW MODE" in app.get_node("Control/BottomRow/Label").text, "HUD shows the slew banner (got '%s')" % app.get_node("Control/BottomRow/Label").text)
 			pos_before_move = app.get_node("AC").global_position
 			run_steps([{"press": [KEY_W], "frames": 12}], "check_move_forward")
 
@@ -208,7 +208,7 @@ func _process(_delta: float) -> void:
 				var pos: Vector3 = app.get_node("AC").global_position
 				var drift: float = (pos - pos_at_exit).length()
 				check(drift < 25.0, "JSBSim reinit kept the aircraft at the slewed position (drift %.1f m)" % drift)
-				check(app.airspeed_label.text.begins_with("Airspeed"), "normal HUD restored after slew (got '%s')" % app.airspeed_label.text)
+				check(app.get_node("Control/BottomRow/Label").text.begins_with("Airspeed"), "normal HUD restored after slew (got '%s')" % app.get_node("Control/BottomRow/Label").text)
 				_enter_phase("done")
 
 		"steps":

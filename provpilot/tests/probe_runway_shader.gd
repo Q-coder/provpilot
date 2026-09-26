@@ -9,8 +9,8 @@ func _initialize() -> void:
 	var i := 10
 	for p in ["denmark/Denmark","germany/Germany","switzerland-base/Switzerland","austria/Austria","italy/Italy","france/France","norway/Norway","sweden/Sweden","finland/Finland"]:
 		areas.append({"path": "/Volumes/Data1/provpilot/build/" + p, "enabled": true, "priority": i}); i += 1
-	var merged: Dictionary = load("res://runways_lib.gd").load_merged(areas)
-	var rws: Node3D = load("res://runways.gd").new()
+	var merged: Dictionary = RunwaysLib.load_merged(areas)
+	var rws: Node3D = Runways.new()
 	root.add_child(rws)
 	rws.build(merged)
 	# PROBE_NIGHT=1: airfield lights at full intensity over a dark world

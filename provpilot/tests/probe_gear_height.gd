@@ -28,7 +28,7 @@ func _clearance(ac: Node3D) -> Array:
 			for i in range(8):
 				var w: Vector3 = mi.global_transform * aabb.get_endpoint(i)
 				var g: Vector3 = W3DCoords.ecef_to_geodetic(w)
-				var ground: float = _root._ground_height_geodetic(g.x, g.y)
+				var ground: float = _root._world.ground_height_geodetic(g.x, g.y)
 				if is_nan(ground):
 					continue
 				lo = minf(lo, g.z - ground)
@@ -68,7 +68,7 @@ func _ready() -> void:
 				for i in range(8):
 					var w: Vector3 = mi.global_transform * aabb.get_endpoint(i)
 					var g: Vector3 = W3DCoords.ecef_to_geodetic(w)
-					var ground: float = _root._ground_height_geodetic(g.x, g.y)
+					var ground: float = _root._world.ground_height_geodetic(g.x, g.y)
 					if not is_nan(ground):
 						lo = minf(lo, g.z - ground)
 				lows.append([lo, n.name])

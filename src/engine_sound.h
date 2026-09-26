@@ -30,6 +30,7 @@ namespace jsbgodot
 
     public:
         static void _bind_methods();
+        EngineSound();
 
         // ── Node registration (session-stable; no reset needed) ──
         // audio = the looping engine AudioStreamPlayer (nullptr until created).
@@ -49,7 +50,6 @@ namespace jsbgodot
         void update(double rpm, double user_volume_pct);
 
     protected:
-        EngineSound();
 
         // Tunables (defaults = historical GDScript constants / c172p cfg).
         double max_rpm = 2700.0;   // RPM normalisation reference (cfg propeller.max_rpm)

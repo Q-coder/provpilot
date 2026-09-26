@@ -177,13 +177,13 @@ ProvPilot\
 ```
 
 The `aircraft\` extraction is driven by
-[`AircraftInstaller`](../provpilot/aircraft_installer.gd) (autoload) and keyed
+`AircraftInstaller` (`src/aircraft_installer.cpp`) (autoload) and keyed
 by `BUNDLE_VERSION`. Bump that constant whenever the bundled data changes to
 force a re-extraction on existing installs.
 
 ### Loading the 3D model
 
-[`c172p_loader.gd`](../provpilot/c172p_loader.gd) prefers an on-disk
+The C++ `AircraftModelLoader` (`src/aircraft_model_loader.cpp`) prefers an on-disk
 `<install>\aircraft\c172p\model\C172P_1.glb` so users can swap the model.
 In exported builds Godot replaces source `.glb` files with the compiled
 `.scn` and the source is not reachable via `FileAccess`, so the loader

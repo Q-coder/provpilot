@@ -4,7 +4,11 @@
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/classes/camera3d.hpp>
+#include <godot_cpp/classes/static_body3d.hpp>
+#include <godot_cpp/classes/shape3d.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
+#include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
@@ -35,9 +39,10 @@ namespace jsbgodot
     //   F / Shift+F        flaps down / up
     //   G                  toggle retractable gear (no-op when fixed gear)
     //   Shift+Ctrl+M/T     toggle the collision-box debug mesh
-    // Mouse dragging stays in GDScript (_unhandled_input raycasts) and drives
-    // this module through set_mixture_value() / set_magneto_position() /
-    // set_flap_position() plus the set_dragging() guards.
+    // Mouse dragging is handled here too: create_pick_bodies() hangs a
+    // physics body under each lever, handle_mouse_button() / handle_mouse_motion()
+    // raycast from the cockpit camera and drive the levers during a drag
+    // (the set_dragging() guards keep sync_visuals() off a dragged lever).
     //
     // Kept as a plain RefCounted so GDScript can instantiate it with
     // `CockpitControls.new()` without node-tree wiring. Registered nodes are
@@ -59,6 +64,8 @@ namespace jsbgodot
         };
 
         static void _bind_methods();
+        CockpitControls();
+        ~CockpitControls();
 
         // ── Tunables (defaults match the historical GDScript constants) ──
         void set_mixture_key_step(double step);
@@ -85,6 +92,24 @@ namespace jsbgodot
         // Runtime physics bodies the Shift+Ctrl+M / Shift+Ctrl+T debug meshes
         // attach to (may be null).
         void register_debug_bodies(Node *mixture_body, Node *throttle_body);
+        // Creates a StaticBody3D + CollisionShape3D under every registered
+        // lever (each on its own physics layer) so a camera raycast can pick
+        // it; the mixture/throttle bodies double as the debug bodies. The
+        // bodies live inside the model subtree and are dropped by reset().
+        void create_pick_bodies();
+        // The registered lever node for a Lever value (null when missing).
+        Node3D *get_lever_node(int lever) const;
+
+        // ── Mouse interaction (historical node_3d.gd _unhandled_input) ──
+        // A mouse button from the cockpit camera: a left press over a lever
+        // body starts a drag, a release ends every drag (the magneto springs
+        // back from START). Returns true when the event was consumed.
+        bool handle_mouse_button(Camera3D *camera, const Vector2 &position, int button_index, bool pressed, Object *jsb);
+        // Mouse motion while a drag is active: vertical drags move the
+        // mixture/throttle levers and step the flap notches, horizontal
+        // drags step the magneto. Returns true when the event was consumed.
+        bool handle_mouse_motion(const Vector2 &position, Object *jsb);
+        bool is_dragging() const;
 
         // ── Per-frame update (keyboard input + visual sync) ──
         // jsb may be null (controls still move visually); surfaces may be
@@ -118,8 +143,6 @@ namespace jsbgodot
         void sync_flaps_from_jsb(Object *jsb);
 
     protected:
-        CockpitControls();
-        ~CockpitControls();
 
         // Tunables (defaults = historical GDScript constants)
         double mixture_key_step = 0.05;
@@ -168,6 +191,20 @@ namespace jsbgodot
         Transform3D flap_lever_base;
         Node *mixture_debug_body = nullptr;
         Node *throttle_debug_body = nullptr;
+
+        // Pick bodies (created by create_pick_bodies, one per lever) + the
+        // physics layer each one answers on.
+        static constexpr int PICK_LAYER[4] = {16, 32, 64, 128};
+        StaticBody3D *pick_body[4] = {nullptr, nullptr, nullptr, nullptr};
+        // Mouse-drag anchors (screen position + value at the press).
+        double drag_start_px = 0.0;
+        double drag_start_value = 0.0;
+        int drag_start_pos = 0;
+        static constexpr double DRAG_PX_PER_UNIT = 200.0; // mixture / throttle full travel
+        static constexpr double DRAG_PX_PER_STEP = 40.0;  // magneto / flap notch
+
+        StaticBody3D *make_pick_body(Node3D *lever, int layer, const Ref<Shape3D> &shape);
+        bool ray_hits_body(Camera3D *camera, const Vector2 &screen_pos, StaticBody3D *body, int layer) const;
 
         // ── Keyboard handlers (historical _handle_*_keys) ──
         void handle_mixture_keys(JSBGodot *fdm);

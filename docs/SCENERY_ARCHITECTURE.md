@@ -465,10 +465,10 @@ GDExtension. The Godot project contains only glue scripts.
 | Component | Role |
 |-----------|------|
 | `Scenery3D` (GDExtension node) | Single node in `node_3d.tscn`; owns terrain, building, road, water, and orthophoto streaming |
-| `node_3d.gd` | Main scene script; wires input, HUD, cameras; calls `Scenery3D.get_elevation(x, z)` for JSBSim terrain height |
-| `welcome_screen.gd` | Startup aircraft & airport selection UI (currently seeds one hardcoded LSPF entry) |
+| `node_3d.gd` | Main scene script; wires the C++ modules and sequences welcome → Fly! → flight. Terrain queries go through the C++ `WorldScenery` (`src/world_scenery.cpp`: precise patch first, globe fallback, runway lift) |
+| `WelcomeScreen` (GDExtension, `src/welcome_screen.cpp`) | Startup aircraft & airport selection UI (currently seeds one hardcoded LSPF entry) |
 | `SettingsScreen` / `SettingsStore` (GDExtension, `src/settings_*.cpp`) | Tabbed settings UI + settings model; owns the scenery library and pushes paths into `Scenery3D` |
-| `loading_screen.gd` | Progress overlay used both at startup and after a Fly! request; `node_3d.gd::_update_loading_progress()` drives it by sampling `Scenery3D.get_elevation()` on a 5-point ring around the spawn position so the bar reflects how many near-terrain tiles have actually streamed in |
+| `LoadingScreen` (GDExtension, `src/loading_screen.cpp`) | Progress overlay, the fallback loading view when the intro zoom cannot play; `node_3d.gd::_update_loading_progress()` drives it from `WorldScenery.count_loaded_ring()` (a 5-point ring around the spawn position) so the bar reflects how many near-terrain tiles have actually streamed in |
 | `custom_scenery_loader.gd` | Scans `custom/*/package.json`, discovers packages by type |
 | `object_loader.gd` | Loads custom scenery objects by proximity, samples elevation via Scenery3D |
 

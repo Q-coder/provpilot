@@ -6,9 +6,14 @@ together, plus the per‑aircraft visual/animation tuning. Adding or tweaking an
 aircraft is mostly a matter of editing this file — no engine code changes.
 
 - Source of truth: `provpilot/aircraft/<id>/aircraft.cfg`
-- Parser: `provpilot/aircraft_config.gd` (`AircraftConfig.load_from_file()`)
-- Consumers: `provpilot/node_3d.gd` (visuals/animation) and the C++ GDExtension
-  `src/jsbgodot.cpp` (flight model).
+- Parser: C++ `AircraftConfig` (`src/aircraft_config.cpp`,
+  `AircraftConfig.load_from_file()` / `load_for_aircraft(id)`), which also
+  owns the path lookup (`resolve_path`, `resolve_aircraft_file`).
+- Consumers: C++ `AircraftRig` (`src/aircraft_rig.cpp`: control surfaces,
+  gear, levers, propeller, camera, engine sound), `AircraftModelLoader`
+  (`src/aircraft_model_loader.cpp`: `[model]` file + fitting transform),
+  `src/jsbgodot.cpp` (flight model), and `provpilot/node_3d.gd` for the
+  GDScript parts (`[lights]`, FlightGear animations / sounds).
 
 ## File format
 
@@ -65,7 +70,7 @@ Typed getters each take a default, so omitted keys fall back gracefully:
 #### FlightGear models (A-10)
 `fg_animations "model/animations.json"` — manifest written by
 `scripts/fg_a10_build.py`; the `FGAnimator` extension runs every FlightGear
-animation of the model with values from `fg_bridge.gd` (see
+animation of the model with values from `src/fg_bridge.cpp` (see
 `docs/A10_FLIGHTGEAR_PORT.md`). `hide_nodes "a, b"` hides model nodes by name
 (all matches), used for placeholder display textures. `scale` fits a model
 authored in metres: the AC frame draws models at 0.2 m per unit, so `5.0`
@@ -156,7 +161,7 @@ A‑10 needed −0.85 for a 0.2 m/unit response; PC‑7 +4 cm, within tolerance)
 
 ### `[lights]`
 
-Exterior lights, drawn by `aircraft_lights.gd` (node `AircraftLights` under
+Exterior lights, drawn by `src/aircraft_lights.cpp` (node `AircraftLights` under
 the scene root). Each key lists model mesh nodes (comma separated, found by
 name anywhere in the model); the light sprite sits at the mesh's bounding-box
 centre and follows the node, so lights on animated gear retract with it.
@@ -172,7 +177,7 @@ centre and follows the node, so lights on animated gear retract with it.
 | `landing_pitch_deg` | spot aim below the aircraft's forward axis (default 5) | |
 | `landing_range_m`, `taxi_range_m` | spot ranges (300 / 90) | |
 | `spot_energy` | landing spot energy (12; taxi half) | |
-| `pair_meshes` | `false` leaves the `-on`/`-off` lens meshes to another system (the A-10's FlightGear selects, fed by `fg_bridge.gd`) | |
+| `pair_meshes` | `false` leaves the `-on`/`-off` lens meshes to another system (the A-10's FlightGear selects, fed by `src/fg_bridge.cpp`) | |
 
 Each sprite is placed a few model-centimetres outside its lens (outboard for
 wingtip lights, up for the beacon, forward for the nose lights) and drawn
@@ -246,8 +251,8 @@ loaded directly — no install‑root sync):
 2. Write `aircraft.cfg` (copy an existing one; the Cessna file documents the
    format in‑line).
 3. Add the aircraft to the welcome‑screen list in
-   `provpilot/welcome_screen.gd`.
-4. Bump `BUNDLE_VERSION` in `provpilot/aircraft_installer.gd` (and add any
+   `src/welcome_screen.cpp` (the `AIRCRAFT` table).
+4. Bump `BUNDLE_VERSION` in `src/aircraft_installer.cpp` (C++ `AircraftInstaller`) (and add any
    required files) so existing installs re‑extract the new data.
 5. Validate: `./jsbsim/build/src/JSBSim --root=provpilot/aircraft/<id>/jsbsim --aircraft=<id> --catalog`
    and `./godot/bin/godot.macos.editor.double.arm64 --headless --path provpilot --quit`.
@@ -274,7 +279,7 @@ retractable tricycle gear, flaps, speedbrake). The visual model is a
 self-contained `model/a10.glb` exported from Blender with embedded textures,
 double-sided materials, outward normals (`[model] flip_normals false`), and a
 merged `gear_cycle` retract animation (`[gear] animation "gear_cycle"`,
-`retractable true`). Registered in `welcome_screen.gd` and
-`aircraft_installer.gd` (`REQUIRED_FILES += a10/model/a10.glb`). See the
+`retractable true`). Registered in `src/welcome_screen.cpp` and
+`src/aircraft_installer.cpp` (`REQUIRED_FILES += a10/model/a10.glb`). See the
 project notes for the FlightGear → ProvPilot porting pipeline.
 

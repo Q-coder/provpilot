@@ -169,20 +169,50 @@ Open the **Settings** screen from the welcome menu and scroll to the **Joystick*
 
 ```
 provpilot/
-├── src/                         # GDExtension C++ source (JSBSim binding)
+├── src/                         # GDExtension C++ source (the game logic)
 │   ├── jsbgodot.cpp/.h          # JSBSim ↔ Godot integration
+│   ├── aircraft_config.cpp/.h   # aircraft.cfg parser + per-airframe path lookup
+│   ├── aircraft_rig.cpp/.h      # airframe: cfg tunables, model nodes, levers, engine loop
+│   ├── aircraft_model_loader.cpp/.h # runtime GLB loader (on-disk first, PCK fallback)
+│   ├── aircraft_lights.cpp/.h   # exterior lights (nav, strobe, beacon, landing, taxi)
+│   ├── fg_bridge.cpp/.h         # JSBSim -> FlightGear property values
+│   ├── fg_controls.cpp/.h       # clickable FlightGear cockpit controls
+│   ├── fg_sounds.cpp/.h         # FlightGear sound sets
+│   ├── airports_lib.cpp/.h      # bundled airport catalog
+│   ├── runways_lib.cpp/.h       # per-pack runways.json merge
+│   ├── runways.cpp/.h           # airport surfaces + airfield lights
+│   ├── live_weather.cpp/.h      # METAR fetch -> weather layers
+│   ├── sky_atmosphere.cpp/.h    # sun, atmospheric sky, fog ramps
+│   ├── cloud_layers.cpp/.h      # cloud layers from the weather model
+│   ├── joystick_bindings.cpp/.h # JoystickConfig autoload: bindings + calibration
+│   ├── aircraft_installer.cpp/.h # AircraftInstaller autoload: first-run extraction
+│   ├── welcome_screen.cpp/.h    # startup aircraft / airport selection
+│   ├── scenery_editor.cpp/.h    # F8 scenery editor: mode, camera, cursor, tools, UI, view gizmo
+│   ├── scenery_design.cpp/.h    # scenery design document (JSON model, arcs, switches)
+│   ├── scenery_design_mesher.cpp/.h # live meshes of the design
+│   ├── aircraft_settings_panel.cpp/.h # Settings > Aircraft tab
+│   ├── joystick_settings_panel.cpp/.h # Settings > Joystick tab
+│   ├── scenery_downloader_panel.cpp/.h # Settings > Downloads tab
+│   ├── control_surfaces.cpp/.h  # surface / propeller / gear animation
+│   ├── cockpit_controls.cpp/.h  # lever keys + mouse picking / dragging
+│   ├── camera_rig.cpp/.h        # cockpit head look, orbit, chase
+│   ├── world_scenery.cpp/.h     # elevation stack, ECEF/LV95 geodesy, streaming, globe mask
+│   ├── flight_spawn.cpp/.h      # first flight, teleport, deferred terrain init
+│   ├── terrain_elevation.cpp/.h # post-teleport pin + JSBSim ground push
+│   ├── slew_mode.cpp/.h         # Shift+Y free movement
+│   ├── intro_zoom.cpp/.h        # space → spot cinematic
+│   ├── flight_hud.cpp/.h        # readouts, FPS, weather overlay, intro HUD
+│   ├── loading_screen.cpp/.h    # progress overlay (fallback loading view)
+│   ├── loading_progress.cpp/.h  # fly-loading phases + completion
+│   ├── engine_sound.cpp/.h      # RPM → pitch / volume
+│   ├── fg_animator.cpp/.h       # FlightGear model animations
+│   ├── vfr_map.cpp/.h           # VFR map inset
 │   ├── install_config.cpp/.h    # InstallRoot autoload: install dir discovery + provpilot.cfg
 │   ├── settings_store.cpp/.h    # Settings model, provpilot.cfg I/O, scenery library logic
 │   ├── settings_screen.cpp/.h   # Tabbed settings UI (CanvasLayer)
 │   └── register_types.cpp/.h    # GDExtension registration
 ├── provpilot/                   # Godot project
-│   ├── node_3d.gd               # Main scene script (controls, HUD, cameras, Scenery3D glue)
-│   ├── welcome_screen.gd        # Startup aircraft & airport selection UI
-│   ├── scenery_downloader.gd    # Scenery pack downloader (Settings → Downloads tab)
-│   ├── joystick_settings_panel.gd # Joystick binding/calibration (Settings → Joystick tab)
-│   ├── loading_screen.gd        # Progress overlay (polls Scenery3D.is_ready)
-│   ├── custom_scenery_loader.gd # Custom scenery package discovery
-│   ├── object_loader.gd         # Custom scenery object placement
+│   ├── node_3d.gd               # Main scene script: wires the C++ modules, sequences welcome → Fly! → flight
 │   ├── export_presets.cfg       # macOS export preset
 │   ├── node_3d.tscn             # Main scene (single Scenery3D node)
 │   ├── C172p.tscn               # Aircraft scene
@@ -270,7 +300,7 @@ Three autoloads coordinate this on startup (see `provpilot/project.godot`):
 
 The 3D model is shipped in the PCK with `importer="keep"` (raw bytes
 preserved) and loaded at runtime via `GLTFDocument.append_from_file()` from
-the on-disk path — see `provpilot/c172p_loader.gd`. This means users can
+the on-disk path — see `src/aircraft_model_loader.cpp`. This means users can
 replace `aircraft/c172p/model/C172P_1.glb` without rebuilding the app.
 
 ### Quick Build (macOS)

@@ -12,8 +12,8 @@ Every A-10 gauge is data, not code. Four layers, none of them A-10 specific:
 |---|---|---|
 | Mesh | one object per moving part (`needle`, `drum-1`, `face`, `knob`...) | AC3D file → `a10_fg.glb` |
 | Animation | FlightGear `<animation>` blocks: rotate / textranslate / select / material / pick, keyed on a *property path* | `Models/Cockpit/*.xml` → `animations.json` |
-| Runtime | `FGAnimator` (C++) evaluates the animations every frame from a property dictionary; `FGControls` (GDScript) does the clickable parts | `src/fg_animator.cpp`, `provpilot/fg_controls.gd` |
-| Bridge | `FGBridge` fills the property dictionary from JSBSim, the host and the switch state each frame | `provpilot/fg_bridge.gd` |
+| Runtime | `FGAnimator` (C++) evaluates the animations every frame from a property dictionary; `FGControls` (GDScript) does the clickable parts | `src/fg_animator.cpp`, `provpilot/src/fg_controls.cpp` |
+| Bridge | `FGBridge` fills the property dictionary from JSBSim, the host and the switch state each frame | `provpilot/src/fg_bridge.cpp` |
 
 Example, the vertical speed indicator (`A-10-vsi-6kfpm.xml`): a `rotate` of
 object `needle` by `instrumentation/vertical-speed-indicator/indicated-speed-fpm`
@@ -116,7 +116,7 @@ truth). The rest is a build step:
    `<object-name>` may name another animation (`<name>`) to nest its
    transform group — the attitude indicator rolls its `PitchTranslation`.
    The record is expanded to that animation's objects and kept outermost.
-3. **Bridge** (`fg_bridge.gd`, generic for every aircraft): heading
+3. **Bridge** (`src/fg_bridge.cpp`, generic for every aircraft): heading
    indicator (`indicated-heading-deg` = heading + the knob's `offset-deg`),
    attitude indicator pitch / roll, turn coordinator (`indicated-turn-rate`
    = yaw rate / 3°/s, 1.0 = standard rate), gyro `spin` flags, clock

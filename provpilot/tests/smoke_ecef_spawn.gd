@@ -50,7 +50,7 @@ func _ready() -> void:
 	if drift > 25.0 or (drift > 1.0 and along_nose < 0.8 * drift):
 		_fail("aircraft moved %.1f m on the ground, only %.1f m of it forward" % [drift, along_nose])
 	# Streaming around the ECEF camera.
-	var tm = _root._get_tile_manager()
+	var tm = _root._world.get_tile_manager()
 	if tm == null:
 		_fail("no tile manager")
 	else:
@@ -62,7 +62,7 @@ func _ready() -> void:
 	# Globe mask frame + terrain query through the scene helpers.
 	if _root.globe_node and _root.globe_node.get_coverage_mask_frame() != 1:
 		_fail("globe mask frame is %d, expected 1" % _root.globe_node.get_coverage_mask_frame())
-	var h_here: float = _root._terrain_elevation_below(ac.global_position)
+	var h_here: float = _root._world.terrain_elevation_below(ac.global_position)
 	print("[ecef-spawn] terrain below AC: %.1f m" % h_here)
 	if is_nan(h_here) or h_here < 400.0 or h_here > 470.0:
 		_fail("terrain elevation below AC implausible: %s" % str(h_here))
@@ -73,7 +73,7 @@ func _check_pose(ac: Node3D, jsb, target_ll: Vector2, tag: String) -> void:
 	var d_m: float = Vector2((g.x - target_ll.x) * 111000.0, (g.y - target_ll.y) * 111000.0 * cos(deg_to_rad(g.x))).length()
 	var up_exp: Vector3 = W3DCoords.geodetic_normal(g.x, g.y)
 	var up_dot: float = ac.global_transform.basis.y.normalized().dot(up_exp)
-	var hdg: float = _root._ac_true_heading(ac)
+	var hdg: float = _root._world.ac_true_heading(ac)
 	var jsb_lat: float = jsb.get_latitude_deg()
 	var jsb_lon: float = jsb.get_longitude_deg()
 	var jsb_hdg: float = jsb.get_heading()

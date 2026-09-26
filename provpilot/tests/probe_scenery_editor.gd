@@ -52,10 +52,10 @@ func _ready() -> void:
 	var h := ed.elevation_lv95(e, n)
 	if is_nan(h):
 		h = 430.0
-	ed._pos = ed._world_of(e, n, h + agl)
-	ed._yaw = deg_to_rad(yaw)   # true heading
-	ed._pitch = -deg_to_rad(pitch)
-	ed._apply_camera()
+	ed.camera_position = ed.world_of(e, n, h + agl)
+	ed.yaw = deg_to_rad(yaw)   # true heading
+	ed.pitch = -deg_to_rad(pitch)
+	ed.apply_camera()
 	for i in range(10):
 		ed.update(0.016)
 		await get_tree().process_frame
@@ -75,13 +75,13 @@ func _ready() -> void:
 			var ids: Array = ed.design.import_way(rec)
 			ed.design.set_node_offset(ids[ids.size() / 2], 6.0)
 			print("probe_scenery_editor: picked %d nodes, middle node lifted" % ids.size())
-	ed._rebuild_live()
+	ed.rebuild_live()
 	for i in range(30):
 		ed.update(0.016)
 		await get_tree().process_frame
 	if OS.get_environment("PROBE_BAKE") == "1":   # the editor's Bake area: run it and wait for the reload
 		var ok := ed.bake_area()
-		print("probe_scenery_editor: bake started = %s, note: %s" % [ok, ed._tool_note])
+		print("probe_scenery_editor: bake started = %s, note: %s" % [ok, ed.tool_note])
 		var waited_b := 0.0
 		while ed.bake_running() and waited_b < 300.0:
 			ed.update(0.1)
@@ -92,7 +92,7 @@ func _ready() -> void:
 		for i in range(30):
 			ed.update(0.016)
 			await get_tree().process_frame
-		print("probe_scenery_editor: after %.0f s: %s | baked = %s" % [waited_b, ed._tool_note, ed.design_is_baked()])
+		print("probe_scenery_editor: after %.0f s: %s | baked = %s" % [waited_b, ed.tool_note, ed.design_is_baked()])
 	for ch in ed.design.chains():
 		var names: Array = []
 		for nid in ch["nodes"]:

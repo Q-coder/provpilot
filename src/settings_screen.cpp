@@ -1,4 +1,7 @@
 #include "settings_screen.h"
+#include "aircraft_settings_panel.h"
+#include "joystick_settings_panel.h"
+#include "scenery_downloader_panel.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/classes/button.hpp>
@@ -701,22 +704,14 @@ void SettingsScreen::_on_remove_selected()
     }
 }
 
-// ── Tab: Downloads (scenery_downloader.gd) ──────────────────────────────────
+// ── Tab: Downloads (SceneryDownloaderPanel, src/scenery_downloader_panel.cpp) ──────────────────────────────────
 
 void SettingsScreen::_build_downloads_tab()
 {
     VBoxContainer *content = _add_tab("Downloads");
-    downloader_panel = _instantiate_script("res://scenery_downloader.gd");
-    if (downloader_panel == nullptr)
-    {
-        _add_hint(content, "Scenery downloader unavailable.");
-        return;
-    }
-    Control *panel = Object::cast_to<Control>(downloader_panel);
-    if (panel != nullptr)
-    {
-        panel->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-    }
+    SceneryDownloaderPanel *dl = memnew(SceneryDownloaderPanel);
+    downloader_panel = dl;
+    dl->set_h_size_flags(Control::SIZE_EXPAND_FILL);
     // The downloader reads/writes installed_scenery_packs through these
     // callbacks instead of depending on this screen directly.
     downloader_panel->set("get_state", Callable(this, "_downloader_get_state"));
@@ -1167,19 +1162,14 @@ void SettingsScreen::_on_weather_option_changed(int, int)
     _read_weather_table();
 }
 
-// ── Tab: Aircraft (aircraft_settings_panel.gd) ──────────────────────────────
+// ── Tab: Aircraft (AircraftSettingsPanel, src/aircraft_settings_panel.cpp) ──────────────────────────────
 // Per-aircraft settings (fuel) and reference data for the aircraft selected
 // on the welcome page; the host wires the panel's providers (node_3d.gd).
 
 void SettingsScreen::_build_aircraft_tab()
 {
     VBoxContainer *content = _add_tab("Aircraft");
-    aircraft_panel = _instantiate_script("res://aircraft_settings_panel.gd");
-    if (aircraft_panel == nullptr)
-    {
-        _add_hint(content, "Aircraft panel unavailable.");
-        return;
-    }
+    aircraft_panel = memnew(AircraftSettingsPanel);
     content->add_child(aircraft_panel);
 }
 
@@ -1196,17 +1186,12 @@ void SettingsScreen::_refresh_aircraft_panel()
     }
 }
 
-// ── Tab: Joystick (joystick_settings_panel.gd) ──────────────────────────────
+// ── Tab: Joystick (JoystickSettingsPanel, src/joystick_settings_panel.cpp) ──────────────────────────────
 
 void SettingsScreen::_build_joystick_tab()
 {
     VBoxContainer *content = _add_tab("Joystick");
-    joystick_panel = _instantiate_script("res://joystick_settings_panel.gd");
-    if (joystick_panel == nullptr)
-    {
-        _add_hint(content, "Joystick panel unavailable.");
-        return;
-    }
+    joystick_panel = memnew(JoystickSettingsPanel);
     content->add_child(joystick_panel);
 }
 

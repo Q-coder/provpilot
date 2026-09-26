@@ -146,7 +146,7 @@ func _process(_delta: float) -> void:
 
 	match phase:
 		"boot":
-			if app._loading_done and app._welcome_screen != null:
+			if app._welcome_screen != null:
 				var dep := {}
 				var icao := "?"
 				for a in AirportsLib.load_default():
@@ -176,24 +176,24 @@ func _process(_delta: float) -> void:
 				print("SMOKE: ready. mixture=%.3f magneto=%d flaps=%d gear_down=%s throttle=%.3f" % [
 					cc.get_mixture_value(), cc.get_magneto_position(), cc.get_flap_position(),
 					str(cc.is_gear_down()), app.jsb_node.get_input_throttle()])
-				check(app.mixture_lever_node != null, "mixture lever node resolved")
-				check(app.throttle_lever_node != null, "throttle lever node resolved")
-				check(app.magneto_switch_node != null, "magneto switch node resolved")
-				check(app.flap_lever_node != null, "flap lever node resolved")
+				check(app._cockpit_controls.get_lever_node(CockpitControls.LEVER_MIXTURE) != null, "mixture lever node resolved")
+				check(app._cockpit_controls.get_lever_node(CockpitControls.LEVER_THROTTLE) != null, "throttle lever node resolved")
+				check(app._cockpit_controls.get_lever_node(CockpitControls.LEVER_MAGNETO) != null, "magneto switch node resolved")
+				check(app._cockpit_controls.get_lever_node(CockpitControls.LEVER_FLAP) != null, "flap lever node resolved")
 				check(absf(cc.get_mixture_value() - 1.0) < 1e-9, "initial mixture is full rich (1.0)")
 				check(cc.get_magneto_position() == 3, "initial magneto is BOTH (3)")
 				check(cc.get_flap_position() == 0, "initial flaps are UP (0)")
 				check(cc.is_gear_down(), "initial gear command is down")
 				throttle_before = app.jsb_node.get_input_throttle()
-				mixture_origin_before = app.mixture_lever_node.transform.origin if app.mixture_lever_node else Vector3.ZERO
+				mixture_origin_before = app._cockpit_controls.get_lever_node(CockpitControls.LEVER_MIXTURE).transform.origin if app._cockpit_controls.get_lever_node(CockpitControls.LEVER_MIXTURE) else Vector3.ZERO
 				run_steps([{"press": [KEY_SHIFT, KEY_M], "frames": 4}], "check_mixture")
 
 		"check_mixture":
 			var cc = app._cockpit_controls
 			check(absf(cc.get_mixture_value() - 0.95) < 1e-9, "Shift+M leans mixture to 0.95 (got %.4f)" % cc.get_mixture_value())
 			check(absf(app.jsb_node.get_input_mixture() - 0.95) < 1e-6, "JSBSim mixture input follows lever (got %.4f)" % app.jsb_node.get_input_mixture())
-			if app.mixture_lever_node:
-				var moved: float = (app.mixture_lever_node.transform.origin - mixture_origin_before).length()
+			if app._cockpit_controls.get_lever_node(CockpitControls.LEVER_MIXTURE):
+				var moved: float = (app._cockpit_controls.get_lever_node(CockpitControls.LEVER_MIXTURE).transform.origin - mixture_origin_before).length()
 				check(absf(moved - 0.0025) < 0.001, "mixture lever visual moved ~0.0025 units (got %.5f)" % moved)
 			run_steps([{"press": [KEY_T], "frames": 4}], "check_throttle")
 

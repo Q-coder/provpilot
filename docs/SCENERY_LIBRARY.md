@@ -59,7 +59,7 @@ On macOS this resolves to
 **Settings → Download Scenery** offers one-click installation of the official
 ProvPilot scenery packs hosted at
 `https://www.md80.ch/provpilot/scenery/`. The panel is implemented by
-[provpilot/scenery_downloader.gd](../provpilot/scenery_downloader.gd) and
+`src/scenery_downloader_panel.cpp` (C++ `SceneryDownloaderPanel`) and
 mounted as a section of `SettingsScreen`.
 
 UI flow:

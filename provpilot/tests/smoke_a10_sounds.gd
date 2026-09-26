@@ -122,7 +122,7 @@ func _ready() -> void:
 	root.camera_mode = 0
 	root.camera1.current = true
 	# the basic engine loop is silent for this aircraft
-	_check(root._engine_audio == null or root._engine_audio.volume_db < -60.0, "basic engine loop silent for the A-10 (%.1f dB)" % (root._engine_audio.volume_db if root._engine_audio else -80.0))
+	_check(root._aircraft.get_engine_audio() == null or root._aircraft.get_engine_audio().volume_db < -60.0, "basic engine loop silent for the A-10 (%.1f dB)" % (root._aircraft.get_engine_audio().volume_db if root._aircraft.get_engine_audio() else -80.0))
 	if _fails.is_empty():
 		print("smoke_a10_sounds: OK")
 		get_tree().quit(0)

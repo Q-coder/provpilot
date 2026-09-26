@@ -485,7 +485,7 @@ intro zoom: clipping to the streaming square assumed everything inside it was
 **loaded**, but Scenery3D fills the far zone with chunks at
 `CHUNKS_PER_FRAME = 1` (close-ring tiles at `load_budget`/frame), so for a
 while after any teleport most of the square has no geometry yet — and the
-old `GLOBE_SHOW_ALT_M = 25 km` gate in sky_atmosphere.gd hid the coarse globe
+old `GLOBE_SHOW_ALT_M = 25 km` gate in src/sky_atmosphere.cpp hid the coarse globe
 entirely below 25 km, removing even the fallback. Fix: suppression now
 follows **live coverage**. `S3DTileManager::get_coverage_grid()` reports a
 per-cell (chunk-aligned) resident-geometry mask around the camera plus a
@@ -765,7 +765,7 @@ altitude ramps); VfrMap `update_lv95`. node_3d.gd: `_ac_transform_at`,
 `_ac_true_heading`, `_geodetic_of`, `_ecef_of_lv95`; elevation queries are
 geodetic; spawn/teleport build ECEF poses; HUD shows ECEF + LV95 + true
 heading; the rebase machinery is gone and GlobeMount is the identity with
-mask frame 1. sky_atmosphere.gd derives the observer from the camera's
+mask frame 1. src/sky_atmosphere.cpp derives the observer from the camera's
 geodetic position, keeps the scattering sphere tangent under the camera
 (centre = cam − n·(R+h)) and rotates the NOAA sun vector into ECEF.
 Scene: `frame_mode = 1` on Scenery3D and Vegetation; the welcome screen
@@ -822,7 +822,7 @@ move: density 5.0e-5 at 500 m, 4.7e-5 at 7.6 km, 2.7e-5 at 30 km, off at
 (fake location, equirectangular reference, heading mirror, `adjust_origin`,
 the two flat re-inits; 1438 → 1085 lines), SlewMode/TerrainElevation/
 CameraRig/IntroZoom lost their `set_ecef` switches (ECEF only), the dead C++
-`Atmosphere` module (never updated since sky_atmosphere.gd took over) is
+`Atmosphere` module (never updated since src/sky_atmosphere.cpp took over) is
 deleted, `VfrMap` keeps only `update_lv95` and `setup(config_path)`;
 `TERRAIN_CENTER_E/N` survives solely as the LV95 home point (park position,
 initial sky observer). Scenery3D keeps `frame_mode 0` for its own demo.
@@ -918,7 +918,7 @@ between 50 and 30 km was far too dense.
   `tests/probe_tile_normals.tscn`.
 - **Haze.** The fog density used a linear 4..60 km altitude ramp, i.e. a
   40 km camera still had a third of the ground density along a 40 km path.
-  Haze lives in the boundary layer, so `sky_atmosphere.gd` now scales the
+  Haze lives in the boundary layer, so `src/sky_atmosphere.cpp` now scales the
   density by `HAZE_LAYER_M / altitude` (2.5 km layer): the optical depth to
   the ground stays what it is at ground level, and fog is off above 120 km.
 
@@ -949,7 +949,7 @@ visibility into the fog density via Koschmieder (3.912 / V), which the
 altitude ramp still fades toward space. Clouds are stored but not rendered.
 Test: `tests/smoke_weather.tscn`.
 
-**Implemented (live weather, METAR):** `provpilot/live_weather.gd`
+**Implemented (live weather, METAR):** `src/live_weather.cpp` (C++ `LiveWeather`)
 (`LiveWeather` node) fetches the nearest METAR from the Aviation Weather
 Center data API (`aviationweather.gov/api/data/metar?format=json&bbox=…`,
 decoded JSON, no key) in a ±1° × ±1.5° box around the aircraft, picks the
@@ -975,7 +975,7 @@ and regional variation.
 
 ### 10.2 Cloud rendering (2026-09-19)
 
-`provpilot/clouds.gd` (`CloudLayers`, child of the main scene) builds one
+`src/cloud_layers.cpp` (C++ `CloudLayers`, child of the main scene) builds one
 mesh per weather layer with clouds, from the same layer Dictionaries the
 flight model uses (static or METAR):
 
@@ -1008,7 +1008,7 @@ flight model uses (static or METAR):
   sort by distance, cannot draw over the volume.
 - Wind per layer drifts the noise; `Graphics > Cloud Quality` selects
   Off / 20 / 32 / 56 steps. Sun direction, colour, energy and the ambient
-  come from `sky_atmosphere.gd` (`sun_dir_now` etc.).
+  come from `src/sky_atmosphere.cpp` (`sun_dir_now` etc.).
 
 Measured at 1280×800: no measurable cost at 600 m below a 5/8 cumulus
 deck (25 fps with and without clouds — the near-ground scenery dominates),
@@ -1296,7 +1296,7 @@ sit on it to 5 mm. Aprons and ribbons are flattened one pixel spacing
 sees flat pixels. Residual: at Zurich one apron edge on the steep west
 side is buried 0.8 m; Geneva, Bern and St. Gallen are within 0.2 m.
 
-**Runtime.** `runways.gd` builds ONE `Surfaces` mesh per airport holding
+**Runtime.** `src/runways.cpp` (C++ `Runways`) builds ONE `Surfaces` mesh per airport holding
 its runway strips, taxiway ribbons (mitred corners, stored profile) and
 apron polygons (`Geometry2D.triangulate_polygon` in the airport frame,
 vertices at the stored plane heights); every vertex is projected exactly,
@@ -1468,11 +1468,11 @@ class of failure — headless runs never touch the GPU driver.
    and Thun (LSZW) had no runways at all. They are now included in the
    runway data, the plateaus and the catalog as `grass_strip`, or
    `regional_airport` when a runway is paved.
-3. **Runtime** — done 2026-09-20. `runways_lib.gd` merges the enabled
+3. **Runtime** — done 2026-09-20. `src/runways_lib.cpp` (C++ `RunwaysLib`) merges the enabled
    packs per airport in priority order (D16; disabled packs ignored) and
    converts entries to the catalog shape (thresholds = pavement end moved
    inward by the displaced distance, true heading from OurAirports else the
-   end bearing). `runways.gd` (node `Runways`, rebuilt with the scenery
+   end bearing). `src/runways.cpp` (C++ node `Runways`, rebuilt with the scenery
    sources) draws one strip mesh per runway in a WUN frame at the runway
    midpoint, every vertex projected exactly onto the ellipsoid at the plane
    height (`plane_elev_m`, written by the flatten stage, else `elev_m`, else
@@ -1516,7 +1516,7 @@ with at least 8 mapped fixtures replaces the generated one for that
 airport, otherwise the generated layout is used. PAPI/VASI are always
 generated (OSM maps one node per system and never the angles).
 
-**Generated layout** (`runways.gd`, one PRIMITIVE_POINTS mesh per
+**Generated layout** (`src/runways.cpp`, one PRIMITIVE_POINTS mesh per
 airport, one vertex per fixture, lights 35 cm above the surface):
 
 | class | rule |
@@ -1673,7 +1673,7 @@ regions), and int16 heightmaps for the add-ons too.
 
 State: the installer is ≈ 235 MB (Windows zip / macOS dmg) with the
 aircraft and the airport catalog but no scenery. Settings → Downloads still
-mounts `scenery_downloader.gd`, but `scenery_manifest.json` on the server
+mounts the C++ `SceneryDownloaderPanel`, but `scenery_manifest.json` on the server
 returns 404 (the scenery directory 403), so the tab looks dead. The welcome
 page already marks airports by installed base region (✓ / ✗ via
 `AirportsLib.installed_regions`).

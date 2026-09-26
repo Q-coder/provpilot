@@ -33,20 +33,20 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_check(ed.is_active(), "editor active right after the Edit Mode request")
 	_check(not root.terrain_initialized and not root._intro_playing and not root._fly_loading, "no flight started: no terrain init, no intro zoom, no fly loading")
-	_check(get_viewport().get_camera_3d() == ed._cam, "editor camera drives the viewport (and the tile streamer)")
+	_check(get_viewport().get_camera_3d() == ed.get_camera(), "editor camera drives the viewport (and the tile streamer)")
 	var ac: Node3D = root.get_node("AC")
 	_check(not ac.visible, "aircraft hidden")
 	_check(root.jsb_node == null or root.jsb_node.is_slew_mode(), "flight model kept in slew")
-	var g: Vector3 = W3DCoords.ecef_to_geodetic(ed._cam.global_position)
+	var g: Vector3 = W3DCoords.ecef_to_geodetic(ed.get_camera().global_position)
 	var en: Vector2 = Geo.wgs84_to_lv95(g.x, g.y)
 	print("  [diag] editor camera at E %.0f N %.0f h %.0f" % [en.x, en.y, g.z])
 	_check(en.distance_to(Vector2(E, N)) < 50.0, "camera over the selected airport")
 	# scenery streams in around the editor camera: precise terrain appears
 	var waited := 0.0
-	while is_nan(root._scenery_elevation_geodetic(g.x, g.y)) and waited < 60.0:
+	while is_nan(root._world.scenery_elevation_geodetic(g.x, g.y)) and waited < 60.0:
 		await get_tree().create_timer(0.5).timeout
 		waited += 0.5
-	var h: float = root._scenery_elevation_geodetic(g.x, g.y)
+	var h: float = root._world.scenery_elevation_geodetic(g.x, g.y)
 	print("  [diag] precise terrain under the camera after %.1f s: %.1f m" % [waited, h])
 	_check(not is_nan(h) and h > 300.0 and h < 600.0, "Swiss terrain streamed in under the editor camera")
 	for i in range(3):
@@ -67,9 +67,9 @@ func _ready() -> void:
 	_check(root.terrain_initialized, "Fly! after an edit session initialises the flight")
 	_check(ac.visible, "aircraft visible again for the flight")
 	# the cached plateau was applied before the tiles loaded: no tile reload after the terrain initialised
-	var tm = root._get_tile_manager()
+	var tm = root._world.get_tile_manager()
 	var reloads_at_init: int = tm.get_reload_count()
-	var h_plateau: float = root._scenery_elevation_geodetic(Geo.lv95_to_wgs84(pe, pn).x, Geo.lv95_to_wgs84(pe, pn).y)
+	var h_plateau: float = root._world.scenery_elevation_geodetic(Geo.lv95_to_wgs84(pe, pn).x, Geo.lv95_to_wgs84(pe, pn).y)
 	print("  [diag] plateau terrain %.2f (cached patch), reloads so far %d" % [h_plateau, reloads_at_init])
 	_check(absf(h_plateau - 452.0) < 0.05, "the cached plateau is in the terrain of the flight")
 	for i in range(6):

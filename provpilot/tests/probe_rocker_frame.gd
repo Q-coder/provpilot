@@ -49,7 +49,7 @@ func _ready() -> void:
 		else:
 			print("    parent %s: not a Node3D (%s)" % [q.name, q.get_class()])
 		q = q.get_parent()
-	root._setup_fg_animations()
+	root._aircraft.setup_fg_animations()
 	await get_tree().create_timer(0.3).timeout
 	var m0: Transform3D = fga.animated_transform("Switch_TaxiLt")
 	var expected: Transform3D = P.affine_inverse() * m0 * P * base

@@ -29,13 +29,13 @@ func _ready() -> void:
 		waited += 0.25
 		if int(waited * 4) % 8 == 0:
 			var cam := get_viewport().get_camera_3d()
-			var cg: Vector3 = _root._geodetic_of(cam.global_position) if cam else Vector3.ZERO
-			var ag: Vector3 = _root._geodetic_of(_root.get_node("AC").global_position)
-			print("[far] t=%.1f cam=%s at (%.3f, %.3f, %.0f m) AC at (%.3f, %.3f, %.0f m) fly_loading=%s intro=%s busy=%s" % [waited, cam.name if cam else "none", cg.x, cg.y, cg.z, ag.x, ag.y, ag.z, _root._fly_loading, _root._intro_playing, _root._scenery_streamer_busy()])
+			var cg: Vector3 = _root._world.geodetic_of(cam.global_position) if cam else Vector3.ZERO
+			var ag: Vector3 = _root._world.geodetic_of(_root.get_node("AC").global_position)
+			print("[far] t=%.1f cam=%s at (%.3f, %.3f, %.0f m) AC at (%.3f, %.3f, %.0f m) fly_loading=%s intro=%s busy=%s" % [waited, cam.name if cam else "none", cg.x, cg.y, cg.z, ag.x, ag.y, ag.z, _root._fly_loading, _root._intro_playing, _root._world.streamer_busy()])
 	var released_after := (Time.get_ticks_msec() - t0) / 1000.0
-	var g: Vector3 = _root._geodetic_of(_root.get_node("AC").global_position)
-	var precise: float = _root._scenery_elevation_geodetic(g.x, g.y)
-	var globe: float = _root._globe_elevation_geodetic(g.x, g.y)
+	var g: Vector3 = _root._world.geodetic_of(_root.get_node("AC").global_position)
+	var precise: float = _root._world.scenery_elevation_geodetic(g.x, g.y)
+	var globe: float = _root._world.globe_elevation_geodetic(g.x, g.y)
 	print("[far] released after %.1f s: AC h=%.1f m, precise terrain=%.1f m, globe=%.1f m" % [released_after, g.z, precise, globe])
 	if jsb.is_slew_mode():
 		_fail("JSBSim never released")
@@ -51,8 +51,8 @@ func _ready() -> void:
 		var p: Vector3 = _root.get_node("AC").global_position
 		if not p.is_finite():
 			_fail("aircraft position went non-finite"); break
-		var gg: Vector3 = _root._geodetic_of(p)
-		var h: float = _root._scenery_elevation_geodetic(gg.x, gg.y)
+		var gg: Vector3 = _root._world.geodetic_of(p)
+		var h: float = _root._world.scenery_elevation_geodetic(gg.x, gg.y)
 		if not is_nan(h):
 			max_agl = maxf(max_agl, gg.z - h)
 		max_vs = maxf(max_vs, absf(jsb.get_vertical_speed_fpm()))

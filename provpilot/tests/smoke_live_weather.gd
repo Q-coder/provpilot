@@ -13,7 +13,6 @@ const BODY := """[
 {"icaoId":"LSZH","obsTime":1789748400,"wdir":290,"wspd":18,"wgst":31,"visib":"2.5","altim":1004.3,"clouds":[{"cover":"SCT","base":1500},{"cover":"BKN","base":4000},{"cover":"OVC","base":25000}],"elev":424,"lat":47.48,"lon":8.536,"rawOb":"METAR LSZH 181620Z 29018G31KT 4000 SCT015 BKN040CB OVC250 20/08 Q1004","name":"Zürich"}
 ]"""
 
-const LiveWeather := preload("res://live_weather.gd")
 
 func _initialize() -> void:
 	print("== LiveWeather ==")
@@ -73,8 +72,7 @@ func _initialize() -> void:
 	check(absf(LiveWeather.distance_km(Vector2(47.48, 8.54), Vector2(60.19, 11.10)) - 1414.0) < 30.0, "LSZH-ENGM distance ~1414 km")
 	var lw2 := LiveWeather.new()
 	check(lw2.needs_refetch(Vector2(47.5, 8.5), 0), "first fetch is always due")
-	lw2._last_fetch_latlon = Vector2(47.5, 8.5)
-	lw2._last_fetch_msec = 1000
+	lw2.set_last_fetch(Vector2(47.5, 8.5), 1000)
 	check(not lw2.needs_refetch(Vector2(47.6, 8.6), 60000), "no refetch after 1 min / 13 km")
 	check(lw2.needs_refetch(Vector2(48.1, 8.5), 60000), "refetch after moving 67 km")
 	check(lw2.needs_refetch(Vector2(47.5, 8.5), 1000 + 600000), "refetch after 10 min")

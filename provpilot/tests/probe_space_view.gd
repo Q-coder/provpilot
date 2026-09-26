@@ -40,9 +40,9 @@ func _ready() -> void:
 		env0.volumetric_fog_enabled = false
 		env0.glow_enabled = false
 	if OS.get_environment("PROBE_SUN_X") != "":
-		_root._sky._base_sun_energy = float(OS.get_environment("PROBE_SUN_X"))
+		_root._sky.base_sun_energy = float(OS.get_environment("PROBE_SUN_X"))
 	if OS.get_environment("PROBE_NOFOG") == "1":
-		_root._sky._base_fog_density = 0.0
+		_root._sky.base_fog_density = 0.0
 	match OS.get_environment("PROBE_DEBUG_DRAW"):
 		"lighting": get_viewport().debug_draw = Viewport.DEBUG_DRAW_LIGHTING
 		"normals": get_viewport().debug_draw = Viewport.DEBUG_DRAW_NORMAL_BUFFER
@@ -70,15 +70,15 @@ func _ready() -> void:
 			if wx.has("visibility_km"):
 				_root._settings.set_setting("visibility_km", wx["visibility_km"])
 			_root._push_weather_settings()
-			print("[space] cloud meshes: %d quality %d visible %s" % [_root._clouds._meshes.size(), _root._clouds.quality, str(_root._clouds.visible)])
+			print("[space] cloud meshes: %d quality %d visible %s" % [_root._clouds.get_meshes().size(), _root._clouds.quality, str(_root._clouds.visible)])
 			if OS.get_environment("PROBE_CLOUD_STEPS") != "":
-				for m in _root._clouds._meshes:
+				for m in _root._clouds.get_meshes():
 					m.material_override.set_shader_parameter("steps", int(OS.get_environment("PROBE_CLOUD_STEPS")))
 			if int(OS.get_environment("PROBE_CLOUD_DEBUG")) == 3:
-				for m in _root._clouds._meshes:
+				for m in _root._clouds.get_meshes():
 					m.material_override.set_shader_parameter("debug_mode", 3)
 			elif int(OS.get_environment("PROBE_CLOUD_DEBUG")) != 0:
-				for m in _root._clouds._meshes:
+				for m in _root._clouds.get_meshes():
 					m.material_override.set_shader_parameter("debug_mode", int(OS.get_environment("PROBE_CLOUD_DEBUG")))
 				# Control object: plain red sphere 3 km north of the camera at the layer base.
 				var ctrl := MeshInstance3D.new()
@@ -94,7 +94,7 @@ func _ready() -> void:
 				ctrl.position = Vector3(0, 1500, 3000)
 				await get_tree().process_frame
 				await get_tree().process_frame
-				var m0: MeshInstance3D = _root._clouds._meshes[0]
+				var m0: MeshInstance3D = _root._clouds.get_meshes()[0]
 				print("[space] clouds node origin=%s basis_ok=%s visible_in_tree=%s" % [str(_root._clouds.global_transform.origin), str(_root._clouds.global_transform.basis.is_finite()), str(_root._clouds.is_visible_in_tree())])
 				print("[space] mesh0 global=%s aabb=%s cam=%s dist=%.0f layers=%d" % [str(m0.global_position), str(m0.get_aabb()), str(get_viewport().get_camera_3d().global_position), m0.global_position.distance_to(get_viewport().get_camera_3d().global_position), m0.layers])
 				print("[space] ctrl global=%s" % str(ctrl.global_position))
@@ -103,11 +103,11 @@ func _ready() -> void:
 	var base_pos: Vector3 = ac.global_position
 	if OS.get_environment("PROBE_LV95") != "":
 		var en := OS.get_environment("PROBE_LV95").split(",")
-		base_pos = _root._ecef_of_lv95(float(en[0]), float(en[1]), 450.0)
+		base_pos = _root._world.ecef_of_lv95(float(en[0]), float(en[1]), 450.0)
 	var wait_s := float(OS.get_environment("PROBE_WAIT")) if OS.get_environment("PROBE_WAIT") != "" else 1.0
 	for a in alts_s.split(","):
 		var alt := float(a)
-		var g: Vector3 = _root._geodetic_of(base_pos)
+		var g: Vector3 = _root._world.geodetic_of(base_pos)
 		var n: Vector3 = W3DCoords.geodetic_normal(g.x, g.y)
 		var pos: Vector3 = base_pos + n * alt
 		var east := Vector3(0, 0, 1).cross(n).normalized()
