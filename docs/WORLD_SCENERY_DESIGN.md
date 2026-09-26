@@ -1921,6 +1921,122 @@ strips against the triangulated terrain — LSMD test box after the
 change: road ribbons median +0.24 m, 0.00 % buried, 11 % more than 0.5 m
 up (was 21–39 %), 1 % more than 2 m up (was 5–22 %).
 
+**Autobahn first (2026-09-23, afternoon).** gery: "the transitions are
+just not usable — from scratch with only Autobahn elements, nice
+transitions between roads". Found in the data: swissTLM3D has *no*
+three-way vertex among the motorway ways — an Ein-/Ausfahrt ends on or
+beside the Autobahn line (0–17 m from its axis) without sharing a vertex,
+so node-based junctions never fired at a merge and the ramp ribbon just
+overlapped the carriageway. The bake now builds motorway pavement the way
+the taxiways are built:
+- `--classes motorway,motorway_link` bakes only those (the rest stays for
+  later; `--source tlm` now runs in `.venv` — pyogrio, geopandas and
+  shapely 2.1 were installed there, osmium is optional).
+- **Attachment**: a road way end within (own half + other half + 4 m) of
+  another road way's axis at the same level (±1.5 m), not running against
+  it (one-way vs one-way with opposite travel, i.e. the other carriageway,
+  is skipped), joins that way at the projection point; the other way is
+  split there into two legs (`gaps` on the way, chainage intervals the
+  ribbon leaves out).
+- **Patch**: every junction that is not two equal legs on a mitre gets a
+  2D union of its legs' ribbons back to where they stop overlapping
+  ((half_a + half_b) / sin angle for legs within 60°, at most 300 m; the
+  corner cuts of `junction_fan` for sharp legs), plus the **gore taper**
+  of a merging ramp (legs within 32°): the wedge between the ramp's inner
+  edge and the carriageway edge over the last 80 m. Patches that overlap
+  and share a way are one polygon; constrained Delaunay (shapely 2.1),
+  heights from the nearest leg station, 1 cm over the ribbons, plain
+  asphalt (kind 6). Ribbons are cut back to the patch, seamlessly (the
+  slice and the piece share the segment, so the same square frame).
+- **Markings are geometry** (`emit_markings`, kind 17), drawn over the
+  *whole* way (through the patches): edge lines piecewise between
+  stations, lane and centre lines as 6 m dashes every 12 m, 15 cm wide,
+  3 cm over the pavement, offsets per pavement kind (one-way: hard
+  shoulder right). At a junction the other legs' pavement is a *cutter*
+  (prepared shapely polygon, side, mode): for a way that ends there it
+  drops every line inside, and — widened by the 3.5 m shoulder zone,
+  because an edge line sits that far inside its pavement edge — its edge
+  line on the side of the carriageway it merges into (a merging lane has
+  no line of its own there); for a through carriageway the same widened
+  zone turns the edge line on the ramp's side into dashes, so the
+  acceleration lane is separated from the through lanes the way it is
+  painted, while the lane dashes and the far edge line run on. All road
+  ribbons are plain (kind 6); the shader's per-kind markings are no
+  longer used for baked roads. Debug: `PVP_DEBUG_NODE=E,N` prints the
+  legs, cuts and cutters of the junctions within 60 m.
+- **Merge length is measured**, not a formula: a leg's cut is where its
+  ribbon stops overlapping the other leg's, plus a 40 m lane taper for a
+  through carriageway (`overlap_len`); the gore fill runs only while the
+  ramp's inner edge is within 5 m of the carriageway edge, and a taper
+  triangle joins the ramp lane's outer edge to the carriageway edge beyond
+  the ramp's start.
+- Triangles of patches, markings and areas are wound like the ribbons
+  (`MeshBuf._tri`): the double-sided material lit the patches as back
+  faces, from below, which made them look like another material.
+- Ribbons have no per-way jitter any more (nothing overlaps at one level).
+The Zürich box was rebuilt from scratch for this: the box's terrain tiles
+deleted and re-baked from SRTM, airports re-flattened, the roads dir
+cleared, motorways only. Everything else (side roads, railways) comes
+back class by class once the Autobahn looks right.
+
+**Junction blocks (2026-09-23, evening).** gery, from the SwissTopo 3D
+viewer: the raw data has nothing on the transitions themselves — the
+acceleration lane beyond an entry's nose, the deceleration lane before an
+exit's nose, the tapers, the gore — so those must be generic building
+blocks, "like Transport Fever". First two blocks are in the bake
+(`BLOCK_*` constants, the block builder in stage 4a):
+- **Travel direction first.** swissTLM3D has no direction attribute and
+  digitises only ~3/4 of its one-way lines in the driving direction
+  (checked over the box: 111 of 141 Ausfahrt lines that touch the Autobahn
+  start there, 112 of 149 Einfahrt lines end there). The bake orients
+  one-way TLM ways itself: a carriageway by right-hand traffic (the
+  nearest roughly parallel line of its class 6–45 m away, the opposite
+  carriageway, must lie on its left, three samples vote), a ramp by its
+  type (Ausfahrt starts at the Autobahn, Einfahrt ends there), and chains
+  of connected one-way ways of one class agree by majority, which also
+  orients ramp pieces that touch nothing (`flip_way`, 21 flips in the
+  box). The editor's green arrows follow the stored order, so they are
+  now the driving direction.
+- **Entry / exit block.** A one-way link ending on (Einfahrt) or starting
+  from (Ausfahrt) a one-way motorway carriageway at a shallow angle: the
+  ramp's last / first 60 m are replaced by a Hermite curve into the centre
+  of an extra lane beside the through lanes (lane width of the class, the
+  carriageway's shoulder becomes part of it: the lane sits on the outer
+  edge line, its own verge outside); the lane runs 200 m beyond the nose
+  (entry) or 150 m before it (exit) and tapers 1:20 into the carriageway
+  edge, stamped in (chainage, offset) along the carriageway *and its
+  same-class one-way continuation* (`chain_walk`), so it bends with the
+  road and crosses TLM segment boundaries. The strip is plain asphalt
+  1 cm over the ribbons; its outer edge line and taper line are drawn,
+  and the carriageway's own edge line turns dashed along it through a
+  side cutter. The ramp is 5 cm lower than the motorway (class drop), so
+  where its ribbon and lines run under the carriageway or the lane they
+  vanish on their own. No union patch is built at such a node.
+- Everything else (collector lanes of class Autobahn, ramp-to-ramp joins,
+  forks) still gets the union patch. Next blocks: lane add / drop, fork /
+  join of carriageways, collector lane; then roundabouts and T-junctions
+  for the ordinary roads. The block library is meant to become data the
+  scenery editor can place by hand.
+Zürich box: 50 entry and 26 exit blocks, 258 union patches left.
+
+**Blocks are drawings (2026-09-25).** gery drew an Autobahneinfahrt in
+Blender ("not to scale, a draft") and asked whether the library would be
+made that way; agreed: a block is a `.blend` of named flat quads in the
+carriageway's frame (X from the outer pavement edge, Y along travel, 0 at
+the nose), exported to JSON, stamped by the bake. `docs/ROAD_BLOCKS.md`
+has the convention (roles `pave`, `line`, `dash`, `gore`, `cut.dash`,
+`cut.drop`, `ramp.join`, `ref`), `scripts/road_blocks/make_blocks.py`
+draws the first drafts from the norms (entry, exit, lane_add, lane_drop
+in `scenery/blocks/src`), `export_blocks.py` writes `scenery/blocks/*.json`,
+and the bake's `BlockFrame` / `stamp_block` bend every object along the
+carriageway chain (polygons segmentised every 5 m, clipped to the chain,
+CDT in world space, heights from the chain; lines and dashes sampled along
+their axis; cut polygons become side cutters; the ramp is re-joined to
+`ramp.join`). The hard-coded entry / exit strip is gone. Lane add / drop
+blocks are chosen where two one-way ways of one class continue each other
+with a lane more or less (none in the Zürich box's TLM data yet: TLM does
+not carry lane counts, the class gives 2). Left-side ramps mirror X.
+
 Order of work stays as above: far files + chunk archives in the bake,
 cache-or-fetch + far-file support in the streamer, per-airport runway
 files, then the welcome markers and the Scenery tab.

@@ -52,11 +52,14 @@ from pathlib import Path
 import numpy as np
 
 try:
-    import osmium
     from pyproj import Transformer
 except ImportError as e:  # pragma: no cover
-    print("ERROR: pyosmium and pyproj are required (pip install osmium pyproj):", e, file=sys.stderr)
+    print("ERROR: pyproj is required (pip install pyproj):", e, file=sys.stderr)
     sys.exit(1)
+try:
+    import osmium                      # only the OSM source needs it
+except ImportError:                    # pragma: no cover
+    osmium = None
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD_ROOT = Path("/Volumes/Data1/provpilot/build")
@@ -275,7 +278,7 @@ class Terrain:
 
 
 # ── OSM ─────────────────────────────────────────────────────────────────────
-class Collector(osmium.SimpleHandler):
+class Collector(osmium.SimpleHandler if osmium else object):
     def __init__(self, bbox_wgs):
         super().__init__()
         self.bbox = bbox_wgs   # (lon0, lat0, lon1, lat1) or None
@@ -393,7 +396,7 @@ def collect_tlm(gpkg: Path, bbox_lv95):
                 "pts": pts, "refs": refs(len(pts)), "z": [float(c[2]) for c in coords], "has_z": True,
                 "bridge": False, "elevated": kb in TLM_BRIDGE, "tunnel": kb in TLM_TUNNEL or kb in TLM_UNDERPASS, "underpass": kb in TLM_UNDERPASS,
                 "layer": str(row.stufe), "lanes": str(lanes), "width": str(width) if width else None,
-                "gauge": None, "tracks": None, "oneway": bool(oneway), "source": "tlm",
+                "gauge": None, "tracks": None, "oneway": bool(oneway), "source": "tlm", "tlm": str(row.objektart),
             })
     n_roads = len(ways)
     rails = pyogrio.read_dataframe(str(gpkg), layer="tlm_oev_eisenbahn", bbox=(e0, n0, e1, n1),
@@ -707,6 +710,26 @@ AREA_KIND = {"grass": 10, "forest": 11, "field": 12, "water": 13}
 KIND_ROOF, KIND_WALL = 14, 15
 ELEVATED_M = 0.3
 KIND_EMBANKMENT = 16
+KIND_MARK = 17            # painted line (white), its own thin strip over the pavement
+MARK_W_M = 0.15
+MARK_LIFT_M = 0.03        # over the ribbon (a patch is PATCH_LIFT_M up, the lines stay above it)
+MARK_U8 = (228, 228, 218)
+DASH_M, DASH_PERIOD_M = 6.0, 12.0
+MERGE_MAX_M = 300.0       # a ramp merging at a shallow angle: pavement union up to this far from the node
+MERGE_TAPER_M = 80.0      # the gore fill between a merging ramp's inner edge and the carriageway edge
+GORE_GAP_M = 5.0          # ... only while the two edges are this close (the painted nose, not a plaza)
+LANE_TAPER_M = 40.0       # a merging lane's outer edge tapers into the carriageway edge over this length
+# Junction blocks (design §13.9 "Autobahn first"): an entry or exit of a
+# one-way carriageway is a standard shape stamped along the carriageway,
+# not the union of the raw ribbons. Swiss norm defaults.
+BLOCK_ACC_M = 200.0       # acceleration lane beyond the nose of an entry
+BLOCK_DEC_M = 150.0       # deceleration lane before the nose of an exit
+BLOCK_TAPER_M = 75.0      # 1:20 taper of the extra lane into the carriageway edge
+BLOCK_JOIN_M = 60.0       # the ramp's axis is re-joined to the lane centre over its last / first metres
+BLOCK_STEP_M = 5.0
+ATTACH_EXTRA_M = 4.0      # a way end this close to another way's pavement edge joins it (swissTLM3D ramps end beside the Autobahn line)
+ATTACH_DH_M = 1.5         # ... if at the same level
+PATCH_LIFT_M = 0.01       # a junction patch above the ribbons it joins
 SKIRT_MIN_M = 0.3         # a ribbon this far above the ground gets an embankment strip
 SKIRT_RUN = 1.5           # embankment run per metre of height (1:1.5)
 SKIRT_MAX_M = 15.0        # embankment run: a 10 m bank; anything taller stays a floating ribbon
@@ -721,6 +744,8 @@ JUNCTION_MIN_CUT_M = 1.0
 TAPER_PER_LANE_M = 30.0
 ARC_STEP_M = 10.0
 DESIGN_EDGE_ATTRS = ("kind", "cls", "lanes", "oneway", "gauge", "tracks", "width")
+_cdt = None          # shapely.constrained_delaunay_triangles when available (set in main)
+_ShPoint = None      # shapely Point (set in main)
 
 
 def circle_through(a, v, b):
@@ -1122,6 +1147,15 @@ class MeshBuf:
     def _tag(self, count):
         self.w.extend([self.current_way] * count)
 
+    def _tri(self, i0, i1, i2):
+        """Append a triangle wound like the ribbons (clockwise in x, z seen
+        from +y): the material is double-sided and lights a back face as if
+        from below, which made the patches look like another material."""
+        (x0, _y0, z0), (x1, _y1, z1), (x2, _y2, z2) = self.v[i0], self.v[i1], self.v[i2]
+        if (x1 - x0) * (z2 - z0) - (z1 - z0) * (x2 - x0) > 0.0:
+            i1, i2 = i2, i1
+        self.idx.extend([i0, i1, i2])
+
     @staticmethod
     def frames(pts_xz):
         """Per-station unit normal (nx, nz, left of travel) with the mitre scale."""
@@ -1161,6 +1195,41 @@ class MeshBuf:
         half = width * 0.5
         self.profile(pts_xz, ys, ((-half, 0.0), (half, 0.0)), colour_u8, kind, u0, along_s, half, count, halves, end_frames)
 
+    def quad3(self, a, b, width, colour_u8, kind, s0=0.0):
+        """A flat quad of `width` from a to b ((x, y, z) each): a painted line piece."""
+        dx, dz = b[0] - a[0], b[2] - a[2]
+        l = math.hypot(dx, dz) or 1.0
+        nx, nz = -dz / l * width * 0.5, dx / l * width * 0.5
+        base = len(self.v)
+        cu = (colour_u8[0], colour_u8[1], colour_u8[2], kind)
+        for (x, y, z, u, sv) in ((a[0] + nx, a[1], a[2] + nz, -width / 2, s0), (a[0] - nx, a[1], a[2] - nz, width / 2, s0),
+                                 (b[0] + nx, b[1], b[2] + nz, -width / 2, s0 + l), (b[0] - nx, b[1], b[2] - nz, width / 2, s0 + l)):
+            self.v.append((x, y, z))
+            self.n.append((0.0, 1.0, 0.0))
+            self.c.append(cu)
+            self.uv.append((u, sv))
+            self.uv2.append((width / 2, 0.0))
+        self._tag(4)
+        self._tri(base, base + 2, base + 1)
+        self._tri(base + 1, base + 2, base + 3)
+
+    def tri_mesh(self, tris, colour_u8, kind):
+        """Flat triangles ((x, y, z) x 3), normals up, UV = metres from the
+        first vertex (small numbers: the shader's noise hash loses precision
+        at tens of kilometres)."""
+        cu = (colour_u8[0], colour_u8[1], colour_u8[2], kind)
+        ox, oz = (tris[0][0][0], tris[0][0][2]) if tris else (0.0, 0.0)
+        for t in tris:
+            base = len(self.v)
+            for (x, y, z) in t:
+                self.v.append((x, y, z))
+                self.n.append((0.0, 1.0, 0.0))
+                self.c.append(cu)
+                self.uv.append((x - ox, z - oz))
+                self.uv2.append((0.0, 0.0))
+            self._tag(3)
+            self._tri(base, base + 1, base + 2)
+
     def strip(self, left, right, colour_u8, kind, along_s):
         """Two vertex rows (x, z, y) left and right of travel, one per
         station: an embankment from a ribbon edge down to the ground.
@@ -1185,22 +1254,24 @@ class MeshBuf:
                 self.uv2.append((0.0, 0.0))
         for i in range(n - 1):
             a = base + i * 2
-            self.idx.extend([a, a + 2, a + 1, a + 1, a + 2, a + 3])
+            self._tri(a, a + 2, a + 1)
+            self._tri(a + 1, a + 2, a + 3)
 
     def polygon(self, poly_xz, y, colour_u8, kind):
         """A flat triangulated polygon (land cover, water, roof); UV = metres."""
         tris = triangulate(poly_xz)
         base = len(self.v)
         cu = (colour_u8[0], colour_u8[1], colour_u8[2], kind)
+        ox, oz = poly_xz[0]
         for (x, z) in poly_xz:
             self.v.append((x, y, z))
             self.n.append((0.0, 1.0, 0.0))
             self.c.append(cu)
-            self.uv.append((x, z))
+            self.uv.append((x - ox, z - oz))
             self.uv2.append((0.0, 0.0))
         self._tag(len(poly_xz))
         for a, b, c in tris:
-            self.idx.extend([base + a, base + b, base + c])
+            self._tri(base + a, base + b, base + c)
 
     def wall(self, a_xz, b_xz, y0, y1, colour_u8, kind):
         """A vertical quad from a to b between heights y0 and y1; UV = (along, height)."""
@@ -1231,7 +1302,7 @@ class MeshBuf:
         self._tag(1 + len(poly_xz))
         n = len(poly_xz)
         for i in range(n):
-            self.idx.extend([base, base + 1 + i, base + 1 + (i + 1) % n])
+            self._tri(base, base + 1 + i, base + 1 + (i + 1) % n)
 
     def profile(self, pts_xz, ys, section, colour_u8, kind, u0=0.0, along_s=None, half_w=0.0, count=0.0, halves=None, end_frames=None):
         """Extrude a cross-section (list of (u m, height m), left to right)
@@ -1471,15 +1542,149 @@ def emit_skirts(buf, xz, tops, s, half, lift, terrain, end_frames=(None, None)):
     return total
 
 
+def ribbon_quads(pts, half):
+    """The quads (4 (e, n) corners each) of a ribbon of half width `half`
+    along pts, with the same mitred frames the mesh uses."""
+    if len(pts) < 2:
+        return []
+    fr = MeshBuf.frames(list(pts))
+    out = []
+    for i in range(len(pts) - 1):
+        (x0, y0), (x1, y1) = pts[i], pts[i + 1]
+        (a0, b0), (a1, b1) = fr[i], fr[i + 1]
+        out.append(((x0 + a0 * half, y0 + b0 * half), (x0 - a0 * half, y0 - b0 * half),
+                    (x1 - a1 * half, y1 - b1 * half), (x1 + a1 * half, y1 + b1 * half)))
+    return out
+
+
+def marking_lines(kind, half, lanes):
+    """(offset u from the axis, dashed) of every painted line of a pavement
+    kind; + u = right of travel."""
+    if kind == KIND_ONEWAY:
+        left, right = -half + VERGE_M, half - VERGE_M - SHOULDER_M
+        lines = [(left, False), (right, False)]
+        lane_w = (right - left) / max(1, lanes)
+        lines += [(left + lane_w * k, True) for k in range(1, max(1, lanes))]
+        return lines
+    if kind == KIND_TWOWAY_LINED:
+        return [(-half + VERGE_M, False), (half - VERGE_M, False), (0.0, True)]
+    if kind == KIND_TWOWAY:
+        return [(0.0, True)]
+    if kind == KIND_LINK:
+        return [(-half + VERGE_M, False), (half - VERGE_M, False)]
+    if kind == KIND_DUAL:
+        return [(-half + VERGE_M, False), (half - VERGE_M, False)]
+    return []
+
+
+def emit_markings(buf, xz, ys, s, half, kind, lanes, end_frames, cutters, halves=None):
+    """Painted lines of a ribbon as thin strips MARK_LIFT_M over it: edge
+    lines piecewise between stations, lane / centre lines as 6 m dashes.
+    A piece whose midpoint lies inside one of the `cutters` (the other
+    legs' pavement at the way's nodes, LV95 polygons, prepared) is left
+    out: at a merge the ramp's inner edge line stops where it enters the
+    carriageway and the carriageway's edge line opens for the ramp."""
+    n = len(xz)
+    if n < 2:
+        return 0
+    frames = MeshBuf.frames(xz)
+    if end_frames:
+        if end_frames[0]:
+            frames[0] = end_frames[0]
+        if end_frames[1]:
+            frames[-1] = end_frames[1]
+    total = s[-1]
+
+    def hidden(x, z, u, dashed):
+        """0 = drawn, 1 = dropped, 2 = drawn as dashes. A cutter without a
+        side (the carriageway under a ramp's end) drops every line inside
+        it; a cutter with a side (the ramp lane beside a through carriageway)
+        turns the edge line on its side into a dashed line, the way an
+        acceleration lane is separated from the through lanes."""
+        if not cutters:
+            return 0
+        e, n_ = CONV_E - x, z + CONV_N
+        pt = _ShPoint(e, n_)
+        out = 0
+        for c, side, mode in cutters:
+            if side is not None and (dashed or (u > 0) != (side > 0)):
+                continue
+            if c.contains(pt):
+                if mode == "drop":
+                    return 1
+                out = 2
+        return out
+
+    count = 0
+    for u, dashed in marking_lines(kind, half, lanes):
+        pts3 = []
+        for i in range(n):
+            px, pz = frames[i]
+            k = (halves[i] / half) if (halves and half > 0) else 1.0
+            off = -u * k
+            pts3.append((xz[i][0] + px * off, ys[i] + MARK_LIFT_M, xz[i][1] + pz * off))
+        xs = [q[0] for q in pts3]
+        ysl = [q[1] for q in pts3]
+        zs = [q[2] for q in pts3]
+
+        def at(sv):
+            return (float(np.interp(sv, s, xs)), float(np.interp(sv, s, ysl)), float(np.interp(sv, s, zs)))
+
+        def dashes(sa, sb, check):
+            """6 m dashes every 12 m between chainages sa and sb (pattern anchored at 0)."""
+            c = 0
+            k0 = int(sa // DASH_PERIOD_M)
+            while k0 * DASH_PERIOD_M < sb:
+                s0 = max(sa, k0 * DASH_PERIOD_M)
+                s1 = min(sb, k0 * DASH_PERIOD_M + DASH_M)
+                k0 += 1
+                if s1 - s0 < 1.0:
+                    continue
+                a, b = at(s0), at(s1)
+                if check and hidden((a[0] + b[0]) * 0.5, (a[2] + b[2]) * 0.5, u, True) == 1:
+                    continue
+                buf.quad3(a, b, MARK_W_M, MARK_U8, KIND_MARK, s0)
+                c += 1
+            return c
+
+        if not dashed:
+            for i in range(n - 1):
+                a, b = pts3[i], pts3[i + 1]
+                h = hidden((a[0] + b[0]) * 0.5, (a[2] + b[2]) * 0.5, u, False)
+                if h == 1:
+                    continue
+                if h == 2:
+                    count += dashes(s[i], s[i + 1], False)
+                    continue
+                buf.quad3(a, b, MARK_W_M, MARK_U8, KIND_MARK, s[i])
+                count += 1
+        else:
+            count += dashes(0.0, total, True)
+    return count
+
+
+def patch_triangles(poly):
+    """Triangles ((e, n) x 3) of a shapely polygon: constrained Delaunay
+    when shapely 2.1 is there, ear clipping of the exterior otherwise."""
+    if _cdt is not None:
+        tris = []
+        for t in _cdt(poly).geoms:
+            c = list(t.exterior.coords)[:3]
+            tris.append(tuple((float(x), float(y)) for x, y in c))
+        return tris
+    ring = [(float(x), float(y)) for x, y in list(poly.exterior.coords)[:-1]]
+    return [(ring[a], ring[b], ring[c]) for a, b, c in triangulate(ring)]
+
+
 class StationIndex:
     """Stations of the ways near the elevated ones, by 32 m cell: what a
     bridge pier would stand on."""
     CELL = 32.0
 
-    def __init__(self, ways):
+    def __init__(self, ways, everything=False):
         hot = set()
         for wy in ways:
-            if wy["w"].get("elevated"):
+            if everything or wy["w"].get("elevated"):
                 for e, n in wy["pts"]:
                     ce, cn = int(e // self.CELL), int(n // self.CELL)
                     for de in (-2, -1, 0, 1, 2):
@@ -1609,8 +1814,21 @@ def main():
     ap.add_argument("--tlm-gpkg", default=TLM_GPKG_DEFAULT)
     ap.add_argument("--design", action="append", default=[], metavar="JSON",
                     help="scenery editor design file (repeatable): its roads / tracks join the bake, OSM ways inside its replace polygons are cut")
+    ap.add_argument("--blocks", default=str(ROOT / "scenery" / "blocks"), metavar="DIR",
+                    help="junction block library (docs/ROAD_BLOCKS.md): *.json exported from the Blender drawings")
+    ap.add_argument("--classes", default="", metavar="LIST",
+                    help="comma list of road / rail classes to bake, e.g. motorway,motorway_link (default: all)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
+    global _cdt, _ShPoint
+    try:
+        from shapely.geometry import Point as _ShPoint
+    except ImportError:
+        sys.exit("shapely is required for the pavement patches (pip install shapely)")
+    try:
+        from shapely import constrained_delaunay_triangles as _cdt
+    except ImportError:
+        _cdt = None
 
     regs = json.load(open(ROOT / "scripts" / "world_regions.json"))
     regs = regs["regions"] if isinstance(regs, dict) else regs
@@ -1637,6 +1855,8 @@ def main():
         lons, lats = zip(*[wgs.transform(e, n) for e, n in ((e0, n0), (e1, n0), (e0, n1), (e1, n1))])
         bbox_wgs = (min(lons), min(lats), max(lons), max(lats))
     t0 = time.time()
+    if args.source == "osm" and osmium is None:
+        sys.exit("the OSM source needs pyosmium (pip install osmium)")
     if args.source == "tlm":
         if not args.bbox:
             sys.exit("--source tlm needs --bbox (the GeoPackage is read by box)")
@@ -1658,11 +1878,23 @@ def main():
     replace_polys = [poly for d in designs for poly in d.replace]
     replace_ids = set().union(*[d.replace_ids for d in designs]) if designs else set()
     source_ways = list(col.ways)
+    if args.classes:
+        keep = set(c.strip() for c in args.classes.split(",") if c.strip())
+        source_ways = [w for w in source_ways if w["cls"] in keep]
+        print(f"classes {sorted(keep)}: {len(source_ways)} ways kept")
     for d in designs:
         source_ways.extend(d.ways)
         print(f"design {d.path}: {len(d.ways)} ways, {len(d.junctions)} junctions, {len(d.replace)} replace polygons (sha256 {d.sha256[:12]})")
 
     stats = defaultdict(int)
+    block_lib = {}
+    for bf in sorted(Path(args.blocks).glob("*.json")) if Path(args.blocks).is_dir() else []:
+        try:
+            b = json.load(open(bf))
+            block_lib[b["name"]] = b
+        except Exception as e:   # pragma: no cover
+            print("WARNING: block", bf, "not readable:", e)
+    print(f"junction blocks: {sorted(block_lib)} from {args.blocks}")
     # Stage 0: the designs' plateaus into the terrain (with --corridor, the
     # flag that allows terrain writes), before any profile is sampled.
     if args.corridor:
@@ -1777,45 +2009,597 @@ def main():
 
     # Stage 4a: the final profile of every way on the final ground, never
     # below it (a bridge deck is raised too where a corridor lifted the ground
-    # under it; a tunnel stays below the surface), then the nodes of the
-    # baked network: where way ends meet at one LV95 point (OSM shares node
-    # ids, swissTLM3D splits its lines at every junction). Three or more road
-    # legs get the same corner-fan pavement a design junction gets and the
-    # ribbons are cut back to it; two legs of one kind meet on a mitre.
+    # under it; a tunnel stays below the surface), then the junctions of the
+    # baked network. A junction is (a) a point where way ends meet (OSM
+    # shares node ids, swissTLM3D splits its lines) and (b) a way end lying
+    # on or beside another way's pavement at the same level (a swissTLM3D
+    # Ein-/Ausfahrt ends beside the Autobahn line without sharing a vertex):
+    # the other way is split there into two legs. Two legs of one kind and
+    # width meet on a mitre; every other junction gets a PATCH: the 2D union
+    # of its legs' ribbons back to where they stop overlapping (a ramp at 6
+    # degrees overlaps its carriageway for ~100 m) plus the gore taper of a
+    # merging ramp, one plain pavement without wedges or seams; the legs'
+    # ribbons are cut back to it. Markings are separate strips
+    # (emit_markings), so a patch is never a gap in the lane lines.
+    from shapely.geometry import Polygon as _ShPoly, box as _ShBox, LineString as _ShLine
+    import shapely as _shapely
+    from shapely.ops import unary_union as _sh_union
+    from shapely.strtree import STRtree as _ShTree
+    from shapely import prepared as _sh_prepared
+
     for wy in ways:
         if not wy["w"]["tunnel"]:
             wy["prof"] = ground_under(wy["pts"], wy["prof"], wy["width"] * 0.5, terrain)
-        wy["cut"] = [0.0, 0.0]
+        wy["s"] = along(wy["pts"])
+        wy["gaps"] = []
         wy["end_frames"] = [None, None]
-    nodes: dict = defaultdict(list)
+        wy["cutters"] = []
+
+    def way_piece(wy, a, b):
+        """Stations (e, n) and heights of a way between chainages a < b (a, the
+        stations strictly inside, b)."""
+        s, pts, prof = wy["s"], wy["pts"], wy["prof"]
+        chain = [a] + [v for v in s if a < v < b] + [b]
+        E = np.interp(chain, s, [q[0] for q in pts])
+        N = np.interp(chain, s, [q[1] for q in pts])
+        H = np.interp(chain, s, prof)
+        out_p, out_h = [], []
+        for e, n, h in zip(E, N, H):
+            if out_p and math.hypot(e - out_p[-1][0], n - out_p[-1][1]) < 0.05:
+                continue
+            out_p.append((float(e), float(n)))
+            out_h.append(float(h))
+        return out_p, out_h
+
+    def leg_slice(wy, s0, fwd, length):
+        """way_piece from the node at chainage s0 along the leg (node first)."""
+        if fwd:
+            return way_piece(wy, s0, min(wy["s"][-1], s0 + length))
+        pp, hh = way_piece(wy, max(0.0, s0 - length), s0)
+        return pp[::-1], hh[::-1]
+
+    def tangent_at(wy, s0):
+        s, pts = wy["s"], wy["pts"]
+        i = min(len(s) - 2, max(0, int(np.searchsorted(s, s0, side="right")) - 1))
+        dx, dy = pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]
+        l = math.hypot(dx, dy) or 1.0
+        return (dx / l, dy / l)
+
+    def project(wy, e, n, near_stations):
+        """(distance, chainage) of the nearest point of the way to (e, n) among the segments at near_stations."""
+        best = (math.inf, 0.0)
+        s, pts = wy["s"], wy["pts"]
+        for si in near_stations:
+            for j in (si - 1, si):
+                if j < 0 or j + 1 >= len(pts):
+                    continue
+                a, b = pts[j], pts[j + 1]
+                dx, dy = b[0] - a[0], b[1] - a[1]
+                l2 = dx * dx + dy * dy
+                t = 0.0 if l2 < 1e-9 else max(0.0, min(1.0, ((e - a[0]) * dx + (n - a[1]) * dy) / l2))
+                d = math.hypot(e - (a[0] + dx * t), n - (a[1] + dy * t))
+                if d < best[0]:
+                    best = (d, s[j] + (s[j + 1] - s[j]) * t)
+        return best
+
+    def key_of(p):
+        return (round(p[0], 1), round(p[1], 1))
+
+    def way_point(wy, sv):
+        s, pts = wy["s"], wy["pts"]
+        return (float(np.interp(sv, s, [q[0] for q in pts])), float(np.interp(sv, s, [q[1] for q in pts])))
+
+    # ── travel direction of one-way ways ────────────────────────────────
+    # swissTLM3D has no direction attribute and digitises only ~3/4 of its
+    # one-way lines in the driving direction. Right-hand traffic settles a
+    # carriageway: the opposite carriageway (the nearest roughly parallel
+    # line of the same class, 6–45 m away) must lie on its left. A ramp is
+    # settled by its type: an Ausfahrt starts at the Autobahn, an Einfahrt
+    # ends there. Chains of connected one-way ways are then made consistent
+    # by majority, which also orients the ramp pieces that touch nothing.
+    def flip_way(wy):
+        wy["pts"] = wy["pts"][::-1]
+        wy["prof"] = np.asarray(wy["prof"])[::-1].copy()
+        wy["ground"] = np.asarray(wy["ground"])[::-1].copy() if wy.get("ground") is not None else wy.get("ground")
+        wy["s"] = along(wy["pts"])
+        wy["w"]["flipped"] = not wy["w"].get("flipped", False)
+
+    orient_index = StationIndex(ways, everything=True)
+    flips = 0
+    if any(w["w"].get("source") == "tlm" for w in ways):
+        oneways = [wi for wi, wy in enumerate(ways) if wy["w"]["kind"] == "road" and wy["w"]["oneway"] and wy["w"].get("source") == "tlm"]
+        votes = {}   # wi -> +1 keep / -1 flip (strength)
+        for wi in oneways:
+            wy = ways[wi]
+            cls = wy["w"]["cls"]
+            tlm = wy["w"].get("tlm", "")
+            s = wy["s"]
+            if tlm in ("Ausfahrt", "Einfahrt"):
+                # the end that touches a carriageway
+                def near_carriageway(p):
+                    best = math.inf
+                    for oi, si in orient_index.near(p[0], p[1], 40.0):
+                        o = ways[oi]
+                        if oi == wi or o["w"]["cls"] not in ("motorway", "trunk"):
+                            continue
+                        P = o["pts"]
+                        for j in (si - 1, si):
+                            if 0 <= j < len(P) - 1:
+                                best = min(best, _seg_dist(p, P[j], P[j + 1]))
+                    return best
+                d0, d1 = near_carriageway(wy["pts"][0]), near_carriageway(wy["pts"][-1])
+                if min(d0, d1) < 20.0 and abs(d0 - d1) > 5.0:
+                    starts_at = d0 < d1
+                    want_start = tlm == "Ausfahrt"
+                    votes[wi] = 3 if starts_at == want_start else -3
+            elif cls in ("motorway", "trunk") and len(wy["pts"]) >= 2:
+                score = 0
+                for f in (0.25, 0.5, 0.75):
+                    sv = s[-1] * f
+                    e, n = way_point(wy, sv)
+                    t = tangent_at(wy, sv)
+                    best = None
+                    for oi, si in orient_index.near(e, n, 45.0):
+                        o = ways[oi]
+                        if oi == wi or o["w"]["cls"] != cls:
+                            continue
+                        P = o["pts"]
+                        for j in (si - 1, si):
+                            if not (0 <= j < len(P) - 1):
+                                continue
+                            d = _seg_dist((e, n), P[j], P[j + 1])
+                            if not (6.0 < d < 45.0):
+                                continue
+                            dx, dy = P[j + 1][0] - P[j][0], P[j + 1][1] - P[j][1]
+                            l = math.hypot(dx, dy) or 1.0
+                            if abs(dx / l * t[0] + dy / l * t[1]) < 0.85:
+                                continue
+                            if best is None or d < best[0]:
+                                mx, my = (P[j][0] + P[j + 1][0]) * 0.5, (P[j][1] + P[j + 1][1]) * 0.5
+                                best = (d, mx, my)
+                    if best is not None:
+                        left = -(best[1] - e) * t[1] + (best[2] - n) * t[0]
+                        score += 1 if left > 0 else -1
+                if score != 0:
+                    votes[wi] = 2 if score > 0 else -2
+        # chains: connected one-way ways of one class agree on a direction
+        end_map = defaultdict(list)
+        for wi in oneways:
+            wy = ways[wi]
+            end_map[key_of(wy["pts"][0])].append((wi, True))
+            end_map[key_of(wy["pts"][-1])].append((wi, False))
+        seen = set()
+        for wi in oneways:
+            if wi in seen:
+                continue
+            # walk the chain (degree-2 joins of the same class)
+            chain, orient = [], {}
+            stack = [(wi, +1)]
+            while stack:
+                cur, sign = stack.pop()
+                if cur in orient:
+                    continue
+                orient[cur] = sign
+                chain.append(cur)
+                cw = ways[cur]
+                for at_start in (True, False):
+                    key = key_of(cw["pts"][0] if at_start else cw["pts"][-1])
+                    others = [(oi, os_) for oi, os_ in end_map[key] if oi != cur]
+                    if len(others) != 1 or len(end_map[key]) != 2:
+                        continue
+                    oi, o_start = others[0]
+                    if ways[oi]["w"]["cls"] != cw["w"]["cls"]:
+                        continue
+                    # same travel sense if this way's start meets the other's end (or vice versa)
+                    same = (at_start != o_start)
+                    stack.append((oi, sign if same else -sign))
+            seen.update(chain)
+            total = sum(votes.get(c, 0) * orient[c] for c in chain)
+            if total == 0:
+                continue
+            for c in chain:
+                want = 1 if total > 0 else -1
+                if orient[c] != want:
+                    flip_way(ways[c])
+                    flips += 1
+    stats["oriented_flips"] = flips
+    orient_index = StationIndex(ways, everything=True)
+
+
+    nodes: dict = defaultdict(list)          # key -> legs
     for wi, wy in enumerate(ways):
-        if len(wy["pts"]) < 2:
+        if len(wy["pts"]) < 2 or wy["w"]["kind"] != "road":
             continue
         for at_start in (True, False):
             p = wy["pts"][0] if at_start else wy["pts"][-1]
-            nodes[(round(p[0], 1), round(p[1], 1))].append((wi, at_start))
-    baked_fans = []
-    for legs_raw in nodes.values():
-        if len(legs_raw) < 2:
+            d = tangent_at(wy, 0.0 if at_start else wy["s"][-1])
+            nodes[key_of(p)].append({"wi": wi, "s0": 0.0 if at_start else wy["s"][-1], "fwd": at_start, "end": True,
+                                     "dir": d if at_start else (-d[0], -d[1]), "half": wy["width"] * 0.5,
+                                     "cls": wy["w"]["cls"], "kind": "road", "cut": 0.0})
+    # (b) attachments: a way end on / beside another road way at the same level
+    all_index = StationIndex(ways, everything=True)
+    attached = 0
+    for key, legs in list(nodes.items()):
+        for L in [L for L in legs if L["end"]]:
+            wy = ways[L["wi"]]
+            e, n = wy["pts"][0] if L["fwd"] else wy["pts"][-1]
+            h_end = float(wy["prof"][0] if L["fwd"] else wy["prof"][-1])
+            cands = defaultdict(list)
+            for oi, si in all_index.near(e, n, 40.0):
+                if oi != L["wi"] and ways[oi]["w"]["kind"] == "road" and not ways[oi]["w"]["tunnel"]:
+                    cands[oi].append(si)
+            best = None
+            t_end = tangent_at(wy, 0.0 if L["fwd"] else wy["s"][-1])   # the way's travel direction at this end
+            for oi, sts in cands.items():
+                if any(M["wi"] == oi for M in legs):
+                    continue                    # already a leg of this node
+                o = ways[oi]
+                d, sp = project(o, e, n, sts)
+                if d > L["half"] + o["width"] * 0.5 + ATTACH_EXTRA_M:
+                    continue
+                if abs(float(np.interp(sp, o["s"], o["prof"])) - h_end) > ATTACH_DH_M:
+                    continue
+                if wy["w"]["oneway"] and o["w"]["oneway"]:
+                    to = tangent_at(o, sp)      # the opposite carriageway is not a junction
+                    if t_end[0] * to[0] + t_end[1] * to[1] < -0.3:
+                        continue
+                if best is None or d < best[0]:
+                    best = (d, oi, sp)
+            if best is None:
+                continue
+            d, oi, sp = best
+            o = ways[oi]
+            t = tangent_at(o, sp)
+            if sp > 0.5:
+                legs.append({"wi": oi, "s0": sp, "fwd": False, "end": False, "dir": (-t[0], -t[1]), "half": o["width"] * 0.5,
+                             "cls": o["w"]["cls"], "kind": "road", "cut": 0.0})
+            if sp < o["s"][-1] - 0.5:
+                legs.append({"wi": oi, "s0": sp, "fwd": True, "end": False, "dir": t, "half": o["width"] * 0.5,
+                             "cls": o["w"]["cls"], "kind": "road", "cut": 0.0})
+            attached += 1
+    stats["attached_ends"] = attached
+
+    # ── Junction blocks (docs/ROAD_BLOCKS.md) ───────────────────────────────
+    # A block is a drawing of one situation in the frame of the carriageway
+    # it attaches to (X from the carriageway's outer edge, Y along travel, 0
+    # at the nose / change), stamped along the real carriageway and its
+    # same-class one-way continuation so it bends with the road.
+    def chain_walk(wi, s0, back_m, fwd_m):
+        """(points (e, n, h, way index), chainage relative to s0) along the way
+        and its same-class one-way continuations, from s0 - back_m to s0 + fwd_m."""
+        def continuation(wj, forward):
+            w = ways[wj]
+            key = key_of(w["pts"][-1] if forward else w["pts"][0])
+            for L in nodes.get(key, []):
+                o = ways[L["wi"]]
+                if L["wi"] == wj or not L["end"] or o["w"]["cls"] != w["w"]["cls"] or not o["w"]["oneway"] or o["w"]["tunnel"]:
+                    continue                   # a lane never runs on into a tunnel
+                if forward and L["fwd"]:
+                    return L["wi"]
+                if not forward and not L["fwd"]:
+                    return L["wi"]
+            return None
+
+        w = ways[wi]
+        need, cur, sa = back_m, wi, s0
+        ups = []
+        guard = 0
+        while need > 0.0 and cur is not None and guard < 20:
+            guard += 1
+            cw = ways[cur]
+            take = min(need, sa)
+            pp, hh = way_piece(cw, sa - take, sa)
+            ups.append((cur, pp, hh))
+            need -= take
+            if need > 0.0:
+                cur = continuation(cur, False)
+                sa = ways[cur]["s"][-1] if cur is not None else 0.0
+        pts_all = []
+        for cur, pp, hh in reversed(ups):
+            for (e, n), h in zip(pp, hh):
+                if pts_all and math.dist(pts_all[-1][:2], (e, n)) < 0.05:
+                    continue
+                pts_all.append((e, n, h, cur))
+        need, cur, sa = fwd_m, wi, s0
+        guard = 0
+        while need > 0.0 and cur is not None and guard < 20:
+            guard += 1
+            cw = ways[cur]
+            take = min(need, cw["s"][-1] - sa)
+            pp, hh = way_piece(cw, sa, sa + take)
+            for (e, n), h in zip(pp, hh):
+                if pts_all and math.dist(pts_all[-1][:2], (e, n)) < 0.05:
+                    continue
+                pts_all.append((e, n, h, cur))
+            need -= take
+            if need > 0.0:
+                cur = continuation(cur, True)
+                sa = 0.0
+        if len(pts_all) < 2:
+            return pts_all, [0.0] * len(pts_all)
+        rel = [0.0]
+        for i in range(1, len(pts_all)):
+            rel.append(rel[-1] + math.dist(pts_all[i - 1][:2], pts_all[i][:2]))
+        node_pt = way_point(w, s0)
+        k0 = min(range(len(pts_all)), key=lambda i: math.dist(pts_all[i][:2], node_pt))
+        rel = [r - rel[k0] for r in rel]
+        return pts_all, rel
+
+    def frame_at(pts_all, rel, sv):
+        """(e, n, h, left normal (e, n), way index) on the chain at relative chainage sv."""
+        if sv <= rel[0]:
+            i = 0
+        elif sv >= rel[-1]:
+            i = len(rel) - 2
+        else:
+            i = int(np.searchsorted(rel, sv, side="right")) - 1
+        i = max(0, min(len(rel) - 2, i))
+        a, b = pts_all[i], pts_all[i + 1]
+        seg = rel[i + 1] - rel[i]
+        t = 0.0 if seg < 1e-9 else max(0.0, min(1.0, (sv - rel[i]) / seg))
+        e, n = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
+        h = a[2] + (b[2] - a[2]) * t
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        l = math.hypot(dx, dy) or 1.0
+        return e, n, h, (-dy / l, dx / l), (a[3] if t < 0.5 else b[3])
+
+    def hermite(p0, t0, p1, t1, n=12):
+        out = []
+        for k in range(n + 1):
+            u = k / n
+            h00, h10, h01, h11 = 2 * u ** 3 - 3 * u ** 2 + 1, u ** 3 - 2 * u ** 2 + u, -2 * u ** 3 + 3 * u ** 2, u ** 3 - u ** 2
+            out.append((h00 * p0[0] + h10 * t0[0] + h01 * p1[0] + h11 * t1[0],
+                        h00 * p0[1] + h10 * t0[1] + h01 * p1[1] + h11 * t1[1]))
+        return out
+
+    class BlockFrame:
+        """The carriageway chain a block is stamped on: block (x, y) -> world."""
+
+        def __init__(self, wi_B, s0, side, half_b, lift_b, extent):
+            self.side, self.half_b, self.lift_b = side, half_b, lift_b
+            self.chain, self.rel = chain_walk(wi_B, s0, -extent[0] + 10.0, extent[1] + 10.0)
+            self.ok = len(self.chain) >= 2
+            if self.ok:
+                self.y_lo, self.y_hi = self.rel[0] + 0.5, self.rel[-1] - 0.5
+                self.ok = self.y_hi - self.y_lo >= 20.0
+
+        def stamp(self, y, x):
+            e, n, h, ln, wj = frame_at(self.chain, self.rel, y)
+            u = self.half_b + x
+            return e + ln[0] * u * self.side, n + ln[1] * u * self.side, h, wj
+
+        def tangent(self, y):
+            e, n, h, ln, wj = frame_at(self.chain, self.rel, y)
+            return (ln[1], -ln[0])          # travel direction (left normal rotated back)
+
+    def stamp_block(block, frame, wb, colour_u8):
+        """Stamp every object of a block on its frame; returns the ways it touched."""
+        clip = _ShBox(-500.0, frame.y_lo, 500.0, frame.y_hi)
+        mid = frame.stamp((frame.y_lo + frame.y_hi) * 0.5, 0.0)
+        k = (int(math.floor(mid[0] / TILE_M)) * TILE_M, int(math.floor(mid[1] / TILE_M)) * TILE_M)
+        buf = tiles[k]
+        buf.current_way = int(wb["w"]["id"])
+        touched = set()
+        cut_side = -1 if frame.side > 0 else 1
+
+        def world3(x, y, lift):
+            e, n, h, wj = frame.stamp(y, x)
+            touched.add(wj)
+            return (CONV_E - e, h + frame.lift_b + lift, n - CONV_N), (e, n)
+
+        def line_pieces(axis, width, dashed, lift):
+            (x0, y0), (x1, y1) = axis
+            L = math.hypot(x1 - x0, y1 - y0)
+            if L < 0.5:
+                return 0
+            count = 0
+            if not dashed:
+                n = max(1, int(math.ceil(L / BLOCK_STEP_M)))
+                prev = None
+                for i in range(n + 1):
+                    t = i / n
+                    x, y = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
+                    if not (frame.y_lo <= y <= frame.y_hi):
+                        prev = None
+                        continue
+                    pt, _en = world3(x, y, lift)
+                    if prev is not None:
+                        buf.quad3(prev, pt, width, MARK_U8, KIND_MARK, t * L)
+                        count += 1
+                    prev = pt
+            else:
+                s = 0.0
+                while s < L:
+                    s1 = min(L, s + DASH_M)
+                    ya, yb = y0 + (y1 - y0) * s / L, y0 + (y1 - y0) * s1 / L
+                    if frame.y_lo <= ya <= frame.y_hi and frame.y_lo <= yb <= frame.y_hi and s1 - s > 1.0:
+                        a, _ = world3(x0 + (x1 - x0) * s / L, ya, lift)
+                        b, _ = world3(x0 + (x1 - x0) * s1 / L, yb, lift)
+                        buf.quad3(a, b, width, MARK_U8, KIND_MARK, s)
+                        count += 1
+                    s += DASH_PERIOD_M
+            return count
+
+        for ob in block["objects"]:
+            role = ob["role"]
+            if role in ("ref", "ramp"):
+                continue
+            if role in ("pave", "gore", "cut"):
+                poly = _ShPoly(ob["polygon"]).buffer(0).intersection(clip)
+                if poly.is_empty:
+                    continue
+                geoms = list(poly.geoms) if poly.geom_type == "MultiPolygon" else [poly]
+                for g in geoms:
+                    g = _shapely.segmentize(g, BLOCK_STEP_M)
+                    ring = list(g.exterior.coords)[:-1]
+                    heights = {}
+                    world_en = []
+                    for x, y in ring:
+                        pt, en = world3(x, y, PATCH_LIFT_M)
+                        key_en = (round(en[0], 2), round(en[1], 2))
+                        heights[key_en] = pt[1]
+                        world_en.append(en)
+                    wpoly = _ShPoly(world_en).buffer(0)
+                    if wpoly.is_empty:
+                        continue
+                    if role == "cut":
+                        for wj in touched:
+                            ways[wj]["cutters"].append((_sh_prepared.prep(wpoly.buffer(SHOULDER_M * 0.0 + 0.3)), cut_side, ob.get("mode", "dash")))
+                        continue
+                    if role == "pave":
+                        wgeoms = list(wpoly.geoms) if wpoly.geom_type == "MultiPolygon" else [wpoly]
+                        for wg in wgeoms:
+                            tris = patch_triangles(wg)
+                            tris3 = []
+                            for t in tris:
+                                tri = []
+                                for e, n in t:
+                                    kk = (round(e, 2), round(n, 2))
+                                    if kk not in heights:
+                                        hh = frame.stamp(0.0, 0.0)[2]   # fallback: a point CDT invented
+                                        heights[kk] = hh + frame.lift_b + PATCH_LIFT_M
+                                    tri.append((CONV_E - e, heights[kk], n - CONV_N))
+                                tris3.append(tuple(tri))
+                            buf.tri_mesh(tris3, colour_u8, KIND_JUNCTION)
+                            stats["block_pave_m2"] += wg.area
+                    else:   # gore: outline + hatch every 3 m
+                        for i in range(len(ring)):
+                            a, b = ring[i], ring[(i + 1) % len(ring)]
+                            stats["markings"] += line_pieces((a, b), MARK_W_M, False, MARK_LIFT_M)
+                        ys = [pt[1] for pt in ring]
+                        yy = math.floor(min(ys) / 3.0) * 3.0 + 1.5
+                        while yy < max(ys):
+                            cutline = _ShLine([(-500.0, yy), (500.0, yy)]).intersection(_ShPoly(ob["polygon"]).buffer(0))
+                            segs = list(cutline.geoms) if cutline.geom_type == "MultiLineString" else ([cutline] if cutline.geom_type == "LineString" else [])
+                            for sg in segs:
+                                c = list(sg.coords)
+                                if len(c) >= 2:
+                                    stats["markings"] += line_pieces((c[0], c[-1]), MARK_W_M, False, MARK_LIFT_M)
+                            yy += 3.0
+            elif role in ("line", "dash"):
+                stats["markings"] += line_pieces(ob["axis"], ob.get("width", MARK_W_M), role == "dash", MARK_LIFT_M)
+        return touched
+
+    def rejoin_ramp(wa, at_end, target, tangent):
+        """Replace the ramp's last (at_end) / first BLOCK_JOIN_M metres by a Hermite
+        curve into `target` (e, n, h) along `tangent`."""
+        sa = wa["s"]
+        if at_end:
+            j0 = max(0.0, sa[-1] - BLOCK_JOIN_M)
+            p0 = way_point(wa, j0)
+            t0 = tangent_at(wa, j0)
+            L = max(1.0, sa[-1] - j0)
+            curve = hermite(p0, (t0[0] * L, t0[1] * L), (target[0], target[1]), (tangent[0] * L, tangent[1] * L))
+            keep_p, keep_h = way_piece(wa, 0.0, j0) if j0 > 0.5 else ([], [])
+            h0 = float(np.interp(j0, sa, wa["prof"]))
+            hs = [h0 + (target[2] - h0) * k / (len(curve) - 1) for k in range(len(curve))]
+            new_p = (keep_p[:-1] + curve) if keep_p else curve
+            new_h = (keep_h[:-1] + hs) if keep_p else hs
+        else:
+            j1 = min(sa[-1], BLOCK_JOIN_M)
+            p1 = way_point(wa, j1)
+            t1 = tangent_at(wa, j1)
+            L = max(1.0, j1)
+            curve = hermite((target[0], target[1]), (tangent[0] * L, tangent[1] * L), p1, (t1[0] * L, t1[1] * L))
+            keep_p, keep_h = way_piece(wa, j1, sa[-1]) if j1 < sa[-1] - 0.5 else ([], [])
+            h1 = float(np.interp(j1, sa, wa["prof"]))
+            hs = [target[2] + (h1 - target[2]) * k / (len(curve) - 1) for k in range(len(curve))]
+            new_p = (curve + keep_p[1:]) if keep_p else curve
+            new_h = (hs + keep_h[1:]) if keep_p else hs
+        wa["pts"] = [(float(e), float(n)) for e, n in new_p]
+        wa["prof"] = np.array(new_h, dtype=float)
+        wa["s"] = along(wa["pts"])
+        wa["end_frames"] = [None, None]
+
+    # (a) entries and exits: a one-way link on a one-way carriageway
+    for key, legs in list(nodes.items()):
+        ends = [L for L in legs if L["end"]]
+        thrus = [L for L in legs if not L["end"]]
+        if len(ends) != 1 or not thrus or len(set(L["wi"] for L in thrus)) != 1:
             continue
-        legs = []
-        for wi, at_start in legs_raw:
-            pts = ways[wi]["pts"]
-            p, q = (pts[0], pts[1]) if at_start else (pts[-1], pts[-2])
-            dx, dy = q[0] - p[0], q[1] - p[1]
-            l = math.hypot(dx, dy) or 1.0
-            legs.append({"wi": wi, "at_start": at_start, "dir": (dx / l, dy / l), "half": ways[wi]["width"] * 0.5,
-                         "cls": ways[wi]["w"]["cls"], "kind": ways[wi]["w"]["kind"], "cut": 0.0})
-        road_legs = [L for L in legs if L["kind"] == "road" and not ways[L["wi"]]["w"]["tunnel"]]
-        if len(road_legs) >= 3:
-            L0 = road_legs[0]
-            centre = ways[L0["wi"]]["pts"][0] if L0["at_start"] else ways[L0["wi"]]["pts"][-1]
-            poly, best_cls = junction_fan(centre, road_legs)
-            for L in road_legs:
-                ways[L["wi"]]["cut"][0 if L["at_start"] else 1] = L["cut"]
-            baked_fans.append((centre, poly, best_cls, [(L["wi"], L["at_start"], L["half"]) for L in road_legs]))
-        elif len(legs) == 2 and legs[0]["kind"] == legs[1]["kind"]:
-            a, b = legs
+        A, B_wi = ends[0], thrus[0]["wi"]
+        wa, wb = ways[A["wi"]], ways[B_wi]
+        if not (wa["w"]["oneway"] and wb["w"]["oneway"]) or wa["w"]["kind"] != "road" or wb["w"]["kind"] != "road":
+            continue
+        if wb["w"]["cls"] not in ("motorway", "trunk") or wa["w"]["cls"] not in ("motorway_link", "trunk_link"):
+            continue
+        s0 = thrus[0]["s0"]
+        tb = tangent_at(wb, s0)
+        ta = tangent_at(wa, 0.0 if A["fwd"] else wa["s"][-1])
+        if ta[0] * tb[0] + ta[1] * tb[1] < 0.7:
+            continue
+        tlm_kind = wa["w"].get("tlm", "")
+        entry = True if tlm_kind == "Einfahrt" else (False if tlm_kind == "Ausfahrt" else not A["fwd"])
+        if entry == A["fwd"]:
+            continue                                  # the ramp touches the carriageway with its wrong end for its type
+        block = block_lib.get("entry" if entry else "exit")
+        if block is None:
+            continue
+        node_e, node_n = key
+        left_n = (-tb[1], tb[0])
+        ref = way_point(wa, min(30.0, wa["s"][-1]) if A["fwd"] else max(0.0, wa["s"][-1] - 30.0))
+        side = 1.0 if ((ref[0] - node_e) * left_n[0] + (ref[1] - node_n) * left_n[1]) > 0 else -1.0
+        half_b = wb["width"] * 0.5
+        lift_b = ROAD_LIFT_M - CLASS_DROP_M.get(wb["w"]["cls"], 0.0)
+        frame = BlockFrame(B_wi, s0, side, half_b, lift_b, block["extent"])
+        if not frame.ok:
+            continue
+        ramp_ob = next((o for o in block["objects"] if o["role"] == "ramp"), None)
+        if ramp_ob is not None:
+            px, py = ramp_ob["point"]
+            e, n, h, _wj = frame.stamp(py, px)
+            rejoin_ramp(wa, entry, (e, n, h), frame.tangent(py))
+        colour = ROAD_CLASSES[wb["w"]["cls"]][1]
+        stamp_block(block, frame, wb, tuple(int(c * 255) for c in colour))
+        nodes[key] = []
+        stats["blocks_entry" if entry else "blocks_exit"] += 1
+        if os.environ.get("PVP_DEBUG_NODE"):
+            de, dn = (float(v) for v in os.environ["PVP_DEBUG_NODE"].split(","))
+            if math.hypot(node_e - de, node_n - dn) < 150:
+                print(f"DEBUG block at {key}: {'ENTRY' if entry else 'EXIT'} ramp {wa['w']['id']} {tlm_kind} flipped={wa['w'].get('flipped', False)} "
+                      f"A.fwd={A['fwd']} vote={votes.get(A['wi'])} | carriageway {wb['w']['id']} flipped={wb['w'].get('flipped', False)} vote={votes.get(B_wi)} side={side:+.0f}")
+
+    # (b) lane add / drop: two one-way ways of one class continuing each other with a lane more / less
+    for key, legs in list(nodes.items()):
+        if len(legs) != 2 or not all(L["end"] for L in legs):
+            continue
+        a, b = legs
+        wa2, wb2 = ways[a["wi"]], ways[b["wi"]]
+        if a["wi"] == b["wi"] or a["fwd"] == b["fwd"]:
+            continue
+        if not (wa2["w"]["oneway"] and wb2["w"]["oneway"]) or wa2["w"]["cls"] != wb2["w"]["cls"] or wa2["w"]["cls"] not in ("motorway", "trunk"):
+            continue
+        up, down = (a, b) if not a["fwd"] else (b, a)          # `up` ends here, `down` starts here
+        lu, ld = int(ways[up["wi"]]["lanes"] or 0), int(ways[down["wi"]]["lanes"] or 0)
+        if abs(lu - ld) != 1:
+            continue
+        add = ld > lu
+        block = block_lib.get("lane_add" if add else "lane_drop")
+        if block is None:
+            continue
+        narrow = up if add else down
+        wn = ways[narrow["wi"]]
+        s0 = wn["s"][-1] if add else 0.0
+        half_b = wn["width"] * 0.5
+        lift_b = ROAD_LIFT_M - CLASS_DROP_M.get(wn["w"]["cls"], 0.0)
+        frame = BlockFrame(narrow["wi"], s0, -1.0, half_b, lift_b, block["extent"])   # the outer (right) side
+        if not frame.ok:
+            continue
+        colour = ROAD_CLASSES[wn["w"]["cls"]][1]
+        stamp_block(block, frame, wn, tuple(int(c * 255) for c in colour))
+        nodes[key] = []
+        stats["blocks_lane_add" if add else "blocks_lane_drop"] += 1
+
+    patches = []
+    for key, legs in nodes.items():
+        if len(legs) < 2:
+            continue
+        road_legs = [L for L in legs if not ways[L["wi"]]["w"]["tunnel"]]
+        if len(road_legs) < 2:
+            continue
+        simple = len(road_legs) == 2 and all(L["end"] for L in road_legs) and abs(road_legs[0]["half"] - road_legs[1]["half"]) < 0.05
+        if simple:
+            a, b = road_legs
             t0 = (-a["dir"][0], -a["dir"][1])   # travelling a -> node -> b, in (e, n)
             t1 = b["dir"]
             den = 1.0 + t0[0] * t1[0] + t0[1] * t1[1]
@@ -1827,54 +2611,210 @@ def main():
             l = math.hypot(mx, mz)
             if l > MITER_LIMIT:
                 mx, mz = mx * MITER_LIMIT / l, mz * MITER_LIMIT / l
-            ways[a["wi"]]["end_frames"][0 if a["at_start"] else 1] = (-mx, -mz) if a["at_start"] else (mx, mz)
-            ways[b["wi"]]["end_frames"][0 if b["at_start"] else 1] = (mx, mz) if b["at_start"] else (-mx, -mz)
+            ways[a["wi"]]["end_frames"][0 if a["fwd"] else 1] = (-mx, -mz) if a["fwd"] else (mx, mz)
+            ways[b["wi"]]["end_frames"][0 if b["fwd"] else 1] = (mx, mz) if b["fwd"] else (-mx, -mz)
             stats["mitres"] += 1
+            continue
+        centre = (key[0], key[1])
+        if len(road_legs) >= 3:
+            junction_fan(centre, road_legs)          # corner cuts of the sharp legs
+        for L in road_legs:
+            L["cut"] = max(L["cut"], JUNCTION_MIN_CUT_M)
+        def overlap_len(A, B):
+            """How far from the node leg A's ribbon still overlaps leg B's (measured along A)."""
+            wa, wb = ways[A["wi"]], ways[B["wi"]]
+            sl, _h = leg_slice(wa, A["s0"], A["fwd"], MERGE_MAX_M)
+            near = list(range(len(wb["pts"])))
+            run, last = 0.0, 0.0
+            for i, (e, n) in enumerate(sl):
+                if i > 0:
+                    run += math.dist(sl[i - 1], (e, n))
+                d, _sp = project(wb, e, n, near)
+                if d < A["half"] + B["half"]:
+                    last = run
+                elif run > 30.0:
+                    break
+            return last
+
+        for i in range(len(road_legs)):
+            for j in range(i + 1, len(road_legs)):
+                a, b = road_legs[i], road_legs[j]
+                cosang = a["dir"][0] * b["dir"][0] + a["dir"][1] * b["dir"][1]
+                if cosang > 0.5:                       # legs within 60 degrees: a merge / split
+                    ov_a, ov_b = overlap_len(a, b), overlap_len(b, a)
+                    a["cut"] = max(a["cut"], min(MERGE_MAX_M, ov_a + 3.0 + (LANE_TAPER_M if (b["end"] and not a["end"]) else 0.0)))
+                    b["cut"] = max(b["cut"], min(MERGE_MAX_M, ov_b + 3.0 + (LANE_TAPER_M if (a["end"] and not b["end"]) else 0.0)))
+                elif cosang < -0.85 and (a["end"] != b["end"]):
+                    # the through leg the merging lane continues into: room for its end taper
+                    thru = b if a["end"] else a
+                    thru["cut"] = max(thru["cut"], LANE_TAPER_M + 3.0)
+        for L in road_legs:
+            wy = ways[L["wi"]]
+            room = (wy["s"][-1] - L["s0"]) if L["fwd"] else L["s0"]
+            L["cut"] = min(L["cut"], room)
+            sl, hs = leg_slice(wy, L["s0"], L["fwd"], L["cut"] + 0.3)
+            L["slice"], L["slice_h"] = sl, hs
+            L["quads"] = [g for g in (_ShPoly(q).buffer(0) for q in ribbon_quads(sl, L["half"])) if not g.is_empty]
+            wy["gaps"].append((L["s0"], min(wy["s"][-1], L["s0"] + L["cut"])) if L["fwd"] else (max(0.0, L["s0"] - L["cut"]), L["s0"]))
+        # gore taper of a merging / splitting ramp: the wedge between its
+        # inner edge and the carriageway edge, from the node back
+        fills = []
+        for A in road_legs:
+            if not A["end"]:
+                continue
+            for B in road_legs:
+                if B is A or B["end"] or B["wi"] == A["wi"]:
+                    continue
+                cosab = A["dir"][0] * B["dir"][0] + A["dir"][1] * B["dir"][1]
+                ob = ways[B["wi"]]
+                near = list(range(len(ob["pts"])))
+                if cosab < -0.85 and len(A["slice"]) >= 1:
+                    # the leg the merging lane continues into: taper its outer edge
+                    # into the carriageway edge over LANE_TAPER_M beyond the node
+                    e, n = A["slice"][0]
+                    d, sp = project(ob, e, n, near)
+                    pe = float(np.interp(sp, ob["s"], [q[0] for q in ob["pts"]]))
+                    pn = float(np.interp(sp, ob["s"], [q[1] for q in ob["pts"]]))
+                    vx, vy = pe - e, pn - n
+                    vl = math.hypot(vx, vy)
+                    if vl > 1e-6 and vl - A["half"] - B["half"] <= GORE_GAP_M:
+                        vx, vy = vx / vl, vy / vl
+                        sp2 = min(ob["s"][-1], sp + LANE_TAPER_M) if B["fwd"] else max(0.0, sp - LANE_TAPER_M)
+                        qe = float(np.interp(sp2, ob["s"], [q[0] for q in ob["pts"]]))
+                        qn = float(np.interp(sp2, ob["s"], [q[1] for q in ob["pts"]]))
+                        g = _ShPoly([(e - vx * A["half"], n - vy * A["half"]), (pe - vx * B["half"], pn - vy * B["half"]),
+                                     (qe - vx * B["half"], qn - vy * B["half"])]).buffer(0)
+                        if not g.is_empty:
+                            fills.append(g)
+                    continue
+                if cosab < 0.85:
+                    continue
+                inner, edge = [], []
+                run = 0.0
+                for i, (e, n) in enumerate(A["slice"]):
+                    if i > 0:
+                        run += math.dist(A["slice"][i - 1], (e, n))
+                    if run > MERGE_TAPER_M:
+                        break
+                    d, sp = project(ob, e, n, near)
+                    pe = float(np.interp(sp, ob["s"], [q[0] for q in ob["pts"]]))
+                    pn = float(np.interp(sp, ob["s"], [q[1] for q in ob["pts"]]))
+                    vx, vy = pe - e, pn - n
+                    vl = math.hypot(vx, vy)
+                    if vl < 1e-6:
+                        continue
+                    vx, vy = vx / vl, vy / vl
+                    if vl - A["half"] - B["half"] > GORE_GAP_M:
+                        break
+                    inner.append((e + vx * A["half"], n + vy * A["half"]))
+                    edge.append((pe - vx * B["half"], pn - vy * B["half"]))
+                for i in range(len(inner) - 1):
+                    g = _ShPoly([inner[i], inner[i + 1], edge[i + 1], edge[i]]).buffer(0)
+                    if not g.is_empty:
+                        fills.append(g)
+                # the ramp lane's outer edge tapers into the carriageway edge beyond the ramp's start
+                if len(A["slice"]) >= 2:
+                    e, n = A["slice"][-1]
+                    d, sp = project(ob, e, n, near)
+                    if d < A["half"] + B["half"] + GORE_GAP_M:
+                        pe = float(np.interp(sp, ob["s"], [q[0] for q in ob["pts"]]))
+                        pn = float(np.interp(sp, ob["s"], [q[1] for q in ob["pts"]]))
+                        vx, vy = pe - e, pn - n
+                        vl = math.hypot(vx, vy) or 1.0
+                        vx, vy = vx / vl, vy / vl
+                        sp2 = min(ob["s"][-1], sp + LANE_TAPER_M) if B["fwd"] else max(0.0, sp - LANE_TAPER_M)
+                        qe = float(np.interp(sp2, ob["s"], [q[0] for q in ob["pts"]]))
+                        qn = float(np.interp(sp2, ob["s"], [q[1] for q in ob["pts"]]))
+                        g = _ShPoly([(e - vx * A["half"], n - vy * A["half"]), (pe - vx * B["half"], pn - vy * B["half"]),
+                                     (qe - vx * B["half"], qn - vy * B["half"])]).buffer(0)
+                        if not g.is_empty:
+                            fills.append(g)
+        shoulder_zone = SHOULDER_M + VERGE_M + 0.5   # an edge line sits this far inside its pavement edge
+        for L in road_legs:
+            wl = ways[L["wi"]]
+            t = tangent_at(wl, L["s0"])
+            if L["end"]:
+                # a way that ends here: every line inside the other legs' pavement goes,
+                # and its edge line on the side of the carriageway it merges into goes
+                # within the shoulder zone too (a merging lane has no line of its own there)
+                others = [q for M in road_legs if M is not L for q in M["quads"]] + fills
+                if others:
+                    wl["cutters"].append((_sh_prepared.prep(_sh_union(others).buffer(0)), None, "drop"))
+                for M in road_legs:
+                    if M is L or M["wi"] == L["wi"] or not M["quads"] or M["end"]:
+                        continue
+                    ref = M["slice"][min(len(M["slice"]) - 1, 2)]
+                    left = -(ref[0] - centre[0]) * t[1] + (ref[1] - centre[1]) * t[0]   # > 0: left of travel
+                    wl["cutters"].append((_sh_prepared.prep(_sh_union(M["quads"] + fills).buffer(shoulder_zone)), -1 if left > 0 else 1, "drop"))
+            else:
+                # a through leg: each other leg's pavement turns the edge line on its
+                # side into dashes (the acceleration lane's separation), widened by the
+                # hard shoulder because that edge line sits SHOULDER_M inside the edge
+                for M in road_legs:
+                    if M is L or M["wi"] == L["wi"] or not M["quads"]:
+                        continue
+                    ref = M["slice"][min(len(M["slice"]) - 1, 2)]
+                    left = -(ref[0] - centre[0]) * t[1] + (ref[1] - centre[1]) * t[0]   # > 0: left of travel
+                    wl["cutters"].append((_sh_prepared.prep(_sh_union(M["quads"] + fills).buffer(shoulder_zone)), -1 if left > 0 else 1, "dash"))
+        poly = _sh_union([q for L in road_legs for q in L["quads"]] + fills).buffer(0)
+        if not poly.is_empty:
+            patches.append({"poly": poly, "legs": road_legs})
+        if os.environ.get("PVP_DEBUG_NODE"):
+            de, dn = (float(v) for v in os.environ["PVP_DEBUG_NODE"].split(","))
+            if math.hypot(centre[0] - de, centre[1] - dn) < 60:
+                print(f"DEBUG node {centre}: " + "; ".join(f"way {ways[L['wi']]['w']['id']} {L['cls']} end={L['end']} fwd={L['fwd']} cut={L['cut']:.1f} half={L['half']}" for L in road_legs)
+                      + f" | fills {len(fills)} | cutters " + ", ".join(f"{ways[L['wi']]['w']['id']}:{[(c[1], c[2]) for c in ways[L['wi']]['cutters']]}" for L in road_legs))
+    # patches that overlap and share a way are one pavement (TLM puts the
+    # split and the merge of a ramp a few metres apart)
+    merged = []
+    if patches:
+        tree = _ShTree([p["poly"] for p in patches])
+        parent = list(range(len(patches)))
+
+        def find(i):
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+
+        for i, p in enumerate(patches):
+            wis = set(L["wi"] for L in p["legs"])
+            for j in tree.query(p["poly"]):
+                j = int(j)
+                if j <= i or not (wis & set(L["wi"] for L in patches[j]["legs"])):
+                    continue
+                if patches[j]["poly"].intersects(p["poly"]):
+                    parent[find(i)] = find(j)
+        groups = defaultdict(list)
+        for i in range(len(patches)):
+            groups[find(i)].append(i)
+        for idxs in groups.values():
+            poly = patches[idxs[0]]["poly"] if len(idxs) == 1 else _sh_union([patches[i]["poly"] for i in idxs]).buffer(0)
+            merged.append((poly, [L for i in idxs for L in patches[i]["legs"]]))
     station_index = StationIndex(ways)
 
-    # Stage 4b: ribbons, embankments, structures.
+    # Stage 4b: ribbons (plain pavement) in the pieces between the junction
+    # gaps, markings, embankments, structures.
     for wi, wy in enumerate(ways):
-        w, pts, prof, width = wy["w"], wy["pts"], wy["prof"], wy["width"]
+        w, width = wy["w"], wy["width"]
         colour, kind, lanes, gauge, ballast, tracks = wy["colour"], wy["kind"], wy["lanes"], wy["gauge"], wy["ballast"], wy["tracks"]
-        cut0, cut1 = wy["cut"]
-        if cut0 > 0.0:
-            pts, prof = trim_start_vals(pts, list(prof), cut0)
-        if cut1 > 0.0:
-            pts, prof = trim_start_vals(pts[::-1], list(prof)[::-1], cut1)
-            pts, prof = pts[::-1], prof[::-1]
-        if len(pts) < 2 or along(pts)[-1] < 0.5:
+        total = wy["s"][-1]
+        gaps = sorted(wy["gaps"])
+        pieces, cursor = [], 0.0
+        for g0, g1 in gaps:
+            if g0 > cursor + 0.5:
+                pieces.append((cursor, g0))
+            cursor = max(cursor, g1)
+        if total > cursor + 0.5:
+            pieces.append((cursor, total))
+        if not pieces:
             stats["ways_inside_junctions"] += 1
-            continue
-        prof = np.asarray(prof, dtype=float)
         ef = wy["end_frames"]
         on_ground = not (w["tunnel"] or w["bridge"] or w.get("elevated"))
         if w.get("has_z") and w.get("elevated"):
             stats["surveyed_bridges"] += 1
-        jitter = (w["id"] % 5) * 0.003
-        road_lift = ROAD_LIFT_M - CLASS_DROP_M.get(w["cls"], 0.0) + jitter
-        ballast_lift = RUNTIME_DROP_M + BALLAST_LIFT_M + jitter
-        # lane taper of a design chain: the wider end narrows to its neighbour over 30 m per lane
-        halves_full = None
-        taper = w.get("taper")
-        if taper and any(t is not None for t in taper) and w["kind"] == "road":
-            s_full = along(pts)
-            total = s_full[-1] or 1.0
-            half = width * 0.5
-            halves_full = []
-            for si in s_full:
-                hw = half
-                if taper[0] is not None and taper[0] < half:
-                    L = TAPER_PER_LANE_M * max(1.0, (half - taper[0]) / 1.6)
-                    hw = min(hw, taper[0] + (half - taper[0]) * min(1.0, si / L))
-                if taper[1] is not None and taper[1] < half:
-                    L1 = TAPER_PER_LANE_M * max(1.0, (half - taper[1]) / 1.6)
-                    hw = min(hw, taper[1] + (half - taper[1]) * min(1.0, (total - si) / L1))
-                halves_full.append(hw)
-        # split into 1 km tiles (a segment crossing a boundary is kept in both tiles' ribbons)
-        by_tile: dict = defaultdict(list)
-        for i, (e, n) in enumerate(pts):
-            k = (int(math.floor(e / TILE_M)) * TILE_M, int(math.floor(n / TILE_M)) * TILE_M)
-            by_tile[k].append(i)
+        road_lift = ROAD_LIFT_M - CLASS_DROP_M.get(w["cls"], 0.0)
+        ballast_lift = RUNTIME_DROP_M + BALLAST_LIFT_M + (w["id"] % 5) * 0.003
         if not w.get("design"):
             # the way's source geometry for the scenery editor's Pick tool (a
             # sidecar per tile; the same way may appear in several tiles):
@@ -1886,90 +2826,160 @@ def main():
                    "gauge": int(round(gauge * 1000)) if gauge else 0, "tracks": tracks or 0,
                    "bridge": bool(w["bridge"] or w.get("elevated")), "tunnel": bool(w["tunnel"]),
                    "pts": [[round(e, 1), round(n, 1)] for e, n in full[::2]] + ([[round(full[-1][0], 1), round(full[-1][1], 1)]] if len(full) % 2 == 0 else [])}
-            for k in set(by_tile) | {(int(math.floor(e / TILE_M)) * TILE_M, int(math.floor(n / TILE_M)) * TILE_M) for e, n in (full[0], full[-1])}:
+            for k in {(int(math.floor(e / TILE_M)) * TILE_M, int(math.floor(n / TILE_M)) * TILE_M) for e, n in full}:
                 sidecars[k].append(rec)
-        for k, idxs in by_tile.items():
-            lo, hi = max(0, idxs[0] - 1), min(len(pts) - 1, idxs[-1] + 1)
-            seg = pts[lo:hi + 1]
-            seg_h = prof[lo:hi + 1]
-            if len(seg) < 2:
+        cutters = wy["cutters"]
+        if w["kind"] == "road" and len(wy["pts"]) >= 2 and not w["tunnel"]:
+            # markings over the whole way (through the patches), by tile
+            full_p, full_h = wy["pts"], list(wy["prof"])
+            by_tile_m: dict = defaultdict(list)
+            for i, (e, n) in enumerate(full_p):
+                by_tile_m[(int(math.floor(e / TILE_M)) * TILE_M, int(math.floor(n / TILE_M)) * TILE_M)].append(i)
+            for k, idxs in by_tile_m.items():
+                lo, hi = max(0, idxs[0] - 1), min(len(full_p) - 1, idxs[-1] + 1)
+                seg = full_p[lo:hi + 1]
+                if len(seg) < 2:
+                    continue
+                xz = [(CONV_E - e, n - CONV_N) for e, n in seg]
+                s = along(xz)
+                ys = [h + road_lift for h in full_h[lo:hi + 1]]
+                buf = tiles[k]
+                buf.current_way = 0 if w.get("design") else int(w["id"])
+                stats["markings"] += emit_markings(buf, xz, ys, s, width * 0.5, kind, lanes,
+                                                   (ef[0] if lo == 0 else None, ef[1] if hi == len(full_p) - 1 else None), cutters, None)
+        for (pa, pb) in pieces:
+            pts, prof = way_piece(wy, pa, pb)
+            if len(pts) < 2:
                 continue
-            xz = [(CONV_E - e, n - CONV_N) for e, n in seg]
-            s = along(xz)
-            frames_end = (ef[0] if lo == 0 else None, ef[1] if hi == len(pts) - 1 else None)
-            buf = tiles[k]
-            buf.current_way = 0 if w.get("design") else int(w["id"])
-            cu = tuple(int(c * 255) for c in (colour if w["kind"] == "road" else (0.5, 0.48, 0.45)))
-            if w["kind"] == "road":
-                buf.ribbon(xz, [h + road_lift for h in seg_h], width, cu, kind, 0.0, s, float(lanes),
-                           halves_full[lo:hi + 1] if halves_full else None, frames_end)
-                stats["road_m"] += s[-1]
-                if on_ground:
-                    stats["skirt_m"] += emit_skirts(buf, xz, seg_h, s, width * 0.5, road_lift, terrain, frames_end)
-            else:
-                ys_b = [h + ballast_lift for h in seg_h]
-                if ballast:
-                    buf.ribbon(xz, ys_b, width, cu, KIND_BALLAST, 0.0, s, float(tracks), None, frames_end)
+            prof = np.asarray(prof, dtype=float)
+            piece_ef = (ef[0] if pa <= 0.0 else None, ef[1] if pb >= total else None)
+            # lane taper of a design chain: the wider end narrows to its neighbour over 30 m per lane
+            halves_full = None
+            taper = w.get("taper")
+            if taper and any(t is not None for t in taper) and w["kind"] == "road":
+                s_full = along(pts)
+                tot = s_full[-1] or 1.0
+                half = width * 0.5
+                halves_full = []
+                for si in s_full:
+                    hw = half
+                    if taper[0] is not None and taper[0] < half:
+                        L = TAPER_PER_LANE_M * max(1.0, (half - taper[0]) / 1.6)
+                        hw = min(hw, taper[0] + (half - taper[0]) * min(1.0, si / L))
+                    if taper[1] is not None and taper[1] < half:
+                        L1 = TAPER_PER_LANE_M * max(1.0, (half - taper[1]) / 1.6)
+                        hw = min(hw, taper[1] + (half - taper[1]) * min(1.0, (tot - si) / L1))
+                    halves_full.append(hw)
+            # split into 1 km tiles (a segment crossing a boundary is kept in both tiles' ribbons)
+            by_tile: dict = defaultdict(list)
+            for i, (e, n) in enumerate(pts):
+                k = (int(math.floor(e / TILE_M)) * TILE_M, int(math.floor(n / TILE_M)) * TILE_M)
+                by_tile[k].append(i)
+            for k, idxs in by_tile.items():
+                lo, hi = max(0, idxs[0] - 1), min(len(pts) - 1, idxs[-1] + 1)
+                seg = pts[lo:hi + 1]
+                seg_h = prof[lo:hi + 1]
+                if len(seg) < 2:
+                    continue
+                xz = [(CONV_E - e, n - CONV_N) for e, n in seg]
+                s = along(xz)
+                frames_end = (piece_ef[0] if lo == 0 else None, piece_ef[1] if hi == len(pts) - 1 else None)
+                buf = tiles[k]
+                buf.current_way = 0 if w.get("design") else int(w["id"])
+                cu = tuple(int(c * 255) for c in (colour if w["kind"] == "road" else (0.5, 0.48, 0.45)))
+                if w["kind"] == "road":
+                    ys = [h + road_lift for h in seg_h]
+                    halves_seg = halves_full[lo:hi + 1] if halves_full else None
+                    buf.ribbon(xz, ys, width, cu, KIND_JUNCTION, 0.0, s, float(lanes), halves_seg, frames_end)
+                    stats["road_m"] += s[-1]
                     if on_ground:
-                        stats["skirt_m"] += emit_skirts(buf, xz, seg_h, s, width * 0.5, ballast_lift, terrain, frames_end)
-                rail_c = (120, 118, 110)
-                for tr in range(tracks):
-                    centre = (tr - (tracks - 1) / 2.0) * TRACK_SPACING_M
-                    for side in (-1, 1):
-                        buf.profile(xz, ys_b, RAIL_PROFILE, rail_c, KIND_RAIL, centre + side * gauge / 2.0, s, RAIL_FOOT_M / 2, 1.0, None, frames_end)
-                stats["rail_m"] += s[-1]
-            if w.get("elevated") and w["kind"] == "road":
-                # bridge structure: parapets along both edges, a pier every
-                # PIER_SPACING_M where the deck is clear of the ground and
-                # nothing passes underneath
-                ys = [h + road_lift for h in seg_h]
-                half_e = width * 0.5
-                for side in (-1.0, 1.0):
-                    buf.profile(xz, ys, ((-PARAPET_W_M / 2, 0.0), (-PARAPET_W_M / 2, PARAPET_H_M), (PARAPET_W_M / 2, PARAPET_H_M), (PARAPET_W_M / 2, 0.0)),
-                                CONCRETE_U8, KIND_CONCRETE, side * (half_e - PARAPET_W_M / 2), s, 0.0, 0.0, None, frames_end)
-                since = PIER_SPACING_M if lo == 0 else 0.0
-                for i in range(len(xz)):
-                    if i > 0:
-                        since += s[i] - s[i - 1]
-                    if since < PIER_SPACING_M:
-                        continue
-                    since = 0.0
-                    x, z = xz[i]
-                    q = xz[min(i + 1, len(xz) - 1)] if i < len(xz) - 1 else xz[i - 1]
-                    dx, dz = q[0] - x, q[1] - z
-                    l = math.hypot(dx, dz) or 1.0
-                    dx, dz = dx / l, dz / l
-                    nx, nz = -dz, dx
-                    wpier = max(width - 2.0, PIER_W_M)
-                    t = PIER_W_M / 2
-                    ground = terrain.sample(seg[i][0], seg[i][1], tri=True)
-                    if math.isnan(ground):
-                        continue
-                    top, bottom = ys[i] - ROAD_LIFT_M, ground - 0.5 + RUNTIME_DROP_M
-                    if top - ground < PIER_MIN_H_M:
-                        stats["piers_low"] += 1
-                        continue
-                    if way_under(station_index, ways, wi, seg[i][0], seg[i][1], float(seg_h[i]), wpier * 0.5 + 0.5):
-                        stats["piers_over_ways"] += 1
-                        continue
-                    c = [(x + nx * wpier / 2 * sx + dx * t * sz, z + nz * wpier / 2 * sx + dz * t * sz) for sx, sz in ((-1, -1), (-1, 1), (1, 1), (1, -1))]
-                    for k2 in range(4):
-                        buf.wall(c[k2], c[(k2 + 1) % 4], bottom, top, CONCRETE_U8, KIND_CONCRETE)
-                    stats["piers"] += 1
-    # junction pavements of the baked network: one flat fan per node at the
-    # height of its highest leg end
-    for centre, poly, best_cls, legs in baked_fans:
-        ce, cn = centre
-        hs = [float(ways[wi]["prof"][0 if at_start else -1]) for wi, at_start, _h in legs]
-        hs += [terrain.sample(e, n, tri=True) for e, n in poly] + [terrain.sample(ce, cn, tri=True)]
-        y = max(h for h in hs if not math.isnan(h)) + ROAD_LIFT_M - CLASS_DROP_M.get(best_cls, 0.0) + 0.005
-        k = (int(math.floor(ce / TILE_M)) * TILE_M, int(math.floor(cn / TILE_M)) * TILE_M)
+                        stats["skirt_m"] += emit_skirts(buf, xz, seg_h, s, width * 0.5, road_lift, terrain, frames_end)
+                else:
+                    ys_b = [h + ballast_lift for h in seg_h]
+                    if ballast:
+                        buf.ribbon(xz, ys_b, width, cu, KIND_BALLAST, 0.0, s, float(tracks), None, frames_end)
+                        if on_ground:
+                            stats["skirt_m"] += emit_skirts(buf, xz, seg_h, s, width * 0.5, ballast_lift, terrain, frames_end)
+                    rail_c = (120, 118, 110)
+                    for tr in range(tracks):
+                        centre = (tr - (tracks - 1) / 2.0) * TRACK_SPACING_M
+                        for side in (-1, 1):
+                            buf.profile(xz, ys_b, RAIL_PROFILE, rail_c, KIND_RAIL, centre + side * gauge / 2.0, s, RAIL_FOOT_M / 2, 1.0, None, frames_end)
+                    stats["rail_m"] += s[-1]
+                if w.get("elevated") and w["kind"] == "road":
+                    # bridge structure: parapets along both edges, a pier every
+                    # PIER_SPACING_M where the deck is clear of the ground and
+                    # nothing passes underneath
+                    ys = [h + road_lift for h in seg_h]
+                    half_e = width * 0.5
+                    for side in (-1.0, 1.0):
+                        buf.profile(xz, ys, ((-PARAPET_W_M / 2, 0.0), (-PARAPET_W_M / 2, PARAPET_H_M), (PARAPET_W_M / 2, PARAPET_H_M), (PARAPET_W_M / 2, 0.0)),
+                                    CONCRETE_U8, KIND_CONCRETE, side * (half_e - PARAPET_W_M / 2), s, 0.0, 0.0, None, frames_end)
+                    since = PIER_SPACING_M if lo == 0 else 0.0
+                    for i in range(len(xz)):
+                        if i > 0:
+                            since += s[i] - s[i - 1]
+                        if since < PIER_SPACING_M:
+                            continue
+                        since = 0.0
+                        x, z = xz[i]
+                        q = xz[min(i + 1, len(xz) - 1)] if i < len(xz) - 1 else xz[i - 1]
+                        dx, dz = q[0] - x, q[1] - z
+                        l = math.hypot(dx, dz) or 1.0
+                        dx, dz = dx / l, dz / l
+                        nx, nz = -dz, dx
+                        wpier = max(width - 2.0, PIER_W_M)
+                        t = PIER_W_M / 2
+                        ground = terrain.sample(seg[i][0], seg[i][1], tri=True)
+                        if math.isnan(ground):
+                            continue
+                        top, bottom = ys[i] - ROAD_LIFT_M, ground - 0.5 + RUNTIME_DROP_M
+                        if top - ground < PIER_MIN_H_M:
+                            stats["piers_low"] += 1
+                            continue
+                        if way_under(station_index, ways, wi, seg[i][0], seg[i][1], float(seg_h[i]), wpier * 0.5 + 0.5):
+                            stats["piers_over_ways"] += 1
+                            continue
+                        c = [(x + nx * wpier / 2 * sx + dx * t * sz, z + nz * wpier / 2 * sx + dz * t * sz) for sx, sz in ((-1, -1), (-1, 1), (1, 1), (1, -1))]
+                        for k2 in range(4):
+                            buf.wall(c[k2], c[(k2 + 1) % 4], bottom, top, CONCRETE_U8, KIND_CONCRETE)
+                        stats["piers"] += 1
+    # junction patches: one pavement per node cluster at the height of the
+    # nearest leg station, PATCH_LIFT_M over the ribbons
+    for poly, legs in merged:
+        st = [(e, n, h) for L in legs for (e, n), h in zip(L["slice"], L["slice_h"])]
+        if not st:
+            continue
+        best_cls = min((L["cls"] for L in legs), key=lambda c: CLASS_DROP_M.get(c, 0.0))
+        lift = ROAD_LIFT_M - CLASS_DROP_M.get(best_cls, 0.0) + PATCH_LIFT_M
+        SE = np.array([[e, n] for e, n, _h in st])
+        SH = np.array([h for _e, _n, h in st])
         colour = ROAD_CLASSES[best_cls][1] if best_cls in ROAD_CLASSES else (0.34, 0.34, 0.35)
         cu = tuple(int(c * 255) for c in colour)
-        widest = max(legs, key=lambda L: L[2])
-        tiles[k].current_way = 0 if ways[widest[0]]["w"].get("design") else int(ways[widest[0]]["w"]["id"])
-        tiles[k].fan((CONV_E - ce, cn - CONV_N), [(CONV_E - e, n - CONV_N) for e, n in poly], y, cu, KIND_JUNCTION)
-        stats["junctions_baked"] += 1
+        geoms = list(poly.geoms) if poly.geom_type == "MultiPolygon" else [poly]
+        widest = max(legs, key=lambda L: L["half"])
+        for g in geoms:
+            if g.is_empty or g.area < 0.5:
+                continue
+            tris = patch_triangles(g)
+            cache = {}
+
+            def height_at(e, n):
+                key = (round(e, 2), round(n, 2))
+                if key not in cache:
+                    d2 = (SE[:, 0] - e) ** 2 + (SE[:, 1] - n) ** 2
+                    cache[key] = float(SH[int(np.argmin(d2))])
+                return cache[key]
+
+            tris3 = []
+            for t in tris:
+                tris3.append(tuple((CONV_E - e, height_at(e, n) + lift, n - CONV_N) for e, n in t))
+            ce, cn = g.centroid.x, g.centroid.y
+            k = (int(math.floor(ce / TILE_M)) * TILE_M, int(math.floor(cn / TILE_M)) * TILE_M)
+            tiles[k].current_way = 0 if ways[widest["wi"]]["w"].get("design") else int(ways[widest["wi"]]["w"]["id"])
+            tiles[k].tri_mesh(tris3, cu, KIND_JUNCTION)
+            stats["patches"] += 1
+            stats["patch_m2"] += g.area
     # junction pavements of the designs: one flat fan per node on the final ground
     for d in designs:
         for j in d.junctions:
@@ -2050,7 +3060,7 @@ def main():
           f"no-terrain ways {stats['no_terrain']}; bridges lifted {stats['bridges_lifted']} over {stats['bridge_crossings']} crossings, "
           f"ramps {stats['ramps']}, tunnels {stats['tunnels']} (+{stats['underpasses']} underpasses); "
           f"surveyed heights {stats['ways_with_heights']} ways, surveyed bridges {stats['surveyed_bridges']}; "
-          f"network: junction fans {stats['junctions_baked']}, mitred joins {stats['mitres']}, ways inside junctions {stats['ways_inside_junctions']}, embankments {stats['skirt_m'] / 1000:.0f} km, "
+          f"network: one-way flips {stats['oriented_flips']}, blocks: entry {stats['blocks_entry']}, exit {stats['blocks_exit']}, lane add {stats['blocks_lane_add']}, lane drop {stats['blocks_lane_drop']} ({stats['block_pave_m2'] / 1e4:.1f} ha); pavement patches {stats['patches']} ({stats['patch_m2'] / 1e4:.1f} ha, {stats['attached_ends']} attached ends), mitred joins {stats['mitres']}, ways inside patches {stats['ways_inside_junctions']}, marking pieces {stats['markings']}, embankments {stats['skirt_m'] / 1000:.0f} km, "
           f"piers {stats['piers']} (skipped: {stats['piers_low']} low decks, {stats['piers_over_ways']} over ways); "
           f"designs {len(designs)} (junctions {stats['junctions']}, OSM ways cut {stats['osm_ways_cut']}, replaced by id {stats['osm_ways_replaced']}, plateaus {stats['plateaus']} = {stats['flatten_px']} px, areas {stats['areas']}); corridor: {corridor_px} px in {n_terrain} terrain tiles -> {out_dir}")
 

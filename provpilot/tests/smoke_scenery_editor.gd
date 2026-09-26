@@ -314,7 +314,9 @@ func _ready() -> void:
 			var recs = JSON.parse_string(FileAccess.get_file_as_string(sc))
 			if recs is Array and recs.size() > 0:
 				real_way = recs[0]
-	_check(not real_way.is_empty(), "a real tile sidecar next to the airport lists its ways (%s)" % real_tile)
+	# a partial bake (e.g. motorways only) may leave this tile without roads at all
+	var real_glb_exists := real_dir != "" and FileAccess.file_exists(real_dir.path_join("roads_%s.glb" % real_tile))
+	_check(not real_way.is_empty() or not real_glb_exists, "a real tile sidecar next to the airport lists its ways (%s)" % real_tile)
 	if not real_way.is_empty():
 		var tile_node: MeshInstance3D = null
 		for ch_node in rms_h[0].get_children():
