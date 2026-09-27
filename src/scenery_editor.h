@@ -17,12 +17,15 @@
 #include <godot_cpp/classes/option_button.hpp>
 #include <godot_cpp/classes/panel_container.hpp>
 #include <godot_cpp/classes/spin_box.hpp>
+#include <godot_cpp/classes/item_list.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_int64_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/vector3.hpp>
+
+#include <vector>
 
 #include "scenery_design.h"
 #include "scenery_design_mesher.h"
@@ -32,6 +35,8 @@ using namespace godot;
 namespace jsbgodot
 {
     class SceneryEditor;
+    class SceneryGizmoOverlay;
+    class SceneryObjects;
     class WorldScenery;
     class SkyAtmosphere;
     class SlewMode;
@@ -67,6 +72,22 @@ namespace jsbgodot
         Array hit_boxes;
     };
 
+    // Screen-space drawing of the Object tool's transform gizmo (Blender
+    // style, constant size): arrows, rings and cubes computed by the editor.
+    class SceneryGizmoOverlay : public Control
+    {
+        GDCLASS(SceneryGizmoOverlay, Control);
+
+    public:
+        static void _bind_methods();
+        SceneryGizmoOverlay();
+        void set_editor(SceneryEditor *ed);
+        void _draw() override;
+
+    protected:
+        SceneryEditor *editor = nullptr;
+    };
+
     // Scenery design / developer mode (docs/SCENERY_EDITOR.md; formerly
     // scenery_editor.gd). Independent of the aircraft: F8 freezes the flight
     // model (like slew), takes a free camera and a terrain cursor, and offers
@@ -78,7 +99,11 @@ namespace jsbgodot
     // Keys while active: WASD move, Q/E or PgUp/PgDn down/up, Shift fast,
     // right mouse held = look, wheel = forward/back; 1 select/move, 2 road,
     // 3 rail, 4 delete, 5 circle, 6 switch, 7 replace area, 8 flatten,
-    // 9 area, 0 pick; [ ] lower / raise the selected node's height offset or
+    // 9 area, 0 pick, O object (pick a pack model; a Blender-style gizmo with
+    // Move / Rotate / Scale modes (toolbar or G / R / Y): drag its arrows,
+    // ring or cubes, or the model itself; [ ] height, , . heading, - = scale,
+    // Ctrl+G drops it to the ground, Delete removes it; Ctrl+S writes the
+    // pack's package.json); [ ] lower / raise the selected node's height offset or
     // the flatten height by 0.5 m (Shift 5 m); C = curved segments; Space =
     // view straight down (Shift+Space: north up as well); the axis gizmo
     // (right edge): click X / Y / Z or their opposites, drag to orbit; left
@@ -94,7 +119,28 @@ namespace jsbgodot
         GDCLASS(SceneryEditor, Node);
 
     public:
-        enum Tool { TOOL_SELECT, TOOL_ROAD, TOOL_RAIL, TOOL_DELETE, TOOL_CIRCLE, TOOL_SWITCH, TOOL_REPLACE, TOOL_FLATTEN, TOOL_AREA, TOOL_PICK };
+        enum Tool { TOOL_SELECT, TOOL_ROAD, TOOL_RAIL, TOOL_DELETE, TOOL_CIRCLE, TOOL_SWITCH, TOOL_REPLACE, TOOL_FLATTEN, TOOL_AREA, TOOL_PICK, TOOL_OBJECT };
+        enum GizmoMode { GIZMO_MOVE, GIZMO_ROTATE, GIZMO_SCALE };
+        enum Orientation { ORIENT_GLOBAL, ORIENT_LOCAL };   // gizmo axes: world east/north/up or the active model's own
+        enum PivotMode { PIVOT_MEDIAN, PIVOT_INDIVIDUAL };  // several objects turn / scale about their median point or each about its own
+        // Handles of the Object tool's gizmo: move arrows along the world axes,
+        // the free-move centre, rings about the world axes, cubes along the
+        // model's own axes, the uniform-scale centre.
+        enum GizmoAxis { AXIS_NONE = -1, AXIS_EAST = 0, AXIS_NORTH = 1, AXIS_UP = 2, AXIS_FREE = 3,
+            AXIS_ROT_EAST = 4, AXIS_ROT_NORTH = 5, AXIS_ROT_UP = 6,
+            AXIS_SCALE_X = 7, AXIS_SCALE_Y = 8, AXIS_SCALE_Z = 9, AXIS_UNIFORM = 10 };
+        // A handle as drawn on screen by SceneryGizmoOverlay.
+        struct GizmoHandle
+        {
+            int axis = AXIS_NONE;
+            int kind = 0;               // 0 arrow, 1 ring, 2 cube stub, 3 centre circle
+            PackedVector2Array pts;     // arrow / stub: [base, tip]; ring: polyline; circle: [centre]
+            Vector2 dir;                // arrow / cube: screen direction of the axis
+            Color col;
+            double facing = 1.0;        // ring: |axis . view direction|, small when seen edge-on
+        };
+        const std::vector<GizmoHandle> &get_gizmo_handles() const;
+        int get_gizmo_active() const;
 
         static void _bind_methods();
         SceneryEditor();
@@ -158,6 +204,26 @@ namespace jsbgodot
         bool bake_running() const;
         bool bake_area();
         void clear_way_cache();
+        // Object tool: select the pack object under a screen point (its index in
+        // SceneryObjects, -1 none); add = keep the current selection (Shift-click).
+        int select_object_at(const Vector2 &screen, bool add = false);
+        void select_object(int idx, bool add);
+        void add_to_selection(int idx);
+        void clear_selection();
+        Array get_selection() const;
+        int get_selected_object() const; void set_selected_object(int v);
+        int get_orientation() const; void set_orientation(int o);
+        int get_pivot_mode() const; void set_pivot_mode(int m);
+        // Put the camera in front of the selection.
+        void frame_selected();
+        // Transform panel entry: group 0 location (e, n, agl), 1 rotation (heading, pitch, bank),
+        // 2 scale, 3 dimensions; axis 0..2; applied to the active object.
+        void set_transform_field(int group, int axis, double value);
+        int get_gizmo_mode() const; void set_gizmo_mode(int m);
+        // Screen point of a gizmo handle (AXIS_* value) for the selected object, or (-1, -1).
+        Vector2 get_gizmo_handle(int axis) const;
+        double get_gizmo_size_m() const;
+        int gizmo_hit_test(const Vector2 &screen) const;
         // The mouse / key handlers behind _unhandled_input and _input, callable from tests.
         void handle_mouse(const Ref<InputEvent> &event);
         void handle_key(const Ref<InputEvent> &event);
@@ -214,6 +280,12 @@ namespace jsbgodot
 
         Camera3D *cam = nullptr;
         Vector3 pos; // ECEF
+        // Overlay meshes (ImmediateMesh / MultiMesh) store float vertices and
+        // instance transforms: at ECEF magnitudes (6.4e6 m) a float step is
+        // 0.5 m, so lines written in world coordinates wobble as the camera
+        // moves. Each overlay is anchored at a double-precision origin (the
+        // camera position when it was built) and holds vertices relative to it.
+        Vector3 preview_origin, overlay_origin, flat_origin, dir_origin;
         double yaw = 0.0;
         double pitch = -0.4;
         bool looking = false;
@@ -254,6 +326,68 @@ namespace jsbgodot
         double flatten_h = NAN;
         int selected_node = -1;
         int selected_edge = -1;
+        int selected_object = -1;            // Object tool: the active object (index in SceneryObjects)
+        std::vector<int> selection;
+        std::vector<int> highlighted; // objects currently carrying the selection tint          // every selected object, the active one included
+        int orientation = ORIENT_GLOBAL;
+        int pivot_mode = PIVOT_MEDIAN;
+        // Blender-style transform gizmo of the Object tool
+        int gizmo_mode = GIZMO_MOVE;
+        int gizmo_axis = AXIS_NONE;          // handle being dragged
+        int gizmo_hover = AXIS_NONE;
+        Vector2 gizmo_start_mouse;
+        Vector2 gizmo_last_mouse;            // last motion event
+        Vector2 gizmo_eff_mouse;             // virtual mouse: deltas count 1/10 while Shift is held (precision)
+        bool gizmo_moved = false;            // the drag threshold was passed
+        Vector3 gizmo_plane_start;           // AXIS_FREE: first hit of the mouse ray on the object's ground plane
+        Vector3 gizmo_plane_origin, gizmo_plane_up;   // that plane, fixed for the whole drag
+        Dictionary gizmo_start;              // active object's pose when the drag began
+        std::vector<int> drag_indices;       // the selection at the drag start
+        std::vector<Dictionary> drag_starts; // and their poses
+        Vector3 drag_pivot;                  // pivot point (ECEF) at the drag start
+        Vector3 drag_axes[3], drag_axes_local[3];       // orientation axes then (ECEF / local frame)
+        SceneryGizmoOverlay *gizmo_overlay = nullptr;
+        Control *mode_bar = nullptr;
+        Dictionary mode_buttons;
+        double gizmo_size_m = 1.0;           // world length that projects to GIZMO_PX at the object
+        Vector3 gizmo_origin;                // ECEF: the pivot point of the selection
+        Vector3 gizmo_east, gizmo_north, gizmo_up;      // world axes at the pivot
+        Vector3 gizmo_axes[3], gizmo_axes_local[3];     // the orientation's axes (ECEF and local frame)
+        bool gizmo_valid = false;
+        std::vector<GizmoHandle> gizmo_handles;
+        static constexpr double GIZMO_PX = 90.0;
+        // transform panel + object list (right side)
+        Control *object_panel = nullptr;
+        SpinBox *field_spin[4][3] = {{nullptr}};
+        OptionButton *orient_option = nullptr;
+        OptionButton *pivot_option = nullptr;
+        Control *object_list = nullptr;      // ItemList
+        bool panel_updating = false;
+        void update_gizmo();
+        int gizmo_hit(const Vector2 &screen) const;
+        void gizmo_drag(const Vector2 &screen);
+        void gizmo_begin(int axis, const Vector2 &screen);
+        bool ground_plane_hit(const Vector2 &screen, Vector3 &out) const;
+        void on_mode_button(int mode);
+        void selection_changed();
+        Vector3 selection_pivot() const;
+        void move_selected(const Vector3 &delta_ecef, const std::vector<Dictionary> &starts, const std::vector<int> &idx);
+        // Place object idx at its start pose shifted by an ECEF vector (exact LV95 conversion), with a rotation / scale.
+        void place_from_start(int idx, const Dictionary &start, const Vector3 &delta_ecef, const Basis &rot, const Vector3 &scale);
+        void build_object_panel();
+        void refresh_object_panel();
+        void refresh_object_list();
+        void scroll_object_list();
+        void on_field_submitted(const String &text);
+        bool gui_owns_mouse(Viewport *vp) const;
+        void on_field_changed(double value, int field);
+        void on_orientation_selected(int idx);
+        void on_pivot_selected(int idx);
+        void on_pivot_button(int which);
+        void on_list_multi_selected(int idx, bool selected);
+        void on_list_item_activated(int idx);
+        String object_status() const;
+        bool object_key(int keycode, bool shift, bool cmd);
         OptionButton *area_type = nullptr;
         SpinBox *area_h = nullptr;
         Control *area_box = nullptr;
@@ -280,6 +414,7 @@ namespace jsbgodot
 
         // host modules
         WorldScenery *world() const;
+        SceneryObjects *objects() const;
         SkyAtmosphere *sky() const;
         Node3D *clouds() const;
         SlewMode *slew() const;
@@ -320,5 +455,9 @@ namespace jsbgodot
 } // namespace jsbgodot
 
 VARIANT_ENUM_CAST(jsbgodot::SceneryEditor::Tool);
+VARIANT_ENUM_CAST(jsbgodot::SceneryEditor::GizmoMode);
+VARIANT_ENUM_CAST(jsbgodot::SceneryEditor::GizmoAxis);
+VARIANT_ENUM_CAST(jsbgodot::SceneryEditor::Orientation);
+VARIANT_ENUM_CAST(jsbgodot::SceneryEditor::PivotMode);
 
 #endif

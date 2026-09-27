@@ -95,6 +95,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<SceneryDesign>();
 	ClassDB::register_class<SceneryDesignMesher>();
 	ClassDB::register_class<SceneryViewGizmo>();
+	ClassDB::register_class<SceneryGizmoOverlay>();
 	ClassDB::register_class<SceneryEditor>();
 	ClassDB::register_class<SceneryObjects>();
 }

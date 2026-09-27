@@ -6,6 +6,70 @@ cursor, tools, UI, view gizmo), `src/scenery_design.cpp` (document),
 `src/scenery_design_mesher.cpp` (live meshes), tests
 `tests/smoke_scenery_editor.tscn` and `tests/probe_scenery_editor.tscn`.
 
+## Object tool (pack models)
+
+`O Object` (key O) edits the models of the enabled object packs
+(`<area>/objects/package.json`, see `docs/SCENERY_ARCHITECTURE.md`).
+
+**Selection.** Click a model to select it (the pick is a ray against its
+triangles, so a fence's long footprint never steals a click meant for the
+table next to it); Shift-click adds or removes one; a click on empty ground
+clears. The list on the right names every object of the loaded packs with
+the selected ones highlighted; a click there selects, Shift / Cmd adds,
+double-click frames the object; `F` frames the selection. Every selected
+object is tinted orange (a translucent material overlay on its meshes, Blender-like without a post-process) and the active one also gets its bounding box in its own frame with a spoke out of its front face (+Z). The yellow terrain cursor fades while something is selected. All editor overlays (boxes, previews, design lines, node markers) are anchored at a double-precision origin and hold vertices relative to it: written in ECEF float coordinates they wobbled by up to half a metre as the camera moved (gery 2026-09-27).
+
+**Gizmo.** A Blender-style gizmo drawn on screen at a constant size sits on
+the selection's pivot; the tool column on the left switches its mode:
+
+- **Move (G)**: red / green / blue arrows. Dragging an arrow moves the
+  selection along that axis, dragging a model or the centre circle slides it
+  in the pivot's ground plane.
+- **Rotate (R)**: red / green / blue rings. The up ring turns the true
+  heading, the other two tilt (saved as `pitch_deg` / `bank_deg`); a ring
+  seen edge-on is faded and cannot be grabbed. With several objects selected
+  they swing around the pivot and each turns on its own.
+- **Scale (Y)**: red / green / blue cubes scale one axis each, the centre
+  circle or a model scales all three; several objects also spread out from
+  the pivot (saved as a number, or `[x, y, z]` when the axes differ).
+
+A click never moves anything: drags start after 4 px. Holding **Shift**
+while dragging makes the mouse count a tenth, for fine adjustments.
+
+**Orientation and pivot** (the two menus at the top of the transform panel):
+*Global* puts the gizmo on world east / north / up, *Local* on the active
+model's own X / Y / Z (a glTF model facing north has +X pointing west), so a
+building can be slid along its own front. *Median point* rotates and scales
+a group about the middle of the selection, *Individual origins* about each
+object's own pivot.
+
+**Transform panel** (right side, like Blender's Item tab): the active
+object's location (LV95 E / N and height above ground), rotation (heading,
+pitch, bank), scale and dimensions in metres can be typed; a typed
+dimension sets the scale of that axis, which is the easy way to shrink a
+model to a known size. A click in a field takes the keyboard: type the
+value, Enter applies it and hands the keys back to the editor (Escape or
+moving the mouse off the panel does the same, applying what was typed).
+Clicks and the mouse wheel over the panel stay in the panel; they never
+select, drag or zoom the scene behind it (gery 2026-09-27: the editor
+used to read keys before the GUI and wheel turns the panel left unhandled).
+The **Pivot** buttons move the model's pivot to its
+bounds centre, base centre, own origin or the terrain cursor without moving
+the model (saved as `pivot` in the pack, the model-space point that sits at
+the placement position).
+
+Fine steps on the keyboard: `[` `]` height 0.5 m (Shift 5 m), `,` `.`
+heading 1° (Shift 10°), `-` `=` scale 5 % (Shift 25 %), all applied to the
+whole selection. `Ctrl+G` drops the lowest vertex of every selected model
+onto the terrain, `Delete` removes the selection from its pack, Ctrl+Z
+undoes one edit step (a group drag is one step). Ctrl+S (and leaving the
+editor) writes the edited packs' package.json back, with the exclusion
+circle of every object following it; that file is what a scenery pack
+ships, so the edits are exported with the pack.
+
+Models load on a worker thread (parsing and scene generation both), so a
+50 MB model no longer stalls the frame when it comes into range.
+
 ## 1. Why
 
 The OSM bake (design §13.9) gets roads and railways *roughly* right and

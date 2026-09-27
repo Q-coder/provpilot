@@ -15,6 +15,7 @@
 #include <godot_cpp/classes/input_event_mouse_motion.hpp>
 #include <godot_cpp/classes/json.hpp>
 #include <godot_cpp/classes/line_edit.hpp>
+#include <godot_cpp/classes/text_edit.hpp>
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/os.hpp>
@@ -25,6 +26,7 @@
 #include <godot_cpp/classes/theme_db.hpp>
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/v_box_container.hpp>
+#include <godot_cpp/classes/style_box_flat.hpp>
 #include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/classes/window.hpp>
 #include <godot_cpp/variant/typed_array.hpp>
@@ -38,6 +40,7 @@
 #include "geo.h"
 #include "geo_frame.h"
 #include "jsbgodot.h"
+#include "scenery_objects.h"
 #include "sky_atmosphere.h"
 #include "slew_mode.h"
 #include "terrain_elevation.h"
@@ -242,6 +245,33 @@ void SceneryEditor::_bind_methods()
 	ClassDB::bind_method(D_METHOD("bake_running"), &SceneryEditor::bake_running);
 	ClassDB::bind_method(D_METHOD("bake_area"), &SceneryEditor::bake_area);
 	ClassDB::bind_method(D_METHOD("clear_way_cache"), &SceneryEditor::clear_way_cache);
+	ClassDB::bind_method(D_METHOD("select_object_at", "screen", "add"), &SceneryEditor::select_object_at, DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("select_object", "idx", "add"), &SceneryEditor::select_object);
+	ClassDB::bind_method(D_METHOD("add_to_selection", "idx"), &SceneryEditor::add_to_selection);
+	ClassDB::bind_method(D_METHOD("clear_selection"), &SceneryEditor::clear_selection);
+	ClassDB::bind_method(D_METHOD("get_selection"), &SceneryEditor::get_selection);
+	ClassDB::bind_method(D_METHOD("get_orientation"), &SceneryEditor::get_orientation);
+	ClassDB::bind_method(D_METHOD("set_orientation", "o"), &SceneryEditor::set_orientation);
+	ClassDB::bind_method(D_METHOD("get_pivot_mode"), &SceneryEditor::get_pivot_mode);
+	ClassDB::bind_method(D_METHOD("set_pivot_mode", "m"), &SceneryEditor::set_pivot_mode);
+	ClassDB::bind_method(D_METHOD("frame_selected"), &SceneryEditor::frame_selected);
+	ClassDB::bind_method(D_METHOD("set_transform_field", "group", "axis", "value"), &SceneryEditor::set_transform_field);
+	ClassDB::bind_method(D_METHOD("_on_field_changed", "value", "field"), &SceneryEditor::on_field_changed);
+	ClassDB::bind_method(D_METHOD("_on_orientation_selected", "idx"), &SceneryEditor::on_orientation_selected);
+	ClassDB::bind_method(D_METHOD("_on_pivot_selected", "idx"), &SceneryEditor::on_pivot_selected);
+	ClassDB::bind_method(D_METHOD("_on_pivot_button", "which"), &SceneryEditor::on_pivot_button);
+	ClassDB::bind_method(D_METHOD("_on_list_multi_selected", "idx", "selected"), &SceneryEditor::on_list_multi_selected);
+	ClassDB::bind_method(D_METHOD("_scroll_object_list"), &SceneryEditor::scroll_object_list);
+	ClassDB::bind_method(D_METHOD("_on_field_submitted", "text"), &SceneryEditor::on_field_submitted);
+	ClassDB::bind_method(D_METHOD("_on_list_item_activated", "idx"), &SceneryEditor::on_list_item_activated);
+	ClassDB::bind_method(D_METHOD("get_selected_object"), &SceneryEditor::get_selected_object);
+	ClassDB::bind_method(D_METHOD("set_selected_object", "v"), &SceneryEditor::set_selected_object);
+	ClassDB::bind_method(D_METHOD("get_gizmo_mode"), &SceneryEditor::get_gizmo_mode);
+	ClassDB::bind_method(D_METHOD("set_gizmo_mode", "m"), &SceneryEditor::set_gizmo_mode);
+	ClassDB::bind_method(D_METHOD("get_gizmo_handle", "axis"), &SceneryEditor::get_gizmo_handle);
+	ClassDB::bind_method(D_METHOD("get_gizmo_size_m"), &SceneryEditor::get_gizmo_size_m);
+	ClassDB::bind_method(D_METHOD("gizmo_hit_test", "screen"), &SceneryEditor::gizmo_hit_test);
+	ClassDB::bind_method(D_METHOD("_on_mode_button", "mode"), &SceneryEditor::on_mode_button);
 	ClassDB::bind_method(D_METHOD("handle_mouse", "event"), &SceneryEditor::handle_mouse);
 	ClassDB::bind_method(D_METHOD("handle_key", "event"), &SceneryEditor::handle_key);
 	ClassDB::bind_method(D_METHOD("get_host"), &SceneryEditor::get_host);
@@ -297,6 +327,26 @@ void SceneryEditor::_bind_methods()
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cursor_n", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NONE), "set_cursor_n", "get_cursor_n");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "selected_edge", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NONE), "set_selected_edge", "get_selected_edge");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "selected_node", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NONE), "set_selected_node", "get_selected_node");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "selected_object", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NONE), "set_selected_object", "get_selected_object");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "gizmo_mode", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NONE), "set_gizmo_mode", "get_gizmo_mode");
+	BIND_ENUM_CONSTANT(GIZMO_MOVE);
+	BIND_ENUM_CONSTANT(GIZMO_ROTATE);
+	BIND_ENUM_CONSTANT(GIZMO_SCALE);
+	BIND_ENUM_CONSTANT(AXIS_EAST);
+	BIND_ENUM_CONSTANT(AXIS_NORTH);
+	BIND_ENUM_CONSTANT(AXIS_UP);
+	BIND_ENUM_CONSTANT(AXIS_FREE);
+	BIND_ENUM_CONSTANT(AXIS_ROT_EAST);
+	BIND_ENUM_CONSTANT(AXIS_ROT_NORTH);
+	BIND_ENUM_CONSTANT(AXIS_ROT_UP);
+	BIND_ENUM_CONSTANT(AXIS_SCALE_X);
+	BIND_ENUM_CONSTANT(AXIS_SCALE_Y);
+	BIND_ENUM_CONSTANT(AXIS_SCALE_Z);
+	BIND_ENUM_CONSTANT(AXIS_UNIFORM);
+	BIND_ENUM_CONSTANT(ORIENT_GLOBAL);
+	BIND_ENUM_CONSTANT(ORIENT_LOCAL);
+	BIND_ENUM_CONSTANT(PIVOT_MEDIAN);
+	BIND_ENUM_CONSTANT(PIVOT_INDIVIDUAL);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "modifier_down", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NONE), "set_modifier_down", "get_modifier_down");
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "tool_note", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NONE), "", "get_tool_note");
 
@@ -312,6 +362,7 @@ void SceneryEditor::_bind_methods()
 	BIND_ENUM_CONSTANT(TOOL_FLATTEN);
 	BIND_ENUM_CONSTANT(TOOL_AREA);
 	BIND_ENUM_CONSTANT(TOOL_PICK);
+	BIND_ENUM_CONSTANT(TOOL_OBJECT);
 }
 
 SceneryEditor::SceneryEditor()
@@ -328,6 +379,11 @@ SceneryEditor::SceneryEditor()
 WorldScenery *SceneryEditor::world() const
 {
 	return host ? Object::cast_to<WorldScenery>(host->get("_world")) : nullptr;
+}
+
+SceneryObjects *SceneryEditor::objects() const
+{
+	return host ? Object::cast_to<SceneryObjects>(host->get("_scenery_objects")) : nullptr;
 }
 
 SkyAtmosphere *SceneryEditor::sky() const
@@ -422,6 +478,7 @@ void SceneryEditor::setup(Node3D *p_host)
 	mat.instantiate();
 	mat->set_albedo(Color(1.0, 0.85, 0.1));
 	mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA); // faded while an object is selected
 	marker->set_material_override(mat);
 	marker->set_visible(false);
 	host->add_child(marker);
@@ -567,13 +624,15 @@ void SceneryEditor::update_markers()
 	Ref<MultiMesh> mm = node_markers->get_multimesh();
 	const Array ids = design->get_nodes().keys();
 	mm->set_instance_count(ids.size());
+	const Vector3 anchor = pos; // instance transforms are float: keep them small
+	node_markers->set_global_position(anchor);
 	const Dictionary edges = design->get_edges();
 	for (int i = 0; i < ids.size(); i++)
 	{
 		const int nid = ids[i];
 		const Vector3 w = node_world(nid);
 		const double sc = CLAMP(pos.distance_to(w) / 120.0, 0.6, 12.0);
-		mm->set_instance_transform(i, Transform3D(Basis().scaled(Vector3(sc, sc, sc)), w));
+		mm->set_instance_transform(i, Transform3D(Basis().scaled(Vector3(sc, sc, sc)), w - anchor));
 		bool on_edge = false;
 		if (selected_edge >= 0 && edges.has(selected_edge))
 		{
@@ -747,6 +806,9 @@ void SceneryEditor::enter()
 	if (!host_flag("terrain_initialized") || host_flag("_fly_loading") || host_flag("_intro_playing"))
 		return;
 	enter_common(false);
+	// a selection kept from the last session gets its tint, panel and gizmo back
+	if (!selection.empty())
+		selection_changed();
 }
 
 // Edit Mode from the welcome screen: no flight, the camera starts `agl`
@@ -846,7 +908,8 @@ void SceneryEditor::enter_common(bool placed)
 
 void SceneryEditor::exit()
 {
-	if (design->get_dirty())
+	SceneryObjects *so_exit = objects();
+	if (design->get_dirty() || (so_exit && so_exit->has_unsaved_edits()))
 		save(); // never lose an edit on leaving the mode
 	active = false;
 	looking = false;
@@ -858,6 +921,8 @@ void SceneryEditor::exit()
 	flat_overlay->set_visible(false);
 	dir_overlay->set_visible(false);
 	ui->set_visible(false);
+	gizmo_handles.clear();
+	gizmo_axis = AXIS_NONE;
 	if (SkyAtmosphere *s = sky())
 		s->set_clear_air(false);
 	if (Node3D *c = clouds())
@@ -866,6 +931,9 @@ void SceneryEditor::exit()
 	mesher->set_tint(Color(1, 1, 1));
 	rebuild_pending = true; // the flight view rebuilds without the tint when the streamer settles
 	streamer_was_busy = true;
+	if (SceneryObjects *so = objects())
+		so->clear_highlights(); // no editor tint in flight; re-entry re-applies it
+	highlighted.clear();
 	set_process_unhandled_input(false);
 	set_process_input(false);
 	JSBGodot *j = jsb();
@@ -951,6 +1019,7 @@ void SceneryEditor::update(double delta)
 	mouse = host->get_viewport()->get_mouse_position();
 	update_cursor();
 	update_preview();
+	update_gizmo();
 	if (gizmo)
 		gizmo->queue_redraw();
 	const uint64_t frames = Engine::get_singleton()->get_process_frames();
@@ -958,10 +1027,13 @@ void SceneryEditor::update(double delta)
 		update_markers();
 	if (frames % 30 == 0 && pos.distance_to(dir_overlay_pos) > 300.0)
 		update_direction_arrows();
-	if (panel && !panel->get_global_rect().has_point(mouse))
+	if (Control *owner = host->get_viewport()->gui_get_focus_owner())
 	{
-		Control *owner = host->get_viewport()->gui_get_focus_owner();
-		if (owner && panel->is_ancestor_of(owner))
+		// a field keeps the keys only while the mouse stays over its panel
+		// (the viewport's mouse position: the editor's own `mouse` only
+		// follows events the GUI left unhandled)
+		Control *pnl = (panel && panel->is_ancestor_of(owner)) ? panel : ((object_panel && object_panel->is_ancestor_of(owner)) ? object_panel : nullptr);
+		if (pnl != nullptr && !pnl->get_global_rect().has_point(host->get_viewport()->get_mouse_position()))
 		{
 			commit_spins();
 			host->get_viewport()->gui_release_focus();
@@ -1164,6 +1236,12 @@ void SceneryEditor::update_cursor()
 		marker->set_scale(Vector3(sc, sc, sc));
 	}
 	marker->set_visible(cursor_valid);
+	// the terrain cursor steps back while an object is selected (gery 2026-09-27)
+	if (Ref<StandardMaterial3D> mm = marker->get_material_override(); mm.is_valid())
+	{
+		const bool faded = tool == TOOL_OBJECT && !selection.empty();
+		mm->set_albedo(Color(1.0, 0.85, 0.1, faded ? 0.3 : 1.0));
+	}
 	if (drag_node >= 0 && cursor_valid)
 	{
 		design->move_node(drag_node, cursor_e, cursor_n);
@@ -1180,6 +1258,8 @@ Vector3 SceneryEditor::world_of(double e, double n, double h) const
 void SceneryEditor::preview_polyline(const Array &pts)
 {
 	preview_mesh->clear_surfaces();
+	preview_origin = pos;
+	preview->set_global_position(preview_origin);
 	if (pts.size() < 2)
 		return;
 	preview_mesh->surface_begin(Mesh::PRIMITIVE_LINE_STRIP);
@@ -1189,7 +1269,7 @@ void SceneryEditor::preview_polyline(const Array &pts)
 		double h = elevation_lv95(p.x, p.y);
 		if (std::isnan(h))
 			h = cursor_h;
-		preview_mesh->surface_add_vertex(world_of(p.x, p.y, h + 1.0));
+		preview_mesh->surface_add_vertex(world_of(p.x, p.y, h + 1.0) - preview_origin);
 	}
 	preview_mesh->surface_end();
 }
@@ -1246,6 +1326,8 @@ Array SceneryEditor::switch_preview_points() const
 void SceneryEditor::update_direction_arrows()
 {
 	dir_overlay_mesh->clear_surfaces();
+	dir_origin = pos;
+	dir_overlay->set_global_position(dir_origin);
 	dir_overlay_pos = pos;
 	const geo::Geodetic cam_g = geo::geodetic_of(pos);
 	const Vector2 cam_en = Geo::wgs84_to_lv95(cam_g.lat, cam_g.lon);
@@ -1317,9 +1399,9 @@ void SceneryEditor::update_direction_arrows()
 					const Vector2 l = c - d * 1.5 + n * 1.5;
 					const Vector2 r = c - d * 1.5 - n * 1.5;
 					dir_overlay_mesh->surface_set_color(item.col);
-					dir_overlay_mesh->surface_add_vertex(world_of(tip.x, tip.y, h + 0.9));
-					dir_overlay_mesh->surface_add_vertex(world_of(l.x, l.y, h + 0.9));
-					dir_overlay_mesh->surface_add_vertex(world_of(r.x, r.y, h + 0.9));
+					dir_overlay_mesh->surface_add_vertex(world_of(tip.x, tip.y, h + 0.9) - dir_origin);
+					dir_overlay_mesh->surface_add_vertex(world_of(l.x, l.y, h + 0.9) - dir_origin);
+					dir_overlay_mesh->surface_add_vertex(world_of(r.x, r.y, h + 0.9) - dir_origin);
 					drawn++;
 				}
 			}
@@ -1356,6 +1438,8 @@ void SceneryEditor::update_overlay()
 {
 	update_direction_arrows();
 	overlay_mesh->clear_surfaces();
+	overlay_origin = pos;
+	overlay->set_global_position(overlay_origin);
 	const Array replace = design->get_replace();
 	for (int k = 0; k < replace.size(); k++)
 	{
@@ -1367,11 +1451,13 @@ void SceneryEditor::update_overlay()
 		{
 			const Vector2 p = poly[i % poly.size()];
 			const double h = elevation_lv95(p.x, p.y);
-			overlay_mesh->surface_add_vertex(world_of(p.x, p.y, (std::isnan(h) ? cursor_h : h) + 1.5));
+			overlay_mesh->surface_add_vertex(world_of(p.x, p.y, (std::isnan(h) ? cursor_h : h) + 1.5) - overlay_origin);
 		}
 		overlay_mesh->surface_end();
 	}
 	flat_overlay_mesh->clear_surfaces();
+	flat_origin = pos;
+	flat_overlay->set_global_position(flat_origin);
 	const Array flatten = design->get_flatten();
 	for (int k = 0; k < flatten.size(); k++)
 	{
@@ -1384,7 +1470,7 @@ void SceneryEditor::update_overlay()
 		for (int i = 0; i < poly.size() + 1; i++)
 		{
 			const Vector2 p = poly[i % poly.size()];
-			flat_overlay_mesh->surface_add_vertex(world_of(p.x, p.y, fh + 0.5));
+			flat_overlay_mesh->surface_add_vertex(world_of(p.x, p.y, fh + 0.5) - flat_origin);
 		}
 		flat_overlay_mesh->surface_end();
 		flat_overlay_mesh->surface_begin(Mesh::PRIMITIVE_LINES);
@@ -1392,8 +1478,8 @@ void SceneryEditor::update_overlay()
 		{
 			const Vector2 p = poly[i];
 			const double h = elevation_lv95(p.x, p.y);
-			flat_overlay_mesh->surface_add_vertex(world_of(p.x, p.y, (std::isnan(h) ? fh : h) + 0.5));
-			flat_overlay_mesh->surface_add_vertex(world_of(p.x, p.y, fh + 0.5));
+			flat_overlay_mesh->surface_add_vertex(world_of(p.x, p.y, (std::isnan(h) ? fh : h) + 0.5) - flat_origin);
+			flat_overlay_mesh->surface_add_vertex(world_of(p.x, p.y, fh + 0.5) - flat_origin);
 		}
 		flat_overlay_mesh->surface_end();
 	}
@@ -1401,6 +1487,55 @@ void SceneryEditor::update_overlay()
 
 void SceneryEditor::update_preview()
 {
+	if (tool == TOOL_OBJECT)
+	{
+		// the selection outline: each selected model's bounding box in its own
+		// frame (stable under the camera; the earlier terrain-hugging ring
+		// wobbled with the tile LOD as the camera moved) plus a spoke out of
+		// the front face (model +Z faces the heading)
+		SceneryObjects *so = objects();
+		preview_mesh->clear_surfaces();
+		preview_origin = pos;
+		preview->set_global_position(preview_origin);
+		if (so == nullptr)
+			return;
+		for (int idx : selection)
+		{
+			if (idx != selected_object)
+				continue; // the others show their tint only
+			const Dictionary d = so->get_object_info(idx);
+			if (d.is_empty() || bool(d["removed"]))
+				continue;
+			Node3D *node = Object::cast_to<Node3D>(d["node"]);
+			if (node == nullptr)
+				continue;
+			const Transform3D xf = node->get_global_transform();
+			Vector3 bmin = d["bounds_min"];
+			Vector3 bsz = d["bounds_size"];
+			if (bsz.length() < 1e-6)
+			{
+				bmin = Vector3(-0.5, 0.0, -0.5);
+				bsz = Vector3(1.0, 1.0, 1.0);
+			}
+			const Vector3 bmax = bmin + bsz;
+			Vector3 c[8];
+			for (int k = 0; k < 8; k++)
+				c[k] = xf.xform(Vector3((k & 1) ? bmax.x : bmin.x, (k & 2) ? bmax.y : bmin.y, (k & 4) ? bmax.z : bmin.z));
+			static const int EDGES[12][2] = {{0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7}, {7, 6}, {6, 4}, {0, 4}, {1, 5}, {3, 7}, {2, 6}};
+			preview_mesh->surface_begin(Mesh::PRIMITIVE_LINES);
+			for (const auto &e : EDGES)
+			{
+				preview_mesh->surface_add_vertex(c[e[0]] - preview_origin);
+				preview_mesh->surface_add_vertex(c[e[1]] - preview_origin);
+			}
+			// heading spoke: base centre of the front face, 40 % of the depth further out
+			const Vector3 front = Vector3((bmin.x + bmax.x) * 0.5, bmin.y, bmax.z);
+			preview_mesh->surface_add_vertex(xf.xform(front) - preview_origin);
+			preview_mesh->surface_add_vertex(xf.xform(front + Vector3(0.0, 0.0, MAX(bsz.z, 1.0) * 0.4)) - preview_origin);
+			preview_mesh->surface_end();
+		}
+		return;
+	}
 	if (tool == TOOL_REPLACE || tool == TOOL_FLATTEN || tool == TOOL_AREA)
 	{
 		Array pts = poly_points.duplicate();
@@ -1980,6 +2115,10 @@ void SceneryEditor::commit_spins()
 	for (SpinBox *sp : spins)
 		if (sp)
 			sp->apply();
+	for (int g = 0; g < 4; g++)
+		for (int a = 0; a < 3; a++)
+			if (field_spin[g][a])
+				field_spin[g][a]->apply();
 }
 
 Dictionary SceneryEditor::current_attrs()
@@ -2219,6 +2358,22 @@ void SceneryEditor::finish_polygon()
 // flatten polygon is being drawn.
 void SceneryEditor::nudge_height(double delta)
 {
+	if (tool == TOOL_OBJECT)
+	{
+		SceneryObjects *so = objects();
+		if (so && !selection.empty())
+		{
+			so->begin_edit_group();
+			for (int idx : selection)
+			{
+				const Dictionary d = so->get_object_info(idx);
+				so->set_object_transform(idx, double(d["e"]), double(d["n"]), double(d["agl_m"]) + delta, Basis(d["rot"]), Vector3(d["scale"]));
+			}
+			so->end_edit_group();
+			selection_changed();
+		}
+		return;
+	}
 	if (tool == TOOL_FLATTEN && !poly_points.is_empty())
 	{
 		flatten_h = (std::isnan(flatten_h) ? cursor_h : flatten_h) + delta;
@@ -2291,6 +2446,19 @@ void SceneryEditor::finish_line()
 
 bool SceneryEditor::delete_at_cursor()
 {
+	if (tool == TOOL_OBJECT)
+	{
+		SceneryObjects *so = objects();
+		if (so == nullptr || selection.empty())
+			return false;
+		so->begin_edit_group();
+		for (int idx : selection)
+			so->remove_object(idx);
+		so->end_edit_group();
+		tool_note = vformat("%d object(s) removed from their pack (Ctrl+Z restores them, Ctrl+S makes it final)", (int)selection.size());
+		clear_selection();
+		return true;
+	}
 	Dictionary hit = edge_at_screen(mouse);
 	if (hit.is_empty() && cursor_valid)
 		hit = design->edge_near(cursor_e, cursor_n, SNAP_NODE_M);
@@ -2341,6 +2509,16 @@ bool SceneryEditor::delete_at_cursor()
 
 void SceneryEditor::undo()
 {
+	if (tool == TOOL_OBJECT)
+	{
+		SceneryObjects *so = objects();
+		if (so && so->undo_object_edit())
+		{
+			tool_note = "object edit undone";
+			selection_changed();
+			return;
+		}
+	}
 	if (design->undo())
 	{
 		line_last_node = -1;
@@ -2353,6 +2531,14 @@ bool SceneryEditor::save()
 {
 	const bool ok = design->save(design_path());
 	save_note = vformat("%s %s at %s", ok ? String("saved") : String("COULD NOT SAVE"), design->get_path(), Time::get_singleton()->get_time_string_from_system());
+	if (SceneryObjects *so = objects())
+	{
+		if (so->has_unsaved_edits())
+		{
+			const int n = so->save_packs();
+			save_note += vformat(", %d object pack(s) written", n);
+		}
+	}
 	UtilityFunctions::print("SceneryEditor: " + save_note);
 	update_status();
 	return ok;
@@ -2369,6 +2555,8 @@ void SceneryEditor::set_tool(int t)
 	flatten_h = NAN;
 	selected_node = -1;
 	selected_edge = -1;
+	selected_object = -1;
+	selection.clear();
 	line_nodes.clear();
 	line_join = Dictionary();
 	tool_note = "";
@@ -2390,6 +2578,36 @@ void SceneryEditor::set_tool(int t)
 		area_box->set_visible(t == TOOL_AREA);
 	if (curved_check)
 		curved_check->set_visible(t == TOOL_ROAD || t == TOOL_RAIL);
+	if (mode_bar)
+		mode_bar->set_visible(t == TOOL_OBJECT);
+	if (object_panel)
+		object_panel->set_visible(t == TOOL_OBJECT);
+	gizmo_axis = AXIS_NONE;
+	gizmo_handles.clear();
+	if (gizmo_overlay)
+		gizmo_overlay->queue_redraw();
+	if (t == TOOL_OBJECT)
+		selection_changed();
+}
+
+void SceneryEditor::on_mode_button(int mode)
+{
+	set_gizmo_mode(mode);
+}
+
+int SceneryEditor::get_gizmo_mode() const { return gizmo_mode; }
+
+void SceneryEditor::set_gizmo_mode(int m)
+{
+	gizmo_mode = CLAMP(m, (int)GIZMO_MOVE, (int)GIZMO_SCALE);
+	gizmo_axis = AXIS_NONE;
+	const Array keys = mode_buttons.keys();
+	for (int i = 0; i < keys.size(); i++)
+	{
+		Button *b = Object::cast_to<Button>(mode_buttons[keys[i]]);
+		if (b)
+			b->set_pressed(int(keys[i]) == gizmo_mode);
+	}
 }
 
 int SceneryEditor::get_tool() const
@@ -2409,6 +2627,16 @@ void SceneryEditor::_unhandled_input(const Ref<InputEvent> &event)
 	handle_mouse(event);
 }
 
+// A Control under the mouse (other than the pass-through gizmo overlay)
+// owns presses and wheel turns: the panels stop mouse events for the GUI, but
+// an event no control accepts is not marked handled, so it would reach
+// _unhandled_input as well and zoom the camera behind the Transform panel.
+bool SceneryEditor::gui_owns_mouse(Viewport *vp) const
+{
+	Control *hov = vp ? vp->gui_get_hovered_control() : nullptr;
+	return hov != nullptr && hov != gizmo_overlay;
+}
+
 void SceneryEditor::handle_mouse(const Ref<InputEvent> &event)
 {
 	Viewport *vp = host ? host->get_viewport() : nullptr;
@@ -2418,6 +2646,9 @@ void SceneryEditor::handle_mouse(const Ref<InputEvent> &event)
 	if (mb.is_valid())
 	{
 		const MouseButton idx = mb->get_button_index();
+		const bool wheel = idx == MOUSE_BUTTON_WHEEL_UP || idx == MOUSE_BUTTON_WHEEL_DOWN;
+		if ((mb->is_pressed() || wheel) && gui_owns_mouse(vp))
+			return;
 		if (idx == MOUSE_BUTTON_RIGHT)
 		{
 			if (mb->is_pressed())
@@ -2473,6 +2704,53 @@ void SceneryEditor::handle_mouse(const Ref<InputEvent> &event)
 					case TOOL_DELETE:
 						delete_at_cursor();
 						break;
+					case TOOL_OBJECT:
+					{
+						SceneryObjects *so = objects();
+						const int handle = gizmo_hit(mb->get_position());
+						if (handle != AXIS_NONE && so && !selection.empty())
+						{
+							gizmo_begin(handle, mb->get_position()); // a gizmo handle: constrained drag
+							break;
+						}
+						// Shift-click adds to / removes from the selection; a click on a
+						// selected object keeps the selection (so the whole group drags)
+						const bool shift = mb->is_shift_pressed();
+						const int under = so ? so->pick_ray(cam->project_ray_origin(mb->get_position()), cam->project_ray_normal(mb->get_position())) : -1;
+						if (under >= 0)
+						{
+							const bool was = std::find(selection.begin(), selection.end(), under) != selection.end();
+							if (shift)
+							{
+								if (was)
+								{
+									selection.erase(std::find(selection.begin(), selection.end(), under));
+									selected_object = selection.empty() ? -1 : selection.back();
+									selection_changed();
+									break;
+								}
+								select_object(under, true);
+							}
+							else if (!was)
+								select_object(under, false);
+							else
+							{
+								selected_object = under;
+								selection_changed();
+							}
+							// nothing moves until the mouse does (drag threshold); Move slides
+							// the selection in its ground plane, Rotate turns it, Scale is uniform
+							update_gizmo();
+							gizmo_begin(gizmo_mode == GIZMO_MOVE ? (int)AXIS_FREE : gizmo_mode == GIZMO_ROTATE ? (int)AXIS_ROT_UP : (int)AXIS_UNIFORM, mb->get_position());
+							tool_note = "";
+						}
+						else if (!shift)
+						{
+							clear_selection();
+							tool_note = "no pack object under the mouse (models load within 8 km of the camera)";
+						}
+						break;
+					}
 					case TOOL_SELECT:
 					{
 						int nid = node_at_screen(mb->get_position());
@@ -2513,11 +2791,37 @@ void SceneryEditor::handle_mouse(const Ref<InputEvent> &event)
 				drag_node = -1;
 				rebuild_live();
 			}
+			else if (gizmo_axis != AXIS_NONE)
+			{
+				if (!gizmo_moved && objects())
+					objects()->undo_object_edit(); // a plain click: drop the undo point recorded at the press
+				gizmo_axis = AXIS_NONE;
+				gizmo_moved = false;
+				refresh_object_panel();
+			}
 			vp->set_input_as_handled();
 		}
 		return;
 	}
 	Ref<InputEventMouseMotion> mm = event;
+	if (mm.is_valid() && gizmo_axis != AXIS_NONE)
+	{
+		// precision: with Shift held the mouse counts a tenth (Blender's Shift drag)
+		const Vector2 delta = mm->get_position() - gizmo_last_mouse;
+		gizmo_last_mouse = mm->get_position();
+		gizmo_eff_mouse += delta * (mm->is_shift_pressed() ? 0.1 : 1.0);
+		if (!gizmo_moved && gizmo_eff_mouse.distance_to(gizmo_start_mouse) < 4.0)
+		{
+			vp->set_input_as_handled();
+			return;
+		}
+		gizmo_moved = true;
+		gizmo_drag(gizmo_eff_mouse);
+		vp->set_input_as_handled();
+		return;
+	}
+	if (mm.is_valid() && tool == TOOL_OBJECT)
+		gizmo_hover = gizmo_hit(mm->get_position());
 	if (mm.is_valid() && looking)
 	{
 		yaw += mm->get_relative().x * LOOK_SENS; // mouse right = turn right (heading up)
@@ -2544,6 +2848,23 @@ void SceneryEditor::handle_key(const Ref<InputEvent> &event)
 	modifier_down = k->is_ctrl_pressed() || k->is_meta_pressed();
 	if (!k->is_pressed() || k->is_echo())
 		return;
+	// typing into a panel field: the field gets the keys (this runs in _input,
+	// before the GUI); Escape leaves the field and returns the keys here
+	if (Viewport *vp = host ? host->get_viewport() : nullptr)
+	{
+		Control *owner = vp->gui_get_focus_owner();
+		const bool in_panel = owner != nullptr && ((panel && panel->is_ancestor_of(owner)) || (object_panel && object_panel->is_ancestor_of(owner)));
+		if (in_panel && (Object::cast_to<LineEdit>(owner) != nullptr || Object::cast_to<TextEdit>(owner) != nullptr))
+		{
+			if (k->get_keycode() == KEY_ESCAPE)
+			{
+				commit_spins();
+				vp->gui_release_focus();
+				vp->set_input_as_handled();
+			}
+			return;
+		}
+	}
 	bool handled = true;
 	const bool cmd = k->is_ctrl_pressed() || k->is_meta_pressed();
 	switch (k->get_keycode())
@@ -2558,15 +2879,29 @@ void SceneryEditor::handle_key(const Ref<InputEvent> &event)
 		case KEY_8: set_tool(TOOL_FLATTEN); break;
 		case KEY_9: set_tool(TOOL_AREA); break;
 		case KEY_0: set_tool(TOOL_PICK); break;
+		case KEY_O: set_tool(TOOL_OBJECT); break;
+		case KEY_Y:
+		case KEY_F:
+		case KEY_COMMA:
+		case KEY_PERIOD:
+		case KEY_MINUS:
+		case KEY_EQUAL:
+		case KEY_KP_ADD:
+		case KEY_KP_SUBTRACT:
+		case KEY_G:
+			handled = tool == TOOL_OBJECT && object_key(k->get_keycode(), k->is_shift_pressed(), cmd);
+			break;
 		case KEY_SPACE:
 			view_top(k->is_shift_pressed());
 			break;
 		case KEY_R:
-			if (selected_edge >= 0 && design->get_edges().has(selected_edge))
+			if (tool == TOOL_OBJECT)
+				set_gizmo_mode(GIZMO_ROTATE);
+			else if (selected_edge >= 0 && design->get_edges().has(selected_edge))
 			{
 				edit_begins();
 				const int n = design->reverse_chain(selected_edge);
-				tool_note = vformat("%s reversed (%d edges): it now flows %.0f° at the selected point", edge_label(selected_edge), n, heading_at(SceneryDesignMesher::chain_polyline(design, chain_of(selected_edge)), Vector2(cursor_e, cursor_n)));
+				tool_note = vformat(String::utf8("%s reversed (%d edges): it now flows %.0f° at the selected point"), edge_label(selected_edge), n, heading_at(SceneryDesignMesher::chain_polyline(design, chain_of(selected_edge)), Vector2(cursor_e, cursor_n)));
 				rebuild_live();
 			}
 			else
@@ -2599,10 +2934,12 @@ void SceneryEditor::handle_key(const Ref<InputEvent> &event)
 				poly_points.clear();
 				preview_mesh->clear_surfaces();
 			}
-			else if (selected_node >= 0 || selected_edge >= 0)
+			else if (selected_node >= 0 || selected_edge >= 0 || !selection.empty())
 			{
 				selected_node = -1;
 				selected_edge = -1;
+				clear_selection();
+				preview_mesh->clear_surfaces();
 				update_markers();
 			}
 			else
@@ -2837,9 +3174,10 @@ void SceneryEditor::build_ui()
 		int tool;
 		const char *label;
 	};
-	static const ToolSpec SPECS[10] = {
+	static const ToolSpec SPECS[11] = {
 		{TOOL_SELECT, "1 Select"}, {TOOL_ROAD, "2 Road"}, {TOOL_RAIL, "3 Rail"}, {TOOL_DELETE, "4 Delete"}, {TOOL_CIRCLE, "5 Circle"},
-		{TOOL_SWITCH, "6 Switch"}, {TOOL_REPLACE, "7 Replace"}, {TOOL_FLATTEN, "8 Flatten"}, {TOOL_AREA, "9 Area"}, {TOOL_PICK, "0 Pick"}};
+		{TOOL_SWITCH, "6 Switch"}, {TOOL_REPLACE, "7 Replace"}, {TOOL_FLATTEN, "8 Flatten"}, {TOOL_AREA, "9 Area"}, {TOOL_PICK, "0 Pick"},
+		{TOOL_OBJECT, "O Object"}};
 	for (const ToolSpec &spec : SPECS)
 	{
 		Button *b = make_button(spec.label);
@@ -2926,6 +3264,43 @@ void SceneryEditor::build_ui()
 	gizmo->set_offset(SIDE_BOTTOM, 472);
 	gizmo->set_mouse_filter(Control::MOUSE_FILTER_STOP);
 	ui->add_child(gizmo);
+	// Blender-style tool column of the Object tool: Move / Rotate / Scale
+	VBoxContainer *bar = memnew(VBoxContainer);
+	bar->set_anchor(SIDE_LEFT, 0.0);
+	bar->set_anchor(SIDE_TOP, 0.5);
+	bar->set_anchor(SIDE_BOTTOM, 0.5);
+	bar->set_offset(SIDE_LEFT, 12);
+	bar->set_offset(SIDE_TOP, -70);
+	bar->set_visible(false);
+	ui->add_child(bar);
+	mode_bar = bar;
+	struct ModeSpec
+	{
+		int mode;
+		const char *label;
+		const char *tip;
+	};
+	static const ModeSpec MODES[3] = {
+		{GIZMO_MOVE, "\u2725  Move  (G)", "Drag the red / green / blue arrows (east / north / up), or the model itself over the terrain"},
+		{GIZMO_ROTATE, "\u21bb  Rotate  (R)", "Drag around the ring: true heading"},
+		{GIZMO_SCALE, "\u2922  Scale  (Y)", "Drag the cubes or the model: uniform scale"}};
+	for (const ModeSpec &m : MODES)
+	{
+		Button *b = make_button(String::utf8(m.label));
+		b->set_toggle_mode(true);
+		b->set_tooltip_text(m.tip);
+		b->set_custom_minimum_size(Vector2(150, 34));
+		b->connect("pressed", Callable(this, "_on_mode_button").bind(m.mode));
+		bar->add_child(b);
+		mode_buttons[m.mode] = b;
+	}
+	set_gizmo_mode(GIZMO_MOVE);
+	gizmo_overlay = memnew(SceneryGizmoOverlay);
+	gizmo_overlay->set_editor(this);
+	gizmo_overlay->set_anchors_preset(Control::PRESET_FULL_RECT);
+	gizmo_overlay->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	ui->add_child(gizmo_overlay);
+	build_object_panel();
 	status = make_label("", 12);
 	box->add_child(status);
 	Label *help = make_label("WASD move, Q E / PgDn PgUp descend / climb, Shift fast, right mouse = look, wheel = closer\nleft click = place point (snaps to nodes, splits crossed lines), Enter / right click = finish line, Esc = cancel", 11);
@@ -2937,7 +3312,7 @@ void SceneryEditor::update_status()
 {
 	if (status == nullptr)
 		return;
-	String cur = "cursor: —";
+	String cur = String::utf8("cursor: —");
 	if (cursor_valid)
 		cur = vformat("cursor: E %.0f  N %.0f  h %.0f m", cursor_e, cursor_n, cursor_h);
 	String line;
@@ -2968,6 +3343,8 @@ void SceneryEditor::update_status()
 			line = "\nturnout radius " + r;
 		}
 	}
+	if (tool == TOOL_OBJECT)
+		line += object_status();
 	if ((tool == TOOL_PICK || tool == TOOL_SELECT) && cursor_valid)
 	{
 		const Dictionary deh = edge_at_screen(mouse);
@@ -2976,7 +3353,7 @@ void SceneryEditor::update_status()
 			const int eid = deh["id"];
 			const double flow = heading_at(SceneryDesignMesher::chain_polyline(design, chain_of(eid)), cq);
 			const bool oneway = Dictionary(design->get_edges()[eid])["oneway"];
-			line += vformat("\nunder the cursor: %s, flows %.0f°%s (R reverses it when selected)", edge_label(eid), flow, oneway ? String() : String(" (two-way)"));
+			line += vformat(String::utf8("\nunder the cursor: %s, flows %.0f°%s (R reverses it when selected)"), edge_label(eid), flow, oneway ? String() : String(" (two-way)"));
 		}
 		else
 		{
@@ -2992,7 +3369,7 @@ void SceneryEditor::update_status()
 					const Array p = raw[i];
 					pts.push_back(Vector2(double(p[0]), double(p[1])));
 				}
-				line += vformat("\nunder the cursor: %s, flows %.0f°", way_label(rec), heading_at(pts, cq));
+				line += vformat(String::utf8("\nunder the cursor: %s, flows %.0f°"), way_label(rec), heading_at(pts, cq));
 			}
 		}
 	}
@@ -3000,7 +3377,7 @@ void SceneryEditor::update_status()
 	{
 		const Vector2 v = cq - design->node_pos(line_last_node);
 		if (v.length() > 1.0)
-			line += vformat("\ndrawing towards %.0f°: a one-way road flows this way (first click -> last click)", Math::fposmod(Math::rad_to_deg(std::atan2(v.x, v.y)), 360.0));
+			line += vformat(String::utf8("\ndrawing towards %.0f°: a one-way road flows this way (first click -> last click)"), Math::fposmod(Math::rad_to_deg(std::atan2(v.x, v.y)), 360.0));
 	}
 	if (bake_running())
 		line += vformat("\nbaking… %.0f s", (Time::get_singleton()->get_ticks_msec() - bake_started) / 1000.0);
