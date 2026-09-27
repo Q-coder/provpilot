@@ -3,21 +3,31 @@ extends Node
 ## detail area, Edit Mode camera straight down over the airfield (north up)
 ## so the placed models can be compared with the orthophoto. Saves PROBE_PNG.
 ##   PROBE_PNG=/tmp/lspf.png PROBE_AGL=450 godot --path provpilot -s ... (non-headless)
-const E := 2681754.0
-const N := 1282705.0
+## Any other pack: PROBE_PACK=<area dir> PROBE_E/PROBE_N (LV95 view centre), PROBE_SELECT=<object name>
+## (no Swiss detail area is inserted then, the library stays as configured plus the pack on top).
+const E_LSPF := 2681754.0
+const N_LSPF := 1282705.0
+var E := E_LSPF
+var N := N_LSPF
 
 func _ready() -> void:
-	var area: String = ProjectSettings.globalize_path("res://").path_join("../scenery/custom/lspf-schmerlat").simplify_path()
+	var pack := OS.get_environment("PROBE_PACK")
+	var area: String = pack if pack != "" else ProjectSettings.globalize_path("res://").path_join("../scenery/custom/lspf-schmerlat").simplify_path()
+	if OS.get_environment("PROBE_E") != "":
+		E = float(OS.get_environment("PROBE_E"))
+	if OS.get_environment("PROBE_N") != "":
+		N = float(OS.get_environment("PROBE_N"))
 	var root: Node = (load("res://node_3d.tscn") as PackedScene).instantiate()
 	add_child(root)
 	await get_tree().create_timer(3.0).timeout
 	var st = root._settings
 	var areas: Array = []
 	for a in st.get_scenery_areas():
-		if str(a.get("path", "")) != area and str(a.get("path", "")) != "/Users/gery/provpilot/scenery/Switzerland":
+		if str(a.get("path", "")) != area and (pack != "" or str(a.get("path", "")) != "/Users/gery/provpilot/scenery/Switzerland"):
 			areas.append(a)
-	areas.push_front({"name": "Switzerland (probe)", "path": "/Users/gery/provpilot/scenery/Switzerland", "enabled": true, "priority": 1})
-	areas.push_front({"name": "lspf-schmerlat (probe)", "path": area, "enabled": true, "priority": 0})
+	if pack == "":
+		areas.push_front({"name": "Switzerland (probe)", "path": "/Users/gery/provpilot/scenery/Switzerland", "enabled": true, "priority": 1})
+	areas.push_front({"name": area.get_file() + " (probe)", "path": area, "enabled": true, "priority": 0})
 	st.set_scenery_areas(areas)
 	root._apply_scenery_sources()
 	if OS.get_environment("PROBE_NO_OBJECTS") == "1":
@@ -50,7 +60,8 @@ func _ready() -> void:
 	if gm != "":
 		ed.set_tool(SceneryEditor.TOOL_OBJECT)
 		ed.set_gizmo_mode({"move": SceneryEditor.GIZMO_MOVE, "rotate": SceneryEditor.GIZMO_ROTATE, "scale": SceneryEditor.GIZMO_SCALE}.get(gm, SceneryEditor.GIZMO_MOVE))
-		var bld: Node3D = so.find_object_node("schmerlat_hauptgebaeude")
+		var sel := OS.get_environment("PROBE_SELECT")
+		var bld: Node3D = so.find_object_node(sel if sel != "" else "schmerlat_hauptgebaeude")
 		if bld:
 			ed.select_object_at(ed.get_camera().unproject_position(bld.global_position + bld.global_transform.basis.y.normalized() * 3.0))
 		for i in range(3):
@@ -58,8 +69,9 @@ func _ready() -> void:
 			await get_tree().process_frame
 	await get_tree().process_frame
 	await get_tree().process_frame
+	var bms: Array = root.scenery3d_node.find_children("*", "S3DBuildingManager", true, false)
 	print("probe_scenery_objects: %d of %d objects loaded, %d buildings excluded" % [so.get_loaded_count(), so.get_object_count(),
-		root.scenery3d_node.find_children("*", "S3DBuildingManager", true, false)[0].get_excluded_building_count()])
+		bms[0].get_excluded_building_count() if bms.size() > 0 else 0])
 	var png := OS.get_environment("PROBE_PNG")
 	if png != "":
 		get_viewport().get_texture().get_image().save_png(png)
