@@ -946,6 +946,20 @@ def cmd_flatten(region, args):
     return 0
 
 
+def cmd_prune(region, args):
+    """Delete baked tiles that are not in the region's current plan.json
+    (after changing a region's selection, e.g. bbox → country)."""
+    plan = load_plan(region)
+    keep = {f"tile_{e}_{n}.raw" for e, n in zip(plan["cells_e"], plan["cells_n"])}
+    removed = 0
+    for f in region.terrain_out.iterdir():
+        if f.name.startswith("tile_") and f.name not in keep:
+            f.unlink()
+            removed += 1
+    print(f"  {region.id}: pruned {removed} tiles outside the plan, {len(keep)} kept")
+    return 0
+
+
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def cmd_list(args):
@@ -985,6 +999,7 @@ def main():
                     help="re-bake tiles that already exist (default: resume)")
     add_region(sub.add_parser("verify", help="check baked tiles at landmarks"))
     add_region(sub.add_parser("flatten", help="runway plateaus from airports/runways.json (re-run after bake --force)"))
+    add_region(sub.add_parser("prune", help="delete baked tiles outside the current plan.json"))
     pbuild = sub.add_parser("build", help="plan + fetch + bake + flatten + verify")
     add_region(pbuild)
     pbuild.add_argument("--force", action="store_true")
@@ -1003,6 +1018,8 @@ def main():
         sys.exit(cmd_verify(region, args))
     elif args.cmd == "flatten":
         sys.exit(cmd_flatten(region, args))
+    elif args.cmd == "prune":
+        sys.exit(cmd_prune(region, args))
     elif args.cmd == "build":
         cmd_plan(region, args)
         if cmd_fetch(region, args):

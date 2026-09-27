@@ -231,25 +231,23 @@ provpilot/
 │   ├── water/                  # River & lake meshes (.glb)
 │   ├── poi/                    # Airport database (airports.json)
 │   └── custom/                 # Hand-crafted scenery packages
-├── scripts/                     # Tooling
-│   ├── scenery_pipeline.py          # Unified terrain + buildings pipeline
-│   ├── process_swisstopo_terrain.py # Terrain-only pipeline (download → tiles)
-│   ├── convert_buildings_to_gltf.py # Building GDB → GLB converter
-│   ├── generate_building_manifest.py # Generate buildings manifest.json
-│   ├── generate_roads.py            # Road/railroad GeoPackage → GLB
-│   ├── generate_water.py            # Water body GeoPackage → GLB
-│   ├── generate_airports.py         # Airport extraction from swissTLM3D
-│   ├── build_airports_json.py       # Build airports.json from verified data
-│   ├── build_manual_runways.py      # Generate manual runway overrides from OSM
-│   ├── patch_airports.py            # Patch airports.json with corrected runways
-│   ├── fetch_osm_runways.py         # Fetch runway data from OSM Overpass
-│   ├── generate_orthophoto_tiles.py # Orthophoto tile pipeline (WMS)
-│   ├── process_swissimage_orthophoto.py # STAC-based orthophoto (small areas)
-│   ├── generate_distant_terrain.py  # Distant terrain low-res mesh
-│   ├── generate_distant_orthophoto.py # Distant terrain WMS color map
+├── scripts/                     # Tooling (see scripts/README.md for the full index)
+│   ├── build_world_*.py/.sh         # Worldwide base tier: SRTM terrain, airports, runways, roads
+│   ├── runway_plateau.py            # Runway plateaus baked into the base terrain
+│   ├── scenery_pipeline.py          # Swiss detail tier: terrain + buildings (swisstopo)
+│   ├── streaming_terrain_generator.py # Swiss 2 m/px heightmap tiles, one tile at a time
+│   ├── swissbathy3d.py              # Lake bathymetry overlay tiles
+│   ├── generate_orthophoto_tiles.py # Orthophoto tiles (WMS); process_swissimage_orthophoto.py (STAC)
+│   ├── generate_terrain_mipmap.py   # Terrain / orthophoto mip pyramids
+│   ├── generate_roads.py, generate_water.py, fix_water_bake.py   # swissTLM3D roads, water
+│   ├── generate_vfr_map_tiles.py    # VFR map raster tiles
+│   ├── bundle_scenery_pack.py, generate_scenery_manifest.py   # Scenery packs for the in-app downloader
 │   ├── convert_msfs_scenery.py      # MSFS 2020 scenery → GLB converter
-│   ├── build_macos.sh               # macOS build, sign & assemble script
-│   └── setup_windows.ps1            # Windows directory junction setup
+│   ├── fg_a10_build.py, fg_panel_build.py, fg_a10_sounds.py   # FlightGear aircraft ports (Blender)
+│   ├── glb_tool.py, make_loop.py, pck_list.py                  # GLB pack/inspect/validate, sound loops, .pck listing
+│   ├── llm_delegate.py              # Hand a subtask to the remote model (docs/AGENTS_TWO_MACHINE.md)
+│   ├── build_macos.sh, build_windows.ps1, setup_windows.ps1    # Build, sign and assemble
+│   └── world_regions.json, scenery_regions.json               # Region definitions
 ├── docs/                        # Additional documentation
 │   ├── AIRCRAFT_CONFIG.md      # Per-aircraft aircraft.cfg format & systems
 │   ├── SCENERY_ARCHITECTURE.md  # Scenery data architecture & formats
@@ -395,7 +393,7 @@ Rivers, lakes, and streams from SwissTopo swissTLM3D are rendered as vertex-colo
 
 ## Custom Scenery
 
-Hand-crafted scenery packages live in `scenery/custom/`. Each package contains a `package.json` with metadata and object placements, plus GLB model files. `custom_scenery_loader.gd` discovers packages at startup and `object_loader.gd` instantiates objects by proximity with automatic terrain elevation sampling via `Scenery3D.get_elevation()`.
+Hand-placed models live in an `objects/` folder of a scenery library area (`scenery/custom/<name>/objects/` with GLB files and a `package.json`). The C++ `SceneryObjects` node places them on the precise terrain by proximity, and the area's exclusion zones remove the buildings and trees of the areas below it in the Scenery Library, so the highest entry wins.
 
 See [docs/SCENERY_ARCHITECTURE.md](docs/SCENERY_ARCHITECTURE.md) for the package.json format.
 
@@ -404,10 +402,15 @@ See [docs/SCENERY_ARCHITECTURE.md](docs/SCENERY_ARCHITECTURE.md) for the package
 Microsoft Flight Simulator 2020 scenery packages can be converted to Godot-compatible GLB:
 
 ```bash
-python scripts/convert_msfs_scenery.py --input /path/to/msfs/package --output scenery/custom/my_scenery/
+python3 scripts/convert_msfs_scenery.py /path/to/msfs/package --output scenery/custom/my_scenery/
 ```
 
-The converter extracts glTF from BGL files, converts DDS textures to PNG, and strips MSFS-specific extensions.
+The converter reads the models embedded in the package's `modelLib.BGL`, decodes
+Asobo's packed vertex format, converts the DDS textures to PNG, strips the
+MSFS-specific extensions and writes one GLB per model plus a `package.json`
+with every placement of the package (from the scenery BGL). Check the result
+with `scripts/glb_tool.py validate` and look at a model with
+`godot --path provpilot -s tests/render_glb.gd -- model.glb out.png`.
 
 ## Control Surface Animation
 

@@ -1384,7 +1384,7 @@ airports whose runways touch this region's tiles (`_foreign_airports`,
 never written back), so any pack that wins a tile carries the same
 plateau — this also covers border airports inside the 5 km country
 margins (Basel is in three packs); (2) Norway, Sweden and Finland are
-rebaked as country-clipped packs like the rest (`prune_terrain_to_plan.py`
+rebaked as country-clipped packs like the rest (`build_world_terrain.py prune`
 removes the old bbox tiles), so the only overlaps left are the margins.
 *Ground plane = drawn surface (2026-09-20).* Wheels sat 8–10 cm into
 runways and taxiways: JSBSim's ground was the terrain while the surfaces
@@ -1823,8 +1823,8 @@ tiles, 119 MB (≈ 53 KB / km², to be compressed per the streaming plan),
 3 364 km of road, 1 126 km of rail, 1 877 terrain tiles re-baked, 38 s per
 bake. Smoke `tests/smoke_base_roads.tscn`; renders with the real-size A-10
 (`probe_aircraft_lights`, `PROBE_E/N/DIST/PITCH/YAW`) — note the C172 and
-PC-7 are still drawn at 1/5 scale (A-10 port §4), which made the first
-renders look like giant slabs. Open: no physics surface for driving yet,
+PC-7 were still drawn at 1/5 scale then (A-10 port §4; real size since
+2026-09-27), which made the first renders look like giant slabs. Open: no physics surface for driving yet,
 level crossings and junctions are plain overlaps (ramp ends show as
 stair-steps where they merge), tram tracks in streets share the street
 ribbon, no bridge or tunnel structures (decks hover, portals are plain
