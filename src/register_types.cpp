@@ -43,6 +43,7 @@
 #include "scenery_design.h"
 #include "scenery_design_mesher.h"
 #include "scenery_editor.h"
+#include "scenery_objects.h"
 
 using namespace godot;
 using namespace jsbgodot;
@@ -95,6 +96,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<SceneryDesignMesher>();
 	ClassDB::register_class<SceneryViewGizmo>();
 	ClassDB::register_class<SceneryEditor>();
+	ClassDB::register_class<SceneryObjects>();
 }
 
 void uninitialize_gojsb_module(ModuleInitializationLevel p_level)

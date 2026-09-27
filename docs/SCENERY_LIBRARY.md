@@ -32,8 +32,16 @@ Each entry's `path` is a region directory. Recognised asset subdirectories
 (`SettingsStore::ASSET_SUBDIRS` in `src/settings_store.cpp`):
 
 ```
-terrain/  orthophoto/  buildings/  water/  roads/  vegetation/  trees/  airports/
+terrain/  orthophoto/  buildings/  water/  roads/  vegetation/  trees/  airports/  objects/
 ```
+
+`objects/` holds hand-placed models with a `package.json` (an MSFS package
+converted by `scripts/convert_msfs_scenery.py`, or a bespoke airfield). Such
+an area can consist of that folder alone. Its exclusion zones remove the
+buildings, trees and objects of the areas **below it** in the list, so a
+bespoke airfield placed above the Switzerland area replaces the
+swissBUILDINGS3D buildings on its site, and the base packs further down are
+overridden by both. See `docs/SCENERY_ARCHITECTURE.md`, "Object packs".
 
 The same logical region can appear twice from different volumes — e.g.
 Baden-Württemberg's terrain on the internal SSD and its orthophotos on

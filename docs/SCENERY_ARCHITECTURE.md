@@ -75,7 +75,7 @@ scenery/                              # Root (configurable via project settings)
 │   └── ...
 │
 ├── poi/                              # Points of Interest (lightweight JSON)
-│   ├── airports.json                 # 47 Swiss airports with runway geometry
+│   ├── airports.json                 # legacy Swiss catalog (not read at runtime)
 │   ├── navaids.json                  # VOR, NDB, waypoints (planned)
 │   ├── airspace.json                 # CTR/TMA boundaries (planned)
 │   └── landmarks.json                # Peaks, cities, lakes (planned)
@@ -302,13 +302,7 @@ Two further water settings, both defaulting on:
 }
 ```
 
-The `conversion_origin_e/n` fields record the Swiss LV95 origin used when converting buildings to GLB. The runtime building loader uses these to compute correct Godot-space positions without hardcoded offsets. The loader reads this manifest at startup — no hardcoded tile arrays or region selection.
-
-Generate the manifest from existing GLB files:
-
-```bash
-python scripts/generate_building_manifest.py
-```
+The `conversion_origin_e/n` fields record the Swiss LV95 origin used when converting buildings to GLB. The runtime building loader uses these to compute correct Godot-space positions without hardcoded offsets. The loader reads this manifest at startup — no hardcoded tile arrays or region selection. `scenery_pipeline.py` and `convert_buildings_to_gltf.py` write the manifest together with the GLBs.
 
 ### Road Manifest (`scenery/roads/manifest.json`)
 
@@ -352,6 +346,13 @@ Roads are color-coded by type: motorways (dark gray), primary roads (lighter gra
 Water bodies are rendered as blue surfaces. Lakes are filled polygons; rivers and streams are width-proportional ribbons.
 
 ### Airport Database (`scenery/poi/airports.json`)
+
+**Legacy.** This Swiss-only catalog (swissTLM3D + OSM, LV95) is no longer read
+by the runtime and its generator scripts were retired. Airports now come from
+`provpilot/airports.json` (OurAirports, `scripts/build_world_airports.py`)
+and the per-pack `airports/runways.json` (`scripts/build_world_runways.py`),
+see `docs/WORLD_SCENERY_DESIGN.md` §5 and §12. The file format is kept here
+for reference:
 
 ```json
 {
@@ -397,35 +398,55 @@ Runways are **procedurally generated** by `runway_loader.gd` — no GLB files ne
 - Loads/unloads based on aircraft proximity (25 km load, 30 km unload)
 ```
 
-### Custom Scenery Package (`scenery/custom/*/package.json`)
+### Object packs (`<area>/objects/package.json`)
+
+A scenery library area may carry hand-placed models next to (or instead of)
+its terrain, buildings and other assets: an `objects/` folder with GLB files
+and a `package.json`. `scripts/convert_msfs_scenery.py` writes this layout
+from an MSFS package; a file written by hand uses the same fields:
 
 ```json
 {
-  "name": "Schmerlat Airfield",
-  "version": "1.0.0",
-  "author": "ProvPilot",
-  "origin_e": 2681968,
-  "origin_n": 1282869,
+  "schema_version": 2,
+  "name": "lspf-schmerlat",
   "objects": [
-    {
-      "model": "hangar.glb",
-      "position_e": 2681950,
-      "position_n": 1282880,
-      "elevation_m": 464.0,
-      "heading_deg": 70.0,
-      "scale": 1.0
-    },
-    {
-      "model": "windsock.glb",
-      "position_e": 2682010,
-      "position_n": 1282850,
-      "elevation_m": 464.5,
-      "heading_deg": 0.0,
-      "scale": 1.0
-    }
+    {"model": "schmerlat_hauptgebaeude.glb", "name": "schmerlat_hauptgebaeude",
+     "lat": 47.689854, "lon": 8.52757,          "position_e": 2681754.3, "position_n": 1282704.6,
+     "agl_m": 2.35, "elevation_m": null, "heading_deg": 338.8, "scale": 0.5,
+     "footprint_radius_m": 42.4}
+  ],
+  "exclusions": [
+    {"kinds": "buildings,vegetation,objects", "circle": [2681754.3, 1282704.6, 45.4]},
+    {"kinds": "buildings", "polygon": [[2681500, 1282600], [2681900, 1282600], [2681900, 1282800]]}
   ]
 }
 ```
+
+- `lat`/`lon` (WGS84) or `position_e`/`position_n` (LV95) place the model's
+  origin; `agl_m` puts it that far above the precise terrain, `elevation_m`
+  (when not null) is absolute. `heading_deg` is true, clockwise; the model's
+  glTF `+Z` axis faces it (verified against the orthophoto with
+  `tests/probe_scenery_objects.tscn`), `+Y` is up. Optional `pitch_deg` and
+  `bank_deg` tilt it (rotation = heading, then pitch about the model's X,
+  then bank about its Z). `scale` is a number (uniform) or `[x, y, z]`.
+  An optional `pivot` `[x, y, z]` (model space) is the point that sits at the
+  placement position instead of the model's origin.
+- `exclusions` remove content of **lower-priority** areas (the ones further
+  down the Scenery Library) inside a circle (`[e, n, r]`, LV95 metres) or a
+  polygon: `buildings` (swissBUILDINGS3D tiles), `vegetation` (trees) and
+  `objects` (models of lower packs). Areas above the pack are never touched,
+  so the highest entry in the library wins. The converter writes one circle
+  per placed model (its footprint plus 3 m); an airfield perimeter is best
+  added by hand as a polygon.
+
+At runtime the C++ `SceneryObjects` node (`src/scenery_objects.cpp`) reads
+every enabled area's package in priority order, hands the zones to
+`S3DBuildingManager` and `S3DVegetationManager` (`set_exclusion_zones`) and
+loads each model within 8 km of the camera on demand (freed beyond 10 km).
+The building manager drops an excluded building from both the detail and the
+far-LOD merged mesh; the vegetation manager drops the tree instances. The
+scenery editor's Object tool (`docs/SCENERY_EDITOR.md`) moves, turns, scales,
+drops and removes these models and saves the pack's package.json back.
 
 ## Regional Packs for Redistribution
 
@@ -567,22 +588,14 @@ python scripts/generate_water.py \
     --output scenery/water/
 ```
 
-### Airport Database
+### Airports and Runways
 
 ```bash
-# Build airports.json from OSM-verified runway data
-python scripts/build_airports_json.py
+# OurAirports catalog for a region → provpilot/airports.json
+python scripts/build_world_airports.py --region switzerland-base
 
-# Or regenerate from swissTLM3D GeoPackage (includes auto-estimation)
-python scripts/generate_airports.py \
-    --gpkg /path/to/swissTLM3D.gpkg \
-    --output scenery/poi/airports.json
-
-# Generate manual runway overrides from OSM data
-python scripts/build_manual_runways.py
-
-# Patch airports.json with corrected runways and length caps
-python scripts/patch_airports.py
+# Runway / taxiway / apron geometry of the region's pack → airports/runways.json
+python scripts/build_world_runways.py --region switzerland-base
 ```
 
 ### MSFS Scenery Conversion
@@ -590,12 +603,33 @@ python scripts/patch_airports.py
 Microsoft Flight Simulator 2020 scenery packages can be converted to Godot-compatible GLB:
 
 ```bash
-python scripts/convert_msfs_scenery.py \
-    --input /path/to/msfs/package \
-    --output scenery/custom/my_scenery/
+python3 scripts/convert_msfs_scenery.py /path/to/msfs/package \
+    --output scenery/custom/my_scenery/ [--max-texture 1024]
 ```
 
-The converter extracts glTF from BGL binary files, converts DDS textures to PNG, and strips 20+ MSFS-specific glTF extensions (ASOBO_*, MSFT_texture_dds). Output is clean GLB with embedded textures, ready for use as custom scenery packages.
+What the package holds and how it is read (verified on the Schmerlat package,
+identical to the ModelConverterX export to the millimetre):
+
+- `scenery/global/scenery/modelLib.BGL` is a list of RIFF `GLTF` forms, each
+  with an XML `ModelInfo` (GUID, name, LODs) and the glTF binary of the model.
+- The glTF uses Asobo's optimized vertex format: one interleaved buffer
+  (stride 36: POSITION float3, TANGENT and NORMAL as signed bytes, TEXCOORD_0/1
+  and COLOR_0 as half floats) and one index accessor per mesh that every
+  primitive slices with `extras.ASOBO_primitive {StartIndex, PrimitiveCount}`.
+  The converter rewrites each mesh with float32 attributes compacted to the
+  vertices in use and one index accessor per primitive.
+- MSFS has no non-uniform node scale: a node scale `(sx, sy, sz)` is applied
+  as the uniform mean of the three. The converter does the same
+  (`--keep-nonuniform-scale` keeps the literal values).
+- Textures are DDS (BC1, BC3, BC5 signed normal maps, occasionally BC7) next
+  to the models in `texture/`; `scripts/msfs_dds.py` decodes them without
+  Pillow. Normal maps are flipped from the DirectX to the OpenGL convention.
+  Light nodes (`ASOBO_macro_light`) survive as empty nodes with their
+  parameters in `extras.msfs_light`.
+- `scenery/world/scenery/*_scn.bgl` holds the placements (SceneryObject
+  section, LibraryObject records: lat/lon, height above ground (signed: a
+  sunk object is negative), heading, scale, model GUID). They go to `package.json`; objects from other libraries
+  (Asobo's default vegetation, vehicles) are listed by GUID only.
 
 ## Migration History
 

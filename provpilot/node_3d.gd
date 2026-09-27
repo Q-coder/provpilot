@@ -56,6 +56,7 @@ var _runways_merged: Dictionary = {}  # icao -> merged pack airport entry
 var _live_weather: Node = null        # C++ LiveWeather (METAR)
 var _welcome_screen: WelcomeScreen = null
 var _scenery_editor := SceneryEditor.new()   # F8 / welcome Edit Mode
+var _scenery_objects := SceneryObjects.new()  # placed models of the object packs (priority order)
 
 # ── Session state ──────────────────────────────────────────────────────────
 var _fly_loading := false        # destination streaming in after Fly!
@@ -131,6 +132,9 @@ func _ready() -> void:
 	_aircraft.setup_engine_sound(self)
 	add_child(_scenery_editor)
 	_scenery_editor.setup(self)
+	_scenery_objects.name = "SceneryObjects"
+	add_child(_scenery_objects)
+	_scenery_objects.elevation = Callable(_world, "scenery_elevation_geodetic")
 
 	# World: globe, scenery stack, ground query for JSBSim's contact points.
 	# Streaming stays OFF until Fly! so no tiles load around the origin while
@@ -613,6 +617,7 @@ func _apply_scenery_sources() -> void:
 	if not is_instance_valid(scenery3d_node) or not _settings:
 		return
 	_settings.apply_scenery_sources(scenery3d_node, vegetation_node, _vfr_map)
+	_scenery_objects.apply_scenery_areas(_settings.get_enabled_scenery_areas(), scenery3d_node, vegetation_node)
 	_rebuild_runways()
 
 

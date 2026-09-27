@@ -23,8 +23,8 @@ namespace jsbgodot
 // ── Constants ───────────────────────────────────────────────────────────────
 
 // Asset subdirs auto-detected inside each scenery area's path.
-const char *SettingsStore::ASSET_SUBDIRS[] = { "terrain", "orthophoto", "buildings", "water", "roads", "vegetation", "trees", "airports" };
-const int SettingsStore::ASSET_SUBDIR_COUNT = 8;
+const char *SettingsStore::ASSET_SUBDIRS[] = { "terrain", "orthophoto", "buildings", "water", "roads", "vegetation", "trees", "airports", "objects" };
+const int SettingsStore::ASSET_SUBDIR_COUNT = 9;
 
 const double SettingsStore::TREE_DENSITY_FRACTION[5] = { 0.0, 0.25, 0.50, 0.75, 1.0 };
 
