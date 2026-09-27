@@ -232,7 +232,9 @@ on a fresh inode afterwards.
   `smoke_runways` pass; `probe_gear_height`; renders (`probe_aircraft_lights`
   with `PROBE_COCKPIT=1`): the jet spans three 6 m runway slabs, gear down
   on the pavement, pilot's view over the glareshield.
-- Still 1/5 scale: the C172 and PC-7 (same treatment later). The old
+- Still 1/5 scale: the C172 and PC-7 (same treatment later; done
+  2026-09-27: `scale 5.0`, gear offsets from `probe_gear_height`, eye points
+  and orbit distances scaled with the model, C172 light positions x5). The old
   `model/a10.glb` stays on disk until the check flight is good.
 - Check flight 2026-09-21 (gery): animations and the virtual cockpit good;
   the gear did not retract — JSBSim never updates `gear/unit[n]/pos-norm`

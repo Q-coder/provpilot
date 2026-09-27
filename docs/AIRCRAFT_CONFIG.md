@@ -60,8 +60,9 @@ Typed getters each take a default, so omitted keys fall back gracefully:
 - `root_node` — scene‑tree path the model is parented under. (The PC‑7 reuses the
   Cessna loader node and is swapped in at runtime.)
 - `rotation_deg "x,y,z"`, `offset "x,y,z"`, `scale` / `scale_xyz` — optional
-  fitting transform applied to the reparented model (orient nose‑forward, lift
-  the belly to ground level, rescale).
+  fitting transform (orient nose‑forward, lift the belly to ground level,
+  rescale), composed onto the loader node's own scene transform; the model's
+  nodes keep their file transforms.
 - `flip_normals` (bool) + `flip_normals_prefix` (str) — flip baked normals so the
   sun lights the top, not the underside. Empty prefix flips **all** meshes
   uniformly; a prefix flips only matching mesh names. Calibrate against the
@@ -74,7 +75,7 @@ animation of the model with values from `src/fg_bridge.cpp` (see
 `docs/A10_FLIGHTGEAR_PORT.md`). `hide_nodes "a, b"` hides model nodes by name
 (all matches), used for placeholder display textures. `scale` fits a model
 authored in metres: the AC frame draws models at 0.2 m per unit, so `5.0`
-gives real size. Generic FlightGear models the package references
+gives real size (all three airframes use it). Generic FlightGear models the package references
 (`/Aircraft/Instruments-3d/...`) come from `third_party/fgdata`; see
 `docs/INSTRUMENTS.md` for how instruments are built and added. A
 non-FlightGear model (the Cessna) gets instruments the same way: a
@@ -156,8 +157,11 @@ steering wheels (the Cessna's tyres, split out by `scripts/fg_panel_build.py`).
 each aircraft at LSZH with the FDM on its gear and prints the clearance of
 the lowest tyre mesh above the ground under it (positive = floats). Note the
 offset is applied in the model's parent frame, which carries the AC node's
-scale, so one offset unit is not one metre — adjust, re-run, converge (the
-A‑10 needed −0.85 for a 0.2 m/unit response; PC‑7 +4 cm, within tolerance).
+scale, so one offset unit is 0.2 m — subtract clearance / 0.2 from the Y
+offset, re-run, converge (2026-09-27, all three at real size: C172 −0.64,
+PC‑7 9.55, A‑10 8.75 put every wheel within 2 mm of the LSZH pavement). The
+cockpit eye point moves with the model: shift `cockpit_position` Y by twice
+the offset change (AC units of 0.1 m).
 
 ### `[lights]`
 
@@ -182,9 +186,13 @@ centre and follows the node, so lights on animated gear retract with it.
 Each sprite is placed a few model-centimetres outside its lens (outboard for
 wingtip lights, up for the beacon, forward for the nose lights) and drawn
 with the depth test on, so the airframe hides lights on its far side. Note
-that the airframes are drawn at a fraction of world scale (the `AC` node is
-0.1, the A-10 ends up at 0.2 m per model metre, wingtip to wingtip 3.6 m in
-world metres), so anything metre-based on the model must use model units.
+that the AC frame draws models at 0.2 m per model unit (the `AC` node is 0.1,
+`Node3D2` 2), so every airframe carries `[model] scale 5.0` to be at real
+size (A-10 since 2026-09-21, C172 and PC-7 since 2026-09-27; before that the
+two were drawn at 1/5, "model planes" next to real-size scenery objects).
+The loader puts the fitting transform (rotation, scale, offset) on its own
+node, so `<kind>_pos` values and everything else "in model-root units" are
+plain model metres.
 
 A node named `<x>-on` with a sibling `<x>-off` is a lit / unlit mesh pair
 (FlightGear convention): the pair's visibility follows the light. Sprites are

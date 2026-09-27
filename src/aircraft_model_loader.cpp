@@ -90,20 +90,24 @@ bool AircraftModelLoader::load_aircraft_model(const String &p_aircraft_id)
 	// Reparent the GLB's top-level children onto this node and drop the
 	// now-empty wrapper, so this node is the parent of the model root exactly
 	// like the former PackedScene instance was. The optional fitting
-	// transform lets a model authored at another native scale be placed
-	// without code changes (identity for the Cessna).
-	const Transform3D fit = model_transform(cfg);
+	// transform (rotation, scale, offset from the cfg) goes onto THIS node,
+	// composed with its pristine scene transform, so the model's own nodes
+	// keep their file transforms: FlightGear animation centres, light
+	// `_pos` values and anything else "in model-root units" stay in model
+	// metres whatever the fit is (putting the fit on the children scaled
+	// those frames by the [model] scale).
+	if (!base_captured)
+	{
+		base_transform = get_transform();
+		base_captured = true;
+	}
+	set_transform(base_transform * model_transform(cfg));
 	TypedArray<Node> children = scene->get_children();
 	for (int i = 0; i < children.size(); i++)
 	{
 		Node *c = Object::cast_to<Node>(children[i]);
 		scene->remove_child(c);
 		add_child(c);
-		Node3D *c3 = Object::cast_to<Node3D>(c);
-		if (c3 != nullptr && fit != Transform3D())
-		{
-			c3->set_transform(fit * c3->get_transform());
-		}
 	}
 	scene->queue_free();
 	loaded_aircraft_id = aircraft_id;

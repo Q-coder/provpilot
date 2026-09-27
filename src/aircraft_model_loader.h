@@ -43,6 +43,10 @@ namespace jsbgodot
 
     protected:
         String loaded_aircraft_id;
+        // The scene's pristine transform of this node; every load composes
+        // the aircraft's fitting transform onto it.
+        Transform3D base_transform;
+        bool base_captured = false;
 
         Node *load_from_disk(const String &aircraft_id, const String &rel_path) const;
         Node *load_from_resource(const String &res_path) const;
