@@ -8,7 +8,16 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="$REPO_ROOT/build"
 GODOT="$REPO_ROOT/godot/bin/godot.macos.editor.double.arm64"
-IDENTITY="Developer ID Application: Gerhard Gubler (DUWB54DV3A)"
+# The signing identity by SHA-1 hash, not by name: the keychain holds several
+# "Developer ID Application: Gerhard Gubler (DUWB54DV3A)" certificates (the
+# renewals keep the name) and codesign takes the first match by name, which
+# was the one expiring Feb 2027 while the new one runs to Sep 2031.
+# List them with: security find-identity -v -p codesigning
+IDENTITY="AAA957C87686181A21896CAC7B99B2ECFC559E7E"   # Developer ID Application, valid to 2031-09-17
+# Notarization: a notarytool keychain profile (xcrun notarytool
+# store-credentials <name> --apple-id ... --team-id DUWB54DV3A); the DMG is
+# submitted and stapled in step 7 when the profile exists.
+NOTARY_PROFILE="${NOTARY_PROFILE:-provpilot-notary}"
 
 # Derive version from project.godot so the DMG filename matches what the app
 # reports and what `latest.json` advertises.
@@ -26,7 +35,7 @@ echo "Repo root: $REPO_ROOT"
 echo ""
 
 # --- Step 1: Build BOTH GDExtensions (double precision, release) ---
-echo "[1/6] Building GDExtensions (template_release, double, arm64)..."
+echo "[1/7] Building GDExtensions (template_release, double, arm64)..."
 cd "$REPO_ROOT"
 if [[ -d ".venv" ]]; then
     source .venv/bin/activate
@@ -104,7 +113,7 @@ for f in "$PROV_DYLIB" "$SCEN_DYLIB" "$WORLD_DYLIB"; do
 done
 
 # --- Step 2: Export Godot project ---
-echo "[2/6] Exporting Godot project to $APP_PATH ..."
+echo "[2/7] Exporting Godot project to $APP_PATH ..."
 mkdir -p "$BUILD_DIR"
 rm -rf "$APP_PATH"
 "$GODOT" --headless --path "$REPO_ROOT/provpilot" \
@@ -119,11 +128,11 @@ echo ""
 # JSBSim aircraft data is now loaded from `<install_root>/aircraft/<id>/jsbsim/`,
 # which the AircraftInstaller autoload extracts from the PCK on first run.
 # The XMLs are packed into the PCK via the `include_filter` in export_presets.cfg.
-echo "[3/6] JSBSim bundling skipped — data is extracted on first run."
+echo "[3/7] JSBSim bundling skipped — data is extracted on first run."
 echo ""
 
 # --- Step 4: Code-sign with Developer ID ---
-echo "[4/6] Code-signing with Developer ID..."
+echo "[4/7] Code-signing with Developer ID..."
 ENTITLEMENTS=$(mktemp)
 cat > "$ENTITLEMENTS" << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -152,7 +161,7 @@ echo "  $(codesign -dvv "$APP_PATH" 2>&1 | grep Authority | head -1)"
 echo ""
 
 # --- Step 5: Build app-only DMG ---
-echo "[5/6] Creating DMG at $DMG_PATH ..."
+echo "[5/7] Creating DMG at $DMG_PATH ..."
 rm -f "$DMG_PATH"
 # Stage just the .app so the DMG doesn't pick up build/ siblings.
 STAGE_DIR=$(mktemp -d -t provpilot-dmg)
@@ -160,10 +169,11 @@ cp -R "$APP_PATH" "$STAGE_DIR/"
 hdiutil create -volname "ProvPilot ${VERSION}" \
     -srcfolder "$STAGE_DIR" -ov -format UDZO "$DMG_PATH" >/dev/null
 rm -rf "$STAGE_DIR"
+codesign --force --timestamp --sign "$IDENTITY" "$DMG_PATH"
 echo ""
 
 # --- Step 6: Summary + latest.json snippet ---
-echo "[6/6] Build summary:"
+echo "[6/7] Build summary:"
 APP_SIZE=$(du -sh "$APP_PATH" | awk '{print $1}')
 DMG_SIZE=$(stat -f%z "$DMG_PATH")
 DMG_SIZE_H=$(du -sh "$DMG_PATH" | awk '{print $1}')
@@ -182,4 +192,16 @@ cat << EOF
     }
 EOF
 echo ""
+
+# --- Step 7: Notarize + staple (skipped without a keychain profile) ---
+if xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+    echo "[7/7] Notarizing with keychain profile '$NOTARY_PROFILE' (this uploads the DMG and waits)..."
+    xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun stapler staple "$DMG_PATH"
+    spctl -a -t open --context context:primary-signature -v "$DMG_PATH"
+else
+    echo "[7/7] No notarytool keychain profile '$NOTARY_PROFILE': not notarized. Create one with"
+    echo "      xcrun notarytool store-credentials $NOTARY_PROFILE --apple-id <id> --team-id DUWB54DV3A"
+    echo "      then: xcrun notarytool submit \"$DMG_PATH\" --keychain-profile $NOTARY_PROFILE --wait && xcrun stapler staple \"$DMG_PATH\""
+fi
 echo "Done."
