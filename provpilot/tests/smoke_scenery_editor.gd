@@ -458,6 +458,20 @@ func _ready() -> void:
 	tmp2.from_dict(d0.to_dict())
 	_check(tmp2.flatten.size() == 1 and absf(float(tmp2.flatten[0]["h"]) - 431.5) < 0.001 and absf(tmp2.node_offset(c) + 2.0) < 0.001, "plateaus and node offsets survive the JSON round trip")
 	_check(d0.flatten_near(E - 250.0, N - 200.0, 1.0) == 0, "flatten polygon corner is found")
+	# a finished plateau: a Flatten-tool click on a corner selects it, [ ] move its height in place
+	var tool_was: int = ed.get_tool()
+	ed.set_tool(SceneryEditor.TOOL_FLATTEN)
+	ed.cursor_valid = true
+	ed.cursor_e = E - 250.0
+	ed.cursor_n = N - 200.0 + 2.0
+	ed.place_polygon_point()
+	_check(ed.get_selected_flatten() == 0, "a click on a corner of a finished plateau selects it instead of starting a new one (%d)" % ed.get_selected_flatten())
+	ed.nudge_height(-5.0)
+	_check(absf(float(d0.flatten[0]["h"]) - 426.5) < 0.001, "[ ] lowers the selected plateau in place (%.1f m)" % float(d0.flatten[0]["h"]))
+	ed.undo()
+	_check(absf(float(d0.flatten[0]["h"]) - 431.5) < 0.001, "undo restores the plateau height (%.1f m)" % float(d0.flatten[0]["h"]))
+	ed.set_tool(tool_was)
+	_check(ed.get_selected_flatten() == -1, "changing the tool drops the plateau selection")
 	d0.set_node_offset(c, 0.0)
 	# screen-space picking: an elevated node and an edge are found by pixels, not by the terrain hit
 	_check(ed.mesher.elevation.get_method() == "elevation_lv95_precise", "live meshes use the precise terrain only")

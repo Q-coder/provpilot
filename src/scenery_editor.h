@@ -192,6 +192,9 @@ namespace jsbgodot
         bool place_polygon_point();
         void finish_polygon();
         void nudge_height(double delta);
+        void select_flatten(int fi);
+        int get_selected_flatten() const { return selected_flatten; }
+        double selected_flatten_height() const;
         bool place_circle_point();
         void finish_line();
         bool delete_at_cursor();
@@ -326,6 +329,7 @@ namespace jsbgodot
         double flatten_h = NAN;
         int selected_node = -1;
         int selected_edge = -1;
+        int selected_flatten = -1; // a finished plateau picked by a click on a corner: [ ] moves its height
         int selected_object = -1;            // Object tool: the active object (index in SceneryObjects)
         std::vector<int> selection;
         std::vector<int> highlighted; // objects currently carrying the selection tint          // every selected object, the active one included

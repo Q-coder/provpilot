@@ -233,6 +233,8 @@ void SceneryEditor::_bind_methods()
 	ClassDB::bind_method(D_METHOD("place_polygon_point"), &SceneryEditor::place_polygon_point);
 	ClassDB::bind_method(D_METHOD("finish_polygon"), &SceneryEditor::finish_polygon);
 	ClassDB::bind_method(D_METHOD("nudge_height", "delta"), &SceneryEditor::nudge_height);
+	ClassDB::bind_method(D_METHOD("select_flatten", "index"), &SceneryEditor::select_flatten);
+	ClassDB::bind_method(D_METHOD("get_selected_flatten"), &SceneryEditor::get_selected_flatten);
 	ClassDB::bind_method(D_METHOD("place_circle_point"), &SceneryEditor::place_circle_point);
 	ClassDB::bind_method(D_METHOD("finish_line"), &SceneryEditor::finish_line);
 	ClassDB::bind_method(D_METHOD("delete_at_cursor"), &SceneryEditor::delete_at_cursor);
@@ -2306,7 +2308,18 @@ bool SceneryEditor::place_polygon_point()
 	if (!cursor_valid)
 		return false;
 	if (tool == TOOL_FLATTEN && poly_points.is_empty())
+	{
+		// a click on a corner of a finished plateau selects it: [ ] then move
+		// its height live, 4 Delete removes it
+		const int fi = design->flatten_near(cursor_e, cursor_n, SNAP_NODE_M);
+		if (fi >= 0)
+		{
+			select_flatten(fi);
+			return true;
+		}
+		selected_flatten = -1;
 		flatten_h = cursor_h; // the plateau starts at the ground of the first corner; [ ] adjust it
+	}
 	poly_points.push_back(Vector2(cursor_e, cursor_n));
 	String what = "replace area";
 	if (tool == TOOL_FLATTEN)
@@ -2356,6 +2369,25 @@ void SceneryEditor::finish_polygon()
 
 // [ and ]: the selected node's height offset, or the plateau height while a
 // flatten polygon is being drawn.
+void SceneryEditor::select_flatten(int fi)
+{
+	selected_flatten = fi;
+	if (fi < 0 || fi >= design->get_flatten().size())
+	{
+		selected_flatten = -1;
+		return;
+	}
+	const Dictionary f = design->get_flatten()[fi];
+	tool_note = vformat("plateau %d selected, at %.1f m ([ ] { } move it 0.5 / 5 m, the terrain follows at once; 4 Delete on a corner removes it)", fi + 1, double(f["h"]));
+}
+
+double SceneryEditor::selected_flatten_height() const
+{
+	if (selected_flatten < 0 || selected_flatten >= design->get_flatten().size())
+		return NAN;
+	return double(Dictionary(design->get_flatten()[selected_flatten])["h"]);
+}
+
 void SceneryEditor::nudge_height(double delta)
 {
 	if (tool == TOOL_OBJECT)
@@ -2378,6 +2410,19 @@ void SceneryEditor::nudge_height(double delta)
 	{
 		flatten_h = (std::isnan(flatten_h) ? cursor_h : flatten_h) + delta;
 		tool_note = vformat("plateau height %.1f m", flatten_h);
+		return;
+	}
+	if (selected_flatten >= 0 && selected_flatten < design->get_flatten().size() && (tool == TOOL_FLATTEN || (tool == TOOL_SELECT && selected_node < 0 && selected_edge < 0)))
+	{
+		// a finished plateau: its height changes in place, the close tiles
+		// reload with it (the bake writes the same height)
+		edit_begins();
+		Dictionary f = design->get_flatten()[selected_flatten];
+		f["h"] = double(f["h"]) + delta;
+		design->get_flatten()[selected_flatten] = f;
+		design->set_dirty(true);
+		tool_note = vformat("plateau %d now at %.1f m: the tiles around it reload with the new height ([ ] { } to change, 4 Delete on a corner removes it)", selected_flatten + 1, double(f["h"]));
+		rebuild_live();
 		return;
 	}
 	if (tool == TOOL_SELECT && selected_node >= 0 && design->get_nodes().has(selected_node))
@@ -2490,7 +2535,10 @@ bool SceneryEditor::delete_at_cursor()
 		if (pi >= 0)
 			design->get_replace().remove_at(pi);
 		else if (fi >= 0)
+		{
 			design->get_flatten().remove_at(fi);
+			selected_flatten = -1;
+		}
 		else
 		{
 			design->get_areas().remove_at(ai);
@@ -2555,6 +2603,7 @@ void SceneryEditor::set_tool(int t)
 	flatten_h = NAN;
 	selected_node = -1;
 	selected_edge = -1;
+	selected_flatten = -1;
 	selected_object = -1;
 	selection.clear();
 	line_nodes.clear();
@@ -2776,8 +2825,13 @@ void SceneryEditor::handle_mouse(const Ref<InputEvent> &event)
 								adopt_attrs(design->get_edges()[selected_edge]);
 								tool_note = vformat("%s selected ([ ] raises / lowers both ends, 4 deletes); its settings are in the panel", edge_label(selected_edge));
 							}
+							else if (cursor_valid && design->flatten_near(cursor_e, cursor_n, SNAP_NODE_M) >= 0)
+								select_flatten(design->flatten_near(cursor_e, cursor_n, SNAP_NODE_M));
 							else
+							{
+								selected_flatten = -1;
 								tool_note = "nothing under the mouse (yellow spheres are nodes, blue roads are design roads)";
+							}
 						}
 						update_markers();
 						break;
@@ -2961,10 +3015,11 @@ void SceneryEditor::handle_key(const Ref<InputEvent> &event)
 				poly_points.clear();
 				preview_mesh->clear_surfaces();
 			}
-			else if (selected_node >= 0 || selected_edge >= 0 || !selection.empty())
+			else if (selected_node >= 0 || selected_edge >= 0 || selected_flatten >= 0 || !selection.empty())
 			{
 				selected_node = -1;
 				selected_edge = -1;
+				selected_flatten = -1;
 				clear_selection();
 				preview_mesh->clear_surfaces();
 				update_markers();
@@ -3413,6 +3468,8 @@ void SceneryEditor::update_status()
 	const String baked = (baked_sha != "" && !design->get_dirty()) ? String("  (baked into the road tiles, live meshes off)") : String();
 	if (tool == TOOL_FLATTEN && !poly_points.is_empty())
 		line += vformat("\nplateau height %.1f m ([ ] to change)", std::isnan(flatten_h) ? cursor_h : flatten_h);
+	else if (!std::isnan(selected_flatten_height()) && (tool == TOOL_FLATTEN || (tool == TOOL_SELECT && selected_node < 0 && selected_edge < 0)))
+		line += vformat("\nplateau %d at %.1f m ([ ] { } to change)", selected_flatten + 1, selected_flatten_height());
 	const int unknown = mesher->get_unknown_height_count();
 	status->set_text(vformat("%s%s\n%d nodes, %d edges, %d replace areas, %d replaced OSM ways, %d plateaus, %d areas, %d meshes, %d piers%s%s\n%s%s%s",
 		cur, line, design->node_count(), design->edge_count(), design->get_replace().size(), design->get_replace_ids().size(), design->get_flatten().size(), design->get_areas().size(),
