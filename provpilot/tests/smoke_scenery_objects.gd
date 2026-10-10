@@ -521,7 +521,23 @@ func _ready() -> void:
 		for z in saved_pkg["exclusions"]:
 			if z.get("object", "") == "schmerlat_hauptgebaeude":
 				zone = z
-		_check(not zone.is_empty() and absf(float(zone["circle"][0]) - (float(before["e"]) + 2.0)) < 0.02, "its exclusion circle follows the object")
+		# the zone is the footprint rectangle (polygon) once the model's bounds are known, a disc before:
+		# it must cover the moved placement point and not a point 300 m away
+		var at := Vector2(float(before["e"]) + 2.0, float(before["n"]))
+		var away := at + Vector2(300.0, 0.0)
+		var covers_at := false
+		var covers_away := false
+		if not zone.is_empty() and zone.has("polygon"):
+			var poly := PackedVector2Array()
+			for pt in zone["polygon"]:
+				poly.push_back(Vector2(float(pt[0]), float(pt[1])))
+			covers_at = Geometry2D.is_point_in_polygon(at, poly)
+			covers_away = Geometry2D.is_point_in_polygon(away, poly)
+		elif not zone.is_empty():
+			var c := Vector2(float(zone["circle"][0]), float(zone["circle"][1]))
+			covers_at = c.distance_to(at) <= float(zone["circle"][2])
+			covers_away = c.distance_to(away) <= float(zone["circle"][2])
+		_check(covers_at and not covers_away, "its exclusion zone follows the object (%s)" % ("polygon" if zone.has("polygon") else "circle"))
 		_check(saved_pkg["objects"].size() == 35 and saved_pkg.has("unresolved_library_objects"), "the other objects and the pack's other fields are kept")
 	ed.exit()
 	await get_tree().process_frame

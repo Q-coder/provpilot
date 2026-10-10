@@ -442,8 +442,24 @@ from an MSFS package; a file written by hand uses the same fields:
   would wipe out every lower-tier building for kilometres (FSDT Zurich's
   "ED" model, 2.4 km, took the whole town of Kloten with it). Those objects
   get `exclusion_radius_m: 0`, which the sim honours when it rewrites the
-  pack (any positive value is used as the disc radius); an airfield
-  perimeter is best added by hand as a polygon.
+  pack (any positive value is used as the disc radius). When a model's
+  bounds are known the zone is its footprint rectangle at its heading plus
+  the margin (a `polygon` of four LV95 corners; a disc around a 300 m pier
+  would reach 150 m sideways), written by the converter and again by the
+  sim on save; an airfield perimeter is best added by hand as a polygon.
+- A model wider than `--split RADIUS_M` is broken into independently placed
+  pieces: its root nodes clustered by proximity (`--split-merge`, 2 m), one
+  GLB per cluster with the origin at the cluster's base centre, placed by
+  geodesic offset from the original placement with its own ground height,
+  `size_m` and exclusion polygon, and `group` naming the source model. The
+  pieces share their textures as files under `objects/textures/` (glTF
+  `uri` images; 83 pieces of the FSDT Zurich terminal embedded 900 MB, shared
+  70 MB). A single mesh that spans the airport (a sign set) stays one piece.
+- Each placed object has a view distance: `view_distance_m` from the pack,
+  else 150 x its size clamped to 2.5 .. 30 km (a lamp 2.5 km, a hangar 9 km,
+  a pier 30 km). It loads inside that distance, nearest first, fades in over
+  1.2 s (`GeometryInstance3D.transparency`) and fades out over the last 20 %
+  of the range (visibility range, dithered), and unloads at 1.25 x.
 
 At runtime the C++ `SceneryObjects` node (`src/scenery_objects.cpp`) reads
 every enabled area's package in priority order, hands the zones to

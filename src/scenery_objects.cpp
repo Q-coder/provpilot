@@ -13,11 +13,15 @@
 #include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/geometry_instance3d.hpp>
+#include <godot_cpp/classes/time.hpp>
+#include <godot_cpp/core/object.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/variant/typed_array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
+#include <algorithm>
 #include <cmath>
 
 #include "geo.h"
@@ -265,6 +269,20 @@ void SceneryObjects::apply_scenery_areas(const Array &areas, Node *scenery3d, No
 			if (ex[k].get_type() != Variant::DICTIONARY)
 				continue;
 			Dictionary z = Dictionary(ex[k]).duplicate();
+			if (z.has("polygon") && z["polygon"].get_type() == Variant::ARRAY)
+			{
+				// JSON gives [[e, n], ...]; Vector2(Variant) cannot read a pair
+				const Array a = z["polygon"];
+				PackedVector2Array pts;
+				for (int q = 0; q < a.size(); q++)
+				{
+					if (a[q].get_type() == Variant::ARRAY && Array(a[q]).size() >= 2)
+						pts.push_back(Vector2(double(Array(a[q])[0]), double(Array(a[q])[1])));
+					else
+						pts.push_back(Vector2(a[q]));
+				}
+				z["polygon"] = pts;
+			}
 			z["min_dir"] = min_building_dir[pi];
 			z["min_vegetation_dir"] = min_vegetation_dir[pi];
 			z["pack"] = packs[pi].name;
@@ -328,6 +346,12 @@ void SceneryObjects::apply_scenery_areas(const Array &areas, Node *scenery3d, No
 				pl.pivot = Vector3(double(Array(pv)[0]), double(Array(pv)[1]), double(Array(pv)[2]));
 			const double sxz = MAX(MAX(pl.scale3.x, pl.scale3.z), 1e-9);
 			pl.radius_m = double(o.get("footprint_radius_m", 0.0)) / sxz;
+			if (o.has("size_m") && Array(o["size_m"]).size() == 3)
+			{
+				const Array sz = o["size_m"];
+				pl.size_m = Vector3(double(sz[0]), double(sz[1]), double(sz[2]));
+			}
+			pl.view_m = double(o.get("view_distance_m", 0.0));
 			pl.ground_ecef = geo::ecef_of(pl.lat, pl.lon, 0.0);
 			// hidden by a zone of a higher-priority pack ("objects" or "all")
 			for (size_t zi = 0; zi < zone_owner.size() && !pl.excluded; zi++)
@@ -466,6 +490,7 @@ bool SceneryObjects::place(Placed &p)
 	add_child(inst);
 	inst->set_global_transform(Transform3D(b, geo::ecef_of(p.lat, p.lon, h) - b.xform(p.pivot)));
 	p.node = inst;
+	apply_view_range(p);
 	if (p.highlighted)
 		apply_highlight(p);
 	return true;
@@ -563,29 +588,103 @@ Vector3 SceneryObjects::camera_position() const
 	return cam ? cam->get_global_position() : Vector3();
 }
 
+double SceneryObjects::view_distance_m(const Placed &p) const
+{
+	if (p.view_m > 0.0)
+		return p.view_m;
+	double size = 2.0 * footprint_m(p);
+	if (p.bounds_known)
+		size = MAX(size, p.bounds.size.y * p.scale3.y);
+	else if (p.size_m.length_squared() > 0.0)
+		size = MAX(size, p.size_m.y);
+	return CLAMP(size * 150.0, load_radius_m, unload_radius_m);
+}
+
+// Distance fade at the edge of the view range on every mesh of a placed
+// model, and the start of its fade-in.
+void SceneryObjects::apply_view_range(Placed &p)
+{
+	if (p.node == nullptr)
+		return;
+	const double view = view_distance_m(p);
+	const TypedArray<Node> meshes = p.node->find_children("*", "GeometryInstance3D", true, false);
+	const uint64_t now = Time::get_singleton()->get_ticks_msec();
+	for (int k = 0; k < meshes.size(); k++)
+	{
+		GeometryInstance3D *gi = Object::cast_to<GeometryInstance3D>(meshes[k]);
+		if (gi == nullptr)
+			continue;
+		gi->set_visibility_range_end(view);
+		gi->set_visibility_range_end_margin(view * 0.2);
+		gi->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
+		gi->set_transparency(1.0);
+		fading.push_back({(uint64_t)gi->get_instance_id(), now});
+	}
+	if (GeometryInstance3D *gi = Object::cast_to<GeometryInstance3D>(p.node))
+	{
+		gi->set_visibility_range_end(view);
+		gi->set_visibility_range_end_margin(view * 0.2);
+		gi->set_visibility_range_fade_mode(GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
+		gi->set_transparency(1.0);
+		fading.push_back({(uint64_t)gi->get_instance_id(), now});
+	}
+}
+
+void SceneryObjects::step_fades()
+{
+	if (fading.empty())
+		return;
+	const uint64_t now = Time::get_singleton()->get_ticks_msec();
+	const double FADE_MS = 1200.0;
+	size_t w = 0;
+	for (size_t i = 0; i < fading.size(); i++)
+	{
+		GeometryInstance3D *gi = Object::cast_to<GeometryInstance3D>(ObjectDB::get_instance(fading[i].id));
+		if (gi == nullptr)
+			continue; // unloaded meanwhile
+		const double t = double(now - fading[i].t0_msec) / FADE_MS;
+		if (t >= 1.0)
+		{
+			gi->set_transparency(0.0);
+			continue;
+		}
+		gi->set_transparency(1.0 - t);
+		fading[w++] = fading[i];
+	}
+	fading.resize(w);
+}
+
 void SceneryObjects::_process(double)
 {
 	if (!enabled || objects.empty() || Engine::get_singleton()->is_editor_hint())
 		return;
+	step_fades();
 	if (++frame_counter % 15 != 0)
 		return;
 	const Vector3 cam = camera_position();
 	if (cam.length_squared() < 1.0)
 		return;
 	collect_results();
-	for (Placed &p : objects)
+	// nearest first: the queue order is the order the worker parses in
+	std::vector<std::pair<double, int>> wanted;
+	for (int i = 0; i < (int)objects.size(); i++)
 	{
+		Placed &p = objects[i];
 		if (p.excluded || p.removed)
 			continue;
 		const double d = p.ground_ecef.distance_to(cam);
+		const double view = view_distance_m(p);
 		if (p.node == nullptr)
 		{
-			if (d <= load_radius_m)
-				place(p); // queues the parse when the template is not in yet
+			if (d <= view)
+				wanted.push_back({d, i});
 		}
-		else if (d > unload_radius_m)
+		else if (d > view * 1.25)
 			unplace(p);
 	}
+	std::sort(wanted.begin(), wanted.end());
+	for (const auto &w : wanted)
+		place(objects[w.second]); // queues the parse when the template is not in yet
 }
 
 // ── editing ───────────────────────────────────────────────────────────────
@@ -950,12 +1049,41 @@ int SceneryObjects::save_packs()
 			{
 				Dictionary z;
 				z["kinds"] = "buildings,vegetation,objects";
-				Array c;
-				c.push_back(Math::snapped(p.e, 0.01));
-				c.push_back(Math::snapped(p.n, 0.01));
-				c.push_back(Math::snapped(zone_r, 0.1));
-				z["circle"] = c;
 				z["object"] = p.name;
+				if (p.bounds_known && !p.orig.has("exclusion_radius_m"))
+				{
+					// the model's footprint rectangle at its heading plus the margin
+					// (the converter writes the same; a disc is far too wide for a pier)
+					const Basis wun = geo::wun_basis(p.lat, p.lon);
+					const Vector3 base = geo::ecef_of(p.lat, p.lon, 0.0);
+					const Vector3 piv = p.rot.xform(p.pivot * p.scale3);
+					const Vector3 ex_ = p.rot.xform(Vector3(1, 0, 0)), ez_ = p.rot.xform(Vector3(0, 0, 1));
+					Array poly;
+					const double xs[2] = {p.bounds.position.x, p.bounds.position.x + p.bounds.size.x};
+					const double zs[2] = {p.bounds.position.z, p.bounds.position.z + p.bounds.size.z};
+					const int order[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+					for (const auto &o4 : order)
+					{
+						const double mx = o4[0] ? margin : -margin, mz = o4[1] ? margin : -margin;
+						Vector3 c = p.rot.xform(Vector3(xs[o4[0]], 0.0, zs[o4[1]]) * p.scale3) - piv + ex_ * mx + ez_ * mz;
+						c.y = 0.0;
+						const geo::Geodetic g = geo::geodetic_of(base + wun.xform(c));
+						const Vector2 en = Geo::wgs84_to_lv95(g.lat, g.lon);
+						Array pt;
+						pt.push_back(Math::snapped(en.x, 0.01));
+						pt.push_back(Math::snapped(en.y, 0.01));
+						poly.push_back(pt);
+					}
+					z["polygon"] = poly;
+				}
+				else
+				{
+					Array c;
+					c.push_back(Math::snapped(p.e, 0.01));
+					c.push_back(Math::snapped(p.n, 0.01));
+					c.push_back(Math::snapped(zone_r, 0.1));
+					z["circle"] = c;
+				}
 				ex.push_back(z);
 			}
 		}

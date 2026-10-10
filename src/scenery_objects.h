@@ -142,8 +142,19 @@ namespace jsbgodot
             bool excluded = false, removed = false;
             bool highlighted = false; // editor selection tint (material overlay on every mesh)
             Vector3 ground_ecef; // at h = 0, for distance tests
+            Vector3 size_m;         // scaled model size from the package (optional, before the template is in)
+            double view_m = 0.0;    // "view_distance_m" from the package (0 = from the size)
             Node3D *node = nullptr;
         };
+        // Visible range of a placed model: from its size (a lamp 2.5 km, a hangar
+        // ~9 km, a terminal pier 30 km), or the package's view_distance_m. The
+        // model loads inside it and fades at its edge (GeometryInstance3D
+        // visibility range), and fades in over a second when it appears.
+        double view_distance_m(const Placed &p) const;
+        struct Fade { uint64_t id; uint64_t t0_msec; };
+        std::vector<Fade> fading;
+        void apply_view_range(Placed &p);
+        void step_fades();
         struct Edit
         {
             int index;
@@ -185,8 +196,8 @@ namespace jsbgodot
         void worker_main();
         void collect_results();
         Callable elevation;
-        double load_radius_m = 8000.0;
-        double unload_radius_m = 10000.0;
+        double load_radius_m = 2500.0;    // minimum view distance of any object
+        double unload_radius_m = 30000.0; // maximum view distance (unload at 1.25 x the view distance)
         bool enabled = true;
         int frame_counter = 0;
         int excluded_objects = 0;
