@@ -164,7 +164,8 @@ func _ready() -> void:
 		var ag2: Vector3 = W3DCoords.ecef_to_geodetic(abs_node2.global_position) if abs_node2 else Vector3(NAN, NAN, NAN)
 		_check(abs_node2 == abs_node, "re-applying its pose moves the node instead of re-creating it")
 		_check(absf(ag2.z - 460.0) < 0.05, "re-applying its pose does not lift it (%.2f)" % ag2.z)
-		_check(abs_mesh != null and fade_before == 0.0 and abs_mesh.transparency == 0.0, "a pose update does not restart the fade-in (transparency %.2f -> %.2f)" % [fade_before, abs_mesh.transparency if abs_mesh else -1.0])
+		# a restarted fade would jump back towards 1.0; a fade still in progress keeps falling
+		_check(abs_mesh != null and fade_before < 0.5 and abs_mesh.transparency <= fade_before, "a pose update does not restart the fade-in (transparency %.2f -> %.2f)" % [fade_before, abs_mesh.transparency if abs_mesh else -1.0])
 	# a second instance of a repeated model is its own node
 	var tables := 0
 	for i in range(so.get_object_count()):
@@ -550,6 +551,13 @@ func _ready() -> void:
 			kb = InputEventKey.new(); kb.keycode = KEY_9; kb.unicode = 125; kb.alt_pressed = true; kb.pressed = false
 			Input.parse_input_event(kb); await get_tree().process_frame
 			_check(ed.get_tool() == tool_k and absf(float(so.get_object_info(idx)["agl_m"]) - (agl_k + 4.5)) < 1e-6, "Option+9 typing '}' raises it 5 m (%.2f)" % float(so.get_object_info(idx)["agl_m"]))
+			# the same press reported without the character
+			kb = InputEventKey.new(); kb.keycode = KEY_6; kb.key_label = KEY_6; kb.unicode = 0; kb.alt_pressed = true; kb.pressed = true
+			Input.parse_input_event(kb); await get_tree().process_frame
+			kb = InputEventKey.new(); kb.keycode = KEY_6; kb.key_label = KEY_6; kb.unicode = 0; kb.alt_pressed = true; kb.pressed = false
+			Input.parse_input_event(kb); await get_tree().process_frame
+			_check(ed.get_tool() == tool_k and absf(float(so.get_object_info(idx)["agl_m"]) - (agl_k + 5.0)) < 1e-6, "Option+6 without a character raises it 0.5 m (%.2f)" % float(so.get_object_info(idx)["agl_m"]))
+			so.undo_object_edit()
 			so.undo_object_edit()
 			so.undo_object_edit()
 		ed.set_transform_field(0, 2, 1.5)

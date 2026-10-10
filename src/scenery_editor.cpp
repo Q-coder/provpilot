@@ -2880,6 +2880,20 @@ void SceneryEditor::handle_key(const Ref<InputEvent> &event)
 		case '}': code = KEY_BRACKETRIGHT; shift = true; break;
 		default: break;
 	}
+	if (code == k->get_keycode() && k->is_alt_pressed() && !cmd)
+	{
+		// the same combinations without the character (an Option press that
+		// macOS reports with the digit alone): Option+5 6 8 9 are [ ] { }
+		const Key digit = (k->get_keycode() >= KEY_0 && k->get_keycode() <= KEY_9) ? k->get_keycode() : k->get_key_label();
+		switch (digit)
+		{
+			case KEY_5: code = KEY_BRACKETLEFT; break;
+			case KEY_6: code = KEY_BRACKETRIGHT; break;
+			case KEY_8: code = KEY_BRACKETLEFT; shift = true; break;
+			case KEY_9: code = KEY_BRACKETRIGHT; shift = true; break;
+			default: break;
+		}
+	}
 	switch (code)
 	{
 		case KEY_1: set_tool(TOOL_SELECT); break;
