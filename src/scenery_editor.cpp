@@ -2867,7 +2867,20 @@ void SceneryEditor::handle_key(const Ref<InputEvent> &event)
 	}
 	bool handled = true;
 	const bool cmd = k->is_ctrl_pressed() || k->is_meta_pressed();
-	switch (k->get_keycode())
+	// The height keys go by the typed character: on a Swiss or German Mac
+	// keyboard [ ] are Option+5 / Option+6 and { } Option+8 / Option+9, and
+	// the event carries the key code of the digit (5 would switch the tool).
+	Key code = k->get_keycode();
+	bool shift = k->is_shift_pressed();
+	switch (k->get_unicode())
+	{
+		case '[': code = KEY_BRACKETLEFT; break;
+		case ']': code = KEY_BRACKETRIGHT; break;
+		case '{': code = KEY_BRACKETLEFT; shift = true; break;
+		case '}': code = KEY_BRACKETRIGHT; shift = true; break;
+		default: break;
+	}
+	switch (code)
 	{
 		case KEY_1: set_tool(TOOL_SELECT); break;
 		case KEY_2: set_tool(TOOL_ROAD); break;
@@ -2889,7 +2902,7 @@ void SceneryEditor::handle_key(const Ref<InputEvent> &event)
 		case KEY_KP_ADD:
 		case KEY_KP_SUBTRACT:
 		case KEY_G:
-			handled = tool == TOOL_OBJECT && object_key(k->get_keycode(), k->is_shift_pressed(), cmd);
+			handled = tool == TOOL_OBJECT && object_key(code, shift, cmd);
 			break;
 		case KEY_SPACE:
 			view_top(k->is_shift_pressed());
@@ -2908,10 +2921,10 @@ void SceneryEditor::handle_key(const Ref<InputEvent> &event)
 				tool_note = "R reverses a road: select one with 1 Select first";
 			break;
 		case KEY_BRACKETLEFT:
-			nudge_height(-(HEIGHT_STEP_M * (k->is_shift_pressed() ? 10.0 : 1.0)));
+			nudge_height(-(HEIGHT_STEP_M * (shift ? 10.0 : 1.0)));
 			break;
 		case KEY_BRACKETRIGHT:
-			nudge_height(HEIGHT_STEP_M * (k->is_shift_pressed() ? 10.0 : 1.0));
+			nudge_height(HEIGHT_STEP_M * (shift ? 10.0 : 1.0));
 			break;
 		case KEY_C:
 			if (curved_check)

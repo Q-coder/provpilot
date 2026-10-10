@@ -536,6 +536,22 @@ func _ready() -> void:
 			var cen: Vector2 = Vector2(get_window().size) * 0.5
 			mmp = InputEventMouseMotion.new(); mmp.position = cen; mmp.global_position = cen
 			Input.parse_input_event(mmp); await get_tree().process_frame
+			# Swiss / German Mac keyboard: [ is Option+5, the event carries key
+			# code 5 and the character [; the character must win over the tool key
+			var agl_k: float = float(so.get_object_info(idx)["agl_m"])
+			var tool_k: int = ed.get_tool()
+			var kb := InputEventKey.new(); kb.keycode = KEY_5; kb.unicode = 91; kb.alt_pressed = true; kb.pressed = true
+			Input.parse_input_event(kb); await get_tree().process_frame
+			kb = InputEventKey.new(); kb.keycode = KEY_5; kb.unicode = 91; kb.alt_pressed = true; kb.pressed = false
+			Input.parse_input_event(kb); await get_tree().process_frame
+			_check(ed.get_tool() == tool_k and absf(float(so.get_object_info(idx)["agl_m"]) - (agl_k - 0.5)) < 1e-6, "Option+5 typing '[' lowers the object 0.5 m instead of switching the tool (%.2f -> %.2f)" % [agl_k, float(so.get_object_info(idx)["agl_m"])])
+			kb = InputEventKey.new(); kb.keycode = KEY_9; kb.unicode = 125; kb.alt_pressed = true; kb.pressed = true
+			Input.parse_input_event(kb); await get_tree().process_frame
+			kb = InputEventKey.new(); kb.keycode = KEY_9; kb.unicode = 125; kb.alt_pressed = true; kb.pressed = false
+			Input.parse_input_event(kb); await get_tree().process_frame
+			_check(ed.get_tool() == tool_k and absf(float(so.get_object_info(idx)["agl_m"]) - (agl_k + 4.5)) < 1e-6, "Option+9 typing '}' raises it 5 m (%.2f)" % float(so.get_object_info(idx)["agl_m"]))
+			so.undo_object_edit()
+			so.undo_object_edit()
 		ed.set_transform_field(0, 2, 1.5)
 		_check(absf(float(so.get_object_info(idx)["agl_m"]) - 1.5) < 1e-6, "typing a height in the panel applies it")
 		ed.set_transform_field(1, 0, 90.0)
