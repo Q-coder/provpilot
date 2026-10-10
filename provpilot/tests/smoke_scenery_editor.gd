@@ -472,6 +472,23 @@ func _ready() -> void:
 	_check(absf(float(d0.flatten[0]["h"]) - 431.5) < 0.001, "undo restores the plateau height (%.1f m)" % float(d0.flatten[0]["h"]))
 	ed.set_tool(tool_was)
 	_check(ed.get_selected_flatten() == -1, "changing the tool drops the plateau selection")
+	_check(d0.flatten_inside(E - 250.0, N - 270.0) == 0 and d0.flatten_inside(E - 250.0, N - 400.0) == -1, "a point inside the plateau finds it, one outside does not")
+	# the Select tool picks a plateau by a click inside it
+	ed.set_tool(SceneryEditor.TOOL_SELECT)
+	var in_scr: Vector2 = ed.get_camera().unproject_position(ed.world_of(E - 250.0, N - 270.0, ed.elevation_lv95(E - 250.0, N - 270.0)))
+	var mbf := InputEventMouseButton.new()
+	mbf.button_index = MOUSE_BUTTON_LEFT
+	mbf.pressed = true
+	mbf.position = in_scr
+	ed.mouse = in_scr
+	ed.cursor_valid = true
+	ed.cursor_e = E - 250.0
+	ed.cursor_n = N - 270.0
+	ed.handle_mouse(mbf)
+	mbf.pressed = false
+	ed.handle_mouse(mbf)
+	_check(ed.get_selected_flatten() == 0, "Select: a click inside a plateau selects it (%d)" % ed.get_selected_flatten())
+	ed.set_tool(tool_was)
 	d0.set_node_offset(c, 0.0)
 	# screen-space picking: an elevated node and an edge are found by pixels, not by the terrain hit
 	_check(ed.mesher.elevation.get_method() == "elevation_lv95_precise", "live meshes use the precise terrain only")

@@ -1468,13 +1468,17 @@ void SceneryEditor::update_overlay()
 		const double fh = f["h"];
 		if (poly.is_empty())
 			continue;
-		flat_overlay_mesh->surface_begin(Mesh::PRIMITIVE_LINE_STRIP);
-		for (int i = 0; i < poly.size() + 1; i++)
+		// the selected plateau shows a double outline
+		for (int ring = 0; ring < (k == selected_flatten ? 2 : 1); ring++)
 		{
-			const Vector2 p = poly[i % poly.size()];
-			flat_overlay_mesh->surface_add_vertex(world_of(p.x, p.y, fh + 0.5) - flat_origin);
+			flat_overlay_mesh->surface_begin(Mesh::PRIMITIVE_LINE_STRIP);
+			for (int i = 0; i < poly.size() + 1; i++)
+			{
+				const Vector2 p = poly[i % poly.size()];
+				flat_overlay_mesh->surface_add_vertex(world_of(p.x, p.y, fh + 0.5 + ring * 1.5) - flat_origin);
+			}
+			flat_overlay_mesh->surface_end();
 		}
-		flat_overlay_mesh->surface_end();
 		flat_overlay_mesh->surface_begin(Mesh::PRIMITIVE_LINES);
 		for (int i = 0; i < poly.size(); i++)
 		{
@@ -2360,7 +2364,7 @@ void SceneryEditor::finish_polygon()
 			tool_note = vformat("replace area added (%d), baked with --design", design->get_replace().size());
 		}
 		design->set_dirty(true);
-		update_overlay();
+		rebuild_live(); // a plateau reloads the close tiles at once
 	}
 	poly_points.clear();
 	flatten_h = NAN;
@@ -2378,7 +2382,8 @@ void SceneryEditor::select_flatten(int fi)
 		return;
 	}
 	const Dictionary f = design->get_flatten()[fi];
-	tool_note = vformat("plateau %d selected, at %.1f m ([ ] { } move it 0.5 / 5 m, the terrain follows at once; 4 Delete on a corner removes it)", fi + 1, double(f["h"]));
+	tool_note = vformat("plateau %d selected, at %.1f m ([ ] { } move it 0.5 / 5 m, the terrain follows at once; 4 Delete removes it)", fi + 1, double(f["h"]));
+	update_overlay();
 }
 
 double SceneryEditor::selected_flatten_height() const
@@ -2527,8 +2532,10 @@ bool SceneryEditor::delete_at_cursor()
 	if (hit.is_empty())
 	{
 		const int pi = design->replace_near(cursor_e, cursor_n, SNAP_NODE_M);
-		const int fi = design->flatten_near(cursor_e, cursor_n, SNAP_NODE_M);
 		const int ai = design->area_near(cursor_e, cursor_n, SNAP_NODE_M);
+		int fi = design->flatten_near(cursor_e, cursor_n, SNAP_NODE_M);
+		if (pi < 0 && fi < 0 && ai < 0)
+			fi = design->flatten_inside(cursor_e, cursor_n); // a click inside a plateau removes it too
 		if (pi < 0 && fi < 0 && ai < 0)
 			return false;
 		edit_begins();
@@ -2538,6 +2545,7 @@ bool SceneryEditor::delete_at_cursor()
 		{
 			design->get_flatten().remove_at(fi);
 			selected_flatten = -1;
+			tool_note = vformat("plateau %d removed, the tiles around it reload (%d left)", fi + 1, design->get_flatten().size());
 		}
 		else
 		{
@@ -2825,8 +2833,12 @@ void SceneryEditor::handle_mouse(const Ref<InputEvent> &event)
 								adopt_attrs(design->get_edges()[selected_edge]);
 								tool_note = vformat("%s selected ([ ] raises / lowers both ends, 4 deletes); its settings are in the panel", edge_label(selected_edge));
 							}
-							else if (cursor_valid && design->flatten_near(cursor_e, cursor_n, SNAP_NODE_M) >= 0)
-								select_flatten(design->flatten_near(cursor_e, cursor_n, SNAP_NODE_M));
+							else if (cursor_valid && (design->flatten_near(cursor_e, cursor_n, SNAP_NODE_M) >= 0 || design->flatten_inside(cursor_e, cursor_n) >= 0))
+							{
+								// a corner within reach, else the (smallest) plateau around the click
+								const int fi = design->flatten_near(cursor_e, cursor_n, SNAP_NODE_M);
+								select_flatten(fi >= 0 ? fi : design->flatten_inside(cursor_e, cursor_n));
+							}
 							else
 							{
 								selected_flatten = -1;
@@ -3023,6 +3035,7 @@ void SceneryEditor::handle_key(const Ref<InputEvent> &event)
 				clear_selection();
 				preview_mesh->clear_surfaces();
 				update_markers();
+				update_overlay();
 			}
 			else
 			{

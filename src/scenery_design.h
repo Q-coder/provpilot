@@ -57,6 +57,7 @@ namespace jsbgodot
         Array import_way(const Dictionary &rec);
         int area_near(double e, double n, double radius) const;
         int flatten_near(double e, double n, double radius) const;
+        int flatten_inside(double e, double n) const; // the smallest plateau containing the point, -1 if none
         int replace_near(double e, double n, double radius) const;
         // A duplicate a-b edge or a == b is refused (-1).
         int add_edge(int a, int b, const Dictionary &attrs);

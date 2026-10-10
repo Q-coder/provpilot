@@ -4,6 +4,7 @@
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/geometry2d.hpp>
 #include <godot_cpp/classes/json.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
@@ -63,6 +64,7 @@ void SceneryDesign::_bind_methods()
 	ClassDB::bind_method(D_METHOD("import_way", "rec"), &SceneryDesign::import_way);
 	ClassDB::bind_method(D_METHOD("area_near", "e", "n", "radius"), &SceneryDesign::area_near);
 	ClassDB::bind_method(D_METHOD("flatten_near", "e", "n", "radius"), &SceneryDesign::flatten_near);
+	ClassDB::bind_method(D_METHOD("flatten_inside", "e", "n"), &SceneryDesign::flatten_inside);
 	ClassDB::bind_method(D_METHOD("replace_near", "e", "n", "radius"), &SceneryDesign::replace_near);
 	ClassDB::bind_method(D_METHOD("add_edge", "a", "b", "attrs"), &SceneryDesign::add_edge);
 	ClassDB::bind_method(D_METHOD("set_edge_via", "id", "via"), &SceneryDesign::set_edge_via);
@@ -341,6 +343,32 @@ static int poly_list_near(const Array &list, const char *poly_key, double e, dou
 int SceneryDesign::area_near(double e, double n, double radius) const { return poly_list_near(areas, "poly", e, n, radius); }
 int SceneryDesign::flatten_near(double e, double n, double radius) const { return poly_list_near(flatten, "poly", e, n, radius); }
 int SceneryDesign::replace_near(double e, double n, double radius) const { return poly_list_near(replace, nullptr, e, n, radius); }
+
+int SceneryDesign::flatten_inside(double e, double n) const
+{
+	// overlapping plateaus: the smallest one around the point is the pick
+	int best = -1;
+	double best_area = 0.0;
+	for (int i = 0; i < flatten.size(); i++)
+	{
+		const Array poly = Dictionary(flatten[i])["poly"];
+		PackedVector2Array pv;
+		for (int k = 0; k < poly.size(); k++)
+			pv.push_back(Vector2(poly[k]));
+		if (pv.size() < 3 || !Geometry2D::get_singleton()->is_point_in_polygon(Vector2(e, n), pv))
+			continue;
+		double area = 0.0;
+		for (int k = 0; k < pv.size(); k++)
+			area += pv[k].cross(pv[(k + 1) % pv.size()]);
+		area = std::abs(area) * 0.5;
+		if (best < 0 || area < best_area)
+		{
+			best = i;
+			best_area = area;
+		}
+	}
+	return best;
+}
 
 int SceneryDesign::add_edge(int a, int b, const Dictionary &attrs)
 {
