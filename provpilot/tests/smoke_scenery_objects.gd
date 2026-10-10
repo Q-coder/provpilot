@@ -30,6 +30,24 @@ func _ready() -> void:
 	var area: String = OS.get_user_data_dir().path_join("smoke_lspf_pack")
 	DirAccess.make_dir_recursive_absolute(area.path_join("objects"))
 	DirAccess.copy_absolute(source.path_join("objects/package.json"), area.path_join("objects/package.json"))
+	# plus one object placed at an absolute elevation (elevation_m, no agl_m),
+	# the way MSFS photogrammetry packs (Bern) place their blocks
+	var pkg_json: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(area.path_join("objects/package.json")))
+	for o in pkg_json["objects"]:
+		if o["name"] == "schmerlat_tisch_kurz":
+			var abs_o: Dictionary = o.duplicate(true)
+			abs_o["name"] = "smoke_abs_elev"
+			abs_o["position_e"] = float(o["position_e"]) + 30.0
+			var abs_ll: Vector2 = Geo.lv95_to_wgs84(float(abs_o["position_e"]), float(abs_o["position_n"]))
+			abs_o["lat"] = abs_ll.x
+			abs_o["lon"] = abs_ll.y
+			abs_o["agl_m"] = null
+			abs_o["elevation_m"] = 460.0
+			pkg_json["objects"].append(abs_o)
+			break
+	var pkg_file := FileAccess.open(area.path_join("objects/package.json"), FileAccess.WRITE)
+	pkg_file.store_string(JSON.stringify(pkg_json, "\t"))
+	pkg_file.close()
 	for f in DirAccess.get_files_at(source.path_join("objects")):
 		if f.ends_with(".glb") and not FileAccess.file_exists(area.path_join("objects").path_join(f)):
 			OS.execute("/bin/ln", ["-sf", source.path_join("objects").path_join(f), area.path_join("objects").path_join(f)])
@@ -63,7 +81,7 @@ func _ready() -> void:
 	for i in range(so.get_object_count()):
 		if str(so.get_object_info(i).get("pack", "")) == "lspf-schmerlat (smoke)":
 			in_pack += 1
-	_check(in_pack == 35, "35 placed objects read from the pack (%d of %d)" % [in_pack, so.get_object_count()])
+	_check(in_pack == 36, "36 placed objects read from the pack (%d of %d)" % [in_pack, so.get_object_count()])
 	_check(so.get_exclusion_zones().size() >= 25, "exclusion zones read from the pack (%d)" % so.get_exclusion_zones().size())
 	_check(so.get_excluded_object_count() == 0, "no object of the pack is hidden by its own zones")
 	var bm: Node = null
@@ -118,6 +136,35 @@ func _ready() -> void:
 		_check(absf(node.global_transform.basis.get_scale().x - float(info["scale_mean"])) < 1e-3, "placement scale applied (%.2f)" % float(info["scale_mean"]))
 		var meshes: int = node.find_children("*", "MeshInstance3D", true, false).size()
 		_check(meshes == 75, "main building has its 75 meshes (%d)" % meshes)
+	# an object placed at an absolute elevation: it sits at that height, reports
+	# the matching height above ground, and re-applying its own pose (what a
+	# click or a drag does) neither lifts it nor re-creates its node nor
+	# restarts its fade-in (a selected Bern block lifted and vanished for a
+	# second on every move)
+	var abs_idx := -1
+	for i in range(so.get_object_count()):
+		if so.get_object_info(i)["name"] == "smoke_abs_elev":
+			abs_idx = i
+	var abs_node: Node3D = so.find_object_node("smoke_abs_elev")
+	_check(abs_idx >= 0 and abs_node != null, "the absolute-elevation object is placed")
+	if abs_node != null:
+		var ag: Vector3 = W3DCoords.ecef_to_geodetic(abs_node.global_position)
+		var ad: Dictionary = so.get_object_info(abs_idx)
+		var aterr: float = root._world.scenery_elevation_geodetic(float(ad["lat"]), float(ad["lon"]))
+		print("  [diag] absolute object at h %.2f, terrain %.2f, reported agl %.2f" % [ag.z, aterr, float(ad["agl_m"])])
+		_check(absf(ag.z - 460.0) < 0.05, "it sits at its absolute elevation (%.2f)" % ag.z)
+		_check(not is_nan(aterr) and absf(aterr + float(ad["agl_m"]) - 460.0) < 0.05, "it reports the matching height above ground (%.2f)" % float(ad["agl_m"]))
+		var abs_mesh: MeshInstance3D = null
+		for m in abs_node.find_children("*", "MeshInstance3D", true, false):
+			abs_mesh = m
+		var fade_before: float = abs_mesh.transparency if abs_mesh else -1.0
+		so.set_object_pose(abs_idx, float(ad["e"]), float(ad["n"]), float(ad["agl_m"]), float(ad["heading_deg"]), float(ad["pitch_deg"]), float(ad["bank_deg"]), ad["scale"], false)
+		await get_tree().process_frame
+		var abs_node2: Node3D = so.find_object_node("smoke_abs_elev")
+		var ag2: Vector3 = W3DCoords.ecef_to_geodetic(abs_node2.global_position) if abs_node2 else Vector3(NAN, NAN, NAN)
+		_check(abs_node2 == abs_node, "re-applying its pose moves the node instead of re-creating it")
+		_check(absf(ag2.z - 460.0) < 0.05, "re-applying its pose does not lift it (%.2f)" % ag2.z)
+		_check(abs_mesh != null and fade_before == 0.0 and abs_mesh.transparency == 0.0, "a pose update does not restart the fade-in (transparency %.2f -> %.2f)" % [fade_before, abs_mesh.transparency if abs_mesh else -1.0])
 	# a second instance of a repeated model is its own node
 	var tables := 0
 	for i in range(so.get_object_count()):
@@ -538,7 +585,12 @@ func _ready() -> void:
 			covers_at = c.distance_to(at) <= float(zone["circle"][2])
 			covers_away = c.distance_to(away) <= float(zone["circle"][2])
 		_check(covers_at and not covers_away, "its exclusion zone follows the object (%s)" % ("polygon" if zone.has("polygon") else "circle"))
-		_check(saved_pkg["objects"].size() == 35 and saved_pkg.has("unresolved_library_objects"), "the other objects and the pack's other fields are kept")
+		_check(saved_pkg["objects"].size() == 36 and saved_pkg.has("unresolved_library_objects"), "the other objects and the pack's other fields are kept")
+		var abs_entry: Dictionary = {}
+		for o in saved_pkg["objects"]:
+			if o["name"] == "smoke_abs_elev":
+				abs_entry = o
+		_check(not abs_entry.is_empty() and abs_entry["elevation_m"] == null and absf(float(abs_entry["agl_m"]) - (460.0 - root._world.scenery_elevation_geodetic(float(abs_entry["lat"]), float(abs_entry["lon"])))) < 0.05, "the absolute elevation is saved as a height above ground")
 	ed.exit()
 	await get_tree().process_frame
 	# restore the library (in memory only; nothing was saved)

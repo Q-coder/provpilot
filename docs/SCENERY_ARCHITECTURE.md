@@ -463,7 +463,14 @@ from an MSFS package; a file written by hand uses the same fields:
   else 150 x its size clamped to 2.5 .. 30 km (a lamp 2.5 km, a hangar 9 km,
   a pier 30 km). It loads inside that distance, nearest first, fades in over
   1.2 s (`GeometryInstance3D.transparency`) and fades out over the last 20 %
-  of the range (visibility range, dithered), and unloads at 1.25 x. The
+  of the range (visibility range, dithered), and unloads at 1.25 x. A move,
+  turn or rescale in the editor updates the placed node's transform in place
+  (`refresh`); re-instantiating the template on every drag frame stuttered on
+  a 9 MB photogrammetry block and restarted its fade-in, so the selected
+  block vanished for a second. An entry with an absolute `elevation_m`
+  becomes a height above ground the first time the precise terrain is known
+  (`placement_height`), so the editor moves, reports and saves it like any
+  other object instead of lifting it onto the terrain at its first click. The
   converter's `--view-distance M` writes `view_distance_m` for every object
   of a package (Bern photogrammetry: 12 km, else each 420 m block would load
   30 km out).

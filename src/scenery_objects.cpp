@@ -448,22 +448,44 @@ Node *SceneryObjects::load_template(const String &path)
 	return nullptr;
 }
 
+// Height (WGS84 metres) of a placement point: the terrain under it plus the
+// height above ground. A pack entry with an absolute elevation_m (MSFS
+// photogrammetry, placed at one origin) is turned into a height above ground
+// the first time the precise terrain is known, so the editor moves it, saves
+// it and reports it like every other object; before that it sits at its
+// absolute height. NaN while the terrain is not in yet.
+double SceneryObjects::placement_height(Placed &p) const
+{
+	const double terr = elevation.is_valid() ? double(elevation.call(p.lat, p.lon)) : NAN;
+	if (p.has_elevation)
+	{
+		if (std::isnan(terr))
+			return p.elevation;
+		p.agl = p.elevation - terr;
+		p.has_elevation = false;
+	}
+	return std::isnan(terr) ? terr : terr + p.agl;
+}
+
+Transform3D SceneryObjects::placement_transform(const Placed &p, double h) const
+{
+	// The model's +Z faces the heading (checked against the orthophoto of
+	// LSPF: the Schmerlat main building lands on its real roof). Local +Z is
+	// north in the WUN frame, and the heading turns it clockwise
+	// (rotation.y = -heading in the local frame, as for the aircraft).
+	const Basis wun = geo::wun_basis(p.lat, p.lon);
+	Basis b = wun * p.rot;
+	b = b.scaled_local(p.scale3);
+	return Transform3D(b, geo::ecef_of(p.lat, p.lon, h) - b.xform(p.pivot));
+}
+
 bool SceneryObjects::place(Placed &p)
 {
 	if (p.removed || p.excluded)
 		return false;
-	double h;
-	if (p.has_elevation)
-		h = p.elevation;
-	else
-	{
-		if (!elevation.is_valid())
-			return false;
-		h = double(elevation.call(p.lat, p.lon));
-		if (std::isnan(h))
-			return false; // the precise terrain is not in yet
-		h += p.agl;
-	}
+	const double h = placement_height(p);
+	if (std::isnan(h))
+		return false; // the precise terrain is not in yet
 	Node *tpl = load_template(p.model_path);
 	if (tpl == nullptr)
 	{
@@ -480,15 +502,8 @@ bool SceneryObjects::place(Placed &p)
 	if (inst == nullptr)
 		return false;
 	inst->set_name(p.name);
-	// The model's +Z faces the heading (checked against the orthophoto of
-	// LSPF: the Schmerlat main building lands on its real roof). Local +Z is
-	// north in the WUN frame, and the heading turns it clockwise
-	// (rotation.y = -heading in the local frame, as for the aircraft).
-	const Basis wun = geo::wun_basis(p.lat, p.lon);
-	Basis b = wun * p.rot;
-	b = b.scaled_local(p.scale3);
 	add_child(inst);
-	inst->set_global_transform(Transform3D(b, geo::ecef_of(p.lat, p.lon, h) - b.xform(p.pivot)));
+	inst->set_global_transform(placement_transform(p, h));
 	p.node = inst;
 	apply_view_range(p);
 	if (p.highlighted)
@@ -543,10 +558,20 @@ void SceneryObjects::unplace(Placed &p)
 
 void SceneryObjects::refresh(Placed &p)
 {
-	const bool was = p.node != nullptr;
-	unplace(p);
-	if (was)
-		place(p);
+	if (p.node == nullptr)
+		return;
+	if (p.removed || p.excluded)
+	{
+		unplace(p);
+		return;
+	}
+	// move the node that is there: re-instantiating the template on every drag
+	// frame stuttered on a 9 MB photogrammetry block and restarted its fade-in,
+	// so the selected block vanished for a second
+	const double h = placement_height(p);
+	if (std::isnan(h))
+		return;
+	p.node->set_global_transform(placement_transform(p, h));
 }
 
 double SceneryObjects::footprint_m(const Placed &p) const
@@ -1008,8 +1033,16 @@ int SceneryObjects::save_packs()
 			o["lon"] = Math::snapped(p.lon, 1e-7);
 			o["position_e"] = Math::snapped(p.e, 0.01);
 			o["position_n"] = Math::snapped(p.n, 0.01);
-			o["agl_m"] = Math::snapped(p.agl, 0.01);
-			o["elevation_m"] = Variant();
+			if (p.has_elevation)
+			{
+				o["agl_m"] = Variant(); // never placed since loading: the absolute height stands
+				o["elevation_m"] = Math::snapped(p.elevation, 0.001);
+			}
+			else
+			{
+				o["agl_m"] = Math::snapped(p.agl, 0.01);
+				o["elevation_m"] = Variant();
+			}
 			const Vector3 eul = euler_of(p.rot);
 			o["heading_deg"] = Math::snapped(eul.x, 0.01);
 			o["pitch_deg"] = Math::snapped(eul.y, 0.01);
@@ -1134,7 +1167,14 @@ Dictionary SceneryObjects::get_object_info(int i) const
 	d["lon"] = p.lon;
 	d["e"] = p.e;
 	d["n"] = p.n;
-	d["agl_m"] = p.agl;
+	double agl = p.agl;
+	if (p.has_elevation && elevation.is_valid())
+	{
+		const double terr = double(elevation.call(p.lat, p.lon));
+		if (!std::isnan(terr))
+			agl = p.elevation - terr;
+	}
+	d["agl_m"] = agl;
 	const Vector3 eul = euler_of(p.rot);
 	d["heading_deg"] = eul.x;
 	d["pitch_deg"] = eul.y;

@@ -207,6 +207,8 @@ namespace jsbgodot
         // The parsed template, or null while it is still loading (queued on demand).
         Node *load_template(const String &path);
         static void accumulate_bounds(Node *node, const Transform3D &xf, AABB &box, bool &first);
+        double placement_height(Placed &p) const;
+        Transform3D placement_transform(const Placed &p, double h) const;
         bool place(Placed &p);
         void unplace(Placed &p);
         void apply_highlight(Placed &p);
