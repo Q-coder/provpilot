@@ -20,6 +20,11 @@ What it does
     (BC1/BC2/BC3/BC4/BC5, msfs_dds.py) to embedded PNGs, flips normal maps to
     the OpenGL convention Godot expects, keeps light nodes as empty nodes with
     their parameters in `extras.msfs_light`.
+  * --split RADIUS_M breaks a model wider than that into independently placed
+    pieces (root nodes clustered by proximity): each piece gets its own GLB,
+    position, ground height, size and exclusion polygon, so a 2 km terminal
+    complex becomes buildings that can be moved one by one and follow the
+    terrain. "group" in package.json names the model a piece came from.
   * Parses the scenery placement BGLs (SceneryObject sections, LibraryObject
     records) and writes <output>/package.json with every placed model
     (lat/lon, LV95 E/N when pyproj is available, height above ground, heading,
@@ -36,6 +41,7 @@ Requires numpy (python3 on this Mac). Validate the result with
 """
 import argparse
 import json
+import math
 import os
 import re
 import struct
@@ -556,6 +562,249 @@ def footprint_radius(js: dict, b: "Builder") -> float:
     return best
 
 
+
+# ── splitting a model into independently placed pieces ──────────────────────
+
+def mat4(n: dict) -> np.ndarray:
+    if "matrix" in n:
+        return np.array(n["matrix"], float).reshape(4, 4).T
+    m = np.eye(4)
+    m[:3, :3] = quat_matrix(n.get("rotation", [0, 0, 0, 1])) @ np.diag(np.array(n.get("scale", [1, 1, 1]), float))
+    m[:3, 3] = np.array(n.get("translation", [0, 0, 0]), float)
+    return m
+
+
+def node_aabb(js: dict, idx: int, xf: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+    """World-space (model frame) bounds of a node and its children from the accessors' min/max."""
+    n = js["nodes"][idx]
+    here = xf @ mat4(n)
+    lo = hi = None
+    if "mesh" in n:
+        for p in js["meshes"][n["mesh"]]["primitives"]:
+            acc = js["accessors"][p["attributes"]["POSITION"]]
+            a, b = np.array(acc["min"]), np.array(acc["max"])
+            corners = np.array([[x, y, z, 1.0] for x in (a[0], b[0]) for y in (a[1], b[1]) for z in (a[2], b[2])])
+            w = (here @ corners.T).T[:, :3]
+            lo = w.min(0) if lo is None else np.minimum(lo, w.min(0))
+            hi = w.max(0) if hi is None else np.maximum(hi, w.max(0))
+    for c in n.get("children", []):
+        sub = node_aabb(js, c, here)
+        if sub is not None:
+            lo = sub[0] if lo is None else np.minimum(lo, sub[0])
+            hi = sub[1] if hi is None else np.maximum(hi, sub[1])
+    return None if lo is None else (lo, hi)
+
+
+def model_aabb(js: dict) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+    lo = hi = None
+    for r in js.get("scenes", [{"nodes": list(range(len(js.get("nodes", []))))}])[js.get("scene", 0)]["nodes"]:
+        box = node_aabb(js, r, np.eye(4))
+        if box is None:
+            continue
+        lo = box[0] if lo is None else np.minimum(lo, box[0])
+        hi = box[1] if hi is None else np.maximum(hi, box[1])
+    return None if lo is None else (lo, hi)
+
+
+def cluster_roots(js: dict, merge_m: float) -> List[List[int]]:
+    """Group the scene's root nodes into pieces: nodes whose bounds come within
+    merge_m of each other belong together (union-find); a node without
+    geometry (a light) joins the nearest piece."""
+    roots = js.get("scenes", [{"nodes": list(range(len(js.get("nodes", []))))}])[js.get("scene", 0)]["nodes"]
+    boxes = {r: node_aabb(js, r, np.eye(4)) for r in roots}
+    solid = [r for r in roots if boxes[r] is not None]
+    if not solid:
+        return []
+    lo = np.array([boxes[r][0] for r in solid]) - merge_m * 0.5
+    hi = np.array([boxes[r][1] for r in solid]) + merge_m * 0.5
+    parent = list(range(len(solid)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i in range(len(solid)):
+        touch = np.all(lo[i] <= hi, axis=1) & np.all(hi[i] >= lo, axis=1)
+        for j in np.nonzero(touch)[0]:
+            a, b = find(i), find(int(j))
+            if a != b:
+                parent[b] = a
+    groups: Dict[int, List[int]] = {}
+    for i, r in enumerate(solid):
+        groups.setdefault(find(i), []).append(r)
+    pieces = list(groups.values())
+    centres = [np.mean([np.concatenate(boxes[r]).reshape(2, 3).mean(0) for r in g], axis=0) for g in pieces]
+    for r in roots:
+        if boxes[r] is None:
+            pos = mat4(js["nodes"][r])[:3, 3]
+            k = int(np.argmin([np.linalg.norm(c - pos) for c in centres]))
+            pieces[k].append(r)
+    # biggest piece first, so piece names are stable-ish across runs
+    pieces.sort(key=lambda g: -sum(float(np.prod(boxes[r][1] - boxes[r][0])) for r in g if boxes[r] is not None))
+    return pieces
+
+
+def gltf_subset(js: dict, bin_: bytes, roots: List[int], origin: np.ndarray) -> Tuple[dict, bytes]:
+    """A new glTF holding only the given root nodes (and their subtrees), with
+    the origin moved to `origin` (model metres), and only the meshes,
+    materials, textures, images, accessors and buffer views they use."""
+    keep: List[int] = []
+    seen = set()
+
+    def walk(i):
+        if i in seen:
+            return
+        seen.add(i)
+        keep.append(i)
+        for c in js["nodes"][i].get("children", []):
+            walk(c)
+    for r in roots:
+        walk(r)
+    node_map = {old: new for new, old in enumerate(keep)}
+    out_bin = bytearray()
+    views, accs, meshes, mats, texs, imgs = [], [], [], [], [], []
+    view_map, acc_map, mesh_map, mat_map, tex_map, img_map = {}, {}, {}, {}, {}, {}
+
+    def take_view(vi):
+        if vi not in view_map:
+            v = js["bufferViews"][vi]
+            out_bin.extend(b"\x00" * ((-len(out_bin)) % 4))
+            nv = {k: v[k] for k in ("byteStride", "target") if k in v}
+            nv.update({"buffer": 0, "byteOffset": len(out_bin), "byteLength": v["byteLength"]})
+            off = v.get("byteOffset", 0)
+            out_bin.extend(bin_[off:off + v["byteLength"]])
+            views.append(nv)
+            view_map[vi] = len(views) - 1
+        return view_map[vi]
+
+    def take_acc(ai):
+        if ai not in acc_map:
+            a = dict(js["accessors"][ai])
+            a["bufferView"] = take_view(a["bufferView"])
+            accs.append(a)
+            acc_map[ai] = len(accs) - 1
+        return acc_map[ai]
+
+    def take_img(ii):
+        if ii not in img_map:
+            im = dict(js["images"][ii])
+            if "bufferView" in im:
+                im["bufferView"] = take_view(im["bufferView"])
+            imgs.append(im)  # a uri image (externalised texture) is shared as is
+            img_map[ii] = len(imgs) - 1
+        return img_map[ii]
+
+    def take_tex(ti):
+        if ti not in tex_map:
+            t = dict(js["textures"][ti])
+            t["source"] = take_img(t["source"])
+            texs.append(t)
+            tex_map[ti] = len(texs) - 1
+        return tex_map[ti]
+
+    def take_mat(mi):
+        if mi not in mat_map:
+            m = json.loads(json.dumps(js["materials"][mi]))
+            for k in ("normalTexture", "occlusionTexture", "emissiveTexture"):
+                if k in m:
+                    m[k]["index"] = take_tex(m[k]["index"])
+            pbr = m.get("pbrMetallicRoughness", {})
+            for k in ("baseColorTexture", "metallicRoughnessTexture"):
+                if k in pbr:
+                    pbr[k]["index"] = take_tex(pbr[k]["index"])
+            mats.append(m)
+            mat_map[mi] = len(mats) - 1
+        return mat_map[mi]
+
+    def take_mesh(mi):
+        if mi not in mesh_map:
+            m = json.loads(json.dumps(js["meshes"][mi]))
+            for pr in m["primitives"]:
+                pr["attributes"] = {k: take_acc(v) for k, v in pr["attributes"].items()}
+                if "indices" in pr:
+                    pr["indices"] = take_acc(pr["indices"])
+                if "material" in pr:
+                    pr["material"] = take_mat(pr["material"])
+            meshes.append(m)
+            mesh_map[mi] = len(meshes) - 1
+        return mesh_map[mi]
+
+    nodes = []
+    for old in keep:
+        n = json.loads(json.dumps(js["nodes"][old]))
+        if "children" in n:
+            n["children"] = [node_map[c] for c in n["children"] if c in node_map]
+        if "mesh" in n:
+            n["mesh"] = take_mesh(n["mesh"])
+        if old in roots:
+            if "matrix" in n:
+                for k in range(3):
+                    n["matrix"][12 + k] -= float(origin[k])
+            else:
+                t = np.array(n.get("translation", [0, 0, 0]), float) - origin
+                n["translation"] = [float(x) for x in t]
+        nodes.append(n)
+    out_bin.extend(b"\x00" * ((-len(out_bin)) % 4))
+    out = {
+        "asset": js["asset"], "scene": 0, "scenes": [{"nodes": [node_map[r] for r in roots]}],
+        "nodes": nodes, "meshes": meshes, "materials": mats, "accessors": accs, "bufferViews": views,
+        "buffers": [{"byteLength": len(out_bin)}],
+    }
+    if imgs:
+        out["images"] = imgs
+        out["textures"] = texs
+        out["samplers"] = js.get("samplers", [])
+    return out, bytes(out_bin)
+
+
+def externalise_images(js: dict, bin_: bytes, out_dir: Path, model: str) -> None:
+    """Write the embedded images of a converted model as files next to the GLBs
+    (textures/<model>_<n>_<name>) and reference them by uri, so the pieces of
+    a split model share them instead of each embedding every texture (the
+    FSDT Zurich terminal: 83 pieces x 134 textures = 900 MB embedded, 70 MB
+    shared). Godot's glTF loader reads uri images relative to the GLB."""
+    tex_dir = out_dir / "textures"
+    for i, im in enumerate(js.get("images", [])):
+        if "bufferView" not in im:
+            continue
+        v = js["bufferViews"][im["bufferView"]]
+        data = bin_[v.get("byteOffset", 0):v.get("byteOffset", 0) + v["byteLength"]]
+        ext = ".png" if im.get("mimeType", "image/png") == "image/png" else ".jpg"
+        stem = safe_name(os.path.splitext(im.get("name", "image"))[0])[:40]
+        fname = "%s_%03d_%s%s" % (safe_name(model), i, stem, ext)
+        tex_dir.mkdir(parents=True, exist_ok=True)
+        (tex_dir / fname).write_bytes(data)
+        js["images"][i] = {"name": im.get("name", stem), "mimeType": im.get("mimeType", "image/png"), "uri": "textures/" + fname}
+
+
+def geodesic_offset():
+    """(lat, lon, east_m, north_m) -> (lat, lon) along the WGS84 geodesic."""
+    try:
+        from pyproj import Geod
+        g = Geod(ellps="WGS84")
+
+        def f(lat, lon, east, north):
+            d = math.hypot(east, north)
+            if d < 1e-9:
+                return lat, lon
+            lon2, lat2, _ = g.fwd(lon, lat, math.degrees(math.atan2(east, north)), d)
+            return lat2, lon2
+        return f
+    except Exception:
+        def f(lat, lon, east, north):
+            return lat + north / 111320.0, lon + east / (111320.0 * math.cos(math.radians(lat)))
+        return f
+
+
+def heading_offset(x: float, z: float, heading_deg: float, scale: float) -> Tuple[float, float]:
+    """Model-space horizontal offset (x, z) of a placed model -> (east, north) metres.
+    The model's +Z faces the heading and its +X points to the model's left (west at heading 0)."""
+    h = math.radians(heading_deg)
+    return scale * (-x * math.cos(h) + z * math.sin(h)), scale * (x * math.sin(h) + z * math.cos(h))
+
+
 # ── driver ───────────────────────────────────────────────────────────────────
 
 def texture_dirs_for(package: Path, model_path: Path) -> List[Path]:
@@ -597,6 +846,13 @@ def main() -> int:
                          "out every building of the lower tiers for kilometres (FSDT Zurich: the town of Kloten)")
     ap.add_argument("--keep-nonuniform-scale", action="store_true",
                     help="keep node scales as stored instead of the uniform mean MSFS applies")
+    ap.add_argument("--split", type=float, default=None, metavar="RADIUS_M",
+                    help="split every model whose footprint radius exceeds RADIUS_M into independently placed pieces "
+                         "(its root nodes clustered by proximity, see --split-merge): each piece gets its own GLB, "
+                         "position, ground height and exclusion zone, so one 2 km terminal complex becomes editable "
+                         "buildings that follow the terrain (FSDT Zurich). 0 splits every model")
+    ap.add_argument("--split-merge", type=float, default=2.0,
+                    help="root nodes closer than this (metres) end up in the same piece (default 2)")
     args = ap.parse_args()
     src = Path(args.input)
     out_dir = Path(args.output)
@@ -636,8 +892,13 @@ def main() -> int:
         models.append((f.stem, None, js, bin_, f))
 
     to_lv95 = lv95_converter()
+    offset_latlon = geodesic_offset()
     guid_names: Dict[str, str] = {}
+    # per written model (or piece): footprint radius, bounds (lo, hi) about its origin
     radii: Dict[str, float] = {}
+    bounds: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
+    # model name -> [(piece name, origin in model metres)], for split models
+    pieces_of: Dict[str, List[Tuple[str, np.ndarray]]] = {}
     written = []
     for name, guid, js, bin_, path in models:
         if guid:
@@ -646,31 +907,87 @@ def main() -> int:
             continue
         store = TextureStore(texture_dirs_for(package, path), args.max_texture)
         out_js, out_bin, rep = convert_model(js, bin_, store, args.drop_vertex_colors, args.keep_nonuniform_scale)
-        glb_path = out_dir / (safe_name(name) + ".glb")
-        glb_path.write_bytes(build_glb(out_js, out_bin))
-        written.append(name)
-        radii[name] = rep["footprint_radius_m"]
-        print("  %-32s %3d meshes %4d prims %8d tris %8d verts %2d textures %2d scale-fixed nodes %6d rewound -> %s (%.1f MB)" % (
-            name, rep["meshes"], rep["primitives"], rep["triangles"], rep["vertices"], len(rep["textures"]),
-            rep["nonuniform_nodes"], rep.get("flipped", 0), glb_path.name, glb_path.stat().st_size / 1e6))
+        box = model_aabb(out_js)
+        if args.split is not None and rep["footprint_radius_m"] > args.split and box is not None:
+            groups = cluster_roots(out_js, args.split_merge)
+            externalise_images(out_js, out_bin, out_dir, name)
+            pieces_of[name] = []
+            used = set()
+            total = 0
+            for k, roots in enumerate(groups):
+                lo = hi = None
+                for r in roots:
+                    nb = node_aabb(out_js, r, np.eye(4))
+                    if nb is None:
+                        continue
+                    lo = nb[0] if lo is None else np.minimum(lo, nb[0])
+                    hi = nb[1] if hi is None else np.maximum(hi, nb[1])
+                if lo is None:
+                    continue
+                origin = np.array([(lo[0] + hi[0]) * 0.5, lo[1], (lo[2] + hi[2]) * 0.5])
+                biggest = max(roots, key=lambda r: 0 if node_aabb(out_js, r, np.eye(4)) is None else float(np.prod(node_aabb(out_js, r, np.eye(4))[1] - node_aabb(out_js, r, np.eye(4))[0])))
+                stem = safe_name(str(out_js["nodes"][biggest].get("name", "part")))[:28]
+                pname = "%s__%02d_%s" % (name, k, stem)
+                while pname in used:
+                    pname += "_"
+                used.add(pname)
+                pj, pb = gltf_subset(out_js, out_bin, roots, origin)
+                glb_path = out_dir / (safe_name(pname) + ".glb")
+                glb_path.write_bytes(build_glb(pj, pb))
+                total += glb_path.stat().st_size
+                written.append(pname)
+                plo, phi = lo - origin, hi - origin
+                bounds[pname] = (plo, phi)
+                radii[pname] = float(max(math.hypot(x, z) for x in (plo[0], phi[0]) for z in (plo[2], phi[2])))
+                pieces_of[name].append((pname, origin))
+            print("  %-32s %3d meshes %4d prims %8d tris %8d verts %2d textures %6d rewound -> split into %d pieces (%.1f MB)" % (
+                name, rep["meshes"], rep["primitives"], rep["triangles"], rep["vertices"], len(rep["textures"]),
+                rep.get("flipped", 0), len(pieces_of[name]), total / 1e6))
+        else:
+            glb_path = out_dir / (safe_name(name) + ".glb")
+            glb_path.write_bytes(build_glb(out_js, out_bin))
+            written.append(name)
+            radii[name] = rep["footprint_radius_m"]
+            if box is not None:
+                bounds[name] = box
+            print("  %-32s %3d meshes %4d prims %8d tris %8d verts %2d textures %2d scale-fixed nodes %6d rewound -> %s (%.1f MB)" % (
+                name, rep["meshes"], rep["primitives"], rep["triangles"], rep["vertices"], len(rep["textures"]),
+                rep["nonuniform_nodes"], rep.get("flipped", 0), glb_path.name, glb_path.stat().st_size / 1e6))
         for w in rep["warnings"]:
             print("     ! " + w)
 
     objects, unresolved = [], {}
+
+    def make_object(nm: str, rec: dict, lat: float, lon: float, dy: float, group: Optional[str]) -> dict:
+        obj = {"model": safe_name(nm) + ".glb", "name": nm, "lat": round(lat, 7), "lon": round(lon, 7),
+               "agl_m": None if rec["agl_m"] is None else round(rec["agl_m"] + dy, 3),
+               "elevation_m": None if rec["elevation_m"] is None else round(rec["elevation_m"] + dy, 3),
+               "heading_deg": round(rec["heading_deg"], 2), "pitch_deg": round(rec["pitch_deg"], 2),
+               "scale": round(rec["scale"], 4)}
+        if group:
+            obj["group"] = group  # the MSFS model this piece was split from
+        obj["footprint_radius_m"] = round(radii.get(nm, 0.0) * obj["scale"], 2)
+        if nm in bounds:
+            lo, hi = bounds[nm]
+            obj["size_m"] = [round(float(v) * obj["scale"], 2) for v in (hi - lo)]
+        if to_lv95:
+            e, n = to_lv95(lat, lon)
+            obj["position_e"] = round(e, 2)
+            obj["position_n"] = round(n, 2)
+        return obj
+
     for rec in placements:
         nm = guid_names.get(rec["guid"].lower())
         if nm is None:
             unresolved[rec["guid"]] = unresolved.get(rec["guid"], 0) + 1
             continue
-        obj = {"model": safe_name(nm) + ".glb", "name": nm, "lat": round(rec["lat"], 7), "lon": round(rec["lon"], 7),
-               "agl_m": rec["agl_m"], "elevation_m": rec["elevation_m"], "heading_deg": round(rec["heading_deg"], 2),
-               "pitch_deg": round(rec["pitch_deg"], 2), "scale": round(rec["scale"], 4)}
-        obj["footprint_radius_m"] = round(radii.get(nm, 0.0) * obj["scale"], 2)
-        if to_lv95:
-            e, n = to_lv95(rec["lat"], rec["lon"])
-            obj["position_e"] = round(e, 2)
-            obj["position_n"] = round(n, 2)
-        objects.append(obj)
+        if nm in pieces_of:
+            for pname, origin in pieces_of[nm]:
+                east, north = heading_offset(float(origin[0]), float(origin[2]), rec["heading_deg"], rec["scale"])
+                lat, lon = offset_latlon(rec["lat"], rec["lon"], east, north)
+                objects.append(make_object(pname, rec, lat, lon, float(origin[1]) * rec["scale"], nm))
+        else:
+            objects.append(make_object(nm, rec, rec["lat"], rec["lon"], 0.0, None))
     # Exclusion zones: the buildings and trees of lower-priority packs are
     # removed under every placed model (footprint disc + margin). Edit by
     # hand for a whole airfield perimeter: {"kinds": "...", "polygon": [[e, n], ...]}.
@@ -685,6 +1002,21 @@ def main() -> int:
         if obj["footprint_radius_m"] > args.exclusion_max_radius:
             obj["exclusion_radius_m"] = 0
             sparse.add(obj["name"])
+            continue
+        if obj["name"] in bounds:
+            # the model's footprint rectangle, turned to its heading, plus the margin:
+            # far tighter than a disc for a 300 m pier
+            lo, hi = bounds[obj["name"]]
+            poly = []
+            for x, z in ((lo[0], lo[2]), (hi[0], lo[2]), (hi[0], hi[2]), (lo[0], hi[2])):
+                mx = args.exclusion_margin / max(obj["scale"], 1e-6)
+                cx = x - mx if x < (lo[0] + hi[0]) * 0.5 else x + mx
+                cz = z - mx if z < (lo[2] + hi[2]) * 0.5 else z + mx
+                east, north = heading_offset(float(cx), float(cz), obj["heading_deg"], obj["scale"])
+                la, lo_ = offset_latlon(obj["lat"], obj["lon"], east, north)
+                e, n = to_lv95(la, lo_)
+                poly.append([round(e, 2), round(n, 2)])
+            exclusions.append({"kinds": "buildings,vegetation,objects", "polygon": poly, "object": obj["name"]})
             continue
         exclusions.append({"kinds": "buildings,vegetation,objects",
                            "circle": [obj["position_e"], obj["position_n"], round(obj["footprint_radius_m"] + args.exclusion_margin, 1)],
