@@ -19,7 +19,10 @@ What it does
   * Strips the ASOBO_* / MSFT_texture_dds extensions, converts the DDS textures
     (BC1/BC2/BC3/BC4/BC5, msfs_dds.py) to embedded PNGs, flips normal maps to
     the OpenGL convention Godot expects, keeps light nodes as empty nodes with
-    their parameters in `extras.msfs_light`.
+    their parameters in `extras.msfs_light`. With --keep-dds the colour
+    textures are copied as .dds files next to the GLBs instead (Godot loads
+    DDS at runtime and keeps BC1/BC3/BC7 compressed on the GPU): a
+    photogrammetry city of 5000 textures is 400 MB of DXT1 instead of 3 GB.
   * --split RADIUS_M breaks a model wider than that into independently placed
     pieces (root nodes clustered by proximity): each piece gets its own GLB,
     position, ground height, size and exclusion polygon, so a 2 km terminal
@@ -28,9 +31,11 @@ What it does
   * Parses the scenery placement BGLs (SceneryObject sections, LibraryObject
     records) and writes <output>/package.json with every placed model
     (lat/lon, LV95 E/N when pyproj is available, height above ground, heading,
-    scale), an exclusion zone per placed model (its footprint disc: the
-    buildings and trees of lower-priority scenery packs vanish there) and
-    the GUIDs of objects that come from other libraries.
+    scale, --view-distance), an exclusion zone per placed model (its footprint
+    rectangle or disc: the buildings and trees of lower-priority scenery packs
+    vanish there; none for a wide model whose triangles cover little of its
+    footprint, a set of signs or lamps) and the GUIDs of objects that come
+    from other libraries.
 
 The output directory should be the `objects/` folder of a scenery library
 area (`<area>/objects/package.json`): the sim then places the models and
@@ -220,8 +225,25 @@ def iter_placements(data: bytes):
 
 # ── textures ─────────────────────────────────────────────────────────────────
 
+SPARSE_COVERAGE = 0.35  # projected-area / footprint below which a wide model is a sparse detail set
+DDS_MIME = "image/vnd-ms.dds"
+# fourcc / DXGI formats Godot's DDS loader keeps compressed (BC1-3, BC7)
+DDS_PASS_FOURCC = {b"DXT1", b"DXT3", b"DXT5"}
+DDS_PASS_DXGI = {71, 72, 74, 75, 77, 78, 98, 99}
+
+
+def dds_passthrough_ok(data: bytes) -> bool:
+    if len(data) < 128 or data[:4] != b"DDS ":
+        return False
+    fourcc = data[84:88]
+    if fourcc == b"DX10":
+        return len(data) >= 148 and struct.unpack_from("<I", data, 128)[0] in DDS_PASS_DXGI
+    return fourcc in DDS_PASS_FOURCC
+
+
 class TextureStore:
-    def __init__(self, dirs: List[Path], max_size: int):
+    def __init__(self, dirs: List[Path], max_size: int, keep_dds: bool = False):
+        self.keep_dds = keep_dds
         self.files: Dict[str, Path] = {}
         for d in dirs:
             if d.is_dir():
@@ -252,7 +274,9 @@ class TextureStore:
         else:
             data = f.read_bytes()
             try:
-                if data[:4] == b"DDS ":
+                if data[:4] == b"DDS " and self.keep_dds and not is_normal and dds_passthrough_ok(data):
+                    result = (data, DDS_MIME)
+                elif data[:4] == b"DDS ":
                     rgba, fmt = msfs_dds.decode_dds(data)
                     if is_normal:
                         rgba = msfs_dds.normal_map_to_opengl(rgba, fmt in ("BC5", "BC5S"))
@@ -606,6 +630,54 @@ def model_aabb(js: dict) -> Optional[Tuple[np.ndarray, np.ndarray]]:
     return None if lo is None else (lo, hi)
 
 
+def out_accessor(js: dict, bin_: bytes, ai: int) -> np.ndarray:
+    """Read an accessor of a converted (tightly packed float32 / uint16 / uint32) glTF."""
+    a = js["accessors"][ai]
+    v = js["bufferViews"][a["bufferView"]]
+    dt = {5126: "<f4", 5123: "<u2", 5125: "<u4", 5121: "<u1"}[a["componentType"]]
+    nc = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}[a["type"]]
+    off = v.get("byteOffset", 0) + a.get("byteOffset", 0)
+    arr = np.frombuffer(bin_, dtype=dt, count=a["count"] * nc, offset=off)
+    return arr.reshape(a["count"], nc)
+
+
+def ground_coverage(js: dict, bin_: bytes) -> float:
+    """How much of a model's footprint rectangle its triangles cover when projected
+    on the ground: the sum of the projected triangle areas over the XZ extent of
+    the bounds. About 1 or more for a building or a photogrammetry block (ground
+    plus walls), far below 1 for a set of signs or lamps spread over an airport,
+    which must not get an exclusion zone."""
+    box = model_aabb(js)
+    if box is None:
+        return 0.0
+    ext = box[1] - box[0]
+    footprint = float(ext[0] * ext[2])
+    if footprint <= 1e-6:
+        return 0.0
+    area = 0.0
+
+    def walk(idx: int, xf: np.ndarray) -> None:
+        nonlocal area
+        n = js["nodes"][idx]
+        here = xf @ mat4(n)
+        if "mesh" in n:
+            for p in js["meshes"][n["mesh"]]["primitives"]:
+                if "indices" not in p:
+                    continue
+                pos = out_accessor(js, bin_, p["attributes"]["POSITION"]).astype(np.float64)
+                w = (here[:3, :3] @ pos.T).T + here[:3, 3]
+                tri = out_accessor(js, bin_, p["indices"]).reshape(-1)
+                tri = tri[: tri.size - tri.size % 3].reshape(-1, 3).astype(np.int64)
+                a, b, c = w[tri[:, 0]], w[tri[:, 1]], w[tri[:, 2]]
+                area += 0.5 * float(np.abs((b[:, 0] - a[:, 0]) * (c[:, 2] - a[:, 2]) - (b[:, 2] - a[:, 2]) * (c[:, 0] - a[:, 0])).sum())
+        for ch in n.get("children", []):
+            walk(ch, here)
+
+    for r in js.get("scenes", [{"nodes": list(range(len(js.get("nodes", []))))}])[js.get("scene", 0)]["nodes"]:
+        walk(r, np.eye(4))
+    return area / footprint
+
+
 def cluster_roots(js: dict, merge_m: float) -> List[List[int]]:
     """Group the scene's root nodes into pieces: nodes whose bounds come within
     merge_m of each other belong together (union-find); a node without
@@ -771,9 +843,12 @@ def externalise_images(js: dict, bin_: bytes, out_dir: Path, model: str) -> None
             continue
         v = js["bufferViews"][im["bufferView"]]
         data = bin_[v.get("byteOffset", 0):v.get("byteOffset", 0) + v["byteLength"]]
-        ext = ".png" if im.get("mimeType", "image/png") == "image/png" else ".jpg"
+        ext = {"image/png": ".png", "image/jpeg": ".jpg", DDS_MIME: ".dds"}.get(im.get("mimeType", "image/png"), ".bin")
         stem = safe_name(os.path.splitext(im.get("name", "image"))[0])[:40]
-        fname = "%s_%03d_%s%s" % (safe_name(model), i, stem, ext)
+        if stem.startswith(safe_name(model)):  # photogrammetry tiles name their textures <model>_<n> already
+            fname = "%s%s" % (stem, ext)
+        else:
+            fname = "%s_%03d_%s%s" % (safe_name(model), i, stem, ext)
         tex_dir.mkdir(parents=True, exist_ok=True)
         (tex_dir / fname).write_bytes(data)
         js["images"][i] = {"name": im.get("name", stem), "mimeType": im.get("mimeType", "image/png"), "uri": "textures/" + fname}
@@ -853,6 +928,14 @@ def main() -> int:
                          "buildings that follow the terrain (FSDT Zurich). 0 splits every model")
     ap.add_argument("--split-merge", type=float, default=2.0,
                     help="root nodes closer than this (metres) end up in the same piece (default 2)")
+    ap.add_argument("--keep-dds", action="store_true",
+                    help="pass BC1/BC2/BC3/BC7 colour textures through as .dds files next to the GLBs instead of "
+                         "decoding them to PNG: Godot loads DDS at runtime and keeps them compressed on the GPU "
+                         "(a photogrammetry city: 400 MB of DXT1 instead of 3 GB of RGBA8). Normal maps are still "
+                         "decoded (they need the green channel flipped)")
+    ap.add_argument("--view-distance", type=float, default=None, metavar="M",
+                    help="view_distance_m for every placed object (the sim derives it from the size otherwise, "
+                         "which lets a 400 m photogrammetry block load 30 km out)")
     args = ap.parse_args()
     src = Path(args.input)
     out_dir = Path(args.output)
@@ -897,6 +980,7 @@ def main() -> int:
     # per written model (or piece): footprint radius, bounds (lo, hi) about its origin
     radii: Dict[str, float] = {}
     bounds: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
+    coverage: Dict[str, float] = {}  # projected triangle area / footprint, see ground_coverage
     # model name -> [(piece name, origin in model metres)], for split models
     pieces_of: Dict[str, List[Tuple[str, np.ndarray]]] = {}
     written = []
@@ -905,7 +989,7 @@ def main() -> int:
             guid_names[guid.lower()] = name
         if only and name not in only:
             continue
-        store = TextureStore(texture_dirs_for(package, path), args.max_texture)
+        store = TextureStore(texture_dirs_for(package, path), args.max_texture, args.keep_dds)
         out_js, out_bin, rep = convert_model(js, bin_, store, args.drop_vertex_colors, args.keep_nonuniform_scale)
         box = model_aabb(out_js)
         if args.split is not None and rep["footprint_radius_m"] > args.split and box is not None:
@@ -938,18 +1022,25 @@ def main() -> int:
                 written.append(pname)
                 plo, phi = lo - origin, hi - origin
                 bounds[pname] = (plo, phi)
+                coverage[pname] = ground_coverage(pj, pb)
                 radii[pname] = float(max(math.hypot(x, z) for x in (plo[0], phi[0]) for z in (plo[2], phi[2])))
                 pieces_of[name].append((pname, origin))
             print("  %-32s %3d meshes %4d prims %8d tris %8d verts %2d textures %6d rewound -> split into %d pieces (%.1f MB)" % (
                 name, rep["meshes"], rep["primitives"], rep["triangles"], rep["vertices"], len(rep["textures"]),
                 rep.get("flipped", 0), len(pieces_of[name]), total / 1e6))
         else:
+            if args.keep_dds and any(im.get("mimeType") == DDS_MIME for im in out_js.get("images", [])):
+                # Godot's glTF loader only reads DDS from files, not from a bufferView
+                externalise_images(out_js, out_bin, out_dir, name)
+                roots = out_js.get("scenes", [{"nodes": list(range(len(out_js["nodes"])))}])[out_js.get("scene", 0)]["nodes"]
+                out_js, out_bin = gltf_subset(out_js, out_bin, roots, np.zeros(3))  # drops the orphaned image views
             glb_path = out_dir / (safe_name(name) + ".glb")
             glb_path.write_bytes(build_glb(out_js, out_bin))
             written.append(name)
             radii[name] = rep["footprint_radius_m"]
             if box is not None:
                 bounds[name] = box
+                coverage[name] = ground_coverage(out_js, out_bin)
             print("  %-32s %3d meshes %4d prims %8d tris %8d verts %2d textures %2d scale-fixed nodes %6d rewound -> %s (%.1f MB)" % (
                 name, rep["meshes"], rep["primitives"], rep["triangles"], rep["vertices"], len(rep["textures"]),
                 rep["nonuniform_nodes"], rep.get("flipped", 0), glb_path.name, glb_path.stat().st_size / 1e6))
@@ -966,6 +1057,8 @@ def main() -> int:
                "scale": round(rec["scale"], 4)}
         if group:
             obj["group"] = group  # the MSFS model this piece was split from
+        if args.view_distance:
+            obj["view_distance_m"] = args.view_distance
         obj["footprint_radius_m"] = round(radii.get(nm, 0.0) * obj["scale"], 2)
         if nm in bounds:
             lo, hi = bounds[nm]
@@ -991,17 +1084,19 @@ def main() -> int:
     # Exclusion zones: the buildings and trees of lower-priority packs are
     # removed under every placed model (footprint disc + margin). Edit by
     # hand for a whole airfield perimeter: {"kinds": "...", "polygon": [[e, n], ...]}.
-    # A model wider than --exclusion-max-radius is a sparse detail set (apron
-    # lamps, people, signs over a whole airport): it gets exclusion_radius_m 0,
-    # which the sim honours when it rewrites the pack, and a note below.
+    # A model wider than --exclusion-max-radius whose triangles cover little of
+    # its footprint is a sparse detail set (apron lamps, people, signs over a
+    # whole airport): it gets exclusion_radius_m 0, which the sim honours when
+    # it rewrites the pack, and a note below. A wide model that does cover its
+    # footprint (a photogrammetry city block, a terminal) keeps its polygon.
     exclusions = []
     sparse = set()
     for obj in objects:
         if "position_e" not in obj or obj["footprint_radius_m"] <= 0.5:
             continue
-        if obj["footprint_radius_m"] > args.exclusion_max_radius:
+        if obj["footprint_radius_m"] > args.exclusion_max_radius and coverage.get(obj["name"], 0.0) < SPARSE_COVERAGE:
             obj["exclusion_radius_m"] = 0
-            sparse.add(obj["name"])
+            sparse.add("%s (%.0f%% covered)" % (obj["name"], 100.0 * coverage.get(obj["name"], 0.0)))
             continue
         if obj["name"] in bounds:
             # the model's footprint rectangle, turned to its heading, plus the margin:
@@ -1022,8 +1117,9 @@ def main() -> int:
                            "circle": [obj["position_e"], obj["position_n"], round(obj["footprint_radius_m"] + args.exclusion_margin, 1)],
                            "object": obj["name"]})
     if sparse:
-        print("no exclusion zone (footprint over %.0f m, a sparse detail model; set exclusion_radius_m in package.json "
-              "or draw a polygon by hand): %s" % (args.exclusion_max_radius, ", ".join(sorted(sparse))))
+        print("no exclusion zone (footprint over %.0f m and under %.0f%% of it covered, a sparse detail model; set "
+              "exclusion_radius_m in package.json or draw a polygon by hand): %s"
+              % (args.exclusion_max_radius, 100.0 * SPARSE_COVERAGE, ", ".join(sorted(sparse))))
     if placements or objects:
         lat0 = sum(o["lat"] for o in objects) / len(objects) if objects else None
         lon0 = sum(o["lon"] for o in objects) / len(objects) if objects else None

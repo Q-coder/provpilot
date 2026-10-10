@@ -437,11 +437,15 @@ from an MSFS package; a file written by hand uses the same fields:
   `objects` (models of lower packs). Areas above the pack are never touched,
   so the highest entry in the library wins. The converter writes one circle
   per placed model (its footprint plus 3 m) unless the footprint radius
-  exceeds `--exclusion-max-radius` (120 m): such a model is a sparse detail
-  set spread over a whole airport, not a building, and a disc around it
-  would wipe out every lower-tier building for kilometres (FSDT Zurich's
-  "ED" model, 2.4 km, took the whole town of Kloten with it). Those objects
-  get `exclusion_radius_m: 0`, which the sim honours when it rewrites the
+  exceeds `--exclusion-max-radius` (120 m) *and* the model's triangles,
+  projected on the ground, cover under 35 % of its footprint rectangle
+  (`ground_coverage`): such a model is a sparse detail set spread over a
+  whole airport, not a building, and a disc around it would wipe out every
+  lower-tier building for kilometres (FSDT Zurich's "ED" model, 2.4 km,
+  took the whole town of Kloten with it). A wide model that does cover its
+  footprint (a 420 m photogrammetry block of Bern, ground plus walls, covers
+  it more than once) keeps its polygon. Sparse objects get
+  `exclusion_radius_m: 0`, which the sim honours when it rewrites the
   pack (any positive value is used as the disc radius). When a model's
   bounds are known the zone is its footprint rectangle at its heading plus
   the margin (a `polygon` of four LV95 corners; a disc around a 300 m pier
@@ -459,7 +463,19 @@ from an MSFS package; a file written by hand uses the same fields:
   else 150 x its size clamped to 2.5 .. 30 km (a lamp 2.5 km, a hangar 9 km,
   a pier 30 km). It loads inside that distance, nearest first, fades in over
   1.2 s (`GeometryInstance3D.transparency`) and fades out over the last 20 %
-  of the range (visibility range, dithered), and unloads at 1.25 x.
+  of the range (visibility range, dithered), and unloads at 1.25 x. The
+  converter's `--view-distance M` writes `view_distance_m` for every object
+  of a package (Bern photogrammetry: 12 km, else each 420 m block would load
+  30 km out).
+- Photogrammetry packages (Bern, Google Earth tiles compiled for MSFS) are
+  134 blocks of about 420 x 310 m, 36 sub-tile meshes each, one LOD, all
+  placed at one origin with an absolute elevation and their geometry offset
+  kilometres from it: `--split 150` makes every block its own object at its
+  own position, `--keep-dds` keeps the 5364 DXT1 textures compressed (Godot's
+  DDS loader reads `uri` images from files, not from a bufferView, so the
+  converter writes them under `objects/textures/`), and the vertex normals
+  are trustworthy (95 % of the flat faces point up after rewinding) so the
+  usual winding fix applies.
 
 At runtime the C++ `SceneryObjects` node (`src/scenery_objects.cpp`) reads
 every enabled area's package in priority order, hands the zones to
