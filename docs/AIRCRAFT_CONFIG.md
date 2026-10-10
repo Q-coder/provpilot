@@ -75,7 +75,11 @@ animation of the model with values from `src/fg_bridge.cpp` (see
 `docs/A10_FLIGHTGEAR_PORT.md`). `hide_nodes "a, b"` hides model nodes by name
 (all matches), used for placeholder display textures. `scale` fits a model
 authored in metres: the AC frame draws models at 0.2 m per unit, so `5.0`
-gives real size (all three airframes use it). Generic FlightGear models the package references
+gives a model's own size (PC-7 and A-10, whose meshes match the real
+dimensions). The Cessna's Sketchfab mesh is 14 % oversize (wingtip lenses
+12.55 m apart for an 11.0 m span, 9.44 m long for 8.28 m), so it uses
+`4.38`; check a new model's span and length against the real aircraft
+before trusting `5.0`. Generic FlightGear models the package references
 (`/Aircraft/Instruments-3d/...`) come from `third_party/fgdata`; see
 `docs/INSTRUMENTS.md` for how instruments are built and added. A
 non-FlightGear model (the Cessna) gets instruments the same way: a
