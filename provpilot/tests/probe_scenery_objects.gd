@@ -25,7 +25,7 @@ func _ready() -> void:
 	for a in st.get_scenery_areas():
 		if str(a.get("path", "")) != area and (pack != "" or str(a.get("path", "")) != "/Users/gery/provpilot/scenery/Switzerland"):
 			areas.append(a)
-	if pack == "":
+	if pack == "" or OS.get_environment("PROBE_SWISS") == "1":   # PROBE_SWISS=1: the Swiss detail area (orthophoto) under any pack
 		areas.push_front({"name": "Switzerland (probe)", "path": "/Users/gery/provpilot/scenery/Switzerland", "enabled": true, "priority": 1})
 	areas.push_front({"name": area.get_file() + " (probe)", "path": area, "enabled": true, "priority": 0})
 	st.set_scenery_areas(areas)

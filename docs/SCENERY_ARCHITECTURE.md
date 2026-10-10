@@ -615,9 +615,18 @@ identical to the ModelConverterX export to the millimetre):
 - The glTF uses Asobo's optimized vertex format: one interleaved buffer
   (stride 36: POSITION float3, TANGENT and NORMAL as signed bytes, TEXCOORD_0/1
   and COLOR_0 as half floats) and one index accessor per mesh that every
-  primitive slices with `extras.ASOBO_primitive {StartIndex, PrimitiveCount}`.
-  The converter rewrites each mesh with float32 attributes compacted to the
-  vertices in use and one index accessor per primitive.
+  primitive slices with `extras.ASOBO_primitive {StartIndex, PrimitiveCount}`
+  (plus `BaseVertexIndex` once a mesh passes 65535 vertices: the indices stay
+  16-bit and each primitive offsets them). The converter rewrites each mesh
+  with float32 attributes compacted to the vertices in use and one index
+  accessor per primitive.
+- MSFS front faces are clockwise (DirectX, like its normal maps): 59 of the
+  60 Schmerlat and Kjeller models have every triangle wound against its
+  vertex normals. glTF front faces are counter-clockwise, so the converter
+  rewinds each triangle to agree with its vertex normals (2026-10-10). The
+  Schmerlat models never showed the problem because their materials are
+  double-sided; Kjeller's single-sided McDonald's and Circle K lost their
+  roofs and walls and showed their lettering mirrored from inside.
 - MSFS has no non-uniform node scale: a node scale `(sx, sy, sz)` is applied
   as the uniform mean of the three. The converter does the same
   (`--keep-nonuniform-scale` keeps the literal values).

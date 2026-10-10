@@ -11,7 +11,9 @@ What it does
   * Decodes Asobo's optimized vertex format: one interleaved buffer per model
     (POSITION float3, TANGENT/NORMAL as signed bytes, TEXCOORD_0/1 and COLOR_0
     as IEEE half floats), one shared index accessor per mesh that every
-    primitive slices with extras.ASOBO_primitive {StartIndex, PrimitiveCount}.
+    primitive slices with extras.ASOBO_primitive {StartIndex, PrimitiveCount,
+    BaseVertexIndex}. Triangles are rewound counter-clockwise about their vertex
+    normals (MSFS front faces are clockwise; glTF's are counter-clockwise).
     Each mesh is rewritten with plain float32 attributes, compacted to the
     vertices its triangles use, and one index accessor per primitive.
   * Strips the ASOBO_* / MSFT_texture_dds extensions, converts the DDS textures
@@ -403,7 +405,11 @@ def convert_model(js: dict, bin_: bytes, store: TextureStore, drop_vertex_colors
             ex = p.get("extras", {}).get("ASOBO_primitive", {})
             start = int(ex.get("StartIndex", 0))
             count = int(ex.get("PrimitiveCount", (idx_acc["count"] - start) // 3)) * 3
-            slices.append((p, all_idx[start:start + count], attrs0))
+            # a mesh with more than 65535 vertices keeps 16-bit indices and
+            # offsets them per primitive (Kjeller's club house: the walls were
+            # drawn with the wrong vertices without this)
+            base = int(ex.get("BaseVertexIndex", 0))
+            slices.append((p, all_idx[start:start + count] + base, attrs0))
         prims_out = []
         groups: Dict[Tuple[Tuple[str, int], ...], List[Tuple[dict, np.ndarray]]] = {}
         for p, ids, attrs in slices:
@@ -416,6 +422,7 @@ def convert_model(js: dict, bin_: bytes, store: TextureStore, drop_vertex_colors
             remap = np.full(nverts, -1, np.int64)
             remap[used] = np.arange(len(used))
             new_attrs = {}
+            pos_vals = nrm_vals = None
             for name, ai in attrs.items():
                 if name == "TEXCOORD_1" and not uses_uv1:
                     continue
@@ -423,6 +430,10 @@ def convert_model(js: dict, bin_: bytes, store: TextureStore, drop_vertex_colors
                     continue
                 raw = read_accessor(js, bin_, ai)[used]
                 vals = decode_attribute(name, js["accessors"][ai], raw)
+                if name == "POSITION":
+                    pos_vals = vals.astype(np.float64)
+                elif name == "NORMAL":
+                    nrm_vals = vals.astype(np.float64)
                 if name.startswith("COLOR"):
                     if np.all(np.abs(vals - 1.0) < 1e-3):
                         continue  # white everywhere: no tint
@@ -434,6 +445,7 @@ def convert_model(js: dict, bin_: bytes, store: TextureStore, drop_vertex_colors
                 tri = remap[ids]
                 if tri.size == 0 or (tri < 0).any():
                     continue
+                tri = fix_winding(tri, pos_vals, nrm_vals, report)
                 if len(used) < 65536:
                     ia = b.add_accessor(tri.astype(np.uint16), 5123, "SCALAR", 34963)
                 else:
@@ -488,6 +500,35 @@ def convert_model(js: dict, bin_: bytes, store: TextureStore, drop_vertex_colors
     store.warnings.clear()
     report["footprint_radius_m"] = footprint_radius(out, b)
     return out, bytes(b.bin), report
+
+
+def fix_winding(tri: np.ndarray, pos: Optional[np.ndarray], nrm: Optional[np.ndarray], report: dict) -> np.ndarray:
+    """Wind every triangle counter-clockwise about its vertex normals.
+
+    MSFS stores clockwise front faces (DirectX convention, like its normal
+    maps): all but one of the 60 Schmerlat and Kjeller models have their
+    triangles wound against their vertex normals. glTF front faces are
+    counter-clockwise, so a single-sided material got its outside culled and
+    its inside drawn (Kjeller's McDonald's: no roof from above, the walls
+    seen from within, mirrored lettering). The vertex normals are the
+    authority for which side is out: flip every triangle whose face normal
+    opposes them; a degenerate triangle follows the primitive's majority.
+    """
+    t3 = tri.reshape(-1, 3)
+    if pos is None or nrm is None or len(t3) == 0:
+        return tri
+    p = pos[t3]
+    fn = np.cross(p[:, 1] - p[:, 0], p[:, 2] - p[:, 0])
+    d = (fn * nrm[t3].mean(axis=1)).sum(axis=1)
+    flip = d < 0
+    undecided = d == 0
+    if undecided.any():
+        flip = flip | (undecided & (flip.sum() > (~flip & ~undecided).sum()))
+    if flip.any():
+        t3 = t3.copy()
+        t3[flip] = t3[flip][:, [0, 2, 1]]
+        report["flipped"] = report.get("flipped", 0) + int(flip.sum())
+    return t3.reshape(-1)
 
 
 def quat_matrix(q) -> np.ndarray:
@@ -605,9 +646,9 @@ def main() -> int:
         glb_path.write_bytes(build_glb(out_js, out_bin))
         written.append(name)
         radii[name] = rep["footprint_radius_m"]
-        print("  %-32s %3d meshes %4d prims %8d tris %8d verts %2d textures %2d scale-fixed nodes -> %s (%.1f MB)" % (
+        print("  %-32s %3d meshes %4d prims %8d tris %8d verts %2d textures %2d scale-fixed nodes %6d rewound -> %s (%.1f MB)" % (
             name, rep["meshes"], rep["primitives"], rep["triangles"], rep["vertices"], len(rep["textures"]),
-            rep["nonuniform_nodes"], glb_path.name, glb_path.stat().st_size / 1e6))
+            rep["nonuniform_nodes"], rep.get("flipped", 0), glb_path.name, glb_path.stat().st_size / 1e6))
         for w in rep["warnings"]:
             print("     ! " + w)
 

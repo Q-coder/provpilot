@@ -58,7 +58,12 @@ func _ready() -> void:
 	st.set_scenery_areas(areas)
 	root._apply_scenery_sources()
 	var so = root._scenery_objects
-	_check(so.get_object_count() == 35, "35 placed objects read from the pack (%d)" % so.get_object_count())
+	# count the scratch pack's objects only: the library may hold other packs (Kjeller) and the user's own Schmerlat entry
+	var in_pack := 0
+	for i in range(so.get_object_count()):
+		if str(so.get_object_info(i).get("pack", "")) == "lspf-schmerlat (smoke)":
+			in_pack += 1
+	_check(in_pack == 35, "35 placed objects read from the pack (%d of %d)" % [in_pack, so.get_object_count()])
 	_check(so.get_exclusion_zones().size() >= 25, "exclusion zones read from the pack (%d)" % so.get_exclusion_zones().size())
 	_check(so.get_excluded_object_count() == 0, "no object of the pack is hidden by its own zones")
 	var bm: Node = null
@@ -524,11 +529,11 @@ func _ready() -> void:
 	st.set_scenery_areas(saved)
 	root._apply_scenery_sources()
 	await get_tree().process_frame
-	var user_pack := 0
-	for a in saved:
-		if str(a.get("path", "")).simplify_path() == source and bool(a.get("enabled", true)):
-			user_pack = 35   # the user's own entry of the pack comes back with the library
-	_check(so.get_object_count() == user_pack, "removing the scratch area drops its objects (%d left, the library's own)" % so.get_object_count())
+	var scratch_left := 0
+	for i in range(so.get_object_count()):
+		if str(so.get_object_info(i).get("pack", "")) == "lspf-schmerlat (smoke)":
+			scratch_left += 1
+	_check(scratch_left == 0, "removing the scratch area drops its objects (%d of the scratch pack left, %d in the library's own packs)" % [scratch_left, so.get_object_count()])
 	if _fails.is_empty():
 		print("smoke_scenery_objects: OK")
 		get_tree().quit(0)
