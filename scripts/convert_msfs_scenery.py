@@ -591,6 +591,10 @@ def main() -> int:
     ap.add_argument("--drop-vertex-colors", action="store_true", help="never write COLOR_0")
     ap.add_argument("--exclusion-margin", type=float, default=3.0,
                     help="metres added to each model's footprint radius for its exclusion zone (default 3)")
+    ap.add_argument("--exclusion-max-radius", type=float, default=120.0,
+                    help="a model with a larger footprint radius gets no automatic exclusion zone (default 120): such "
+                         "models are sparse detail sets spread over a whole airport, and a disc around them would wipe "
+                         "out every building of the lower tiers for kilometres (FSDT Zurich: the town of Kloten)")
     ap.add_argument("--keep-nonuniform-scale", action="store_true",
                     help="keep node scales as stored instead of the uniform mean MSFS applies")
     args = ap.parse_args()
@@ -670,12 +674,24 @@ def main() -> int:
     # Exclusion zones: the buildings and trees of lower-priority packs are
     # removed under every placed model (footprint disc + margin). Edit by
     # hand for a whole airfield perimeter: {"kinds": "...", "polygon": [[e, n], ...]}.
+    # A model wider than --exclusion-max-radius is a sparse detail set (apron
+    # lamps, people, signs over a whole airport): it gets exclusion_radius_m 0,
+    # which the sim honours when it rewrites the pack, and a note below.
     exclusions = []
+    sparse = set()
     for obj in objects:
-        if "position_e" in obj and obj["footprint_radius_m"] > 0.5:
-            exclusions.append({"kinds": "buildings,vegetation,objects",
-                               "circle": [obj["position_e"], obj["position_n"], round(obj["footprint_radius_m"] + args.exclusion_margin, 1)],
-                               "object": obj["name"]})
+        if "position_e" not in obj or obj["footprint_radius_m"] <= 0.5:
+            continue
+        if obj["footprint_radius_m"] > args.exclusion_max_radius:
+            obj["exclusion_radius_m"] = 0
+            sparse.add(obj["name"])
+            continue
+        exclusions.append({"kinds": "buildings,vegetation,objects",
+                           "circle": [obj["position_e"], obj["position_n"], round(obj["footprint_radius_m"] + args.exclusion_margin, 1)],
+                           "object": obj["name"]})
+    if sparse:
+        print("no exclusion zone (footprint over %.0f m, a sparse detail model; set exclusion_radius_m in package.json "
+              "or draw a polygon by hand): %s" % (args.exclusion_max_radius, ", ".join(sorted(sparse))))
     if placements or objects:
         lat0 = sum(o["lat"] for o in objects) / len(objects) if objects else None
         lon0 = sum(o["lon"] for o in objects) / len(objects) if objects else None

@@ -436,8 +436,14 @@ from an MSFS package; a file written by hand uses the same fields:
   polygon: `buildings` (swissBUILDINGS3D tiles), `vegetation` (trees) and
   `objects` (models of lower packs). Areas above the pack are never touched,
   so the highest entry in the library wins. The converter writes one circle
-  per placed model (its footprint plus 3 m); an airfield perimeter is best
-  added by hand as a polygon.
+  per placed model (its footprint plus 3 m) unless the footprint radius
+  exceeds `--exclusion-max-radius` (120 m): such a model is a sparse detail
+  set spread over a whole airport, not a building, and a disc around it
+  would wipe out every lower-tier building for kilometres (FSDT Zurich's
+  "ED" model, 2.4 km, took the whole town of Kloten with it). Those objects
+  get `exclusion_radius_m: 0`, which the sim honours when it rewrites the
+  pack (any positive value is used as the disc radius); an airfield
+  perimeter is best added by hand as a polygon.
 
 At runtime the C++ `SceneryObjects` node (`src/scenery_objects.cpp`) reads
 every enabled area's package in priority order, hands the zones to

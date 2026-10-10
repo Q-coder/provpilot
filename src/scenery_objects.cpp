@@ -27,6 +27,10 @@ using namespace godot;
 
 namespace jsbgodot
 {
+// A placed model wider than this gets no automatic exclusion disc when a pack is
+// rewritten: it is a sparse detail set over a whole airport, not a building.
+static const double EXCLUSION_MAX_RADIUS_M = 120.0;
+
 
 void SceneryObjects::_bind_methods()
 {
@@ -934,14 +938,22 @@ int SceneryObjects::save_packs()
 			const double footprint = footprint_m(p);
 			o["footprint_radius_m"] = Math::snapped(footprint, 0.01);
 			objs.push_back(o);
-			if (footprint > 0.5)
+			// exclusion disc: the pack entry's exclusion_radius_m when set (0 = none),
+			// else the footprint + margin, but never for a sparse detail model wider
+			// than EXCLUSION_MAX_RADIUS_M (the converter's --exclusion-max-radius)
+			double zone_r = footprint > 0.5 ? footprint + margin : 0.0;
+			if (p.orig.has("exclusion_radius_m"))
+				zone_r = (double)p.orig["exclusion_radius_m"];
+			else if (footprint > EXCLUSION_MAX_RADIUS_M)
+				zone_r = 0.0;
+			if (zone_r > 0.0)
 			{
 				Dictionary z;
 				z["kinds"] = "buildings,vegetation,objects";
 				Array c;
 				c.push_back(Math::snapped(p.e, 0.01));
 				c.push_back(Math::snapped(p.n, 0.01));
-				c.push_back(Math::snapped(footprint + margin, 0.1));
+				c.push_back(Math::snapped(zone_r, 0.1));
 				z["circle"] = c;
 				z["object"] = p.name;
 				ex.push_back(z);
