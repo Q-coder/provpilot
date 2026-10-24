@@ -9,6 +9,7 @@
 #include <godot_cpp/variant/typed_array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
+#include <algorithm>
 #include <cmath>
 
 #include "geo.h"
@@ -43,6 +44,7 @@ void WorldScenery::_bind_methods()
 	ClassDB::bind_method(D_METHOD("terrain_elevation_below", "world_pos"), &WorldScenery::terrain_elevation_below);
 	ClassDB::bind_method(D_METHOD("ground_height_geodetic", "lat", "lon"), &WorldScenery::ground_height_geodetic);
 	ClassDB::bind_method(D_METHOD("ground_height_below", "world_pos"), &WorldScenery::ground_height_below);
+	ClassDB::bind_method(D_METHOD("road_surface_at", "lat", "lon", "h_hint"), &WorldScenery::road_surface_at);
 	ClassDB::bind_method(D_METHOD("max_terrain_around", "e", "n", "true_heading_deg"), &WorldScenery::max_terrain_around);
 	ClassDB::bind_method(D_METHOD("count_loaded_ring", "e", "n", "radius_m"), &WorldScenery::count_loaded_ring);
 
@@ -181,6 +183,40 @@ double WorldScenery::runway_lift_at(const Vector3 &world_pos) const
 	return runways->call("surface_lift_at", world_pos);
 }
 
+Node *WorldScenery::road_manager_node() const
+{
+	Node *rm = live_node(road_manager_id);
+	if (rm != nullptr)
+	{
+		return rm;
+	}
+	Node *scenery = scenery_node();
+	if (scenery == nullptr)
+	{
+		return nullptr;
+	}
+	// Scenery3D creates its S3DRoadManager child once it has road paths
+	const TypedArray<Node> found = scenery->find_children("*", "S3DRoadManager", false, false);
+	if (found.is_empty())
+	{
+		return nullptr;
+	}
+	rm = Object::cast_to<Node>(static_cast<Object *>(found[0]));
+	road_manager_id = rm != nullptr ? rm->get_instance_id() : 0;
+	return rm;
+}
+
+double WorldScenery::road_surface_at(double lat, double lon, double h_hint) const
+{
+	Node *rm = road_manager_node();
+	if (rm == nullptr || !rm->has_method("surface_height_at"))
+	{
+		return NAN;
+	}
+	const Vector2 en = Geo::wgs84_to_lv95(lat, lon);
+	return rm->call("surface_height_at", en.x, en.y, h_hint, ROAD_SURFACE_TOL_M);
+}
+
 double WorldScenery::ground_height_geodetic(double lat, double lon) const
 {
 	const double h = scenery_elevation_geodetic(lat, lon);
@@ -188,17 +224,24 @@ double WorldScenery::ground_height_geodetic(double lat, double lon) const
 	{
 		return NAN;
 	}
-	return h + runway_lift_at(geo::ecef_of(lat, lon, h));
+	const double ground = h + runway_lift_at(geo::ecef_of(lat, lon, h));
+	const double road = road_surface_at(lat, lon, h);
+	return std::isnan(road) ? ground : std::max(ground, road);
 }
 
 double WorldScenery::ground_height_below(const Vector3 &world_pos) const
 {
-	const double h = terrain_elevation_below(world_pos);
+	const geo::Geodetic g = geo::geodetic_of(world_pos);
+	const double h = terrain_elevation_geodetic(g.lat, g.lon);
 	if (std::isnan(h))
 	{
 		return NAN;
 	}
-	return h + runway_lift_at(world_pos);
+	// the drawn ground is the top-most surface: pavement over terrain, a
+	// road ribbon over both (a ribbon sunk into a terrain bump stays below)
+	const double ground = h + runway_lift_at(world_pos);
+	const double road = road_surface_at(g.lat, g.lon, g.h);
+	return std::isnan(road) ? ground : std::max(ground, road);
 }
 
 double WorldScenery::max_terrain_around(double e, double n, double true_heading_deg) const

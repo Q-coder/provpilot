@@ -13,7 +13,12 @@ base terrain (34 px / 1024 m SRTM tiles, bilinear) smoothed along the way
 (roads ±120 m, rails ±250 m; bridges span straight between their ends,
 tunnels are dropped), and with --corridor the terrain tiles are re-written
 so the ground under each road / track follows that profile (the road cut
-and embankment on a 30 m posting). Road widths come from the lane count
+and embankment on a 30 m posting). Terrain writes are derived, never
+cumulative: every tile of the box starts again from <region>/terrain_base/
+(the tiles as build_world_terrain.py baked them, airport plateaus included;
+a tile without a pristine copy yet gets one from terrain/ on first use), then
+the designs' plateaus and the corridors go in. So a plateau or way deleted
+from a design and baked again leaves no trace in the ground. Road widths come from the lane count
 (OSM `lanes`, class default) per carriageway: motorways are mapped one
 way per carriageway, so each gets its own lanes plus a hard shoulder.
 Rails are real geometry: a ballast bed per track plus two extruded rails
@@ -34,6 +39,16 @@ Usage (Zürich starter box, LV95):
 Inputs: Geofabrik PBF in /Volumes/Data1/scenery_in_world/osm/ (downloaded
 by hand or --fetch), the region's baked terrain from build_world_terrain.py.
 OSM data © OpenStreetMap contributors, ODbL 1.0.
+Terrain: the region's base tiles (30 m posting), read from the pristine
+terrain_base and written back with the corridors by --corridor and the
+design's plateaus. Without --corridor the profiles sit on the pristine
+ground, not on the corridor-cut terrain/ that is drawn: a test bake into
+another --out must use --corridor with a --terrain-dir copy to compare.
+--terrain-overlay DIR adds a finer terrain drawn over the base tiles (an
+enabled 2 m Swiss scenery area, same tile format): where it has data the
+ribbons follow it, with a short smoothing window, since a ribbon baked on
+the 30 m tier floats or sinks by metres on it. The scenery editor's Bake
+area passes the overlays of the enabled areas itself.
 """
 from __future__ import annotations
 
@@ -42,6 +57,7 @@ import hashlib
 import json
 import math
 import os
+import shutil
 import struct
 import sys
 import time
@@ -187,15 +203,84 @@ wgs = Transformer.from_crs("EPSG:2056", "EPSG:4326", always_xy=True)
 
 
 # ── terrain ─────────────────────────────────────────────────────────────────
-class Terrain:
-    """The region's baked base tiles: pixel (0,0) = SE corner, columns run
-    East→West, rows South→North (build_world_terrain.py / s3d_tile.cpp)."""
+def _sample_tile(layer, e: float, n: float, tri: bool, nodata_zero: bool = False) -> float:
+    """Height at (e, n) from a tile layer (`load(te, tn)`, `px`, `tile_m`):
+    bilinear, or with tri=True the runtime mesh's own surface (s3d_tile.cpp
+    splits every pixel quad along the (col + 1, row) - (col, row + 1)
+    diagonal) - what a ribbon must clear. NaN without a tile, and with
+    nodata_zero where one of the four pixels is 0.0 (an overlay's "no data")."""
+    te = int(math.floor(e / layer.tile_m)) * layer.tile_m
+    tn = int(math.floor(n / layer.tile_m)) * layer.tile_m
+    a = layer.load(te, tn)
+    if a is None:
+        return float("nan")
+    px = layer.px
+    pcol = (1.0 - (e - te) / layer.tile_m) * (px - 1)
+    prow = (n - tn) / layer.tile_m * (px - 1)
+    c0 = max(0, min(px - 2, int(pcol)))
+    r0 = max(0, min(px - 2, int(prow)))
+    fc, fr = pcol - c0, prow - r0
+    h00, h10, h01, h11 = a[r0, c0], a[r0, c0 + 1], a[r0 + 1, c0], a[r0 + 1, c0 + 1]
+    if nodata_zero and (h00 == 0.0 or h10 == 0.0 or h01 == 0.0 or h11 == 0.0):
+        return float("nan")
+    if tri:
+        if fc + fr <= 1.0:
+            return float(h00 + (h10 - h00) * fc + (h01 - h00) * fr)
+        return float(h11 + (h01 - h11) * (1.0 - fc) + (h10 - h11) * (1.0 - fr))
+    return float(h00 * (1 - fc) * (1 - fr) + h10 * fc * (1 - fr) + h01 * (1 - fc) * fr + h11 * fc * fr)
+
+
+class Overlay:
+    """A finer terrain drawn over the region's base tiles (the installed
+    Swiss 2 m scenery's terrain/: the same raw float32 tiles and manifest),
+    read only. A pixel of 0.0 is "no data" (Scenery3D's rule) and the base
+    tier shows through there, so the bake samples the overlays first and the
+    ribbons sit on the terrain one sees; the terrain writes (corridors,
+    plateaus) stay in the base tier."""
 
     def __init__(self, terrain_dir: Path):
         self.dir = terrain_dir
         m = json.load(open(terrain_dir / "manifest.json"))
         self.px = int(m["pixels_per_tile"])
         self.tile_m = int(m.get("tile_size_m", TILE_M))
+        self.res_m = self.tile_m / (self.px - 1)
+        self.tiles: dict = {}
+        self.missing: set = set()
+
+    def load(self, te: int, tn: int):
+        k = (te, tn)
+        if k in self.tiles:
+            return self.tiles[k]
+        if k in self.missing:
+            return None
+        p = self.dir / f"tile_{te}_{tn}.raw"
+        if not p.exists():
+            self.missing.add(k)
+            return None
+        a = np.fromfile(p, dtype="<f4").reshape(self.px, self.px)
+        if not a.any():            # an empty tile: no data at all
+            self.missing.add(k)
+            return None
+        self.tiles[k] = a
+        return a
+
+    def sample(self, e: float, n: float, tri: bool = False) -> float:
+        return _sample_tile(self, e, n, tri, nodata_zero=True)
+
+
+class Terrain:
+    """The region's baked base tiles: pixel (0,0) = SE corner, columns run
+    East→West, rows South→North (build_world_terrain.py / s3d_tile.cpp).
+    `overlays` (finer terrains drawn over them) answer a sample first."""
+
+    def __init__(self, terrain_dir: Path):
+        self.dir = terrain_dir
+        self.base = terrain_dir.parent / "terrain_base"   # the pristine tiles every bake starts from
+        m = json.load(open(terrain_dir / "manifest.json"))
+        self.px = int(m["pixels_per_tile"])
+        self.tile_m = int(m.get("tile_size_m", TILE_M))
+        self.res_m = self.tile_m / (self.px - 1)
+        self.overlays: list = []
         self.tiles: dict = {}
         self.dirty: set = set()
         self.missing: set = set()
@@ -211,34 +296,36 @@ class Terrain:
         if k in self.missing:
             return None
         p = self.path(te, tn)
-        if not p.exists():
+        b = self.base / p.name
+        if b.exists():
+            src = b
+        elif p.exists():
+            # no pristine copy yet: the tile as built is the base from now on
+            self.base.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(p, b)
+            src = p
+        else:
             self.missing.add(k)
             return None
-        a = np.fromfile(p, dtype="<f4").reshape(self.px, self.px).copy()
+        a = np.fromfile(src, dtype="<f4").reshape(self.px, self.px).copy()
         self.tiles[k] = a
         return a
 
     def sample(self, e: float, n: float, tri: bool = False) -> float:
-        """Terrain height at (e, n): bilinear, or with tri=True the runtime
-        mesh's own surface (s3d_tile.cpp splits every pixel quad along the
-        (col + 1, row) - (col, row + 1) diagonal) - what a ribbon must clear."""
-        te = int(math.floor(e / self.tile_m)) * self.tile_m
-        tn = int(math.floor(n / self.tile_m)) * self.tile_m
-        a = self.load(te, tn)
-        if a is None:
-            return float("nan")
-        px = self.px
-        pcol = (1.0 - (e - te) / self.tile_m) * (px - 1)
-        prow = (n - tn) / self.tile_m * (px - 1)
-        c0 = max(0, min(px - 2, int(pcol)))
-        r0 = max(0, min(px - 2, int(prow)))
-        fc, fr = pcol - c0, prow - r0
-        h00, h10, h01, h11 = a[r0, c0], a[r0, c0 + 1], a[r0 + 1, c0], a[r0 + 1, c0 + 1]
-        if tri:
-            if fc + fr <= 1.0:
-                return float(h00 + (h10 - h00) * fc + (h01 - h00) * fr)
-            return float(h11 + (h01 - h11) * (1.0 - fc) + (h10 - h11) * (1.0 - fr))
-        return float(h00 * (1 - fc) * (1 - fr) + h10 * fc * (1 - fr) + h01 * (1 - fc) * fr + h11 * fc * fr)
+        """Terrain height at (e, n) (see _sample_tile): the first overlay
+        with data there, else the base tile."""
+        for ov in self.overlays:
+            h = ov.sample(e, n, tri)
+            if not math.isnan(h):
+                return h
+        return _sample_tile(self, e, n, tri)
+
+    def res_at(self, e: float, n: float) -> float:
+        """Posting (m) of the layer that answers at (e, n)."""
+        for ov in self.overlays:
+            if not math.isnan(ov.sample(e, n)):
+                return ov.res_m
+        return self.res_m
 
     def corridor_acc(self, te: int, tn: int):
         k = (te, tn)
@@ -262,6 +349,28 @@ class Terrain:
                 self.dirty.add(k)
                 n += int(m.sum())
         self.acc.clear()
+        return n
+
+    def reset_box(self, e0, n0, e1, n1):
+        """Every tile touching the box is loaded from terrain_base and marked
+        for writing, so the bake's terrain is base + this design, whatever
+        an earlier bake wrote there."""
+        n = 0
+        for te in range(int(math.floor(e0 / self.tile_m)) * self.tile_m, int(math.ceil(e1 / self.tile_m)) * self.tile_m, self.tile_m):
+            for tn in range(int(math.floor(n0 / self.tile_m)) * self.tile_m, int(math.ceil(n1 / self.tile_m)) * self.tile_m, self.tile_m):
+                if self.load(te, tn) is not None:
+                    self.dirty.add((te, tn))
+                    n += 1
+        return n
+
+    def reset_all(self):
+        """reset_box for the whole region (a bake without --bbox)."""
+        n = 0
+        for f in self.dir.glob("tile_*.raw"):
+            te, tn = (int(v) for v in f.stem.split("_")[1:3])
+            if self.load(te, tn) is not None:
+                self.dirty.add((te, tn))
+                n += 1
         return n
 
     def pixel_en(self, te: int, tn: int, row: int, col: int):
@@ -826,6 +935,28 @@ def bake_flatten(terrain, poly, h):
                         touched += 1
             terrain.dirty.add((te, tn))
     return touched
+
+
+def taper_profile(half, taper, total):
+    """Half width by chainage of a way whose ends narrow to a neighbour:
+    `taper` = (start, end) target half widths (None = the full width). A
+    lane taper of TAPER_PER_LANE_M per 1.6 m of half width, ending at the
+    node. Returns half_at(s), or None when nothing narrows."""
+    t0 = taper[0] if taper[0] is not None and taper[0] < half - 0.01 else None
+    t1 = taper[1] if taper[1] is not None and taper[1] < half - 0.01 else None
+    if t0 is None and t1 is None:
+        return None
+    L0 = TAPER_PER_LANE_M * max(1.0, (half - t0) / 1.6) if t0 is not None else 1.0
+    L1 = TAPER_PER_LANE_M * max(1.0, (half - t1) / 1.6) if t1 is not None else 1.0
+
+    def half_at(sv):
+        hw = half
+        if t0 is not None:
+            hw = min(hw, t0 + (half - t0) * min(1.0, sv / L0))
+        if t1 is not None:
+            hw = min(hw, t1 + (half - t1) * min(1.0, (total - sv) / L1))
+        return hw
+    return half_at
 
 
 def trim_start(pts, metres):
@@ -1468,12 +1599,13 @@ def protection_mask(protect, E, N):
 
 
 # ── corridor bake ───────────────────────────────────────────────────────────
-def emit_skirts(buf, xz, tops, s, half, lift, terrain, end_frames=(None, None)):
+def emit_skirts(buf, xz, tops, s, half, lift, terrain, end_frames=(None, None), halves=None):
     """Embankment strips where a ribbon rides above the ground: from just
     under each ribbon edge down to the terrain at a 1:SKIRT_RUN slope, on
     the runs of stations that are more than SKIRT_MIN_M up (padded by one
     station each side so the strip tapers out). `tops` are the ground-level
-    profile heights, `lift` the ribbon's baked lift. Returns metres built."""
+    profile heights, `lift` the ribbon's baked lift, `halves` the per-station
+    half widths of a tapered ribbon. Returns metres built."""
     n = len(xz)
     if n < 2:
         return 0.0
@@ -1488,7 +1620,8 @@ def emit_skirts(buf, xz, tops, s, half, lift, terrain, end_frames=(None, None)):
         for i in range(n):
             px, pz = frames[i]
             x, z = xz[i]
-            ix, iz = x - px * side * half, z - pz * side * half
+            hw = halves[i] if halves else half
+            ix, iz = x - px * side * hw, z - pz * side * hw
             g = terrain.sample(CONV_E - ix, iz + CONV_N, tri=True)
             top = float(tops[i])
             gap = (top - g) if not math.isnan(g) else 0.0
@@ -1807,6 +1940,9 @@ def main():
     ap.add_argument("--fetch", action="store_true", help="download the Geofabrik extract when missing")
     ap.add_argument("--bbox", nargs=4, type=float, metavar=("E0", "N0", "E1", "N1"), help="LV95 box (default: whole region)")
     ap.add_argument("--terrain-dir", default="")
+    ap.add_argument("--terrain-overlay", action="append", default=[], metavar="DIR",
+                    help="a finer terrain drawn over the region's (the installed Swiss 2 m scenery's terrain/, same tile format): "
+                         "the ribbons follow it where it has data; repeatable")
     ap.add_argument("--out", default="")
     ap.add_argument("--corridor", action="store_true", help="re-write the terrain tiles so the ground follows each road / track")
     ap.add_argument("--source", choices=["osm", "tlm"], default="osm",
@@ -1848,6 +1984,10 @@ def main():
         urllib.request.urlretrieve(url, pbf)
     terrain = Terrain(terrain_dir)
     print(f"region {args.region}: terrain {terrain.px} px tiles at {terrain_dir}, PBF {pbf} ({pbf.stat().st_size / 1e6:.0f} MB)")
+    for d in args.terrain_overlay:
+        ov = Overlay(Path(d))
+        terrain.overlays.append(ov)
+        print(f"terrain overlay: {ov.px} px tiles ({ov.res_m:.1f} m posting) at {d}")
 
     bbox_wgs = None
     if args.bbox:
@@ -1895,9 +2035,12 @@ def main():
         except Exception as e:   # pragma: no cover
             print("WARNING: block", bf, "not readable:", e)
     print(f"junction blocks: {sorted(block_lib)} from {args.blocks}")
-    # Stage 0: the designs' plateaus into the terrain (with --corridor, the
-    # flag that allows terrain writes), before any profile is sampled.
+    # Stage 0: with --corridor (the flag that allows terrain writes) every
+    # tile of the box starts from terrain_base again, then the designs'
+    # plateaus go in, before any profile is sampled.
     if args.corridor:
+        stats["terrain_reset"] = terrain.reset_box(*args.bbox) if args.bbox else terrain.reset_all()
+        print(f"terrain: {stats['terrain_reset']} tiles reset from {terrain.base}")
         for d in designs:
             for poly, h in d.flatten:
                 stats["flatten_px"] += bake_flatten(terrain, poly, h)
@@ -1957,7 +2100,10 @@ def main():
             tracks = int(max(1, min(4, parse_num(w["tracks"], 1))))
             width = BALLAST_WIDTH_M + TRACK_SPACING_M * (tracks - 1) if ballast else gauge + 1.0
             colour = kind = lanes = None
-        tp = terrain_profile(pts, terrain, hw)
+        # the along-track smoothing: the class's window on the 30 m base tier
+        # (its posting makes the raw profile a staircase), a few metres on a
+        # 2 m overlay (that DTM already is the road's own grade)
+        tp = terrain_profile(pts, terrain, min(hw, max(8.0, 4.0 * terrain.res_at(pts[0][0], pts[0][1]))))
         if tp is None:
             stats["no_terrain"] += 1
             continue
@@ -2106,9 +2252,9 @@ def main():
 
     orient_index = StationIndex(ways, everything=True)
     flips = 0
+    votes = {}   # wi -> +1 keep / -1 flip (strength); swissTLM3D only
     if any(w["w"].get("source") == "tlm" for w in ways):
         oneways = [wi for wi, wy in enumerate(ways) if wy["w"]["kind"] == "road" and wy["w"]["oneway"] and wy["w"].get("source") == "tlm"]
-        votes = {}   # wi -> +1 keep / -1 flip (strength)
         for wi in oneways:
             wy = ways[wi]
             cls = wy["w"]["cls"]
@@ -2511,19 +2657,43 @@ def main():
         wa["s"] = along(wa["pts"])
         wa["end_frames"] = [None, None]
 
-    # (a) entries and exits: a one-way link on a one-way carriageway
+    # (a) entries and exits: a one-way link on a one-way carriageway. Two
+    # forms of the same situation: swissTLM3D's link ends BESIDE an unsplit
+    # carriageway line (an attachment: the carriageway is a through leg),
+    # OSM splits the carriageway at the junction node, so the node holds the
+    # link's end plus the end of the arriving and the start of the departing
+    # carriageway way (three way ends). The block is stamped on the
+    # carriageway chain either way (chain_walk follows the OSM split).
     for key, legs in list(nodes.items()):
         ends = [L for L in legs if L["end"]]
         thrus = [L for L in legs if not L["end"]]
-        if len(ends) != 1 or not thrus or len(set(L["wi"] for L in thrus)) != 1:
+        cw_legs = []
+        if len(ends) == 1 and thrus and len(set(L["wi"] for L in thrus)) == 1:
+            A, B_wi, s0 = ends[0], thrus[0]["wi"], thrus[0]["s0"]          # the TLM form
+        elif not thrus and len(ends) == 3:
+            links = [L for L in ends if ways[L["wi"]]["w"]["cls"] in ("motorway_link", "trunk_link")]
+            cws = [L for L in ends if ways[L["wi"]]["w"]["cls"] in ("motorway", "trunk")]
+            if len(links) != 1 or len(cws) != 2:
+                continue
+            arriving = [L for L in cws if not L["fwd"]]
+            departing = [L for L in cws if L["fwd"]]
+            if len(arriving) != 1 or len(departing) != 1:
+                continue
+            if ways[arriving[0]["wi"]]["w"]["cls"] != ways[departing[0]["wi"]]["w"]["cls"]:
+                continue
+            if arriving[0]["dir"][0] * departing[0]["dir"][0] + arriving[0]["dir"][1] * departing[0]["dir"][1] > -0.7:
+                continue                                                  # the carriageway bends sharply here: not a continuation
+            if not all(ways[L["wi"]]["w"]["oneway"] for L in cws):
+                continue
+            A, B_wi, s0 = links[0], arriving[0]["wi"], ways[arriving[0]["wi"]]["s"][-1]   # the OSM form
+            cw_legs = cws
+        else:
             continue
-        A, B_wi = ends[0], thrus[0]["wi"]
         wa, wb = ways[A["wi"]], ways[B_wi]
         if not (wa["w"]["oneway"] and wb["w"]["oneway"]) or wa["w"]["kind"] != "road" or wb["w"]["kind"] != "road":
             continue
         if wb["w"]["cls"] not in ("motorway", "trunk") or wa["w"]["cls"] not in ("motorway_link", "trunk_link"):
             continue
-        s0 = thrus[0]["s0"]
         tb = tangent_at(wb, s0)
         ta = tangent_at(wa, 0.0 if A["fwd"] else wa["s"][-1])
         if ta[0] * tb[0] + ta[1] * tb[1] < 0.7:
@@ -2551,7 +2721,9 @@ def main():
             rejoin_ramp(wa, entry, (e, n, h), frame.tangent(py))
         colour = ROAD_CLASSES[wb["w"]["cls"]][1]
         stamp_block(block, frame, wb, tuple(int(c * 255) for c in colour))
-        nodes[key] = []
+        # the ramp leaves the node (the block has it); the two carriageway
+        # halves of the OSM form stay and meet on a mitre or a width taper
+        nodes[key] = cw_legs
         stats["blocks_entry" if entry else "blocks_exit"] += 1
         if os.environ.get("PVP_DEBUG_NODE"):
             de, dn = (float(v) for v in os.environ["PVP_DEBUG_NODE"].split(","))
@@ -2589,6 +2761,28 @@ def main():
         stamp_block(block, frame, wn, tuple(int(c * 255) for c in colour))
         nodes[key] = []
         stats["blocks_lane_add" if add else "blocks_lane_drop"] += 1
+
+    # (c) a width change: two road ways continuing each other (one node, both
+    # way ends) with different widths met as a step with a notch, the wider
+    # ribbon's edges jumping to the narrower one at the node. The wider way
+    # narrows to the other's width over TAPER_PER_LANE_M per lane of
+    # difference ending at the node (the lane taper of the design chains,
+    # taper_profile) and the two then meet on a plain mitre like two ways of
+    # one width.
+    width_tapers = 0
+    for key, legs in nodes.items():
+        if len(legs) != 2 or not all(L["end"] for L in legs):
+            continue
+        a, b = legs
+        if a["wi"] == b["wi"] or abs(a["half"] - b["half"]) < 0.05:
+            continue
+        if ways[a["wi"]]["w"]["tunnel"] or ways[b["wi"]]["w"]["tunnel"]:
+            continue
+        wide, narrow = (a, b) if a["half"] > b["half"] else (b, a)
+        ways[wide["wi"]].setdefault("taper", [None, None])[0 if wide["fwd"] else 1] = narrow["half"]
+        wide["half"] = narrow["half"]
+        width_tapers += 1
+    stats["width_tapers"] = width_tapers
 
     patches = []
     for key, legs in nodes.items():
@@ -2829,6 +3023,10 @@ def main():
             for k in {(int(math.floor(e / TILE_M)) * TILE_M, int(math.floor(n / TILE_M)) * TILE_M) for e, n in full}:
                 sidecars[k].append(rec)
         cutters = wy["cutters"]
+        # the lane taper of this way: from its design graph (Design._ways) or
+        # a width change of the baked network at one of its nodes (stage 4a)
+        taper = [t if t is not None else u for t, u in zip(wy.get("taper") or (None, None), w.get("taper") or (None, None))]
+        half_at = taper_profile(width * 0.5, taper, total) if w["kind"] == "road" else None
         if w["kind"] == "road" and len(wy["pts"]) >= 2 and not w["tunnel"]:
             # markings over the whole way (through the patches), by tile
             full_p, full_h = wy["pts"], list(wy["prof"])
@@ -2846,30 +3044,16 @@ def main():
                 buf = tiles[k]
                 buf.current_way = 0 if w.get("design") else int(w["id"])
                 stats["markings"] += emit_markings(buf, xz, ys, s, width * 0.5, kind, lanes,
-                                                   (ef[0] if lo == 0 else None, ef[1] if hi == len(full_p) - 1 else None), cutters, None)
+                                                   (ef[0] if lo == 0 else None, ef[1] if hi == len(full_p) - 1 else None), cutters,
+                                                   [half_at(sv) for sv in wy["s"][lo:hi + 1]] if half_at else None)
         for (pa, pb) in pieces:
             pts, prof = way_piece(wy, pa, pb)
             if len(pts) < 2:
                 continue
             prof = np.asarray(prof, dtype=float)
             piece_ef = (ef[0] if pa <= 0.0 else None, ef[1] if pb >= total else None)
-            # lane taper of a design chain: the wider end narrows to its neighbour over 30 m per lane
-            halves_full = None
-            taper = w.get("taper")
-            if taper and any(t is not None for t in taper) and w["kind"] == "road":
-                s_full = along(pts)
-                tot = s_full[-1] or 1.0
-                half = width * 0.5
-                halves_full = []
-                for si in s_full:
-                    hw = half
-                    if taper[0] is not None and taper[0] < half:
-                        L = TAPER_PER_LANE_M * max(1.0, (half - taper[0]) / 1.6)
-                        hw = min(hw, taper[0] + (half - taper[0]) * min(1.0, si / L))
-                    if taper[1] is not None and taper[1] < half:
-                        L1 = TAPER_PER_LANE_M * max(1.0, (half - taper[1]) / 1.6)
-                        hw = min(hw, taper[1] + (half - taper[1]) * min(1.0, (tot - si) / L1))
-                    halves_full.append(hw)
+            # the lane taper by chainage along the whole way (pa + the piece's own)
+            halves_full = [half_at(pa + sv) for sv in along(pts)] if half_at else None
             # split into 1 km tiles (a segment crossing a boundary is kept in both tiles' ribbons)
             by_tile: dict = defaultdict(list)
             for i, (e, n) in enumerate(pts):
@@ -2893,7 +3077,7 @@ def main():
                     buf.ribbon(xz, ys, width, cu, KIND_JUNCTION, 0.0, s, float(lanes), halves_seg, frames_end)
                     stats["road_m"] += s[-1]
                     if on_ground:
-                        stats["skirt_m"] += emit_skirts(buf, xz, seg_h, s, width * 0.5, road_lift, terrain, frames_end)
+                        stats["skirt_m"] += emit_skirts(buf, xz, seg_h, s, width * 0.5, road_lift, terrain, frames_end, halves_seg)
                 else:
                     ys_b = [h + ballast_lift for h in seg_h]
                     if ballast:
@@ -3060,9 +3244,9 @@ def main():
           f"no-terrain ways {stats['no_terrain']}; bridges lifted {stats['bridges_lifted']} over {stats['bridge_crossings']} crossings, "
           f"ramps {stats['ramps']}, tunnels {stats['tunnels']} (+{stats['underpasses']} underpasses); "
           f"surveyed heights {stats['ways_with_heights']} ways, surveyed bridges {stats['surveyed_bridges']}; "
-          f"network: one-way flips {stats['oriented_flips']}, blocks: entry {stats['blocks_entry']}, exit {stats['blocks_exit']}, lane add {stats['blocks_lane_add']}, lane drop {stats['blocks_lane_drop']} ({stats['block_pave_m2'] / 1e4:.1f} ha); pavement patches {stats['patches']} ({stats['patch_m2'] / 1e4:.1f} ha, {stats['attached_ends']} attached ends), mitred joins {stats['mitres']}, ways inside patches {stats['ways_inside_junctions']}, marking pieces {stats['markings']}, embankments {stats['skirt_m'] / 1000:.0f} km, "
+          f"network: one-way flips {stats['oriented_flips']}, blocks: entry {stats['blocks_entry']}, exit {stats['blocks_exit']}, lane add {stats['blocks_lane_add']}, lane drop {stats['blocks_lane_drop']} ({stats['block_pave_m2'] / 1e4:.1f} ha); pavement patches {stats['patches']} ({stats['patch_m2'] / 1e4:.1f} ha, {stats['attached_ends']} attached ends), mitred joins {stats['mitres']} ({stats['width_tapers']} width changes tapered), ways inside patches {stats['ways_inside_junctions']}, marking pieces {stats['markings']}, embankments {stats['skirt_m'] / 1000:.0f} km, "
           f"piers {stats['piers']} (skipped: {stats['piers_low']} low decks, {stats['piers_over_ways']} over ways); "
-          f"designs {len(designs)} (junctions {stats['junctions']}, OSM ways cut {stats['osm_ways_cut']}, replaced by id {stats['osm_ways_replaced']}, plateaus {stats['plateaus']} = {stats['flatten_px']} px, areas {stats['areas']}); corridor: {corridor_px} px in {n_terrain} terrain tiles -> {out_dir}")
+          f"designs {len(designs)} (junctions {stats['junctions']}, OSM ways cut {stats['osm_ways_cut']}, replaced by id {stats['osm_ways_replaced']}, plateaus {stats['plateaus']} = {stats['flatten_px']} px, areas {stats['areas']}); corridor: {corridor_px} px, {n_terrain} terrain tiles written ({stats['terrain_reset']} reset from terrain_base) -> {out_dir}")
 
 
 if __name__ == "__main__":

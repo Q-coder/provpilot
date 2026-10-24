@@ -167,6 +167,11 @@ the airport reference point looking along the runway, and starts no intro
 zoom; leaving the editor (F8 or Esc) returns to the welcome screen, from
 where Fly! starts a normal flight.
 
+The keys below are the defaults: every editor shortcut is an action of the
+keyboard mapping (Settings > Keyboard, section "Scenery editor", saved to
+`keyboard.cfg` next to `provpilot.cfg`; `src/key_bindings.cpp` has the
+catalog). The panel's buttons and hints show the current keys.
+
 | Key / mouse | Action |
 |---|---|
 | F8 | enter / leave the editor (also Esc when no line is open) |
@@ -181,7 +186,7 @@ where Fly! starts a normal flight.
 | Area tool | clicks add the corners of a patch, Enter closes it: grass, forest floor, field (flat on the highest ground under it), water (flat on the lowest), or a building (roof at the panel height, walls to the ground); Delete on a corner removes it |
 | R | Select with a road selected: reverse its direction (the whole run of equal segments). Direction: a design road flows in the order its points were placed, first click to last; a baked road flows in its OSM way direction (the arrows on the OSM map). One-way roads show cyan (design) or green (baked) arrows every 40 m within 1.5 km of the camera; the panel prints the flow heading of the road under the cursor and, while drawing, the heading the next segment will flow |
 | [ ] | lower / raise by 0.5 m, { } by 5 m (read as typed characters, and Option+5 / 6 / 8 / 9 count as [ ] { } whatever character the Mac reports, so a Swiss or German Mac keyboard works; Shift+[ ] on keyboards that have the keys). Object tool: the selected objects' height. Select: the selected node's height offset — a deck, an embankment or a cut, interpolated along the edges; with a selected edge (click a design road away from its nodes) both its ends move; Flatten while drawing: the plateau height |
-| Flatten tool | clicks add the corners of a plateau, the height starts at the ground of the first corner ([ ] adjusts it), Enter closes it (blue outline at the target height with drop lines down to the ground at the corners). The close terrain tiles reload with the plateau at once; the bake writes it into the tiles for good. A finished plateau is selected with the Select tool by a click inside it (the smallest one around the click) or on a corner, with the Flatten tool by a corner; it shows a double outline and [ ] { } move its height in place, the terrain following. Delete inside it or on a corner removes the whole plateau. Where plateaus overlap the later one wins. To sink the world terrain under a photogrammetry tile: draw the plateau around the tile and lower it below the tile's lowest ground |
+| Flatten tool | clicks add the corners of a plateau, the height starts at the ground of the first corner ([ ] adjusts it), Enter closes it (blue outline at the target height with drop lines down to the ground at the corners). The close terrain tiles reload with the plateau at once; the bake writes it into the tiles. Deleting the plateau and baking again restores the ground: the bake derives every terrain tile of its box from the region's pristine `terrain_base`, it never accumulates. A finished plateau is selected with the Select tool by a click inside it (the smallest one around the click) or on a corner, with the Flatten tool by a corner; it shows a double outline and [ ] { } move its height in place, the terrain following. Delete inside it or on a corner removes the whole plateau. Where plateaus overlap the later one wins. To sink the world terrain under a photogrammetry tile: draw the plateau around the tile and lower it below the tile's lowest ground |
 | Replace tool | clicks add the corners of an area, Enter closes it (red outline): the bake cuts every OSM road and track inside it, so the design's own roads take their place; Delete on a corner removes the area |
 | Switch tool | click a track (the toe of the turnout), then the end of the diverging track: the track is split there and the diverging track leaves as the arc tangent to it (radius shown; below 150 m it is refused, 190 m is the tightest standard turnout); continue it with the Rail tool |
 | C | curved: each new Road / Rail segment continues the last one as a tangent arc (the panel shows the radius) |
@@ -190,7 +195,7 @@ where Fly! starts a normal flight.
 | Enter, right click | finish the line |
 | Esc | cancel the open line, else drop the selection, else leave the editor (the host ignores that same press, so the welcome screen does not open on top — a 2026-09-23 fix after it did and swallowed the keys) |
 | Ctrl+Z, Ctrl+S | undo, save |
-| Bake area (Ctrl+B) | saves, then runs `build_world_roads.py` for the 7 × 7 km of tiles around the camera with this design in the background (`--corridor` when the design has roads, tracks or plateaus), and reloads the road tiles when it finishes: picked or deleted OSM roads leave the tiles, designed roads and plateaus become part of them. The panel shows the running time and the bake's last log line (log in the user data dir). Needs Python with the bake's libraries on this machine |
+| Bake area (Ctrl+B) | saves, then runs `build_world_roads.py` for the 7 × 7 km of tiles around the camera with this design in the background (`--corridor` always once the region has a `terrain_base`, before that only when the design has roads, tracks or plateaus; `--terrain-overlay` for every finer terrain the Scenery3D node draws over the region's, e.g. the Swiss 2 m scenery area when it is enabled, so the ribbons sit on the terrain one sees instead of on the 30 m base tier), and reloads the road tiles when it finishes: picked or deleted OSM roads leave the tiles, designed roads and plateaus become part of them, and whatever an earlier bake wrote into the box's terrain that the design no longer has is gone (the box's terrain is rebuilt from `terrain_base`, see below). The panel shows the running time and the bake's last log line (log in the user data dir). Runs the repo's `.venv/bin/python3` when it exists (Python 3.12 with shapely 2.1, whose constrained Delaunay triangulates the pavement patches without slivers, and osmium), else `python3` |
 
 While the editor is on the air is clear: no fog whatever the weather
 says, and the cloud layers are hidden (gery 2026-09-22: "the edit mode
@@ -328,7 +333,14 @@ the cut, so no ribbon ends overlap inside the junction. Rails at a node
 are ignored here (a level crossing stays an overlap). Lane changes: where
 a chain ends at a degree-2 node whose other road edge is narrower, the
 wider ribbon tapers to the narrower width over 30 m per lane (per-station
-half widths in UV2, so the shader's lane dashes follow the taper).
+half widths in UV2, so the shader's lane dashes follow the taper). The bake
+does the same for the whole network since 2026-10-17: two road ways of
+different widths continuing each other at a node (an OSM secondary becoming
+a tertiary, a lane more or less) no longer meet as a step with a notch; the
+wider one narrows to the other's width over the last 30 m per lane of
+difference and the two join on a plain mitre (`taper_profile`, stage 4a
+"(c) a width change" in `build_world_roads.py`; markings and embankment
+skirts follow the taper).
 
 ## 6. Subtasks
 
@@ -407,7 +419,15 @@ half widths in UV2, so the shader's lane dashes follow the taper).
    is split into its elevated and ground runs at the bake; plateaus are
    written into the terrain tiles
    before any profile is sampled (stage 0, with `--corridor`, the flag
-   that permits terrain writes). Checked by `smoke_scenery_editor` (deck
+   that permits terrain writes). Terrain writes are derived, not
+   cumulative (2026-10-11, after the Bern photogrammetry plateaus stayed
+   in the ground once deleted): `<region>/terrain_base/` holds the tiles as
+   `build_world_terrain.py` baked them (SRTM plus the airport plateaus; its
+   `bake` and `flatten` write both directories, and a tile without a
+   pristine copy gets one from `terrain/` the first time the road bake
+   reads it), and with `--corridor` every tile of the box is loaded from
+   there, the plateaus and corridors go in, and all of them are written
+   back. The runtime and the pack bundler only know `terrain/`. Checked by `smoke_scenery_editor` (deck
    offset lifts the ribbon 6 m, zero offsets drop, plateaus and offsets
    round-trip) and a test bake of `design_heights` against a scratch
    terrain copy (plateau pixels at the target height, deck vertices over

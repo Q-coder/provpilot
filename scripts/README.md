@@ -8,11 +8,11 @@ produce the data the game and the scenery packs ship.
 
 | Script | Purpose |
 |---|---|
-| `build_world_terrain.py` | SRTM → LV95 heightmap tiles per region: `list`, `plan`, `fetch`, `bake`, `flatten`, `verify`, `prune`, `build` |
+| `build_world_terrain.py` | SRTM → LV95 heightmap tiles per region: `list`, `plan`, `fetch`, `bake` (`--bbox`, `--base-only`), `flatten` (`--bbox`, `--base-only`), `verify`, `prune`, `build`. Writes `terrain/` and the pristine `terrain_base/` that `build_world_roads.py --corridor` derives `terrain/` from |
 | `runway_plateau.py` | Runway plateaus written into the baked terrain (used by `build_world_terrain.py flatten`) |
 | `build_world_airports.py` | OurAirports catalog → `provpilot/airports.json` |
 | `build_world_runways.py` | OSM + OurAirports runway / taxiway / apron geometry → `<pack>/airports/runways.json` |
-| `build_world_roads.py` | OSM (or swissTLM3D) roads and railways → road tiles; `--design` folds in the scenery editor's design |
+| `build_world_roads.py` | OSM (or swissTLM3D) roads and railways → road tiles; `--design` folds in the scenery editor's design; `--terrain-overlay DIR` samples a finer drawn terrain (the Swiss 2 m scenery) first; width changes between ways taper |
 | `build_world_strip.sh`, `build_world_lights.sh` | Batch drivers for several regions |
 | `world_regions.json` | Region definitions (countries, bboxes, build paths) |
 

@@ -71,11 +71,21 @@ namespace jsbgodot
         double terrain_elevation_geodetic(double lat, double lon) const;
         double terrain_elevation_below(const Vector3 &world_pos) const;
         // JSBSim's ground: the patch elevation plus the lift of a drawn
-        // runway / taxiway / apron surface there (design §12.5). NAN without
-        // patch data (the bridge keeps its flat fallback).
+        // runway / taxiway / apron surface there (design §12.5), or the
+        // drawn road surface there when it is higher (within
+        // ROAD_SURFACE_TOL_M of the terrain). NAN without patch data (the
+        // bridge keeps its flat fallback).
         double ground_height_geodetic(double lat, double lon) const;
-        // Terrain (patch or globe) plus the runway lift under a world position.
+        // Terrain (patch or globe) plus the runway lift under a world
+        // position, or the drawn road surface there when it is higher. The
+        // position's own height is the hint for the road lookup: a car keeps
+        // the deck it is on and the ground under a bridge (docs/VEHICLES.md).
         double ground_height_below(const Vector3 &world_pos) const;
+        // The drawn road / rail surface under a geodetic point (metres ASL):
+        // the highest baked road triangle within ROAD_SURFACE_TOL_M of h_hint
+        // (S3DRoadManager::surface_height_at), NAN when none is there.
+        double road_surface_at(double lat, double lon, double h_hint) const;
+        static constexpr double ROAD_SURFACE_TOL_M = 2.0;
         // Highest terrain among the threshold and four points along / across
         // the runway heading (±25 m / ±15 m in the LV95 grid), matching the
         // runway mesh approach; NAN when no sample has data.
@@ -127,7 +137,9 @@ namespace jsbgodot
         uint64_t globe_id = 0;
         uint64_t vegetation_id = 0;
         uint64_t runways_id = 0;
+        mutable uint64_t road_manager_id = 0;   // Scenery3D's S3DRoadManager child, found on first use
         static Node *live_node(uint64_t id);
+        Node *road_manager_node() const;
 
         // Suppression-mask refresh state
         Vector2 suppress_last_center;
