@@ -141,7 +141,7 @@ of the model that are not FlightGear sub-models, named by their Godot
 names; the runtime conjugates them by the part's own parent chain, so their
 axes and centres are the model's Blender coordinates (a rotate without
 `<center>` gets the part's own origin, i.e. the pivot set in Blender; a
-rotate's offset is FlightGear's `<offset-deg>`). Shift+Ctrl+M draws every
+rotate's offset is FlightGear's `<offset-deg>`). Ctrl+Shift+H (Settings > Keyboard, "Debug: cockpit mouse hotspots") draws every
 clickable part's sense area. The Cessna uses this
 for the yokes (split from their shaft cones by the builder; they turn with
 the aileron, slide with the elevator, and a click on a cone hides both) and

@@ -1,3 +1,4 @@
+#include "key_bindings.h"
 #include "camera_rig.h"
 #include "geo_frame.h"
 
@@ -247,26 +248,26 @@ void CameraRig::update_head_look(double delta, int joy_device)
 	}
 
 	// Also support keyboard arrows for testing.
-	if (input->is_key_pressed(KEY_LEFT))
+	if (KeyBindings::pressed("view_left"))
 	{
 		look_x = -1.0;
 	}
-	else if (input->is_key_pressed(KEY_RIGHT))
+	else if (KeyBindings::pressed("view_right"))
 	{
 		look_x = 1.0;
 	}
-	if (input->is_key_pressed(KEY_UP))
+	if (KeyBindings::pressed("view_up"))
 	{
 		look_y = -1.0;
 	}
-	else if (input->is_key_pressed(KEY_DOWN))
+	else if (KeyBindings::pressed("view_down"))
 	{
 		look_y = 1.0;
 	}
 
 	// Space: held, the mouse looks around (right = look right, down = look
 	// down); a short tap without movement recentres the view.
-	const bool space = input->is_key_pressed(KEY_SPACE);
+	const bool space = KeyBindings::pressed("view_mouse_look");
 	if (space && !space_held)
 	{
 		space_held = true;
@@ -309,9 +310,9 @@ void CameraRig::update_head_look(double delta, int joy_device)
 	double zoom_in = 0.0;
 	double zoom_out = 0.0;
 	int dz = (joy_device >= 0) ? joy_device : 0;
-	if (input->is_joy_button_pressed(dz, JOY_BUTTON_LEFT_SHOULDER) || input->is_key_pressed(KEY_PAGEUP))
+	if (input->is_joy_button_pressed(dz, JOY_BUTTON_LEFT_SHOULDER) || KeyBindings::pressed("view_closer"))
 		zoom_in = 1.0;
-	if (input->is_joy_button_pressed(dz, JOY_BUTTON_RIGHT_SHOULDER) || input->is_key_pressed(KEY_PAGEDOWN))
+	if (input->is_joy_button_pressed(dz, JOY_BUTTON_RIGHT_SHOULDER) || KeyBindings::pressed("view_farther"))
 		zoom_out = 1.0;
 	if (zoom_in > 0.0 || zoom_out > 0.0)
 	{
@@ -372,19 +373,19 @@ void CameraRig::update_orbit(double delta, int joy_device)
 	}
 
 	// Also support keyboard arrows for testing.
-	if (input->is_key_pressed(KEY_LEFT))
+	if (KeyBindings::pressed("view_left"))
 	{
 		look_x = -1.0;
 	}
-	else if (input->is_key_pressed(KEY_RIGHT))
+	else if (KeyBindings::pressed("view_right"))
 	{
 		look_x = 1.0;
 	}
-	if (input->is_key_pressed(KEY_UP))
+	if (KeyBindings::pressed("view_up"))
 	{
 		look_y = 1.0;
 	}
-	else if (input->is_key_pressed(KEY_DOWN))
+	else if (KeyBindings::pressed("view_down"))
 	{
 		look_y = -1.0;
 	}
@@ -418,11 +419,11 @@ void CameraRig::update_orbit(double delta, int joy_device)
 	{
 		zoom_out = 1.0;
 	}
-	if (input->is_key_pressed(KEY_PAGEUP))
+	if (KeyBindings::pressed("view_closer"))
 	{
 		zoom_in = 1.0;
 	}
-	if (input->is_key_pressed(KEY_PAGEDOWN))
+	if (KeyBindings::pressed("view_farther"))
 	{
 		zoom_out = 1.0;
 	}
@@ -481,11 +482,11 @@ void CameraRig::update_chase(double delta, int joy_device)
 	{
 		zoom_out = 1.0;
 	}
-	if (input->is_key_pressed(KEY_PAGEUP))
+	if (KeyBindings::pressed("view_closer"))
 	{
 		zoom_in = 1.0;
 	}
-	if (input->is_key_pressed(KEY_PAGEDOWN))
+	if (KeyBindings::pressed("view_farther"))
 	{
 		zoom_out = 1.0;
 	}
@@ -516,11 +517,11 @@ void CameraRig::update_chase(double delta, int joy_device)
 	{
 		height_delta = hat_y;
 	}
-	else if (input->is_joy_button_pressed(d2, JOY_BUTTON_DPAD_UP) || input->is_key_pressed(KEY_UP))
+	else if (input->is_joy_button_pressed(d2, JOY_BUTTON_DPAD_UP) || KeyBindings::pressed("view_up"))
 	{
 		height_delta = 1.0;
 	}
-	else if (input->is_joy_button_pressed(d2, JOY_BUTTON_DPAD_DOWN) || input->is_key_pressed(KEY_DOWN))
+	else if (input->is_joy_button_pressed(d2, JOY_BUTTON_DPAD_DOWN) || KeyBindings::pressed("view_down"))
 	{
 		height_delta = -1.0;
 	}
@@ -533,11 +534,11 @@ void CameraRig::update_chase(double delta, int joy_device)
 	{
 		yaw_delta = hat_x;
 	}
-	else if (input->is_joy_button_pressed(d2, JOY_BUTTON_DPAD_LEFT) || input->is_key_pressed(KEY_LEFT))
+	else if (input->is_joy_button_pressed(d2, JOY_BUTTON_DPAD_LEFT) || KeyBindings::pressed("view_left"))
 	{
 		yaw_delta = -1.0;
 	}
-	else if (input->is_joy_button_pressed(d2, JOY_BUTTON_DPAD_RIGHT) || input->is_key_pressed(KEY_RIGHT))
+	else if (input->is_joy_button_pressed(d2, JOY_BUTTON_DPAD_RIGHT) || KeyBindings::pressed("view_right"))
 	{
 		yaw_delta = 1.0;
 	}

@@ -4,6 +4,7 @@
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/core/memory.hpp>
 #include <godot_cpp/classes/base_material3d.hpp>
+#include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/font.hpp>
@@ -37,6 +38,7 @@
 #include <vector>
 
 #include "cloud_layers.h"
+#include "key_bindings.h"
 #include "geo.h"
 #include "geo_frame.h"
 #include "jsbgodot.h"
@@ -764,10 +766,8 @@ bool SceneryEditor::is_active() const
 void SceneryEditor::poll(double delta)
 {
 	ensure_loaded();
-	const bool pressed = Input::get_singleton()->is_key_pressed(KEY_F8);
-	if (pressed && !toggle_held)
+	if (KeyBindings::just_pressed("editor_toggle")) // Settings > Keyboard
 		toggle();
-	toggle_held = pressed;
 	const bool terrain_ok = host_flag("terrain_initialized");
 	if (active)
 		update(delta);
@@ -994,22 +994,22 @@ void SceneryEditor::update(double delta)
 	// a shortcut (Ctrl+S, Cmd+Z ...) is never a move
 	if (!modifier_down) // from the last key event only: a missed release never sticks
 	{
-		if (input->is_key_pressed(KEY_W))
+		if (KeyBindings::pressed("editor_forward"))
 			mv += fwd;
-		if (input->is_key_pressed(KEY_S))
+		if (KeyBindings::pressed("editor_back"))
 			mv -= fwd;
-		if (input->is_key_pressed(KEY_D))
+		if (KeyBindings::pressed("editor_right"))
 			mv += right;
-		if (input->is_key_pressed(KEY_A))
+		if (KeyBindings::pressed("editor_left"))
 			mv -= right;
-		if (input->is_key_pressed(KEY_E) || input->is_key_pressed(KEY_PAGEUP))
+		if (KeyBindings::pressed("editor_up"))
 			mv += Vector3(0, 1, 0);
-		if (input->is_key_pressed(KEY_Q) || input->is_key_pressed(KEY_PAGEDOWN))
+		if (KeyBindings::pressed("editor_down"))
 			mv -= Vector3(0, 1, 0);
 	}
 	double a = agl();
 	double speed = MOVE_SPEED + (std::isnan(a) ? 0.0 : MAX(a, 0.0) * 0.8);
-	if (input->is_key_pressed(KEY_SHIFT))
+	if (KeyBindings::pressed("editor_fast"))
 		speed *= 4.0;
 	if (mv.length_squared() > 0.0)
 		pos += enu.xform(mv.normalized() * speed * delta);
@@ -2933,142 +2933,124 @@ void SceneryEditor::handle_key(const Ref<InputEvent> &event)
 	}
 	bool handled = true;
 	const bool cmd = k->is_ctrl_pressed() || k->is_meta_pressed();
-	// The height keys go by the typed character: on a Swiss or German Mac
-	// keyboard [ ] are Option+5 / Option+6 and { } Option+8 / Option+9, and
-	// the event carries the key code of the digit (5 would switch the tool).
-	Key code = k->get_keycode();
-	bool shift = k->is_shift_pressed();
-	switch (k->get_unicode())
+	// Every shortcut goes by the keyboard mapping (Settings > Keyboard). The
+	// mapping matches a printable key by the typed character too, so "[" is
+	// Option+5 on a Swiss or German Mac and "Shift+[" is the { of any layout.
+	// An Option press that macOS reports with the digit alone (no character):
+	// Option+5 6 8 9 are [ ] { }.
+	char32_t uni = char32_t(k->get_unicode());
+	if (uni == 0 && k->is_alt_pressed() && !cmd)
 	{
-		case '[': code = KEY_BRACKETLEFT; break;
-		case ']': code = KEY_BRACKETRIGHT; break;
-		case '{': code = KEY_BRACKETLEFT; shift = true; break;
-		case '}': code = KEY_BRACKETRIGHT; shift = true; break;
-		default: break;
-	}
-	if (code == k->get_keycode() && k->is_alt_pressed() && !cmd)
-	{
-		// the same combinations without the character (an Option press that
-		// macOS reports with the digit alone): Option+5 6 8 9 are [ ] { }
 		const Key digit = (k->get_keycode() >= KEY_0 && k->get_keycode() <= KEY_9) ? k->get_keycode() : k->get_key_label();
 		switch (digit)
 		{
-			case KEY_5: code = KEY_BRACKETLEFT; break;
-			case KEY_6: code = KEY_BRACKETRIGHT; break;
-			case KEY_8: code = KEY_BRACKETLEFT; shift = true; break;
-			case KEY_9: code = KEY_BRACKETRIGHT; shift = true; break;
+			case KEY_5: uni = '['; break;
+			case KEY_6: uni = ']'; break;
+			case KEY_8: uni = '{'; break;
+			case KEY_9: uni = '}'; break;
 			default: break;
 		}
 	}
-	switch (code)
+	auto is = [&](const char *action) {
+		return KeyBindings::matches_key(action, k->get_keycode(), uni, k->is_shift_pressed(), cmd, k->is_alt_pressed());
+	};
+	struct ToolKey
 	{
-		case KEY_1: set_tool(TOOL_SELECT); break;
-		case KEY_2: set_tool(TOOL_ROAD); break;
-		case KEY_3: set_tool(TOOL_RAIL); break;
-		case KEY_4: set_tool(TOOL_DELETE); break;
-		case KEY_5: set_tool(TOOL_CIRCLE); break;
-		case KEY_6: set_tool(TOOL_SWITCH); break;
-		case KEY_7: set_tool(TOOL_REPLACE); break;
-		case KEY_8: set_tool(TOOL_FLATTEN); break;
-		case KEY_9: set_tool(TOOL_AREA); break;
-		case KEY_0: set_tool(TOOL_PICK); break;
-		case KEY_O: set_tool(TOOL_OBJECT); break;
-		case KEY_Y:
-		case KEY_F:
-		case KEY_COMMA:
-		case KEY_PERIOD:
-		case KEY_MINUS:
-		case KEY_EQUAL:
-		case KEY_KP_ADD:
-		case KEY_KP_SUBTRACT:
-		case KEY_G:
-			handled = tool == TOOL_OBJECT && object_key(code, shift, cmd);
+		const char *action;
+		int tool;
+	};
+	static const ToolKey TOOL_KEYS[] = {
+		{"tool_select", TOOL_SELECT}, {"tool_road", TOOL_ROAD}, {"tool_rail", TOOL_RAIL}, {"tool_delete", TOOL_DELETE},
+		{"tool_circle", TOOL_CIRCLE}, {"tool_switch", TOOL_SWITCH}, {"tool_replace", TOOL_REPLACE}, {"tool_flatten", TOOL_FLATTEN},
+		{"tool_area", TOOL_AREA}, {"tool_pick", TOOL_PICK}, {"tool_object", TOOL_OBJECT}};
+	int tool_hit = -1;
+	for (const ToolKey &tk : TOOL_KEYS)
+		if (is(tk.action))
+		{
+			tool_hit = tk.tool;
 			break;
-		case KEY_SPACE:
-			view_top(k->is_shift_pressed());
-			break;
-		case KEY_R:
-			if (tool == TOOL_OBJECT)
-				set_gizmo_mode(GIZMO_ROTATE);
-			else if (selected_edge >= 0 && design->get_edges().has(selected_edge))
-			{
-				edit_begins();
-				const int n = design->reverse_chain(selected_edge);
-				tool_note = vformat(String::utf8("%s reversed (%d edges): it now flows %.0f° at the selected point"), edge_label(selected_edge), n, heading_at(SceneryDesignMesher::chain_polyline(design, chain_of(selected_edge)), Vector2(cursor_e, cursor_n)));
-				rebuild_live();
-			}
-			else
-				tool_note = "R reverses a road: select one with 1 Select first";
-			break;
-		case KEY_BRACKETLEFT:
-			nudge_height(-(HEIGHT_STEP_M * (shift ? 10.0 : 1.0)));
-			break;
-		case KEY_BRACKETRIGHT:
-			nudge_height(HEIGHT_STEP_M * (shift ? 10.0 : 1.0));
-			break;
-		case KEY_C:
-			if (curved_check)
-				curved_check->set_pressed(!curved_check->is_pressed());
-			break;
-		case KEY_ENTER:
-		case KEY_KP_ENTER:
-			if (tool == TOOL_REPLACE || tool == TOOL_FLATTEN || tool == TOOL_AREA)
-				finish_polygon();
-			else
-				finish_line();
-			break;
-		case KEY_ESCAPE:
-			if (line_last_node >= 0)
-				finish_line();
-			else if (circle_pending || !switch_toe.is_empty() || !poly_points.is_empty())
-			{
-				circle_pending = false;
-				switch_toe = Dictionary();
-				poly_points.clear();
-				preview_mesh->clear_surfaces();
-			}
-			else if (selected_node >= 0 || selected_edge >= 0 || selected_flatten >= 0 || !selection.empty())
-			{
-				selected_node = -1;
-				selected_edge = -1;
-				selected_flatten = -1;
-				clear_selection();
-				preview_mesh->clear_surfaces();
-				update_markers();
-				update_overlay();
-			}
-			else
-			{
-				host->set("_escape_held", true); // the host must not open the welcome screen on this press
-				exit();
-			}
-			break;
-		case KEY_Z:
-			if (cmd)
-				undo();
-			else
-				handled = false;
-			break;
-		case KEY_S:
-			if (cmd)
-				save();
-			else
-				handled = false;
-			break;
-		case KEY_B:
-			if (cmd)
-				bake_area();
-			else
-				handled = false;
-			break;
-		case KEY_DELETE:
-		case KEY_BACKSPACE:
-			delete_at_cursor();
-			break;
-		default:
-			handled = false;
-			break;
+		}
+	if (tool_hit >= 0)
+		set_tool(tool_hit);
+	else if (tool == TOOL_OBJECT && object_key(k, uni))
+	{
+		// gizmo mode, frame, heading, scale, drop (scenery_editor_objects.cpp)
 	}
+	else if (is("view_top_north"))
+		view_top(true);
+	else if (is("view_top"))
+		view_top(false);
+	else if (is("reverse_or_rotate"))
+	{
+		if (tool == TOOL_OBJECT)
+			set_gizmo_mode(GIZMO_ROTATE);
+		else if (selected_edge >= 0 && design->get_edges().has(selected_edge))
+		{
+			edit_begins();
+			const int n = design->reverse_chain(selected_edge);
+			tool_note = vformat(String::utf8("%s reversed (%d edges): it now flows %.0f° at the selected point"), edge_label(selected_edge), n, heading_at(SceneryDesignMesher::chain_polyline(design, chain_of(selected_edge)), Vector2(cursor_e, cursor_n)));
+			rebuild_live();
+		}
+		else
+			tool_note = vformat("%s reverses a road: select one with %s Select first", KeyBindings::label("reverse_or_rotate"), KeyBindings::label("tool_select"));
+	}
+	else if (is("height_down_big"))
+		nudge_height(-HEIGHT_STEP_M * 10.0);
+	else if (is("height_up_big"))
+		nudge_height(HEIGHT_STEP_M * 10.0);
+	else if (is("height_down"))
+		nudge_height(-HEIGHT_STEP_M);
+	else if (is("height_up"))
+		nudge_height(HEIGHT_STEP_M);
+	else if (is("curved_toggle"))
+	{
+		if (curved_check)
+			curved_check->set_pressed(!curved_check->is_pressed());
+	}
+	else if (is("finish"))
+	{
+		if (tool == TOOL_REPLACE || tool == TOOL_FLATTEN || tool == TOOL_AREA)
+			finish_polygon();
+		else
+			finish_line();
+	}
+	else if (is("cancel"))
+	{
+		if (line_last_node >= 0)
+			finish_line();
+		else if (circle_pending || !switch_toe.is_empty() || !poly_points.is_empty())
+		{
+			circle_pending = false;
+			switch_toe = Dictionary();
+			poly_points.clear();
+			preview_mesh->clear_surfaces();
+		}
+		else if (selected_node >= 0 || selected_edge >= 0 || selected_flatten >= 0 || !selection.empty())
+		{
+			selected_node = -1;
+			selected_edge = -1;
+			selected_flatten = -1;
+			clear_selection();
+			preview_mesh->clear_surfaces();
+			update_markers();
+			update_overlay();
+		}
+		else
+		{
+			host->set("_escape_held", true); // the host must not open the welcome screen on this press
+			exit();
+		}
+	}
+	else if (is("undo"))
+		undo();
+	else if (is("save"))
+		save();
+	else if (is("bake"))
+		bake_area();
+	else if (is("delete"))
+		delete_at_cursor();
+	else
+		handled = false;
 	if (handled && host->get_viewport())
 		host->get_viewport()->set_input_as_handled();
 }
@@ -3102,9 +3084,52 @@ Array SceneryEditor::road_regions() const
 	return out;
 }
 
+// pixels_per_tile of a terrain/ directory's manifest (0 = none).
+static int terrain_px(const String &terrain_dir)
+{
+	const String mf = terrain_dir.path_join("manifest.json");
+	if (!FileAccess::file_exists(mf))
+		return 0;
+	const Variant v = JSON::parse_string(FileAccess::get_file_as_string(mf));
+	if (v.get_type() != Variant::DICTIONARY)
+		return 0;
+	return int(Dictionary(v).get("pixels_per_tile", 0));
+}
+
+PackedStringArray SceneryEditor::terrain_overlays(const String &region_dir) const
+{
+	PackedStringArray out;
+	if (host == nullptr || host->get_tree() == nullptr)
+		return out;
+	const String base_dir = region_dir.path_join("terrain");
+	const int base_px = terrain_px(base_dir);
+	const TypedArray<Node> found = host->get_tree()->get_root()->find_children("*", "Scenery3D", true, false);
+	for (int i = 0; i < found.size(); i++)
+	{
+		Node *s = Object::cast_to<Node>(static_cast<Object *>(found[i]));
+		if (s == nullptr)
+			continue;
+		const PackedStringArray paths = s->get("data_paths");
+		for (int p = 0; p < paths.size(); p++)
+		{
+			String dir = paths[p];
+			if (!FileAccess::file_exists(dir.path_join("manifest.json")))
+				dir = dir.path_join("terrain");
+			if (dir == base_dir || out.has(dir))
+				continue;
+			if (terrain_px(dir) > base_px)
+				out.push_back(dir);
+		}
+	}
+	return out;
+}
+
 // The bake for the tiles around the camera: [script, args...]; empty when
-// no region or script is available. Terrain writes (--corridor) only when
-// the design has something that needs them (roads / tracks, plateaus).
+// no region or script is available. Finer terrains drawn over the region's
+// go along as --terrain-overlay, so the ribbons sit on the terrain one sees. Terrain writes (--corridor): always
+// once the region has a pristine terrain_base (the bake derives every tile
+// of the box from it, so a deleted plateau or way restores the ground);
+// before that only when the design has something that needs them.
 Array SceneryEditor::bake_command() const
 {
 	Array args;
@@ -3130,7 +3155,15 @@ Array SceneryEditor::bake_command() const
 	args.push_back(String::num_int64(n0 + 2 * BAKE_HALF_KM * 1000 + 1000));
 	args.push_back("--design");
 	args.push_back(design_path());
-	if (design->edge_count() > 0 || design->get_flatten().size() > 0)
+	const String region_dir = Dictionary(regions[0])["region_dir"];
+	const PackedStringArray overlays = terrain_overlays(region_dir);
+	for (int i = 0; i < overlays.size(); i++)
+	{
+		args.push_back("--terrain-overlay");
+		args.push_back(overlays[i]);
+	}
+	const bool has_base = DirAccess::dir_exists_absolute(region_dir.path_join("terrain_base"));
+	if (has_base || design->edge_count() > 0 || design->get_flatten().size() > 0)
 		args.push_back("--corridor");
 	return args;
 }
@@ -3151,6 +3184,8 @@ bool SceneryEditor::bake_area()
 	}
 	save();
 	const Array cmd = bake_command();
+	Node *ir = host->get_node_or_null(NodePath("/root/InstallRoot"));
+	const String root = (ir && ir->has_method("get_install_root")) ? String(ir->call("get_install_root")) : String();
 	if (cmd.is_empty())
 	{
 		tool_note = "cannot bake here: no region with terrain among the road paths, or scripts/build_world_roads.py missing";
@@ -3160,7 +3195,14 @@ bool SceneryEditor::bake_area()
 	PackedStringArray quoted;
 	for (int i = 0; i < cmd.size(); i++)
 		quoted.push_back("'" + String(cmd[i]).replace("'", "'\\''") + "'");
-	const String shell = vformat("python3 %s > '%s' 2>&1", String(" ").join(quoted), bake_log);
+	// The repo's virtualenv (Python 3.12, shapely 2.1 with constrained
+	// Delaunay for the pavement patches, osmium) when it is there, else the
+	// system python3 (exported builds).
+	String python = "python3";
+	const String venv = root.path_join(".venv").path_join("bin").path_join("python3");
+	if (FileAccess::file_exists(venv))
+		python = "'" + venv + "'";
+	const String shell = vformat("%s %s > '%s' 2>&1", python, String(" ").join(quoted), bake_log);
 	PackedStringArray sh_args;
 	sh_args.push_back("-c");
 	sh_args.push_back(shell);
@@ -3261,21 +3303,22 @@ void SceneryEditor::build_ui()
 	ui->add_child(panel);
 	VBoxContainer *box = memnew(VBoxContainer);
 	panel->add_child(box);
-	box->add_child(make_label("Scenery editor  (F8 exit)", 16));
+	box->add_child(make_label(vformat("Scenery editor  (%s exit)", KeyBindings::label("editor_toggle")), 16));
 	HBoxContainer *tools = memnew(HBoxContainer);
 	box->add_child(tools);
 	struct ToolSpec
 	{
 		int tool;
-		const char *label;
+		const char *action; // the shortcut (Settings > Keyboard) in front of the name
+		const char *name;
 	};
 	static const ToolSpec SPECS[11] = {
-		{TOOL_SELECT, "1 Select"}, {TOOL_ROAD, "2 Road"}, {TOOL_RAIL, "3 Rail"}, {TOOL_DELETE, "4 Delete"}, {TOOL_CIRCLE, "5 Circle"},
-		{TOOL_SWITCH, "6 Switch"}, {TOOL_REPLACE, "7 Replace"}, {TOOL_FLATTEN, "8 Flatten"}, {TOOL_AREA, "9 Area"}, {TOOL_PICK, "0 Pick"},
-		{TOOL_OBJECT, "O Object"}};
+		{TOOL_SELECT, "tool_select", "Select"}, {TOOL_ROAD, "tool_road", "Road"}, {TOOL_RAIL, "tool_rail", "Rail"}, {TOOL_DELETE, "tool_delete", "Delete"}, {TOOL_CIRCLE, "tool_circle", "Circle"},
+		{TOOL_SWITCH, "tool_switch", "Switch"}, {TOOL_REPLACE, "tool_replace", "Replace"}, {TOOL_FLATTEN, "tool_flatten", "Flatten"}, {TOOL_AREA, "tool_area", "Area"}, {TOOL_PICK, "tool_pick", "Pick"},
+		{TOOL_OBJECT, "tool_object", "Object"}};
 	for (const ToolSpec &spec : SPECS)
 	{
-		Button *b = make_button(spec.label);
+		Button *b = make_button(KeyBindings::label(spec.action) + " " + spec.name);
 		b->set_toggle_mode(true);
 		b->connect("pressed", Callable(this, "_on_tool_button").bind(spec.tool));
 		tools->add_child(b);
@@ -3335,13 +3378,13 @@ void SceneryEditor::build_ui()
 	rlb->add_child(gauge_option);
 	HBoxContainer *actions = memnew(HBoxContainer);
 	box->add_child(actions);
-	Button *undo_b = make_button("Undo (Ctrl+Z)");
+	Button *undo_b = make_button(vformat("Undo (%s)", KeyBindings::label("undo")));
 	undo_b->connect("pressed", Callable(this, "undo"));
 	actions->add_child(undo_b);
-	Button *save_b = make_button("Save (Ctrl+S)");
+	Button *save_b = make_button(vformat("Save (%s)", KeyBindings::label("save")));
 	save_b->connect("pressed", Callable(this, "_on_save_button"));
 	actions->add_child(save_b);
-	Button *bake_b = make_button("Bake area (Ctrl+B)");
+	Button *bake_b = make_button(vformat("Bake area (%s)", KeyBindings::label("bake")));
 	bake_b->set_tooltip_text(vformat("Save, then bake the road tiles %d km around the camera with this design and reload them", 2 * BAKE_HALF_KM + 1));
 	bake_b->connect("pressed", Callable(this, "_on_bake_button"));
 	actions->add_child(bake_b);
@@ -3398,7 +3441,9 @@ void SceneryEditor::build_ui()
 	build_object_panel();
 	status = make_label("", 12);
 	box->add_child(status);
-	Label *help = make_label("WASD move, Q E / PgDn PgUp descend / climb, Shift fast, right mouse = look, wheel = closer\nleft click = place point (snaps to nodes, splits crossed lines), Enter / right click = finish line, Esc = cancel", 11);
+	Label *help = make_label(vformat("%s %s %s %s move, %s / %s descend / climb, %s fast, right mouse = look, wheel = closer\nleft click = place point (snaps to nodes, splits crossed lines), %s / right click = finish line, %s = cancel (keys: Settings > Keyboard)",
+		KeyBindings::label("editor_forward"), KeyBindings::label("editor_left"), KeyBindings::label("editor_back"), KeyBindings::label("editor_right"),
+		KeyBindings::labels("editor_down"), KeyBindings::labels("editor_up"), KeyBindings::label("editor_fast"), KeyBindings::labels("finish"), KeyBindings::label("cancel")), 11);
 	help->set_modulate(Color(0.8, 0.8, 0.8));
 	box->add_child(help);
 }

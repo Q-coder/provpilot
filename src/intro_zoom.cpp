@@ -1,3 +1,4 @@
+#include "key_bindings.h"
 #include "intro_zoom.h"
 #include "geo_frame.h"
 
@@ -166,15 +167,14 @@ int IntroZoom::update(double delta)
 	// Allow the user to skip the cinematic with SPACE only (other keys stay
 	// free for screenshots etc.). Arm the skip once Space has been released
 	// after the start so a held key cannot skip it immediately.
-	Input *input = Input::get_singleton();
 	if (!skip_armed)
 	{
-		if (!input->is_key_pressed(KEY_SPACE))
+		if (!KeyBindings::pressed("intro_skip"))
 		{
 			skip_armed = true;
 		}
 	}
-	else if (input->is_key_pressed(KEY_SPACE))
+	else if (KeyBindings::pressed("intro_skip"))
 	{
 		if (!hold_at_end)
 		{

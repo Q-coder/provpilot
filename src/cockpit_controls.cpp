@@ -1,3 +1,4 @@
+#include "key_bindings.h"
 #include "cockpit_controls.h"
 
 #include <godot_cpp/core/class_db.hpp>
@@ -371,8 +372,11 @@ void CockpitControls::update(Object *p_jsb, ControlSurfaces *surfaces)
 
 void CockpitControls::handle_mixture_keys(JSBGodot *fdm)
 {
-	Input *input = Input::get_singleton();
-	if (!input->is_key_pressed(KEY_M))
+	// Settings > Keyboard: mixture_rich / mixture_lean / mixture_debug
+	const bool rich = KeyBindings::pressed("mixture_rich");
+	const bool lean = KeyBindings::pressed("mixture_lean");
+	const bool dbg = KeyBindings::pressed("mixture_debug");
+	if (!rich && !lean && !dbg)
 	{
 		mixture_key_held = false;
 		return;
@@ -385,22 +389,21 @@ void CockpitControls::handle_mixture_keys(JSBGodot *fdm)
 	}
 	mixture_key_held = true;
 
-	// Shift+Ctrl+M = toggle collision debug visibility
-	if (input->is_key_pressed(KEY_SHIFT) && input->is_key_pressed(KEY_CTRL))
+	if (dbg)
 	{
 		toggle_mixture_debug();
 		return;
 	}
 
 	double old_value = mixture_value;
-	if (input->is_key_pressed(KEY_SHIFT))
+	if (lean)
 	{
-		// Shift+M = decrease mixture (leaner)
+		// decrease mixture (leaner)
 		mixture_value = Math::clamp(mixture_value - mixture_key_step, 0.0, 1.0);
 	}
 	else
 	{
-		// M = increase mixture (richer)
+		// increase mixture (richer)
 		mixture_value = Math::clamp(mixture_value + mixture_key_step, 0.0, 1.0);
 	}
 
@@ -415,8 +418,11 @@ void CockpitControls::handle_mixture_keys(JSBGodot *fdm)
 
 void CockpitControls::handle_throttle_keys(JSBGodot *fdm)
 {
-	Input *input = Input::get_singleton();
-	if (!input->is_key_pressed(KEY_T))
+	// Settings > Keyboard: throttle_step_up / throttle_step_down / throttle_debug
+	const bool up = KeyBindings::pressed("throttle_step_up");
+	const bool down = KeyBindings::pressed("throttle_step_down");
+	const bool dbg = KeyBindings::pressed("throttle_debug");
+	if (!up && !down && !dbg)
 	{
 		throttle_key_held = false;
 		return;
@@ -428,8 +434,7 @@ void CockpitControls::handle_throttle_keys(JSBGodot *fdm)
 	}
 	throttle_key_held = true;
 
-	// Shift+Ctrl+T = toggle collision debug visibility
-	if (input->is_key_pressed(KEY_SHIFT) && input->is_key_pressed(KEY_CTRL))
+	if (dbg)
 	{
 		toggle_throttle_debug();
 		return;
@@ -441,7 +446,7 @@ void CockpitControls::handle_throttle_keys(JSBGodot *fdm)
 	}
 
 	double cur = fdm->get_input_throttle();
-	if (input->is_key_pressed(KEY_SHIFT))
+	if (down)
 	{
 		cur = Math::clamp(cur - throttle_key_step, 0.0, 1.0);
 	}
@@ -458,8 +463,10 @@ void CockpitControls::handle_throttle_keys(JSBGodot *fdm)
 
 void CockpitControls::handle_magneto_keys(JSBGodot *fdm)
 {
-	Input *input = Input::get_singleton();
-	if (!input->is_key_pressed(KEY_I))
+	// Settings > Keyboard: magneto_cw / magneto_ccw
+	const bool cw = KeyBindings::pressed("magneto_cw");
+	const bool ccw = KeyBindings::pressed("magneto_ccw");
+	if (!cw && !ccw)
 	{
 		magneto_key_held = false;
 		// If at START and I released, spring back to BOTH (but not during mouse drag)
@@ -478,7 +485,7 @@ void CockpitControls::handle_magneto_keys(JSBGodot *fdm)
 	magneto_key_held = true;
 
 	int old_pos = magneto_position;
-	if (input->is_key_pressed(KEY_SHIFT))
+	if (ccw)
 	{
 		magneto_position = std::max(magneto_position - 1, 0);
 	}
@@ -495,8 +502,10 @@ void CockpitControls::handle_magneto_keys(JSBGodot *fdm)
 
 void CockpitControls::handle_flap_keys(JSBGodot *fdm)
 {
-	Input *input = Input::get_singleton();
-	if (!input->is_key_pressed(KEY_F))
+	// Settings > Keyboard: flaps_down / flaps_up
+	const bool fl_down = KeyBindings::pressed("flaps_down");
+	const bool fl_up = KeyBindings::pressed("flaps_up");
+	if (!fl_down && !fl_up)
 	{
 		flap_key_held = false;
 		return;
@@ -509,13 +518,13 @@ void CockpitControls::handle_flap_keys(JSBGodot *fdm)
 	flap_key_held = true;
 
 	int old_pos = flap_position;
-	if (input->is_key_pressed(KEY_SHIFT))
+	if (fl_up)
 	{
-		flap_position = std::max(flap_position - 1, 0); // Shift+F = flaps up
+		flap_position = std::max(flap_position - 1, 0); // flaps up
 	}
 	else
 	{
-		flap_position = std::min(flap_position + 1, 3); // F = flaps down
+		flap_position = std::min(flap_position + 1, 3); // flaps down
 	}
 
 	if (flap_position != old_pos)
@@ -530,8 +539,7 @@ void CockpitControls::handle_gear_key(ControlSurfaces *surfaces, JSBGodot *fdm)
 	{
 		return;
 	}
-	Input *input = Input::get_singleton();
-	if (!input->is_key_pressed(KEY_G))
+	if (!KeyBindings::pressed("gear_toggle")) // Settings > Keyboard
 	{
 		gear_key_held = false;
 		return;

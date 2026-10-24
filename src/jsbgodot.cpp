@@ -1,3 +1,4 @@
+#include "key_bindings.h"
 #include "jsbgodot.h"
 #include "geo_frame.h"
 #include "models/FGFCS.h"
@@ -894,11 +895,9 @@ void JSBGodot::_input(const Ref<InputEvent> event)
         Ref<InputEventKey> key_event = event;
         if (key_event->is_pressed())
         {
-            // Handle key press event
-            int keycode = key_event->get_keycode();
-            // Ctrl+W: toggle full / limited nose-wheel steering (A-10 NWS
-            // engage). Checked before the plain-W pitch key.
-            if (keycode == KEY_W && key_event->is_ctrl_pressed())
+            // Every key goes by the keyboard mapping (Settings > Keyboard).
+            // Nose-wheel steering range (A-10 NWS engage), checked first.
+            if (KeyBindings::matches("nose_steer_toggle", event))
             {
                 if (nose_steer_full_deg > nose_steer_limited_deg && nose_steer_limited_deg > 0.0)
                 {
@@ -912,77 +911,76 @@ void JSBGodot::_input(const Ref<InputEvent> event)
                 }
                 return;
             }
-            // Check if the 'O' or 'P' keys are pressed
-            if (keycode == KEY_O)
+            if (KeyBindings::matches("throttle_down", event))
             {
                 // Decrease throttle
                 set_input_throttle(input_throttle - 0.05f); // Decrease by 0.1
                 copy_outputs_from_JSBSim();
                 printf("Throttle decreased to %f\n", input_throttle);
             }
-            else if (keycode == KEY_P)
+            else if (KeyBindings::matches("throttle_up", event))
             {
                 // Increase throttle
                 set_input_throttle(input_throttle + 0.05f); // Increase by 0.1
                 copy_outputs_from_JSBSim();
                 printf("Throttle increased to %f\n", input_throttle);
             }
-            else if (keycode == KEY_W)
+            else if (KeyBindings::matches("elevator_up", event))
             {
                 // Increase Elevator
                 set_input_elevator(input_elevator + 0.05f); // Increase by 0.1
                 copy_outputs_from_JSBSim();
                 printf("Pitch increased to %f\n", input_pitch);
             }
-            else if (keycode == KEY_S)
+            else if (KeyBindings::matches("elevator_down", event))
             {
                 // Decrease Elevator
                 set_input_elevator(input_elevator - 0.05f); // Decrease by 0.1
                 copy_outputs_from_JSBSim();
                 printf("Pitch decreased to %f\n", input_pitch);
             }
-            else if (keycode == KEY_D)
+            else if (KeyBindings::matches("aileron_right", event))
             {
                 // Increase Aileron
                 set_input_aileron(input_aileron - 0.05f); // Decrease by 0.1
                 copy_outputs_from_JSBSim();
                 printf("Roll decreased to %f\n", input_roll);
             }
-            else if (keycode == KEY_A)
+            else if (KeyBindings::matches("aileron_left", event))
             {
                 // Decrease Aileron
                 set_input_aileron(input_aileron + 0.05f); // Increase by 0.1
                 copy_outputs_from_JSBSim();
                 printf("Roll increased to %f\n", input_roll);
             }
-            else if (keycode == KEY_X)
+            else if (KeyBindings::matches("rudder_right", event))
             {
                 // Right Rudder
                 set_input_rudder(input_rudder + 0.05f); // Increase by 0.1
             }
-            else if (keycode == KEY_Y)
+            else if (KeyBindings::matches("rudder_left", event))
             {
                 // Left Rudder
                 set_input_rudder(input_rudder - 0.05f); // Decrease by 0.1
             }
-            if (keycode == KEY_R)
+            if (KeyBindings::matches("fdm_start", event))
             {
                 // Start process
                 set_process(true);
                 printf("Process started\n");
             }
-            if (keycode == KEY_E)
+            if (KeyBindings::matches("fdm_stop", event))
             {
                 // Stop process
                 set_process(false);
                 printf("Process ended\n");
             }
-            if (keycode == KEY_PERIOD)
+            if (KeyBindings::matches("brakes_on", event))
             {
                 set_input_brake(1.0f);
                 printf("Brakes applied\n");
             }
-            else if (keycode == KEY_COMMA)
+            else if (KeyBindings::matches("brakes_off", event))
             {
                 set_input_brake(0.0f);
                 printf("Brakes released\n");

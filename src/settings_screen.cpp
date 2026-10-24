@@ -1,6 +1,7 @@
 #include "settings_screen.h"
 #include "aircraft_settings_panel.h"
 #include "joystick_settings_panel.h"
+#include "keyboard_settings_panel.h"
 #include "scenery_downloader_panel.h"
 
 #include <godot_cpp/core/class_db.hpp>
@@ -213,6 +214,7 @@ void SettingsScreen::_build_ui()
     _build_sound_tab();
     _build_realism_tab();
     _build_joystick_tab();
+    _build_keyboard_tab();
 
     // ── Bottom buttons ──
     main_vbox->add_child(memnew(HSeparator));
@@ -1195,6 +1197,28 @@ void SettingsScreen::_build_joystick_tab()
     content->add_child(joystick_panel);
 }
 
+// ── Tab: Keyboard (KeyboardSettingsPanel, src/keyboard_settings_panel.cpp) ──────────────────────────────
+
+void SettingsScreen::_build_keyboard_tab()
+{
+    VBoxContainer *content = _add_tab("Keyboard");
+    keyboard_panel = memnew(KeyboardSettingsPanel);
+    content->add_child(keyboard_panel);
+}
+
+Node *SettingsScreen::_key_config() const
+{
+    return get_node_or_null(NodePath("/root/KeyConfig"));
+}
+
+void SettingsScreen::_refresh_keyboard_panel()
+{
+    if (keyboard_panel != nullptr && keyboard_panel->has_method("refresh"))
+    {
+        keyboard_panel->call("refresh");
+    }
+}
+
 Node *SettingsScreen::_joystick_config() const
 {
     return get_node_or_null(NodePath("/root/JoystickConfig"));
@@ -1316,6 +1340,11 @@ void SettingsScreen::_on_save()
     {
         jc->call("save");
     }
+    Node *kc = _key_config();
+    if (kc != nullptr)
+    {
+        kc->call("save"); // keyboard.cfg
+    }
     hide_settings();
     emit_signal("closed");
 }
@@ -1333,6 +1362,12 @@ void SettingsScreen::_on_cancel()
         jc->call("_load");
         _refresh_joystick_panel();
     }
+    Node *kc = _key_config();
+    if (kc != nullptr)
+    {
+        kc->call("load"); // back to keyboard.cfg
+        _refresh_keyboard_panel();
+    }
     _refresh_aircraft_panel();
     hide_settings();
     emit_signal("closed");
@@ -1347,6 +1382,12 @@ void SettingsScreen::_on_restore_defaults()
     {
         jc->call("reset_to_defaults");
         _refresh_joystick_panel();
+    }
+    Node *kc = _key_config();
+    if (kc != nullptr)
+    {
+        kc->call("reset_to_defaults");
+        _refresh_keyboard_panel();
     }
     _refresh_aircraft_panel();
 }

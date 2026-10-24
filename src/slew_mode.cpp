@@ -1,3 +1,4 @@
+#include "key_bindings.h"
 #include "slew_mode.h"
 #include "geo_frame.h"
 #include <godot_cpp/variant/transform3d.hpp>
@@ -104,9 +105,8 @@ bool SlewMode::update(double delta, Object *p_jsb, double axis_strafe, double ax
 	last_terrain_height = terrain_height_at_ac;
 	JSBGodot *fdm = Object::cast_to<JSBGodot>(p_jsb);
 
-	// Toggle slew mode with Shift+Y (debounced against key repeat).
-	Input *input = Input::get_singleton();
-	if (input->is_key_pressed(KEY_SHIFT) && input->is_key_pressed(KEY_Y))
+	// Toggle slew mode (Settings > Keyboard, slew_toggle; debounced against key repeat).
+	if (KeyBindings::pressed("slew_toggle"))
 	{
 		if (!key_held)
 		{
@@ -178,7 +178,7 @@ void SlewMode::toggle(JSBGodot *fdm, int joy_device)
 		UtilityFunctions::print("    Right stick Y / Q,E: Move up/down");
 		UtilityFunctions::print("    Right stick X: Rotate (yaw)");
 		UtilityFunctions::print("    Hold Shift: Move faster (5x)");
-		UtilityFunctions::print("  Press Shift+Y to exit slew mode");
+		UtilityFunctions::print(vformat("  Press %s to exit slew mode", KeyBindings::label("slew_toggle")));
 	}
 	else
 	{
@@ -214,10 +214,8 @@ void SlewMode::handle_movement(double delta, double ax_strafe, double ax_forward
 		return;
 	}
 
-	Input *input = Input::get_singleton();
-
-	// Speed multiplier (hold shift for faster movement).
-	double speed_mult = input->is_key_pressed(KEY_SHIFT) ? slew_fast_multiplier : 1.0;
+	// Speed multiplier (hold the fast key for faster movement).
+	double speed_mult = KeyBindings::pressed("slew_fast") ? slew_fast_multiplier : 1.0;
 
 	double move_x = ax_strafe;
 	double move_z = ax_forward;
@@ -225,29 +223,29 @@ void SlewMode::handle_movement(double delta, double ax_strafe, double ax_forward
 	double move_y = ax_vertical;
 
 	// Keyboard support for vertical movement.
-	if (input->is_key_pressed(KEY_Q) || input->is_key_pressed(KEY_PAGEUP))
+	if (KeyBindings::pressed("slew_up"))
 	{
 		move_y = 1.0;
 	}
-	else if (input->is_key_pressed(KEY_E) || input->is_key_pressed(KEY_PAGEDOWN))
+	else if (KeyBindings::pressed("slew_down"))
 	{
 		move_y = -1.0;
 	}
 
-	// Keyboard WASD support.
-	if (input->is_key_pressed(KEY_W))
+	// Keyboard movement.
+	if (KeyBindings::pressed("slew_forward"))
 	{
 		move_z = -1.0;
 	}
-	else if (input->is_key_pressed(KEY_S))
+	else if (KeyBindings::pressed("slew_back"))
 	{
 		move_z = 1.0;
 	}
-	if (input->is_key_pressed(KEY_A))
+	if (KeyBindings::pressed("slew_left"))
 	{
 		move_x = -1.0;
 	}
-	else if (input->is_key_pressed(KEY_D))
+	else if (KeyBindings::pressed("slew_right"))
 	{
 		move_x = 1.0;
 	}
@@ -312,7 +310,7 @@ void SlewMode::handle_movement(double delta, double ax_strafe, double ax_forward
 	}
 	if (heading_label != nullptr)
 	{
-		heading_label->set_text("Shift+Y to exit");
+		heading_label->set_text(vformat("%s to exit", KeyBindings::label("slew_toggle")));
 	}
 	if (godot_pos_label != nullptr)
 	{

@@ -21,6 +21,7 @@ config/icon="res://icon.svg"
 InstallRoot="*res://install_root.tscn"
 AircraftInstaller="*res://aircraft_installer.tscn"
 JoystickConfig="*res://joystick_config.tscn"
+KeyConfig="*res://key_config.tscn"
 
 [display]
 

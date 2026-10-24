@@ -1,6 +1,7 @@
 #ifndef SCENERY_EDITOR_H
 #define SCENERY_EDITOR_H
 
+#include <godot_cpp/classes/input_event_key.hpp>
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/classes/button.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
@@ -204,6 +205,10 @@ namespace jsbgodot
         int get_tool() const;
         void rebuild_live();
         Array bake_command() const;
+        // Finer terrains the Scenery3D node draws over the region's base
+        // tiles (the installed Swiss 2 m scenery): their terrain/ dirs, for
+        // the bake's --terrain-overlay.
+        PackedStringArray terrain_overlays(const String &region_dir) const;
         bool bake_running() const;
         bool bake_area();
         void clear_way_cache();
@@ -391,7 +396,7 @@ namespace jsbgodot
         void on_list_multi_selected(int idx, bool selected);
         void on_list_item_activated(int idx);
         String object_status() const;
-        bool object_key(int keycode, bool shift, bool cmd);
+        bool object_key(const Ref<InputEventKey> &k, char32_t unicode); // the Object tool's keys; true when one applied
         OptionButton *area_type = nullptr;
         SpinBox *area_h = nullptr;
         Control *area_box = nullptr;

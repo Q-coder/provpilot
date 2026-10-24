@@ -2,6 +2,8 @@
 // pack models (SceneryObjects), the Blender-style transform gizmo with Global /
 // Local orientation and median / individual pivots, the transform panel
 // (typed location, rotation, scale, dimensions, pivot) and the object list.
+#include "key_bindings.h"
+#include <godot_cpp/classes/input_event_key.hpp>
 #include "scenery_editor.h"
 
 #include <godot_cpp/core/class_db.hpp>
@@ -502,30 +504,40 @@ void SceneryEditor::set_pivot_mode(int m)
 
 // ── keys, camera, status ──────────────────────────────────────────────────
 
-bool SceneryEditor::object_key(int keycode, bool shift, bool cmd)
+bool SceneryEditor::object_key(const Ref<InputEventKey> &k, char32_t unicode)
 {
+	const bool cmd = k->is_ctrl_pressed() || k->is_meta_pressed();
+	auto is = [&](const char *action) {
+		return KeyBindings::matches_key(action, k->get_keycode(), unicode, k->is_shift_pressed(), cmd, k->is_alt_pressed());
+	};
 	SceneryObjects *so = objects();
-	if (keycode == KEY_G && !cmd)
+	if (is("gizmo_move"))
 	{
 		set_gizmo_mode(GIZMO_MOVE);
 		return true;
 	}
-	if (keycode == KEY_Y)
+	if (is("gizmo_scale"))
 	{
 		set_gizmo_mode(GIZMO_SCALE);
 		return true;
 	}
-	if (keycode == KEY_F)
+	if (is("frame_selection"))
 	{
 		frame_selected();
 		return true;
 	}
+	const bool drop = is("drop_to_ground");
+	// heading: clockwise is -y about up
+	const double heading_deg = is("heading_left") ? 1.0 : is("heading_right") ? -1.0 : is("heading_left_big") ? 10.0 : is("heading_right_big") ? -10.0 : 0.0;
+	const double scale_f = is("scale_down") ? 1.0 / 1.05 : is("scale_down_big") ? 1.0 / 1.25 : is("scale_up") ? 1.05 : is("scale_up_big") ? 1.25 : 1.0;
+	if (!drop && heading_deg == 0.0 && scale_f == 1.0)
+		return false;
 	if (so == nullptr || selection.empty())
 		return false;
 	so->begin_edit_group();
 	for (int idx : selection)
 	{
-		if (keycode == KEY_G)
+		if (drop)
 		{
 			so->drop_to_ground(idx);
 			continue;
@@ -533,15 +545,10 @@ bool SceneryEditor::object_key(int keycode, bool shift, bool cmd)
 		const Dictionary d = so->get_object_info(idx);
 		Basis rot = d["rot"];
 		Vector3 sc = d["scale"];
-		if (keycode == KEY_COMMA || keycode == KEY_PERIOD)
-		{
-			const double step = Math::deg_to_rad(shift ? 10.0 : 1.0) * (keycode == KEY_COMMA ? 1.0 : -1.0);
-			rot = Basis(Vector3(0, 1, 0), step) * rot; // about up: heading (clockwise = -y)
-		}
-		else if (keycode == KEY_MINUS || keycode == KEY_KP_SUBTRACT)
-			sc /= shift ? 1.25 : 1.05;
+		if (heading_deg != 0.0)
+			rot = Basis(Vector3(0, 1, 0), Math::deg_to_rad(heading_deg)) * rot;
 		else
-			sc *= shift ? 1.25 : 1.05;
+			sc *= scale_f;
 		so->set_object_transform(idx, double(d["e"]), double(d["n"]), double(d["agl_m"]), rot, sc);
 	}
 	so->end_edit_group();
@@ -581,7 +588,9 @@ String SceneryEditor::object_status() const
 	String s = "\n" + so->get_object_label(selected_object);
 	if (selection.size() > 1)
 		s += vformat(" (+%d more selected)", (int)selection.size() - 1);
-	return s + String::utf8("\nG move, R rotate, Y scale (drag the arrows / rings / cubes or the models, Shift = fine); [ ] height 0.5 m, , . heading 1°, - = scale 5% (Shift x10 / x5), Ctrl+G to the ground, Delete removes, F frames; Ctrl+S writes the pack");
+	return s + vformat(String::utf8("\n%s move, %s rotate, %s scale (drag the arrows / rings / cubes or the models, Shift = fine); %s %s height 0.5 m, %s %s heading 1°, %s %s scale 5%% (Shift x10 / x5), %s to the ground, %s removes, %s frames; %s writes the pack"),
+		KeyBindings::label("gizmo_move"), KeyBindings::label("reverse_or_rotate"), KeyBindings::label("gizmo_scale"), KeyBindings::label("height_down"), KeyBindings::label("height_up"),
+		KeyBindings::label("heading_left"), KeyBindings::label("heading_right"), KeyBindings::label("scale_down"), KeyBindings::label("scale_up"), KeyBindings::label("drop_to_ground"), KeyBindings::label("delete"), KeyBindings::label("frame_selection"), KeyBindings::label("save"));
 }
 
 // ── transform panel + object list ─────────────────────────────────────────

@@ -1,3 +1,4 @@
+#include "key_bindings.h"
 #include "flight_hud.h"
 
 #include <godot_cpp/core/class_db.hpp>
@@ -219,11 +220,8 @@ void FlightHud::poll_keys()
 	{
 		fps_label->set_text("FPS: " + String::num_int64(Engine::get_singleton()->get_frames_per_second()));
 	}
-	Input *input = Input::get_singleton();
-	const bool ctrl = input->is_key_pressed(KEY_CTRL);
-	const bool shift = input->is_key_pressed(KEY_SHIFT);
-
-	if (input->is_key_pressed(KEY_H) && !ctrl)
+	// Keys by the keyboard mapping (Settings > Keyboard)
+	if (KeyBindings::pressed("hud_cycle"))
 	{
 		if (!hud_key_held)
 		{
@@ -236,7 +234,7 @@ void FlightHud::poll_keys()
 		hud_key_held = false;
 	}
 
-	if (ctrl && shift && input->is_key_pressed(KEY_F))
+	if (KeyBindings::pressed("fps_toggle"))
 	{
 		if (!fps_key_held)
 		{
@@ -249,7 +247,7 @@ void FlightHud::poll_keys()
 		fps_key_held = false;
 	}
 
-	if (ctrl && input->is_key_pressed(KEY_I))
+	if (KeyBindings::pressed("weather_overlay"))
 	{
 		if (!wx_key_held)
 		{
@@ -511,7 +509,7 @@ void FlightHud::build_intro_hud()
 	intro_bar_bg->add_child(intro_bar);
 
 	Label *hint = memnew(Label);
-	hint->set_text("Press Space to skip animation");
+	hint->set_text(vformat("Press %s to skip animation", KeyBindings::label("intro_skip")));
 	hint->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 	hint->add_theme_font_size_override("font_size", 28);
 	hint->add_theme_color_override("font_color", Color(0.95, 0.95, 0.9));

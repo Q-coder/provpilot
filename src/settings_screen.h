@@ -163,6 +163,7 @@ namespace jsbgodot
         String live_weather_status;
         bool _live_weather_shown() const;
         Node *joystick_panel = nullptr;
+        Node *keyboard_panel = nullptr;
         Node *aircraft_panel = nullptr;
         Node *downloader_panel = nullptr;
         Node *area_dialog = nullptr;    // live "Add Area..." FileDialog, if any
@@ -183,6 +184,7 @@ namespace jsbgodot
         void _build_sound_tab();
         void _build_realism_tab();
         void _build_joystick_tab();
+        void _build_keyboard_tab();
 
         Label *_make_label(const String &text, int font_size, const Color &color, int min_w = 0);
         static Ref<ImageTexture> _check_icon(bool checked, bool disabled);
@@ -206,6 +208,8 @@ namespace jsbgodot
         void _select_area(int idx);
         Row *_find_row(const String &key);
         Node *_joystick_config() const;
+        Node *_key_config() const;
+        void _refresh_keyboard_panel();
         void _refresh_joystick_panel();
         void _build_aircraft_tab();
         void _refresh_aircraft_panel();

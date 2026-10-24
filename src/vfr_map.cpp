@@ -1,3 +1,4 @@
+#include "key_bindings.h"
 #include "vfr_map.h"
 #include "geo.h"
 
@@ -285,33 +286,24 @@ void VfrMap::_unhandled_input(const Ref<InputEvent> &event)
     {
         return;
     }
-    switch (key->get_keycode())
+    // Keys by the keyboard mapping (Settings > Keyboard). The map toggle
+    // must work while hidden too — a hidden Control still receives
+    // unhandled input, so this is the only way to re-show the frame.
+    if (KeyBindings::matches("map_toggle", event))
     {
-        case KEY_N:
-            // Must work while hidden too — a hidden Control still receives
-            // unhandled input, so this is the only way to re-show the frame.
-            toggle_visible();
-            get_viewport()->set_input_as_handled();
-            break;
-        case KEY_MINUS: // zoom out (wider view)
-            if (enabled)
-            {
-                zoom_out();
-                get_viewport()->set_input_as_handled();
-            }
-            break;
-        case KEY_EQUAL: // zoom in (narrower view)
-        case KEY_PLUS:  // the '+' character: Shift+=' on US layouts, Shift+1
-                        // on Swiss ones — Godot reports the produced
-                        // character as the keycode, so both must zoom in.
-            if (enabled)
-            {
-                zoom_in();
-                get_viewport()->set_input_as_handled();
-            }
-            break;
-        default:
-            break;
+        toggle_visible();
+        get_viewport()->set_input_as_handled();
+    }
+    else if (enabled && KeyBindings::matches("map_zoom_out", event))
+    {
+        zoom_out();
+        get_viewport()->set_input_as_handled();
+    }
+    else if (enabled && KeyBindings::matches("map_zoom_in", event))
+    {
+        // "=" and "Shift+=": the + character of any layout (Shift+1 on a Swiss one)
+        zoom_in();
+        get_viewport()->set_input_as_handled();
     }
 }
 
