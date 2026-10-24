@@ -8,6 +8,7 @@
 #include "camera_rig.h"
 #include "cockpit_controls.h"
 #include "slew_mode.h"
+#include "drive_mode.h"
 #include "intro_zoom.h"
 #include "engine_sound.h"
 #include "terrain_elevation.h"
@@ -32,11 +33,13 @@
 #include "runways_lib.h"
 #include "live_weather.h"
 #include "joystick_bindings.h"
+#include "key_bindings.h"
 #include "aircraft_installer.h"
 #include "sky_atmosphere.h"
 #include "cloud_layers.h"
 #include "aircraft_settings_panel.h"
 #include "joystick_settings_panel.h"
+#include "keyboard_settings_panel.h"
 #include "welcome_screen.h"
 #include "scenery_downloader_panel.h"
 #include "runways.h"
@@ -60,6 +63,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<CameraRig>();
 	ClassDB::register_class<CockpitControls>();
 	ClassDB::register_class<SlewMode>();
+	ClassDB::register_class<DriveMode>();
 	ClassDB::register_class<IntroZoom>();
 	ClassDB::register_class<EngineSound>();
 	ClassDB::register_class<TerrainElevation>();
@@ -84,11 +88,13 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<RunwaysLib>();
 	ClassDB::register_class<LiveWeather>();
 	ClassDB::register_class<JoystickBindings>();
+	ClassDB::register_class<KeyBindings>();
 	ClassDB::register_class<AircraftInstaller>();
 	ClassDB::register_class<SkyAtmosphere>();
 	ClassDB::register_class<CloudLayers>();
 	ClassDB::register_class<AircraftSettingsPanel>();
 	ClassDB::register_class<JoystickSettingsPanel>();
+	ClassDB::register_class<KeyboardSettingsPanel>();
 	ClassDB::register_class<WelcomeScreen>();
 	ClassDB::register_class<SceneryDownloaderPanel>();
 	ClassDB::register_class<Runways>();

@@ -46,6 +46,14 @@ static const struct { const char *id; const char *label; const char *desc; } AIR
 	{"a10", "Fairchild A-10A Thunderbolt II", "Twin-engine close air support jet. 2x GE TF34 turbofans."},
 };
 static const int AIRCRAFT_COUNT = 3;
+// Ground vehicles (aircraft/<id>/aircraft.cfg with a [vehicle] section): the
+// "Vehicles" frame below the aircraft. Fly! places them on the runway;
+// DriveMode drives a car, a train is placed only (for now).
+static const struct { const char *id; const char *label; const char *desc; } VEHICLES[] = {
+	{"car", "Low poly car", "Small car for road testing: W / S drive, A / D steer, B handbrake (Settings > Keyboard, Vehicle)."},
+	{"re44", "SBB Re 4/4 locomotive", "Swiss electric locomotive (CC-BY-4.0, hotdoghans). Placed on the runway; no train motion yet."},
+};
+static const int VEHICLE_COUNT = 2;
 
 void WelcomeScreen::_bind_methods()
 {
@@ -55,8 +63,11 @@ void WelcomeScreen::_bind_methods()
 	ClassDB::bind_method(D_METHOD("hide_welcome"), &WelcomeScreen::hide_welcome);
 	ClassDB::bind_method(D_METHOD("set_continue_enabled", "enabled"), &WelcomeScreen::set_continue_enabled);
 	ClassDB::bind_method(D_METHOD("get_selected_aircraft_id"), &WelcomeScreen::get_selected_aircraft_id);
+	ClassDB::bind_method(D_METHOD("get_selected_departure"), &WelcomeScreen::get_selected_departure);
 	ClassDB::bind_static_method("WelcomeScreen", D_METHOD("aircraft_label", "id"), &WelcomeScreen::aircraft_label);
 	ClassDB::bind_method(D_METHOD("_on_aircraft_selected", "index"), &WelcomeScreen::_on_aircraft_selected);
+	ClassDB::bind_method(D_METHOD("_on_vehicle_selected", "index"), &WelcomeScreen::_on_vehicle_selected);
+	ClassDB::bind_method(D_METHOD("is_vehicle_selected"), &WelcomeScreen::is_vehicle_selected);
 	ClassDB::bind_method(D_METHOD("_on_airport_selected", "index"), &WelcomeScreen::_on_airport_selected);
 	ClassDB::bind_method(D_METHOD("_on_airport_activated", "index"), &WelcomeScreen::_on_airport_activated);
 	ClassDB::bind_method(D_METHOD("_on_search_changed", "text"), &WelcomeScreen::_on_search_changed);
@@ -149,7 +160,16 @@ void WelcomeScreen::set_continue_enabled(bool enabled)
 
 String WelcomeScreen::get_selected_aircraft_id() const
 {
+	if (selected_vehicle_idx >= 0 && selected_vehicle_idx < VEHICLE_COUNT)
+	{
+		return String(VEHICLES[selected_vehicle_idx].id);
+	}
 	return (selected_aircraft_idx >= 0 && selected_aircraft_idx < AIRCRAFT_COUNT) ? String(AIRCRAFT[selected_aircraft_idx].id) : String("c172p");
+}
+
+bool WelcomeScreen::is_vehicle_selected() const
+{
+	return selected_vehicle_idx >= 0 && selected_vehicle_idx < VEHICLE_COUNT;
 }
 
 String WelcomeScreen::aircraft_label(const String &id)
@@ -159,6 +179,13 @@ String WelcomeScreen::aircraft_label(const String &id)
 		if (id == a.id)
 		{
 			return a.label;
+		}
+	}
+	for (const auto &v : VEHICLES)
+	{
+		if (id == v.id)
+		{
+			return v.label;
 		}
 	}
 	return id;
@@ -282,6 +309,14 @@ void WelcomeScreen::build_aircraft_panel(HBoxContainer *parent)
 	aircraft_desc->add_theme_color_override("font_color", Color(0.7, 0.7, 0.7));
 	aircraft_desc->set_custom_minimum_size(Vector2(0, 60));
 	vbox->add_child(aircraft_desc);
+	// Ground vehicles: their own frame, one selection shared with the aircraft
+	vbox->add_child(header_label("Vehicles", FONT_LG, ACCENT_COLOR));
+	vehicle_list = memnew(ItemList);
+	vehicle_list->set_name("VehicleList");
+	vehicle_list->set_custom_minimum_size(Vector2(0, 40 * VEHICLE_COUNT + 12));
+	vehicle_list->add_theme_font_size_override("font_size", FONT_MD);
+	vehicle_list->connect("item_selected", Callable(this, "_on_vehicle_selected"));
+	vbox->add_child(vehicle_list);
 }
 
 void WelcomeScreen::build_airport_panel(HBoxContainer *parent)
@@ -417,6 +452,14 @@ void WelcomeScreen::populate_aircraft_list()
 	{
 		aircraft_list->add_item(a.label);
 	}
+	if (vehicle_list != nullptr)
+	{
+		vehicle_list->clear();
+		for (const auto &v : VEHICLES)
+		{
+			vehicle_list->add_item(v.label);
+		}
+	}
 	if (AIRCRAFT_COUNT > 0)
 	{
 		aircraft_list->select(0);
@@ -427,10 +470,29 @@ void WelcomeScreen::populate_aircraft_list()
 void WelcomeScreen::_on_aircraft_selected(int index)
 {
 	selected_aircraft_idx = index;
+	selected_vehicle_idx = -1;
+	if (vehicle_list != nullptr)
+	{
+		vehicle_list->deselect_all();
+	}
 	if (index >= 0 && index < AIRCRAFT_COUNT)
 	{
 		aircraft_desc->set_text(AIRCRAFT[index].desc);
 	}
+}
+
+void WelcomeScreen::_on_vehicle_selected(int index)
+{
+	if (index < 0 || index >= VEHICLE_COUNT)
+	{
+		return;
+	}
+	selected_vehicle_idx = index;
+	if (aircraft_list != nullptr)
+	{
+		aircraft_list->deselect_all();
+	}
+	aircraft_desc->set_text(VEHICLES[index].desc);
 }
 
 // ── Airport filter & search ─────────────────────────────────────────────────
@@ -637,7 +699,10 @@ void WelcomeScreen::populate_runways()
 
 // {swiss_e, swiss_n, heading_deg} for the selected airport / runway. The
 // spawn heading is the runway's TRUE bearing (ECEF world); the thresholds are
-// computed in the LV95 grid (AirportsLib).
+// computed in the LV95 grid (AirportsLib, or the pack's pavement end plus the
+// displaced threshold via RunwaysLib). The aircraft stands SPAWN_PAST_THRESHOLD_M
+// past the threshold, on the threshold stripes (the 30 m "piano keys" start
+// 6 m in, the designator 12 m after them), not on the grass before it.
 Dictionary WelcomeScreen::get_selected_departure() const
 {
 	const Dictionary &ap = selected_airport;
@@ -670,13 +735,17 @@ Dictionary WelcomeScreen::get_selected_departure() const
 			}
 			const Dictionary thresh = rwy[key];
 			double hdg = rwy.get("heading_deg", 0.0);
+			double grid_hdg = rwy.get("grid_heading_deg", hdg);
 			if (k == 1)
 			{
 				hdg = std::fmod(hdg + 180.0, 360.0);
+				grid_hdg = std::fmod(grid_hdg + 180.0, 360.0);
 			}
+			// along the runway, in the grid the thresholds live in
+			const double along = Math::deg_to_rad(grid_hdg);
 			Dictionary d;
-			d["swiss_e"] = thresh.get("e", ap.get("center_e", 0));
-			d["swiss_n"] = thresh.get("n", ap.get("center_n", 0));
+			d["swiss_e"] = (double)thresh.get("e", ap.get("center_e", 0)) + std::sin(along) * SPAWN_PAST_THRESHOLD_M;
+			d["swiss_n"] = (double)thresh.get("n", ap.get("center_n", 0)) + std::cos(along) * SPAWN_PAST_THRESHOLD_M;
 			d["heading_deg"] = hdg;
 			entries.push_back(d);
 		}

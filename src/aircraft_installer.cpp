@@ -21,6 +21,8 @@ static const char *const REQUIRED_FILES[] = {
 	"c172p/model/C172P_1.glb",
 	"pc7/model/pc7.glb",
 	"a10/model/a10.glb",
+	"car/model/car.glb",
+	"re44/model/re44.glb",
 };
 // Never copied: Godot / OS metadata, Blender sources, the split GLTF pair and
 // loose textures already baked into the .glb.

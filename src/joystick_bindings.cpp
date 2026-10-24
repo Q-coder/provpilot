@@ -36,6 +36,9 @@ static const struct { const char *id; const char *label; } AXIS_ACTIONS[] = {
 	{"flight_throttle", "Flight: Throttle"},
 	{"look_x", "Camera: Look X"},
 	{"look_y", "Camera: Look Y"},
+	{"drive_steer", "Vehicle: Steer"},
+	{"drive_accelerate", "Vehicle: Accelerate (trigger)"},
+	{"drive_brake", "Vehicle: Brake (trigger)"},
 };
 
 static const struct { const char *id; const char *label; } BUTTON_ACTIONS[] = {
@@ -50,6 +53,7 @@ static const struct { const char *id; const char *label; } BUTTON_ACTIONS[] = {
 	{"look_right", "Look right"},
 	{"look_up", "Look up"},
 	{"look_down", "Look down"},
+	{"drive_handbrake", "Vehicle: Handbrake"},
 };
 
 void JoystickBindings::_bind_methods()
@@ -160,6 +164,9 @@ void JoystickBindings::apply_defaults()
 	axis_bindings["flight_throttle"] = axis_default(JOY_AXIS_TRIGGER_RIGHT, false);
 	axis_bindings["look_x"] = axis_unbound();
 	axis_bindings["look_y"] = axis_unbound();
+	axis_bindings["drive_steer"] = axis_default(JOY_AXIS_LEFT_X, false);
+	axis_bindings["drive_accelerate"] = axis_default(JOY_AXIS_TRIGGER_RIGHT, false); // 0..1 at rest 0
+	axis_bindings["drive_brake"] = axis_default(JOY_AXIS_TRIGGER_LEFT, false);
 	button_bindings = Dictionary();
 	auto btn = [&](const char *action, int button) {
 		Dictionary d;
@@ -177,6 +184,7 @@ void JoystickBindings::apply_defaults()
 	btn("look_right", JOY_BUTTON_DPAD_RIGHT);
 	btn("look_up", JOY_BUTTON_DPAD_UP);
 	btn("look_down", JOY_BUTTON_DPAD_DOWN);
+	btn("drive_handbrake", JOY_BUTTON_A);
 }
 
 void JoystickBindings::reset_to_defaults()

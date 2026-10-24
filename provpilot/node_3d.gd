@@ -39,6 +39,7 @@ var _aircraft := AircraftRig.new()          # aircraft.cfg, model nodes, levers,
 var _world := WorldScenery.new()            # elevation stack, geodesy, streaming, globe mask
 var _camera_rig := CameraRig.new()          # cockpit head look, orbit, chase
 var _slew_mode := SlewMode.new()            # Shift+Y free movement
+var _drive_mode := DriveMode.new()          # ground vehicles (welcome "Vehicles"): kinematic car
 var _intro_zoom := IntroZoom.new()          # space -> spot cinematic
 var _terrain_elevation := TerrainElevation.new()   # post-teleport pin, ground push
 var _spawn := FlightSpawn.new()             # first flight, teleport, deferred init
@@ -150,6 +151,8 @@ func _ready() -> void:
 	_slew_mode.register_nodes(_ac, $Control/BottomRow/Label, $Control/BottomRow/Label2, $Control/BottomRow/Label3,
 		$Control/BottomRow/Label4, $Control/BottomRow/Label5, $Control/Label6, $Control/Label7, $Control/Label8)
 	_slew_mode.set_pm_label($Control/Label9)
+	_drive_mode.register_nodes(_ac, _world, $Control/BottomRow/Label, $Control/BottomRow/Label2, $Control/BottomRow/Label3,
+		$Control/BottomRow/Label4, $Control/BottomRow/Label5, $Control/Label8)
 	_terrain_elevation.register_nodes(_ac)
 	_spawn.register_nodes(_ac, jsb_node, _world, _terrain_elevation, _control_surfaces, _cockpit_controls, _slew_mode)
 	_spawn.spawned.connect(_on_spawned)
@@ -311,10 +314,15 @@ func _process(delta: float) -> void:
 		JoystickConfig.get_axis("slew_strafe"), JoystickConfig.get_axis("slew_forward"),
 		JoystickConfig.get_axis("slew_yaw"), JoystickConfig.get_axis("slew_vertical"),
 		_world.terrain_elevation_below(_ac.global_position), JoystickConfig.get_active_device())
-	if Input.is_action_just_pressed("flip_camera"):
+	if KeyBindings.just_pressed("camera_flip"):   # Settings > Keyboard
 		flip_camera()
 	_camera_rig.update(delta, JoystickConfig.get_active_device())
 	if slewing:
+		return
+	# Driving a vehicle: the node follows the car model, JSBSim stays paused.
+	if _drive_mode.update(delta, jsb_node, _terrain_elevation.get_rebase_cooldown(),
+			JoystickConfig.get_axis("drive_steer"), JoystickConfig.get_axis("drive_accelerate"),
+			JoystickConfig.get_axis("drive_brake"), JoystickConfig.get_button("drive_handbrake")):
 		return
 	if was_slewing:
 		_spawn.update_terrain_elevation()   # JSBSim was re-initialised at the new spot
@@ -338,7 +346,7 @@ func _feed_vfr_map() -> void:
 	var ui_up := _ui_up()
 	if _edit_session and _scenery_editor.is_active():
 		_world.feed_vfr_map(_scenery_editor.get_camera().global_position, fmod(rad_to_deg(_scenery_editor.yaw) + 360.0, 360.0), ui_up)
-	elif jsb_node and _slew_mode.is_enabled():
+	elif jsb_node and (_slew_mode.is_enabled() or _drive_mode.is_active()):
 		_world.feed_vfr_map(_ac.global_position, WorldScenery.ac_true_heading(_ac), ui_up)
 	elif jsb_node:
 		_world.feed_vfr_map(jsb_node.get_godot_position(), jsb_node.get_heading(), ui_up)
@@ -485,6 +493,12 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 	_edit_session = false
 	_ac.visible = true   # hidden during an Edit Mode session
 	_aircraft.apply_selected_aircraft(aircraft_id, jsb_node)
+	# A ground vehicle: DriveMode takes the node over once the spawn has
+	# settled (a train is only placed for now).
+	_drive_mode.disengage(jsb_node)
+	if _aircraft.is_vehicle() and _aircraft.get_vehicle_kind() == "car":
+		_drive_mode.configure(_aircraft.get_vehicle_params())
+		_drive_mode.arm(jsb_node)
 	# The scenery design (replaced roads, terrain patches) is applied before
 	# the first tile of this flight loads: no reload under the aircraft later.
 	_scenery_editor.apply_startup_design()
@@ -514,6 +528,7 @@ func _on_welcome_edit_requested(swiss_e: float, swiss_n: float, heading_deg: flo
 			_welcome_screen.show_welcome()
 		return
 	_cancel_intro_zoom()
+	_drive_mode.disengage(jsb_node)
 	_edit_session = true
 	_settings_from_welcome = false
 	_set_observer_lv95(swiss_e, swiss_n)

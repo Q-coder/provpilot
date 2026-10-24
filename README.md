@@ -48,30 +48,39 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 
 ## Controls
 
+Every key below is a default. **Settings → Keyboard** shows the mapping in
+three sections (Flight, Slew, Scenery editor), lets you rebind each action to
+up to two keys (click the key, press the new one; Escape keeps it, Backspace
+clears it; Shift / Ctrl / Alt alone bind on release), marks a key used twice in
+the same section, and **Save** writes `keyboard.cfg` next to `provpilot.cfg`
+(a plain config file: `[flight] flaps_down="F"`, `[slew] slew_up="Q, PageUp"`;
+`Ctrl` also means Cmd). The in-game hints follow the mapping.
+
 ### Flight Controls
 | Control | Gamepad | Keyboard |
 |---------|---------|----------|
 | Pitch (Elevator) | Left Stick Y | W / S |
 | Roll (Aileron) | Left Stick X | A / D |
-| Rudder | Right Stick X | Q / E |
-| Throttle Up | Right Trigger (RT) | Numpad + |
-| Throttle Down | Left Trigger (LT) | Numpad - |
-| Flaps Up | D-pad Up | F |
-| Flaps Down | D-pad Down | V |
-| Brakes | A Button | B |
-| Trim Up | Y Button | — |
-| Trim Down | X Button | — |
-| Mixture Richer | — | M |
-| Mixture Leaner | — | Shift+M |
-| Throttle Increase | — | T |
-| Throttle Decrease | — | Shift+T |
-| Magneto Clockwise | — | I |
-| Magneto Counter-CW | — | Shift+I |
+| Rudder | Right Stick X | Y (left) / X (right) |
+| Throttle Up / Down (fine) | Right / Left Trigger | P / O |
+| Throttle Up / Down (step) | — | T / Shift+T |
+| Flaps Down / Up | D-pad Down / Up | F / Shift+F |
+| Mixture Richer / Leaner | — | M / Shift+M |
+| Magneto Clockwise / Counter-CW | — | I / Shift+I |
+| Landing gear | — | G |
+| Speed brakes | — | B |
+| Wheel brakes on / off (parking brake set at every flight start) | A Button | . / , |
+| Nose-wheel steering range (A-10) | — | Ctrl+W |
+| Landing / taxi lights | — | L |
+| Start / stop the flight model | Start / Back | R / E |
+| Trim Up / Down | Y / X Button | — |
 | Slew Mode | — | Shift+Y |
-| Scenery editor (design / developer mode, docs/SCENERY_EDITOR.md) | — | F8; inside: WASD, Q/E or PgDn/PgUp, 1–9 tools, 0 pick a baked road, C curved, [ ] heights, Space top view, axis gizmo, Ctrl+S, Ctrl+B bake the tiles around; no haze while editing — tutorial in the doc |
+| Scenery editor (design / developer mode, docs/SCENERY_EDITOR.md) | — | F8; inside: WASD, E/Q or PgUp/PgDn, 1–9 tools, 0 pick a baked road, O objects, C curved, [ ] heights, Space top view, axis gizmo, Ctrl+S, Ctrl+B bake the tiles around; no haze while editing — tutorial in the doc |
 | VFR Map Toggle | — | N |
 | VFR Map Zoom | Wheel over map frame | − / + (=) |
+| Weather overlay / FPS counter | — | Ctrl+I / Ctrl+Shift+F |
 | Flap Lever Drag | — | Mouse drag (cockpit) |
+| Skip the intro flight | — | Space |
 | Return to Welcome | — | Escape |
 
 ### Camera Controls
@@ -85,21 +94,38 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 | Look around (cockpit) | — | hold Space + mouse |
 | Zoom cockpit view | — | hold Space + mouse wheel |
 | Cockpit knobs (Kollsman, course…) | — | click zones, or mouse wheel over the knob (Shift = coarse) |
-| Show every cockpit mouse-sense area | — | Shift+Ctrl+M |
+| Show every cockpit mouse-sense area | — | Ctrl+Shift+H |
 | Recentre cockpit view (head + zoom) | — | Space (tap) |
 | HUD overlay: off / readouts / readouts + coordinates | — | H |
-| Parking brake (set at every flight start) | — | . set / , release |
+
+### Vehicles (ground)
+The welcome screen has a **Vehicles** frame under the aircraft: a low-poly car
+and an SBB Re 4/4 locomotive (credits in `aircraft/<id>/CREDITS.txt`; the
+locomotive is CC-BY-4.0 by hotdoghans, the car Sketchfab Standard by
+assetfactory). Fly! places the selected vehicle on the chosen runway. The car
+is driven by a kinematic model on the drawn ground (`src/drive_mode.cpp`, no
+physics engine; the baked road ribbons, embankments and bridge decks are part
+of that ground, see [docs/VEHICLES.md](docs/VEHICLES.md)): the vehicle keys
+are their own section of the keyboard mapping. The locomotive is only placed
+for now.
+
+| Control | Keyboard |
+|---------|----------|
+| Accelerate / brake (brake held at standstill reverses) | W / S |
+| Steer left / right | A / D |
+| Handbrake | B |
+| Cameras | as in flight (C, arrows, Page Up / Down) |
 
 ### Slew Mode Controls
 | Control | Gamepad | Keyboard |
 |---------|---------|----------|
 | Move Horizontal | Left Stick | W/A/S/D |
-| Move Vertical | Right Stick Y | Q / E |
+| Move Vertical | Right Stick Y | Q / E (or PgUp / PgDn) |
 | Rotate (Yaw) | Right Stick X | — |
 | Fast Movement | — | Hold Shift |
 | Exit Slew | — | Shift+Y |
 
-> Gamepad axes are calibrated per‑user in **Settings → Joystick**. If your right‑Y is a half‑axis (Logitech Dual Action and similar), bind a different axis to **Slew: Up/Down**, or use the keyboard `Q` / `E` keys for vertical motion. Bindings persist to `user://joystick.cfg`.
+> Gamepad axes are calibrated per‑user in **Settings → Joystick**. If your right‑Y is a half‑axis (Logitech Dual Action and similar), bind a different axis to **Slew: Up/Down**, or use the keyboard `Q` / `E` keys for vertical motion. Bindings persist in `provpilot.cfg`.
 
 ### Joystick / Gamepad Configuration
 
@@ -109,7 +135,7 @@ Open the **Settings** screen from the welcome menu and scroll to the **Joystick*
 2. The blue bar shows the **raw** axis value; the green bar shows the **calibrated** result that gameplay code receives.
 3. With the stick at rest, click **Ctr**. Push to one extreme, click **Min** (or **Max**). The captured raw values define the symmetric `[-1, 1]` mapping — half‑axes work fine, just leave one endpoint equal to center.
 4. Tick **Inv** if the direction is reversed. Adjust the deadzone slider so the calibrated bar reads exactly 0 at rest. Pick a response curve (Linear / Squared / Cubed) for analog sensitivity.
-5. **Save** persists everything to `user://joystick.cfg`. **Restore Defaults** falls back to a generic SDL gamepad layout.
+5. **Save** persists everything to `provpilot.cfg` (sections `axis.*` / `button.*`). **Restore Defaults** falls back to a generic SDL gamepad layout.
 
 ## Building
 

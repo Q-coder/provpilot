@@ -60,6 +60,10 @@ namespace jsbgodot
         static String aircraft_label(const String &id);
 
         void _on_aircraft_selected(int index);
+
+        void _on_vehicle_selected(int index);
+
+        bool is_vehicle_selected() const;
         void _on_airport_selected(int index);
         void _on_airport_activated(int index);
         void _on_search_changed(const String &text);
@@ -80,9 +84,13 @@ namespace jsbgodot
         void _on_first_run_canceled();
 
     protected:
+        // Fly! / Edit start this far past the runway threshold, on the
+        // threshold stripes (not on the grass before the pavement).
+        static constexpr double SPAWN_PAST_THRESHOLD_M = 20.0;
         TypedArray<Dictionary> airports;
         Vector<Dictionary> filtered_airports;
         int selected_aircraft_idx = 0;
+        int selected_vehicle_idx = -1; // >= 0: a vehicle is the selection, not an aircraft
         Dictionary selected_airport;
         Dictionary installed_regions;
 
@@ -91,6 +99,7 @@ namespace jsbgodot
         HTTPRequest *update_request = nullptr;
         String latest_download_url;
         ItemList *aircraft_list = nullptr;
+        ItemList *vehicle_list = nullptr;
         Label *aircraft_desc = nullptr;
         LineEdit *search_input = nullptr;
         ItemList *airport_list = nullptr;

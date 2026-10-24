@@ -1,3 +1,4 @@
+#include "key_bindings.h"
 #include "aircraft_rig.h"
 
 #include <godot_cpp/core/class_db.hpp>
@@ -44,6 +45,9 @@ void AircraftRig::_bind_methods()
 
 	ClassDB::bind_method(D_METHOD("apply_selected_aircraft", "aircraft_id", "jsb"), &AircraftRig::apply_selected_aircraft);
 	ClassDB::bind_method(D_METHOD("apply_model_normals", "root"), &AircraftRig::apply_model_normals);
+	ClassDB::bind_method(D_METHOD("is_vehicle"), &AircraftRig::is_vehicle);
+	ClassDB::bind_method(D_METHOD("get_vehicle_kind"), &AircraftRig::get_vehicle_kind);
+	ClassDB::bind_method(D_METHOD("get_vehicle_params"), &AircraftRig::get_vehicle_params);
 	ClassDB::bind_method(D_METHOD("resolve_nodes", "jsb"), &AircraftRig::resolve_nodes);
 	ClassDB::bind_method(D_METHOD("apply_camera_config"), &AircraftRig::apply_camera_config);
 	ClassDB::bind_method(D_METHOD("apply_nose_steer_range", "jsb"), &AircraftRig::apply_nose_steer_range);
@@ -216,10 +220,16 @@ bool AircraftRig::apply_selected_aircraft(const String &p_aircraft_id, Object *p
 		jsbsim_model = cfg->get_string("jsbsim", "model", aircraft_id);
 	}
 	JSBGodot *fdm = Object::cast_to<JSBGodot>(p_jsb);
-	if (fdm != nullptr)
+	if (fdm != nullptr && !is_vehicle())
 	{
 		UtilityFunctions::print("Loading JSBSim model '", jsbsim_model, "' for aircraft '", aircraft_id, "'");
 		fdm->load_aircraft(aircraft_id, jsbsim_model);
+	}
+	else if (is_vehicle())
+	{
+		// a ground vehicle keeps whatever JSBSim model is loaded: DriveMode
+		// moves the node and holds JSBSim paused
+		UtilityFunctions::print("Vehicle '", aircraft_id, "' (", cfg->get_string("vehicle", "kind", "?"), "): no JSBSim model");
 	}
 	apply_nose_steer_range(p_jsb);
 
@@ -234,6 +244,7 @@ bool AircraftRig::apply_selected_aircraft(const String &p_aircraft_id, Object *p
 			if (loader->load_aircraft_model(aircraft_id))
 			{
 				apply_model_normals(loader);
+				hide_model_nodes(loader);
 				resolve_nodes(p_jsb);
 				model_visuals_id = aircraft_id;
 				changed = true;
@@ -242,6 +253,48 @@ bool AircraftRig::apply_selected_aircraft(const String &p_aircraft_id, Object *p
 	}
 	apply_camera_config();
 	return changed;
+}
+
+// [model] hide_nodes: a comma list of node names the model ships but must
+// not draw (a Sketchfab collision proxy, a stand).
+void AircraftRig::hide_model_nodes(Node *root)
+{
+	if (root == nullptr || cfg.is_null())
+		return;
+	const PackedStringArray names = cfg->get_string("model", "hide_nodes", "").split(",", false);
+	for (int i = 0; i < names.size(); i++)
+	{
+		Node *n = root->find_child(names[i].strip_edges(), true, false);
+		Node3D *n3 = Object::cast_to<Node3D>(n);
+		if (n3 != nullptr)
+			n3->set_visible(false);
+		else
+			UtilityFunctions::push_warning("AircraftRig: hide_nodes: no node '", names[i], "' in the model of ", aircraft_id);
+	}
+}
+
+bool AircraftRig::is_vehicle() const
+{
+	return cfg.is_valid() && cfg->is_loaded() && !cfg->get_string("vehicle", "kind", "").is_empty();
+}
+
+String AircraftRig::get_vehicle_kind() const
+{
+	return is_vehicle() ? cfg->get_string("vehicle", "kind", "") : String();
+}
+
+// The [vehicle] section as DriveMode::configure wants it.
+Dictionary AircraftRig::get_vehicle_params() const
+{
+	Dictionary d;
+	if (!is_vehicle())
+		return d;
+	d["kind"] = cfg->get_string("vehicle", "kind", "");
+	static const char *KEYS[] = {"wheelbase_m", "track_m", "max_speed_kmh", "max_reverse_kmh", "accel_mps2", "brake_mps2", "max_steer_deg", "steer_rate_deg_s", "clearance_m"};
+	for (const char *k : KEYS)
+		if (!cfg->get_string("vehicle", k, "").is_empty())
+			d[k] = cfg->get_float("vehicle", k, 0.0);
+	return d;
 }
 
 void AircraftRig::apply_model_normals(Node *root)
@@ -927,10 +980,9 @@ void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *renderin
 
 void AircraftRig::poll_keys(Object *p_jsb)
 {
-	Input *input = Input::get_singleton();
-	const bool ctrl = input->is_key_pressed(KEY_CTRL);
-	// Shift+Ctrl+M: show every cockpit mouse-sense area (FlightGear controls)
-	if (input->is_key_pressed(KEY_M) && ctrl && input->is_key_pressed(KEY_SHIFT))
+	// Keys by the keyboard mapping (Settings > Keyboard, hotspots_debug / speedbrake_toggle / landing_lights)
+	// hotspots: show every cockpit mouse-sense area (FlightGear controls)
+	if (KeyBindings::pressed("hotspots_debug"))
 	{
 		if (!hotspot_key_held)
 		{
@@ -948,7 +1000,7 @@ void AircraftRig::poll_keys(Object *p_jsb)
 	}
 	// Speed brakes with B (fcs/speedbrake-cmd-norm 0/1; the A-10 splits its ailerons)
 	JSBGodot *fdm = Object::cast_to<JSBGodot>(p_jsb);
-	if (input->is_key_pressed(KEY_B) && !ctrl)
+	if (KeyBindings::pressed("speedbrake_toggle"))
 	{
 		if (!speedbrake_key_held)
 		{
@@ -965,8 +1017,8 @@ void AircraftRig::poll_keys(Object *p_jsb)
 	{
 		speedbrake_key_held = false;
 	}
-	// Landing / taxi lights with L
-	if (input->is_key_pressed(KEY_L) && !ctrl)
+	// Landing / taxi lights
+	if (KeyBindings::pressed("landing_lights"))
 	{
 		if (!landing_key_held)
 		{

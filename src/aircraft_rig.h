@@ -77,6 +77,11 @@ namespace jsbgodot
         // re-resolves the nodes and positions
         // the cockpit camera. Returns true when the visual model changed.
         bool apply_selected_aircraft(const String &aircraft_id, Object *jsb);
+        // A ground vehicle (aircraft.cfg [vehicle] kind): no JSBSim model, DriveMode drives it.
+        bool is_vehicle() const;
+        String get_vehicle_kind() const;
+        Dictionary get_vehicle_params() const;
+        void hide_model_nodes(Node *root);
         // Flips mesh normals under `root` per cfg [model] flip_normals /
         // flip_normals_prefix (the C172P .blend import bakes them inverted).
         void apply_model_normals(Node *root);
