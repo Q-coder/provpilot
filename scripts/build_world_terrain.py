@@ -43,6 +43,11 @@ Storage:
                                   legacy Norway cache is read as a fallback
     <build_root>/<id>/plan.json   selected cells + SRTM tile list
     <build_root>/<id>/<subdir>/terrain/   final region terrain directory
+    <build_root>/<id>/<subdir>/terrain_base/  the same tiles as baked here, never
+                                  touched by a road bake: build_world_roads.py
+                                  --corridor derives terrain/ from it, so a
+                                  design plateau or way that is deleted and
+                                  baked again leaves no trace in the ground
 
 Usage:
     python scripts/build_world_terrain.py list
@@ -130,6 +135,7 @@ class Region:
         self.build_dir = build_root / self.id
         self.plan_path = self.build_dir / "plan.json"
         self.terrain_out = self.build_dir / self.subdir / "terrain"
+        self.terrain_base = self.build_dir / self.subdir / "terrain_base"
 
         cache_root = Path(cfg["cache_root"])
         self.srtm_cache = cache_root / "srtm"
@@ -806,14 +812,32 @@ def write_manifest(region, cells):
     return manifest
 
 
+def write_tile(region, e_sw, n_sw, data, base_only=False):
+    """A freshly baked tile (SRTM, or SRTM plus the airport plateaus) goes to
+    the region's terrain and to terrain_base, the pristine copy the road bake
+    derives terrain from. base_only leaves terrain alone: for a region whose
+    terrain already carries a road bake that should stay."""
+    name = f"tile_{e_sw}_{n_sw}.raw"
+    out = data.astype("<f4")
+    if not base_only:
+        out.tofile(region.terrain_out / name)
+    region.terrain_base.mkdir(parents=True, exist_ok=True)
+    out.tofile(region.terrain_base / name)
+
+
 def cmd_bake(region, args):
     plan = load_plan(region)
     region.terrain_out.mkdir(parents=True, exist_ok=True)
 
-    cells = list(zip(plan["cells_e"], plan["cells_n"]))
+    plan_cells = list(zip(plan["cells_e"], plan["cells_n"]))
+    cells = plan_cells
     if args.cell:
         e, n = (int(v) for v in args.cell.split("_"))
         cells = [(e, n)]
+    if getattr(args, "bbox", None):
+        e0, n0, e1, n1 = args.bbox
+        cells = [(e, n) for e, n in cells if e0 <= e < e1 and n0 <= n < n1]
+    base_only = bool(getattr(args, "base_only", False))
     if args.limit:
         cells = cells[:args.limit]
     # Cache locality: process cells in geographic order so the SRTM LRU cache
@@ -844,7 +868,7 @@ def cmd_bake(region, args):
                                           mininterval=5.0)):
         data = _bake_cell(region, cache, e_sw, n_sw,
                           fetch_missing=not args.no_fetch)
-        data.tofile(region.terrain_out / f"tile_{e_sw}_{n_sw}.raw")
+        write_tile(region, e_sw, n_sw, data, base_only=base_only)
         if not data.any():
             all_zero += 1
         if (i + 1) % 20000 == 0:
@@ -853,7 +877,7 @@ def cmd_bake(region, args):
             print(f"  {i+1}/{len(todo)} ({rate:.0f} tiles/s, "
                   f"ETA {(len(todo)-i-1)/rate/60:.0f} min)", flush=True)
 
-    manifest = write_manifest(region, cells)
+    manifest = write_manifest(region, plan_cells)   # the whole plan, also after a --cell / --bbox subset
     mb = len(cells) * nbytes / (1024 * 1024)
     print(f"  baked {len(todo)} tiles now, {len(cells)} total ({mb:.0f} MB), "
           f"{all_zero} all-zero, in {time.time()-t0:.0f}s")
@@ -911,6 +935,15 @@ def cmd_flatten(region, args):
     if data is None:
         print(f"  {region.id}: no airports/runways.json — nothing to flatten")
         return 0
+    base_only = bool(getattr(args, "base_only", False))
+    bbox = getattr(args, "bbox", None)
+    if bbox:
+        e0, n0, e1, n1 = bbox
+        def inside(pts):
+            return any(e0 <= p[0] < e1 and n0 <= p[1] < n1 for p in pts)
+        strips = [s for s in strips if inside([(s["e0"], s["n0"]), (s["e1"], s["n1"])])]
+        data["_aprons"] = [a for a in data["_aprons"] if inside(a["pts"])]
+        data["_taxiways"] = [t for t in data["_taxiways"] if inside(t["pts"])]
     rp.set_data(region, data)
     cells = set()
     for st in strips:
@@ -921,8 +954,9 @@ def cmd_flatten(region, args):
     for tw in data.get("_taxiways", []):
         xs = [p[0] for p in tw["pts"]]; ys = [p[1] for p in tw["pts"]]
         cells.update(rp.bbox_tiles(region, min(xs), min(ys), max(xs), max(ys), tw["half_w"] + rp.TAXI_BLEND_M + rp.DILATE_FRAC * region.px_spacing))
+    tile_root = region.terrain_base if base_only else region.terrain_out
     existing = sorted(c for c in cells
-                      if (region.terrain_out / f"tile_{c[0] * region.tile_m}_{c[1] * region.tile_m}.raw").exists())
+                      if (tile_root / f"tile_{c[0] * region.tile_m}_{c[1] * region.tile_m}.raw").exists())
     print(f"=== Flatten {region.id}: {len(strips)} runways, {len(data.get('_aprons', []))} aprons, "
           f"{len(data.get('_taxiways', []))} taxiways ({data.get('_foreign_count', 0)} airports from "
           f"neighbouring packs), {len(existing)} tiles ===")
@@ -931,9 +965,9 @@ def cmd_flatten(region, args):
     for (ei, ni) in existing:
         data_px = _bake_cell(region, cache, ei * region.tile_m, ni * region.tile_m,
                              fetch_missing=not getattr(args, "no_fetch", False))
-        data_px.tofile(region.terrain_out / f"tile_{ei * region.tile_m}_{ni * region.tile_m}.raw")
+        write_tile(region, ei * region.tile_m, ni * region.tile_m, data_px, base_only=base_only)
     # 2. Plateaus.
-    store = rp.TileStore(region)
+    store = rp.TileStore(region, base_only=base_only)
     report = [f"{region.id}: {len(strips)} runways, {len(existing)} tiles re-baked"]
     touched = rp.apply_plateaus(region, strips, store, report)
     n = store.write_all()
@@ -997,8 +1031,18 @@ def main():
                     help="do not fetch missing SRTM tiles on demand")
     pb.add_argument("--force", action="store_true",
                     help="re-bake tiles that already exist (default: resume)")
+    pb.add_argument("--bbox", type=int, nargs=4, metavar=("E0", "N0", "E1", "N1"),
+                    help="only the cells whose SW corner lies in this LV95 box")
+    pb.add_argument("--base-only", action="store_true",
+                    help="write terrain_base only, leave terrain alone (a region whose terrain already carries a road bake)")
     add_region(sub.add_parser("verify", help="check baked tiles at landmarks"))
-    add_region(sub.add_parser("flatten", help="runway plateaus from airports/runways.json (re-run after bake --force)"))
+    pf = sub.add_parser("flatten", help="runway plateaus from airports/runways.json (re-run after bake --force)")
+    add_region(pf)
+    pf.add_argument("--bbox", type=int, nargs=4, metavar=("E0", "N0", "E1", "N1"),
+                    help="only the runways, aprons and taxiways with a point in this LV95 box")
+    pf.add_argument("--no-fetch", action="store_true")
+    pf.add_argument("--base-only", action="store_true",
+                    help="re-bake and flatten in terrain_base only, leave terrain alone")
     add_region(sub.add_parser("prune", help="delete baked tiles outside the current plan.json"))
     pbuild = sub.add_parser("build", help="plan + fetch + bake + flatten + verify")
     add_region(pbuild)
@@ -1026,6 +1070,8 @@ def main():
             sys.exit(1)
         args.limit = 0
         args.cell = None
+        args.bbox = None
+        args.base_only = False
         args.no_fetch = False
         if cmd_bake(region, args):
             sys.exit(1)

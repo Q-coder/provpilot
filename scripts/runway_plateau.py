@@ -61,15 +61,19 @@ def _smoothstep(x):
 class TileStore:
     """Read/modify/write of the baked 34 px tiles of one region."""
 
-    def __init__(self, region):
+    def __init__(self, region, base_only=False):
         self.region = region
+        # base_only: read and write terrain_base alone (a region whose terrain
+        # already carries a road bake that must stay as it is)
+        self.base_only = base_only
         self.tm = region.tile_m
         self.px = region.px
         self.sp = region.px_spacing
         self.tiles = {}       # (ei, ni) -> np.ndarray (px, px) float32, row 0 = south, col 0 = east
 
     def path(self, ei, ni):
-        return self.region.terrain_out / f"tile_{ei * self.tm}_{ni * self.tm}.raw"
+        root = self.region.terrain_base if self.base_only else self.region.terrain_out
+        return root / f"tile_{ei * self.tm}_{ni * self.tm}.raw"
 
     def get(self, ei, ni):
         key = (ei, ni)
@@ -104,9 +108,18 @@ class TileStore:
         return np.broadcast_to(E, (self.px, self.px)), np.broadcast_to(N, (self.px, self.px))
 
     def write_all(self):
+        """Write to the region's terrain and, when the region has one, to
+        terrain_base: the airport plateaus are part of the pristine ground
+        the road bake derives terrain from (build_world_terrain.py)."""
         n = 0
+        base = getattr(self.region, "terrain_base", None)
+        if base is not None:
+            base.mkdir(parents=True, exist_ok=True)
         for (ei, ni), a in self.tiles.items():
-            a.astype("<f4").tofile(self.path(ei, ni))
+            out = a.astype("<f4")
+            out.tofile(self.path(ei, ni))
+            if base is not None and not self.base_only:
+                out.tofile(base / self.path(ei, ni).name)
             n += 1
         return n
 
