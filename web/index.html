@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>ProVPilot &mdash; Swiss VFR Flight Simulator</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="ProVPilot is a free open-source flight simulator with JSBSim flight dynamics, photoreal Swiss & Baden-Württemberg scenery from SwissTopo and LGL-BW, and a faithful Cessna 172 cockpit. macOS and Windows.">
+<meta name="description" content="ProVPilot is a free open-source flight simulator with JSBSim flight dynamics, base scenery for nine European countries with photoreal 1 m add-ons for Switzerland and Baden-Württemberg, and a fleet from the Cessna 172 to the MD-80 family. macOS and Windows.">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <style>
@@ -258,25 +258,27 @@
     <a href="#changelog">Changelog</a>
   </nav>
   <div class="dl-buttons">
-    <a class="dl-btn" id="dmg-link" href="releases/ProvPilot-1.0.10-arm64.dmg">macOS</a>
-    <a class="dl-btn win" id="win-link" href="releases/ProvPilot-Windows-1.0.10.zip">Windows</a>
+    <a class="dl-btn" id="dmg-link" href="releases/ProvPilot-1.0.20-arm64.dmg">macOS</a>
+    <a class="dl-btn win" id="win-link" href="releases/ProvPilot-Windows-1.0.20.zip">Windows</a>
   </div>
 </header>
 
 <!-- ── Hero ─────────────────────────────────────────────────────── -->
 <section class="hero">
   <div class="wrap">
-    <h2>Fly real Switzerland.<br>From 1&nbsp;m of terrain to the rivets on a Cessna.</h2>
+    <h2>Fly real Europe.<br>From the Alps at 1&nbsp;m to the rivets on a Cessna.</h2>
     <p class="tagline">
       ProVPilot is a free, open-source flight simulator built on
       <a href="https://jsbsim.sourceforge.net">JSBSim</a> flight dynamics and the
-      <a href="https://godotengine.org">Godot</a> engine, with photoreal Switzerland and
-      Baden-Württemberg scenery sourced directly from <a href="https://www.swisstopo.admin.ch">swisstopo</a>
-      and <a href="https://www.lgl-bw.de">LGL&nbsp;BW</a>. Hop in the Cessna 172, pick an airport, and go.
+      <a href="https://godotengine.org">Godot</a> engine. A base scenery covers nine countries
+      from Norway to Italy with real terrain, airports and night lighting; photoreal 1&nbsp;m add-ons
+      for Switzerland and Baden-Württemberg come straight from <a href="https://www.swisstopo.admin.ch">swisstopo</a>
+      and <a href="https://www.lgl-bw.de">LGL&nbsp;BW</a>. Pick a Cessna, a PC-7, an A-10, a glider or an MD-80,
+      pick an airport, and go.
     </p>
     <div class="ctas">
-      <a class="dl-btn" id="dmg-link-hero" href="releases/ProvPilot-1.0.10-arm64.dmg">Download for macOS (Apple Silicon)</a>
-      <a class="dl-btn win" id="win-link-hero" href="releases/ProvPilot-Windows-1.0.10.zip">Download for Windows</a>
+      <a class="dl-btn" id="dmg-link-hero" href="releases/ProvPilot-1.0.20-arm64.dmg">Download for macOS (Apple Silicon)</a>
+      <a class="dl-btn win" id="win-link-hero" href="releases/ProvPilot-Windows-1.0.20.zip">Download for Windows</a>
     </div>
 
     <div class="shots">
@@ -294,55 +296,61 @@
   <div class="wrap">
     <h2>What is ProVPilot?</h2>
     <p>
-      A no-friction VFR flight simulator focused on the Alps and Central Europe.
-      The goal: accurate 6-DOF flight physics in a faithful Cessna 172, flown over the
-      <em>actual</em> Swiss landscape &mdash; same terrain elevations, same orthophotos,
-      same buildings, roads, rivers, and airports as the real world &mdash; all streamed
-      at runtime from a custom C++ Godot extension.
+      A no-friction flight simulator focused on the Alps and Europe. The goal:
+      accurate 6-DOF flight physics in faithful aircraft, flown over the <em>actual</em>
+      landscape &mdash; real terrain elevations, real airports with their runways,
+      taxiways and lights, and, where the add-ons are installed, the same orthophotos,
+      buildings, roads and rivers as the real world &mdash; all streamed at runtime from
+      a custom C++ Godot extension.
     </p>
     <p>
       Originally a Godot 3 demo by <a href="https://github.com/chunky/jsbgodot">chunky/jsbgodot</a>,
-      ProVPilot has been rewritten from the ground up for Godot 4.6 with a custom
-      double-precision engine fork &mdash; no floating-origin tricks, no jitter at
-      coordinate extremes, and a 200&nbsp;km+ visible horizon for Alpine panoramas.
+      ProVPilot has been rewritten from the ground up for Godot 4.7 with a custom
+      double-precision engine fork. Since 1.0.20 the world is a true WGS84 globe:
+      no floating-origin tricks, no jitter at coordinate extremes, a 200&nbsp;km+
+      visible horizon, and a flight from Oslo to Zürich crosses no seams.
     </p>
 
     <div class="grid">
       <div class="card">
-        <h3>Real-world terrain</h3>
-        <p>swisstopo swissALTI3D elevation at 1&nbsp;m resolution, streamed as 1024&nbsp;&times;&nbsp;1024&nbsp;m float32 tiles with distance-based LOD.</p>
+        <h3>Base scenery for nine countries</h3>
+        <p>Norway, Sweden, Finland, Denmark, Germany, Switzerland, Austria, Italy and France at 30&nbsp;m terrain resolution, with 3&nbsp;700 airports: runways, taxiways and aprons from OpenStreetMap and OurAirports, PAPI and approach lights at night. 0.2&ndash;2&nbsp;GB per country, installed from inside the app.</p>
       </div>
       <div class="card">
-        <h3>Photoreal orthophoto</h3>
-        <p>SWISSIMAGE aerial photography mapped per tile with a mip pyramid for far-LOD. Mountains look like mountains.</p>
+        <h3>Photoreal add-ons</h3>
+        <p>Switzerland and Baden-W&uuml;rttemberg at 1&nbsp;m: swissALTI3D terrain, SWISSIMAGE orthophotos, swissBUILDINGS3D with per-building meshes, swissTLM3D roads, rail and water, surveyed lake beds. Mountains look like mountains.</p>
       </div>
       <div class="card">
-        <h3>3D buildings</h3>
-        <p>swissBUILDINGS3D models with per-building detail meshes and a merged far-LOD handoff. Cities have skylines.</p>
-      </div>
-      <div class="card">
-        <h3>Roads, rail &amp; water</h3>
-        <p>swissTLM3D road, railway and waterway network rendered as ribbon meshes. Follow the autobahn home.</p>
+        <h3>Six aircraft, one glider</h3>
+        <p>Cessna 172, Pilatus PC-7, Fairchild A-10, the McDonnell Douglas MD-81 / MD-82 / MD-83 / MD-87 with 60 airline liveries, and the Schleicher ASK&nbsp;21. The FlightGear ports fly with their own systems and clickable cockpits.</p>
       </div>
       <div class="card">
         <h3>JSBSim flight dynamics</h3>
-        <p>Full 6-DOF simulation. Faithful Cessna&nbsp;172 model with mixture, magnetos, carb heat, prop pitch and trim.</p>
+        <p>Full 6-DOF simulation for every airframe, with the ground model reading the scenery under each wheel: runway surfaces, slopes, plateaus.</p>
       </div>
       <div class="card">
-        <h3>47 Swiss airports</h3>
-        <p>OSM-verified runway geometry. Welcome screen picker &mdash; pick LSZH, LSGG, LSPF, LSZB and more in one click.</p>
+        <h3>Radio navigation</h3>
+        <p>VOR, DME, NDB and ILS receivers with a worldwide navaid database, magnetic headings from the WMM2025 model, and the radios in the Cessna's panel.</p>
+      </div>
+      <div class="card">
+        <h3>Weather</h3>
+        <p>Editable weather layers (wind, turbulence, visibility, QNH), live METAR weather from the nearest station, volumetric cloud layers, day/night sky with a time-of-day control.</p>
       </div>
       <div class="card">
         <h3>VFR map frame</h3>
-        <p>Heading-up MFD-style inset: cartographic hillshade terrain, range rings, airport symbols and canton borders. Toggle with N, zoom 80&ndash;5&nbsp;km.</p>
+        <p>Heading-up MFD-style inset: hillshade terrain, range rings, airports, navaids and ILS feathers. Toggle with N, zoom 80&ndash;5&nbsp;km.</p>
       </div>
       <div class="card">
-        <h3>Gamepad &amp; joystick</h3>
-        <p>Plug-and-play SDL gamepad mapping plus per-axis calibration (min/center/max, invert, deadzone, response curve).</p>
+        <h3>Scenery editor &amp; packs</h3>
+        <p>Draw roads and railways on the terrain, place 3D objects with a Blender-style gizmo, bake it into your own scenery pack. A converter imports scenery packages from other simulators as object packs that sit on top of the base world.</p>
+      </div>
+      <div class="card">
+        <h3>Every control yours</h3>
+        <p>SDL gamepad mapping, per-axis joystick calibration, and a full keyboard map you can rebind key by key in Settings &rarr; Keyboard.</p>
       </div>
       <div class="card">
         <h3>Free &amp; open source</h3>
-        <p>MIT licensed. Code on <a href="https://gitlab.md80.ch/gery/provpilot">gitlab.md80.ch</a>. Scenery under the respective free-geodata licenses (swisstopo, LGL-BW, OSM).</p>
+        <p>MIT licensed. Code on <a href="https://gitlab.md80.ch/gery/provpilot">gitlab.md80.ch</a>. Scenery under the respective free-geodata licenses (SRTM, OSM, OurAirports, swisstopo, LGL-BW); the ported aircraft under the GPL of FlightGear.</p>
       </div>
     </div>
   </div>
@@ -353,9 +361,11 @@
   <div class="wrap">
     <h2>Installation</h2>
     <p>
-      The app itself is a small download (~150&nbsp;MB). Scenery data is huge
-      (~165&nbsp;GB for full coverage) and is installed separately from inside the app
-      &mdash; pick the regions and quadrants you actually want to fly over.
+      The app itself is a ~330&nbsp;MB download with all aircraft on board. Scenery
+      is installed from inside the app: the <strong>base packs</strong> are one small
+      download per country (0.2&ndash;2&nbsp;GB), the photoreal Swiss and
+      Baden-W&uuml;rttemberg <strong>add-ons</strong> are the big ones (~165&nbsp;GB for
+      full coverage) &mdash; pick the regions and quadrants you actually fly over.
     </p>
 
     <div class="platforms">
@@ -369,16 +379,16 @@
               <strong>Applications</strong> folder (or anywhere else).</li>
           <li>The build is signed and notarized, so first launch from Finder works
               without right-click&nbsp;&rarr;&nbsp;Open.</li>
-          <li>On first launch, open <strong>Settings &rarr; Download Scenery</strong>
-              and grab <em>Switzerland (base)</em> at minimum. The base pack
-              (~44&nbsp;GB) gives you terrain, roads, water and airports &mdash; flyable
-              on its own. Add the four <em>detail</em> quadrants (orthophoto + buildings
-              + trees) for the corners you actually fly in.</li>
+          <li>On first launch, open <strong>Settings &rarr; Downloads</strong>
+              and install the base pack of the countries you fly in &mdash; Switzerland
+              is 0.2&nbsp;GB, Germany 1.3&nbsp;GB. Each one is flyable on its own. Add
+              the photoreal add-ons for Switzerland or Baden-W&uuml;rttemberg later
+              if you want 1&nbsp;m terrain, orthophotos and buildings.</li>
           <li>Pick an airport in the welcome screen and click <strong>Fly!</strong></li>
         </ol>
         <p style="color: var(--fg-dim); font-size: 13px;">
-          Requirements: macOS 12+, Apple Silicon (M1 or newer), ~200&nbsp;GB free disk
-          for full Switzerland + Baden-Württemberg scenery.
+          Requirements: macOS 12+, Apple Silicon (M1 or newer). Disk: a few GB for
+          the base packs, ~200&nbsp;GB with the full Switzerland + Baden-Württemberg add-ons.
         </p>
       </div>
 
@@ -397,13 +407,13 @@
               may show "Windows protected your PC" the first time. Click
               <strong>More info</strong> &rarr; <strong>Run anyway</strong>.</li>
           <li>Launch <strong>ProvPilot.exe</strong>.</li>
-          <li>Open <strong>Settings &rarr; Download Scenery</strong> and grab at
-              least <em>Switzerland (base)</em>. Same two-tier model as on macOS.</li>
+          <li>Open <strong>Settings &rarr; Downloads</strong> and install the base
+              pack of the countries you fly in. Same two-tier model as on macOS.</li>
           <li>Pick an airport and click <strong>Fly!</strong></li>
         </ol>
         <p style="color: var(--fg-dim); font-size: 13px;">
           Requirements: Windows 10/11 x64, dedicated GPU with Vulkan support
-          recommended, ~200&nbsp;GB free disk for full scenery.
+          recommended. Disk: a few GB for the base packs, ~200&nbsp;GB with the full add-ons.
         </p>
         <p style="color: var(--fg-dim); font-size: 13px;">
           Trouble? Logs are written to
@@ -421,8 +431,9 @@
     <h2>Default controls</h2>
     <p>
       ProVPilot ships with a standard SDL gamepad mapping (Xbox / DualShock layout)
-      and a full keyboard fallback. Every joystick axis is rebindable and calibratable
-      in <strong>Settings &rarr; Joystick</strong>.
+      and a full keyboard map. Every joystick axis is rebindable and calibratable in
+      <strong>Settings &rarr; Joystick</strong>; every key in
+      <strong>Settings &rarr; Keyboard</strong>, which also lists the ones not shown here.
     </p>
 
     <h3>Flight</h3>
@@ -431,15 +442,19 @@
       <tbody>
         <tr><td>Pitch (elevator)</td><td>Left Stick Y</td><td>W / S</td></tr>
         <tr><td>Roll (aileron)</td><td>Left Stick X</td><td>A / D</td></tr>
-        <tr><td>Rudder</td><td>Right Stick X</td><td>Q / E</td></tr>
-        <tr><td>Throttle up</td><td>Right Trigger</td><td>Numpad&nbsp;+&nbsp; / &nbsp;T</td></tr>
-        <tr><td>Throttle down</td><td>Left Trigger</td><td>Numpad&nbsp;&minus;&nbsp; / &nbsp;Shift+T</td></tr>
-        <tr><td>Flaps up / down</td><td>D-pad Up / Down</td><td>F / V</td></tr>
-        <tr><td>Brakes</td><td>A Button</td><td>B</td></tr>
-        <tr><td>Trim up / down</td><td>Y / X Button</td><td>&mdash;</td></tr>
+        <tr><td>Rudder</td><td>Right Stick X</td><td>Y / X</td></tr>
+        <tr><td>Throttle (step / fine)</td><td>Throttle axis</td><td>T / Shift+T &nbsp;&middot;&nbsp; P / O</td></tr>
+        <tr><td>Flaps down / up a notch</td><td>L1 / R1</td><td>F / Shift+F</td></tr>
+        <tr><td>Landing gear</td><td>&mdash;</td><td>G</td></tr>
+        <tr><td>Speed brakes</td><td>&mdash;</td><td>B</td></tr>
+        <tr><td>Wheel brakes on / off</td><td>A Button (hold)</td><td>. / ,</td></tr>
+        <tr><td>Trim up / down</td><td>D-pad Up / Down</td><td>&mdash;</td></tr>
         <tr><td>Mixture richer / leaner</td><td>&mdash;</td><td>M / Shift+M</td></tr>
-        <tr><td>Magnetos clockwise / CCW</td><td>&mdash;</td><td>I / Shift+I</td></tr>
+        <tr><td>Magnetos clockwise / CCW (hold for start)</td><td>&mdash;</td><td>I / Shift+I</td></tr>
+        <tr><td>Landing / taxi lights</td><td>&mdash;</td><td>L</td></tr>
+        <tr><td>Start / stop the flight model</td><td>&mdash;</td><td>R / E</td></tr>
         <tr><td>Slew mode (reposition)</td><td>&mdash;</td><td>Shift+Y</td></tr>
+        <tr><td>HUD pages</td><td>&mdash;</td><td>H</td></tr>
         <tr><td>VFR map show / hide</td><td>&mdash;</td><td>N</td></tr>
         <tr><td>VFR map zoom in / out</td><td>Mouse wheel over the frame</td><td>&minus; / + (=)</td></tr>
         <tr><td>Return to welcome screen</td><td>&mdash;</td><td>Escape</td></tr>
@@ -450,9 +465,12 @@
     <table>
       <thead><tr><th>Action</th><th>Gamepad</th><th>Keyboard</th></tr></thead>
       <tbody>
-        <tr><td>Switch view (cockpit / orbit / chase)</td><td>Select / Back</td><td>C</td></tr>
-        <tr><td>Head look (cockpit) / camera adjust</td><td>D-pad</td><td>Arrow Keys</td></tr>
-        <tr><td>Zoom in / out</td><td>L1 / R1 (Shoulders)</td><td>Page&nbsp;Up / Page&nbsp;Down</td></tr>
+        <tr><td>Next / previous view (cockpit, orbit, chase)</td><td>Y Button</td><td>C / Shift+C</td></tr>
+        <tr><td>Pan the view (cockpit head, orbit, chase)</td><td>Look axes</td><td>Right mouse button + mouse</td></tr>
+        <tr><td>Look around the cockpit / recentre</td><td>&mdash;</td><td>Hold Space + mouse / tap Space</td></tr>
+        <tr><td>Head look / camera adjust</td><td>D-pad</td><td>Arrow Keys</td></tr>
+        <tr><td>Zoom in / out (field of view in the cockpit)</td><td>&mdash;</td><td>Page&nbsp;Up / Page&nbsp;Down, Space + wheel</td></tr>
+        <tr><td>Move the eye point / back to default</td><td>&mdash;</td><td>Ctrl + Arrows / Ctrl+Space</td></tr>
       </tbody>
     </table>
 
@@ -461,7 +479,7 @@
       <thead><tr><th>Action</th><th>Gamepad</th><th>Keyboard</th></tr></thead>
       <tbody>
         <tr><td>Move horizontal</td><td>Left Stick</td><td>W / A / S / D</td></tr>
-        <tr><td>Move vertical</td><td>Right Stick Y</td><td>Q / E</td></tr>
+        <tr><td>Move vertical</td><td>Right Stick Y</td><td>Q / E (or Page Up / Down)</td></tr>
         <tr><td>Rotate (yaw)</td><td>Right Stick X</td><td>&mdash;</td></tr>
         <tr><td>Fast movement</td><td>&mdash;</td><td>Hold Shift</td></tr>
         <tr><td>Exit slew</td><td>&mdash;</td><td>Shift+Y</td></tr>
@@ -470,9 +488,12 @@
 
     <h3>Cockpit interaction</h3>
     <p style="color: var(--fg-dim); font-size: 14px;">
-      Switch to the cockpit camera (<code>C</code>) and click-drag the mixture lever,
-      throttle, flap lever or magneto/ignition switch with the mouse. Levers track
-      the pointer with visual feedback.
+      In the cockpit camera the Cessna's and PC-7's levers (mixture, throttle, flaps,
+      magnetos) follow a mouse drag, and the FlightGear-ported A-10, MD-80 family and
+      ASK&nbsp;21 have fully clickable panels: switches, knobs, guards and levers.
+      One rule everywhere &mdash; left button or wheel down turns a knob down or
+      counter-clockwise, right button or wheel up turns it up or clockwise; Shift
+      makes a knob coarse. <code>Ctrl+Shift+H</code> outlines every clickable area.
     </p>
 
     <p style="color: var(--fg-dim); font-size: 13px;">
@@ -488,15 +509,36 @@
   <div class="wrap">
     <h2>Scenery coverage</h2>
     <p>
-      Scenery is split into one <strong>base</strong> pack per region (terrain, roads,
-      water, airports &mdash; flyable on its own) and four <strong>detail</strong>
-      quadrants (NW / NE / SW / SE) containing the heavy assets (orthophoto, buildings,
-      trees). Install only the corners you actually fly in.
+      Two tiers. The <strong>base scenery</strong> is one pack per country: 30&nbsp;m
+      terrain, every airport with runways, taxiways, aprons and night lighting, and the
+      Swiss road and rail network where it has been baked. It is small and flyable on its
+      own. The <strong>photoreal add-ons</strong> for Switzerland and Baden-W&uuml;rttemberg
+      sit on top: 1&nbsp;m terrain, orthophotos, buildings and trees, split into a base
+      pack per region and four detail quadrants (NW / NE / SW / SE) so you install only the
+      corners you actually fly in.
     </p>
     <p>
-      Use the in-app downloader: <strong>Settings &rarr; Download Scenery</strong>.
+      Use the in-app downloader: <strong>Settings &rarr; Downloads</strong>.
       Packs are sha256-verified and extracted to a folder of your choice.
     </p>
+
+    <h3>Base scenery</h3>
+    <table class="dl-table">
+      <thead>
+        <tr><th>Country</th><th>Pack</th><th>Size</th><th>SHA-256</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Switzerland</td><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/switzerland-base-base-v1.zip">terrain, airports, roads &amp; rail (Z&uuml;rich area)</a></td><td class="size">0.19 GiB</td><td><code class="sha">29833892&hellip;9949a198</code></td></tr>
+        <tr><td>Germany</td><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/germany-base-v1.zip">terrain, airports</a></td><td class="size">1.28 GiB</td><td><code class="sha">3107241a&hellip;f12e3b4f</code></td></tr>
+        <tr><td>Austria</td><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/austria-base-v1.zip">terrain, airports</a></td><td class="size">0.33 GiB</td><td><code class="sha">52415a36&hellip;b90aad48</code></td></tr>
+        <tr><td>Italy</td><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/italy-base-v1.zip">terrain, airports</a></td><td class="size">1.19 GiB</td><td><code class="sha">cba5d038&hellip;be920d7f</code></td></tr>
+        <tr><td>France</td><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/france-base-v1.zip">terrain, airports</a></td><td class="size">1.99 GiB</td><td><code class="sha">a5e37833&hellip;6193707f</code></td></tr>
+        <tr><td>Denmark</td><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/denmark-base-v1.zip">terrain, airports</a></td><td class="size">0.16 GiB</td><td><code class="sha">ec8a34e1&hellip;841c3e0c</code></td></tr>
+        <tr><td>Norway</td><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/norway-base-v1.zip">terrain, airports</a></td><td class="size">1.42 GiB</td><td><code class="sha">9567a07d&hellip;9f10cf4f</code></td></tr>
+        <tr><td>Sweden</td><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/sweden-base-v1.zip">terrain, airports</a></td><td class="size">1.53 GiB</td><td><code class="sha">ddaa1028&hellip;cb607a24</code></td></tr>
+        <tr><td>Finland</td><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/finland-base-v1.zip">terrain, airports</a></td><td class="size">1.00 GiB</td><td><code class="sha">79a9c119&hellip;07933410</code></td></tr>
+      </tbody>
+    </table>
 
     <div class="shot-pair">
       <a href="images/scenery_download1.png" target="_blank" rel="noopener"><img src="images/scenery_download1.png" alt="In-app scenery downloader — region list" loading="lazy"></a>
@@ -505,18 +547,19 @@
 
     <div class="map-wrap"><div id="map"></div></div>
     <p style="color: var(--fg-dim); font-size: 13px; margin-top: 14px;">
-      Cantons coloured green have base + detail scenery available today. Coverage
-      currently includes all of Switzerland and Baden-Württemberg. Click any
-      canton for details.
+      Cantons coloured green have the photoreal add-ons available today: all of
+      Switzerland and Baden-Württemberg. Click any canton for details. The base
+      scenery covers the nine countries listed above.
     </p>
 
-    <h3 id="scenery-direct" style="margin-top: 32px;">Direct downloads</h3>
+    <h3 id="scenery-direct" style="margin-top: 32px;">Photoreal add-ons</h3>
     <p>
-      The in-app downloader is the recommended path — it streams these same
-      packs, sha256-verifies each one and extracts to a folder you pick. If you
-      prefer to grab them by hand (slow link, mirror, offline install), here are
-      the canonical URLs. Each <em>base</em> pack is flyable on its own; add the
-      detail quadrants (NW/NE/SW/SE) for the corners you actually fly in.
+      The in-app downloader is the recommended path for the base packs above — it
+      streams the same files, sha256-verifies each one and extracts to a folder you
+      pick. The 1&nbsp;m add-ons below are installed by hand: download, extract next
+      to your other scenery and add the folder in <strong>Settings &rarr; Scenery</strong>
+      above the base packs. Each add-on <em>base</em> pack is flyable on its own; add
+      the detail quadrants (NW/NE/SW/SE) for the corners you actually fly in.
     </p>
     <table class="dl-table" id="scenery-dl-table">
       <thead>
@@ -571,6 +614,26 @@
     <p style="color: var(--fg-dim);">
       Latest builds are linked from the download buttons above.
     </p>
+
+    <article class="release">
+      <h3>v1.0.20 &mdash; A European globe, the MD-80 family, radio navigation</h3>
+      <p class="release-date">November 2026</p>
+      <ul>
+        <li><strong>The world is a globe</strong> &mdash; the runtime is now WGS84 ECEF end to end: no flat frame, no seams, the horizon curves correctly from the ground to orbit, and the intro zoom from space doubles as the loading view. Startup no longer parses hundreds of megabytes of terrain manifests.</li>
+        <li><strong>Base scenery for nine countries</strong> &mdash; Norway, Sweden, Finland, Denmark, Germany, Switzerland, Austria, Italy and France at 30&nbsp;m (SRTM), one small pack each (0.2&ndash;2&nbsp;GB) in <strong>Settings &rarr; Downloads</strong>. 3&nbsp;700 airports get runways, taxiways, aprons and guidance lines from OpenStreetMap and OurAirports, flattened plateaus in the terrain, and night lighting with PAPI, approach, edge and threshold lights (117&nbsp;000 fixtures). The Swiss and Baden-W&uuml;rttemberg 1&nbsp;m packs become add-ons on top. Extraction of the packs went from hours to seconds.</li>
+        <li><strong>McDonnell Douglas MD-81 / MD-82 / MD-83 / MD-87</strong> &mdash; a port of the FlightGear MD-80 (Josh Davidson) flying in JSBSim with its own electrical, fuel, hydraulic, pneumatic and flight-control systems, the engine variants of each model, the short-fuselage MD-87, a fully clickable cockpit, the original sound set and 60 airline liveries selectable in Settings &rarr; Aircraft.</li>
+        <li><strong>Schleicher ASK&nbsp;21</strong> &mdash; a two-seat glider with a JSBSim glider model; an airborne start (height, speed, heading) in Settings &rarr; Aircraft until winch and tow exist. The throttle inputs work its airbrakes.</li>
+        <li><strong>Pilatus PC-7 and Fairchild A-10 cockpits</strong> &mdash; the PC-7 gets a built instrument panel, the A-10 arrives as a full FlightGear port at real size with instruments, a clickable cockpit, electrical system, gear animation and lights. All aircraft are now drawn at their real size (the Cessna mesh was 14&nbsp;% oversize).</li>
+        <li><strong>Radio navigation</strong> &mdash; VOR, DME, NDB and ILS receivers with a worldwide navaid database (OurAirports, nav.dat ILS plus synthetic localizers), magnetic headings from the WMM2025 model, the KX165 NAV/COM, KR87 ADF, VOR and ADF heads in the Cessna's panel, the tuned station in the HUD, navaids and ILS feathers on the VFR map.</li>
+        <li><strong>Weather</strong> &mdash; a Weather tab with editable layers (wind, turbulence, visibility, QNH) that drive JSBSim and the fog, live METAR weather from the nearest station (refetched as you travel), volumetric cloud layers, loadable weather profiles, a day/night terminator seen from space.</li>
+        <li><strong>Scenery editor and scenery packs</strong> &mdash; F8 opens an editor on the terrain: draw roads and railways with curves and roundabouts, flatten plateaus, place and move 3D objects with a Blender-style gizmo, bake it all into your own scenery pack. Scenery packs stack in the Scenery Library by priority, with exclusion zones that hide the base world's buildings and trees under a bespoke airfield. A converter turns scenery packages from other simulators into such object packs.</li>
+        <li><strong>Base roads and railways</strong> &mdash; a road and rail network baked into the base terrain from swissTLM3D (Switzerland) and OpenStreetMap: corridors cut into the terrain, embankments, bridges and tunnels, motorway junctions with lane markings, roundabouts, and a road surface the ground model reads under the wheels.</li>
+        <li><strong>Vehicles</strong> &mdash; a car and an Re&nbsp;4/4 locomotive in the welcome screen's Vehicles frame, driven on the baked roads and rails.</li>
+        <li><strong>Controls</strong> &mdash; every key is listed and rebindable in Settings &rarr; Keyboard; joystick flight axes (elevator, aileron, rudder, throttle, brakes) are polled straight into the flight model; <code>Shift+C</code> cycles the cameras backwards; the right mouse button held pans every view; <code>Ctrl</code>+arrows move the eye point; Space + mouse looks around the cockpit.</li>
+        <li><strong>Settings</strong> &mdash; a tabbed settings screen rebuilt in C++ with Aircraft (fuel, start conditions, liveries, reference speeds, live centre of gravity), Scenery, Downloads, Graphics, World, Weather, Map, Sound, Realism, Joystick and Keyboard tabs.</li>
+        <li><strong>Under the hood</strong> &mdash; the game logic moved from GDScript into the C++ extension; Windows and macOS share one export configuration, so the FlightGear ports, their sounds and liveries ship identically on both.</li>
+      </ul>
+    </article>
 
     <article class="release">
       <h3>v1.0.10 &mdash; VFR map frame</h3>
@@ -755,7 +818,7 @@ Promise.all([
     const det = CH_DETAIL[q];
     return `<h3>${name}</h3>
             <div class="meta">
-              Install in-app via <strong>Settings &rarr; Download Scenery</strong>, or download the ZIPs directly:
+              Photoreal add-on: download the ZIPs, extract them next to your other scenery and add the folder in <strong>Settings &rarr; Scenery</strong> above the base packs:
               <ul style="margin:8px 0 0; padding-left: 18px;">
                 <li><a href="${CH_BASE.url}">Switzerland base</a>
                     <span style="color:var(--fg-dim)">(${CH_BASE.size})</span></li>
@@ -796,7 +859,7 @@ Promise.all([
     const det = BW_DETAIL[bwQuadrant(ll)];
     return `<h3>Baden-W&uuml;rttemberg</h3>
             <div class="meta">
-              Install in-app via <strong>Settings &rarr; Download Scenery</strong>, or download the ZIPs directly:
+              Photoreal add-on: download the ZIPs, extract them next to your other scenery and add the folder in <strong>Settings &rarr; Scenery</strong> above the base packs:
               <ul style="margin:8px 0 0; padding-left: 18px;">
                 <li><a href="${BW_BASE.url}">Baden-W&uuml;rttemberg base</a>
                     <span style="color:var(--fg-dim)">(${BW_BASE.size})</span></li>
