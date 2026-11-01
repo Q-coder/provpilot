@@ -72,6 +72,7 @@ namespace jsbgodot
         double get_heading_rad() const;
         int get_cached_tile_count() const;
         int get_visible_airport_count() const;
+        int get_visible_navaid_count() const;
         int get_zoom_index() const;
         double get_view_width_m() const;
         bool is_map_enabled() const;
@@ -159,11 +160,31 @@ namespace jsbgodot
             bool international = false;
         };
         std::vector<Airport> airports;
+        // Radio navaids (res://navaids.json via NavaidsLib): LV95 position,
+        // ident, frequency text and NavaidsLib::KIND_* bits.
+        struct NavaidMark {
+            double e = 0.0;
+            double n = 0.0;
+            String ident;
+            String freq;
+            int kind = 0;
+        };
+        std::vector<NavaidMark> navaids;
+        // ILS localizer feathers (LV95): apex at the threshold, base 7 km out.
+        struct IlsMark {
+            Vector2 apex, base_l, base_c, base_r;
+            String label;
+            bool synthetic = false;
+        };
+        std::vector<IlsMark> ils_marks;
+        int ils_marks_gen = -1;
+        void refresh_ils_marks();
         // Canton border polylines in LV95 (m). Each polyline is a closed ring.
         std::vector<std::vector<Vector2>> canton_rings;
 
         // ── Per-frame projection results (filled by _draw) ──
         int visible_airports = 0;
+        int visible_navaids = 0;
         double px_per_m = 1.0;
         Vector2 frame_center_px;                       // map area center in local px
 
@@ -174,6 +195,7 @@ namespace jsbgodot
         void persist_zoom();
         void load_static_data();
         void parse_airports(const String &path);
+        void load_navaids();
         void parse_cantons(const String &path);
 
         Ref<ImageTexture> get_tile(int ei, int ni, int level);

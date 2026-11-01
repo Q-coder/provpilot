@@ -57,8 +57,31 @@ func _ready() -> void:
 	var mroot: Node = root.get_node(NodePath(root._model_root_path))
 	_check(fga != null and fga.animation_count() >= 30, "panel animations loaded (%d)" % (fga.animation_count() if fga else 0))
 	_check(root._fg_controls.count >= 4, "instrument knobs clickable (%d parts)" % root._fg_controls.count)
-	for nm in ["asi__Needle", "ai__Face", "altimeter__needle", "tc__Airplane", "hi__Face", "vsi__Needle", "tach__Needle", "clock__SecondHand"]:
+	for nm in ["asi__Needle", "ai__Face", "altimeter__needle", "tc__Airplane", "hi__Face", "vsi__Needle", "tach__Needle", "clock__SecondHand",
+			"vor__LocalizerNeedle", "vor__Ring", "adf__Needle", "adf__Face", "kx165-1__NavUse1M", "kx165-1__NavKHz", "kr87__freq_001", "kr87__KR87_knob"]:
 		_check(mroot.find_child(nm, true, false) != null, "instrument part present: " + nm)
+	# radio navigation (docs/RADIO_NAVIGATION.md): NAV 1 defaults to KLO 114.85,
+	# the Kloten VOR-DME on the field, so it is received on the ground
+	_check(fga.get_property("instrumentation/nav/in-range") == 1.0 and str(fga.get_property("instrumentation/nav/nav-id")) == "KLO", "NAV 1 receives KLO at LSZH (in-range %s, id %s)" % [str(fga.get_property("instrumentation/nav/in-range")), str(fga.get_property("instrumentation/nav/nav-id"))])
+	var dme_nm: float = float(fga.get_property("instrumentation/dme/indicated-distance-nm"))
+	_check(dme_nm > 0.2 and dme_nm < 3.0, "DME reads the distance to KLO (%.2f nm)" % dme_nm)
+	var magvar: float = float(fga.get_property("environment/magnetic-variation-deg"))
+	var hdg_true: float = float(fga.get_property("orientation/heading-deg"))
+	var hdg_mag: float = float(fga.get_property("instrumentation/magnetic-compass/indicated-heading-deg"))
+	_check(magvar > 2.5 and magvar < 4.5 and _near_mod360(hdg_mag, hdg_true - magvar, 0.01), "compass reads magnetic: variation %.2f E, %.1f true -> %.1f mag" % [magvar, hdg_true, hdg_mag])
+	var rn: RadioNav = root._aircraft.get_fg_bridge().get_radio_nav()
+	_check(rn != null and rn.nav_in_range() and (rn.nav_to_flag() or rn.nav_from_flag()), "VOR flags show TO or FROM (radial %.0f)" % (rn.nav_radial_deg() if rn else -1.0))
+	# ILS: tune 110.50 (IZH, runway 16 of the airport we stand on) through the control state
+	var st: Dictionary = root._fg_controls.get_state()
+	st["instrumentation/nav/frequencies/selected-mhz"] = 110.50
+	root._fg_controls.set_state(st)
+	await get_tree().create_timer(1.0).timeout
+	_check(fga.get_property("instrumentation/nav/nav-loc") == 1.0 and str(fga.get_property("instrumentation/nav/nav-id")) == "IZH", "110.50 tunes the ILS IZH (nav-loc %s, id %s, %s)" % [str(fga.get_property("instrumentation/nav/nav-loc")), str(fga.get_property("instrumentation/nav/nav-id")), str(fga.get_property("instrumentation/nav/ils-runway"))])
+	_check(fga.get_property("instrumentation/nav/has-gs") == 1.0, "ILS has a glide slope")
+	st["instrumentation/nav/frequencies/selected-mhz"] = 114.85
+	root._fg_controls.set_state(st)
+	await get_tree().create_timer(1.0).timeout
+	_check(absf(float(fga.get_property("instrumentation/nav/frequencies/selected-mhz")) - 114.85) < 0.001 and absf(float(fga.get_property("instrumentation/kr-87/outputs/selected-khz")) - 335.0) < 0.1, "KX 165 shows 114.85, KR 87 shows 335")
 	# directional gyro face turns with the heading
 	var hdg: float = float(fga.get_property("instrumentation/heading-indicator/indicated-heading-deg"))
 	var face: float = _deg(fga, "hi__Face")
@@ -187,6 +210,35 @@ func _ready() -> void:
 			_check((c1 - c0).length() < 0.01, "a switched-on rocker tilts about its own pivot and stays in place")
 			_check(ctl.hover_name(cam, _centre_px(cam, sw_t)) == "Switch_TaxiLt", "and can be clicked again to switch it off")
 			ctl.click(cam, _centre_px(cam, sw_t), MOUSE_BUTTON_LEFT, true, false); ctl.click(cam, _centre_px(cam, sw_t), MOUSE_BUTTON_LEFT, false, false)
+		# OBS: the VOR's course knob (invisible click zones from fgdata) turns the course ring
+		var obs_zone: Node3D = mroot.find_child("vor__click-R", true, false)
+		_check(obs_zone != null, "VOR OBS click zone present")
+		if obs_zone:
+			var obs0: float = float(ctl.value_of("instrumentation/nav/radials/selected-deg"))
+			var opos: Vector2 = _centre_px(cam, obs_zone)
+			print("  [diag] under the OBS zone: '%s'" % ctl.hover_name(cam, opos))
+			var took: bool = ctl.click(cam, opos, MOUSE_BUTTON_WHEEL_UP, true, true)
+			ctl.click(cam, opos, MOUSE_BUTTON_WHEEL_UP, false, true)
+			var obs1: float = float(ctl.value_of("instrumentation/nav/radials/selected-deg"))
+			_check(took and _near_mod360(obs1, obs0 + 5.0, 0.01), "Shift+wheel over the OBS turns the course 5 deg (%.0f -> %.0f)" % [obs0, obs1])
+		# KR 87: the kHz knob tunes the standby frequency, FRQ swaps it into use
+		var kr_knob: Node3D = mroot.find_child("kr87__KR87_knob1", true, false)
+		var kr_frq: Node3D = mroot.find_child("kr87__KR87_frq", true, false)
+		_check(kr_knob != null and kr_frq != null, "KR 87 knob and FRQ button present")
+		if kr_knob and kr_frq:
+			var stby0: float = float(ctl.value_of("instrumentation/kr-87/outputs/standby-khz"))
+			var kpos: Vector2 = _centre_px(cam, kr_knob)
+			ctl.click(cam, kpos, MOUSE_BUTTON_WHEEL_UP, true, false); ctl.click(cam, kpos, MOUSE_BUTTON_WHEEL_UP, false, false)
+			var stby1: float = float(ctl.value_of("instrumentation/kr-87/outputs/standby-khz"))
+			_check(absf(stby1 - stby0 - 1.0) < 0.01, "wheel over the ADF kHz knob steps the standby frequency (%.0f -> %.0f)" % [stby0, stby1])
+			var use0: float = float(ctl.value_of("instrumentation/kr-87/outputs/selected-khz"))
+			var fpos: Vector2 = _centre_px(cam, kr_frq)
+			ctl.click(cam, fpos, MOUSE_BUTTON_LEFT, true, false)
+			await get_tree().create_timer(0.3).timeout
+			ctl.click(cam, fpos, MOUSE_BUTTON_LEFT, false, false)
+			await get_tree().create_timer(0.3).timeout
+			var use1: float = float(ctl.value_of("instrumentation/kr-87/outputs/selected-khz"))
+			_check(absf(use1 - stby1) < 0.01 and absf(float(ctl.value_of("instrumentation/kr-87/outputs/standby-khz")) - use0) < 0.01, "FRQ swaps active and standby (%.0f <-> %.0f)" % [use0, use1])
 		ctl.set_debug(true)
 		_check(ctl.debug_box_count() == ctl.count, "Shift+Ctrl+M hotspot boxes, one per clickable part (%d)" % ctl.debug_box_count())
 		ctl.set_debug(false)

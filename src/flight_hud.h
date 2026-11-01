@@ -53,6 +53,12 @@ namespace jsbgodot
         // Swiss / prime-meridian coordinates). jsb may be null.
         void update(Object *jsb);
         void set_time_text(const String &text);
+        // The radio navigation line above the readouts (empty hides it).
+        void set_nav_text(const String &text);
+        // Readout units: metric (km/h, m, m/s) for aircraft whose panel is
+        // metric (aircraft.cfg [instruments] units "metric"), else kt / ft / fpm.
+        void set_metric(bool on);
+        bool is_metric() const;
 
         int get_hud_mode() const;
         void set_hud_mode(int mode);
@@ -96,6 +102,7 @@ namespace jsbgodot
         // Flight HUD (scene nodes)
         Control *hud_root = nullptr;
         Label *airspeed_label = nullptr;
+        bool metric = false;
         Label *altitude_label = nullptr;
         Label *vspeed_label = nullptr;
         Label *throttle_label = nullptr;
@@ -109,6 +116,8 @@ namespace jsbgodot
         // Own overlays
         Label *fps_label = nullptr;
         Label *wx_label = nullptr;
+        Label *nav_label = nullptr;
+        String nav_text;
         bool fps_visible = false;
         bool wx_visible = false;
         bool hud_key_held = false;

@@ -46,8 +46,9 @@ func _ready() -> void:
 	var unknown: PackedStringArray = fga.unknown_properties()
 	print("  [diag] unbridged (%d): %s" % [unknown.size(), unknown])
 	_check(unknown.size() <= 6, "at most 6 manifest properties left unbridged (%d)" % unknown.size())
-	# HSI compass card follows the heading (155 on runway 16)
-	var hdg: float = fposmod(jsb.get_property("attitude/psi-deg"), 360.0)
+	# HSI compass card follows the magnetic heading (155 true on runway 16
+	# minus the WMM declination, docs/RADIO_NAVIGATION.md)
+	var hdg: float = fposmod(jsb.get_property("attitude/psi-deg") - float(fga.get_property("environment/magnetic-variation-deg")), 360.0)
 	var card: String = _rotate_target("A-10-HSI", "instrumentation/heading-indicator-fg/indicated-heading-deg")
 	print("  [diag] heading %.1f, HSI card node '%s' angle %.1f" % [hdg, card, _deg(fga, card) if card != "" else -1.0])
 	_check(card != "" and _near_mod360(_deg(fga, card), hdg, 2.0), "HSI compass card rotated by the heading")

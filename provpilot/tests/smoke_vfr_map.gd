@@ -173,6 +173,8 @@ func _process(_delta: float) -> void:
 			check(cached > 0, "map tiles were streamed into the LRU cache (got %d)" % cached)
 			check(vfr_map.get_visible_airport_count() > 0,
 				"in-view airports detected near LSZH (got %d)" % vfr_map.get_visible_airport_count())
+			check(vfr_map.get_visible_navaid_count() > 0,
+				"in-view radio navaids near LSZH (KLO VOR-DME; got %d)" % vfr_map.get_visible_navaid_count())
 			# Re-issue a known state synchronously: node_3d.gd's own _process
 			# overwrites position/heading with JSBSim's every frame.
 			vfr_map.update_lv95(AC_E, AC_N, 250.0, false)

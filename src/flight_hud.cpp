@@ -42,6 +42,9 @@ void FlightHud::_bind_methods()
 	ClassDB::bind_method(D_METHOD("poll_keys"), &FlightHud::poll_keys);
 	ClassDB::bind_method(D_METHOD("update", "jsb"), &FlightHud::update);
 	ClassDB::bind_method(D_METHOD("set_time_text", "text"), &FlightHud::set_time_text);
+	ClassDB::bind_method(D_METHOD("set_nav_text", "text"), &FlightHud::set_nav_text);
+	ClassDB::bind_method(D_METHOD("set_metric", "on"), &FlightHud::set_metric);
+	ClassDB::bind_method(D_METHOD("is_metric"), &FlightHud::is_metric);
 	ClassDB::bind_method(D_METHOD("get_hud_mode"), &FlightHud::get_hud_mode);
 	ClassDB::bind_method(D_METHOD("set_hud_mode", "mode"), &FlightHud::set_hud_mode);
 	ClassDB::bind_method(D_METHOD("is_fps_visible"), &FlightHud::is_fps_visible);
@@ -136,7 +139,31 @@ void FlightHud::build_overlays()
 	wx_label->set_offset(SIDE_TOP, 12);
 	wx_label->set_visible(wx_visible);
 	add_child(wx_label);
+
+	// radio navigation readout (docs/RADIO_NAVIGATION.md), above the bottom row
+	nav_label = memnew(Label);
+	nav_label->add_theme_font_size_override("font_size", 20);
+	nav_label->add_theme_color_override("font_color", Color(0.8, 1.0, 0.85));
+	outline_label(nav_label, 4);
+	nav_label->set_anchors_preset(Control::PRESET_BOTTOM_LEFT);
+	nav_label->set_offset(SIDE_LEFT, 14);
+	nav_label->set_offset(SIDE_RIGHT, 1100);
+	nav_label->set_offset(SIDE_TOP, -96);
+	nav_label->set_offset(SIDE_BOTTOM, -66);
+	nav_label->set_text(nav_text);
+	nav_label->set_visible(hud_mode >= 1 && !nav_text.is_empty());
+	add_child(nav_label);
 	refresh_weather_overlay();
+}
+
+void FlightHud::set_nav_text(const String &text)
+{
+	nav_text = text;
+	if (nav_label != nullptr)
+	{
+		nav_label->set_text(text);
+		nav_label->set_visible(hud_mode >= 1 && !text.is_empty());
+	}
 }
 
 Label *FlightHud::hud_label(const char *path) const
@@ -183,6 +210,10 @@ void FlightHud::apply_hud_mode()
 	if (bottom != nullptr)
 	{
 		bottom->set_visible(hud_mode >= 1);
+	}
+	if (nav_label != nullptr)
+	{
+		nav_label->set_visible(hud_mode >= 1 && !nav_text.is_empty());
 	}
 	static const char *const upper[] = {"Label6", "Label7", "Label8", "Label9", "TimeLabel"};
 	for (const char *nm : upper)
@@ -269,6 +300,9 @@ static String rounded(double v)
 	return String::num_int64((int64_t)std::llround(v));
 }
 
+void FlightHud::set_metric(bool on) { metric = on; }
+bool FlightHud::is_metric() const { return metric; }
+
 void FlightHud::update(Object *p_jsb)
 {
 	JSBGodot *fdm = Object::cast_to<JSBGodot>(p_jsb);
@@ -278,19 +312,37 @@ void FlightHud::update(Object *p_jsb)
 	}
 	if (airspeed_label != nullptr)
 	{
-		airspeed_label->set_text("Airspeed: " + rounded(fdm->get_airspeed_knots()) + " knots");
+		airspeed_label->set_text(metric ? "Airspeed: " + rounded(fdm->get_airspeed_knots() * 1.852) + " km/h"
+										: "Airspeed: " + rounded(fdm->get_airspeed_knots()) + " knots");
 	}
 	if (altitude_label != nullptr)
 	{
-		altitude_label->set_text("Altitude: " + rounded(fdm->get_altitude_ft()) + " feet");
+		altitude_label->set_text(metric ? "Altitude: " + rounded(fdm->get_altitude_ft() * 0.3048) + " m"
+										: "Altitude: " + rounded(fdm->get_altitude_ft()) + " feet");
 	}
 	if (vspeed_label != nullptr)
 	{
-		vspeed_label->set_text("Vertical Speed: " + rounded(fdm->get_vertical_speed_fpm()) + " ft/m");
+		if (metric)
+		{
+			char buf[48];
+			snprintf(buf, sizeof(buf), "Vertical Speed: %+.1f m/s", fdm->get_vertical_speed_fpm() * 0.00508);
+			vspeed_label->set_text(buf);
+		}
+		else
+		{
+			vspeed_label->set_text("Vertical Speed: " + rounded(fdm->get_vertical_speed_fpm()) + " ft/m");
+		}
 	}
 	if (throttle_label != nullptr)
 	{
-		throttle_label->set_text("Throttle: " + rounded(fdm->get_input_throttle() * 100.0) + " %");
+		if (fdm->get_throttle_drives_airbrakes())
+		{
+			throttle_label->set_text("Airbrakes: " + rounded((1.0 - fdm->get_input_throttle()) * 100.0) + " %");
+		}
+		else
+		{
+			throttle_label->set_text("Throttle: " + rounded(fdm->get_input_throttle() * 100.0) + " %");
+		}
 	}
 	if (heading_label != nullptr)
 	{

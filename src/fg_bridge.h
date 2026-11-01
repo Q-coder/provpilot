@@ -2,9 +2,12 @@
 #define FG_BRIDGE_H
 
 #include <godot_cpp/core/defs.hpp>
+#include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/string.hpp>
+
+#include "radio_nav.h"
 
 using namespace godot;
 
@@ -55,6 +58,47 @@ namespace jsbgodot
         double get_sim_time_seconds() const; void set_sim_time_seconds(double v);
         Dictionary get_control_state() const; void set_control_state(const Dictionary &v);
         double get_canopy_target() const; void set_canopy_target(double v);
+        // The frame time the receivers integrate with (set by the rig before collect()).
+        double get_frame_delta() const; void set_frame_delta(double v);
+        // NAV 1 / DME / ADF receivers (docs/RADIO_NAVIGATION.md).
+        Ref<RadioNav> get_radio_nav() const;
+        // NAV 2 (instrumentation/nav[1]: the first officer's HSI, CRS 2).
+        Ref<RadioNav> get_radio_nav2() const;
+        // WMM declination at the aircraft (east positive), from the last collect().
+        double get_magnetic_variation_deg() const;
+        // One HUD line with the tuned stations.
+        String nav_status_text() const;
+
+        // FlightGear property mirror (docs/MD80_FLIGHTGEAR_PORT.md): aircraft
+        // whose systems live in JSBSim (reading FlightGear-side paths such as
+        // /controls/..., /instrumentation/..., /engines/engine[n]/n1) get the
+        // bridge's values pushed into the FDM each frame, and every property
+        // the model animations or sounds reference that the FDM defines is
+        // pulled back. Off for the other aircraft.
+        bool get_fdm_mirror() const; void set_fdm_mirror(bool on);
+        // JSBSim property that powers the panel (e.g. systems/electrical/bus/dc-l), with
+        // its threshold; replaces the built-in electrical model when set.
+        String get_power_property() const; void set_power_property(const String &p);
+        double get_power_threshold() const; void set_power_threshold(double v);
+        // The nose gear's full steering angle ([jsbsim] nose_steer_max_deg): FlightGear's
+        // gear/gear[0]/steering-norm is the steering angle over this maximum.
+        double get_nose_steer_max_deg() const; void set_nose_steer_max_deg(double v);
+        void set_surface_norm_per_deg(double elevator, double rudder);
+        // The animator's / sound set's property names to pull from the FDM.
+        void set_mirror_pull_keys(const PackedStringArray &keys);
+        // The aircraft's start-up property values ([jsbsim] init_properties):
+        // cockpit switches the model animates start in that state instead of
+        // at the generic switch defaults.
+        void set_init_defaults(const Dictionary &d);
+        // FlightGear -set file aliases (path -> FDM-side target) resolved every frame.
+        void set_property_aliases(const Dictionary &d);
+        double default_for(const String &prop) const;
+        // Start value for a cockpit control's property: the init list, else the
+        // FDM's current value when mirrored, else NIL (the caller keeps its default).
+        Variant initial_value(const String &prop, Object *jsb);
+        void reset_mirror_cache();
+        int get_mirror_pushed() const;
+        int get_mirror_pulled() const;
 
     protected:
         double canopy_norm = 0.0;     // 0 closed .. 1 open
@@ -69,6 +113,34 @@ namespace jsbgodot
         Dictionary control_state;     // FGControls.state, merged last
         double canopy_target = 0.0;   // canopy switch: 0 close, 1 hold, 2 open
         double kollsman_seeded = -1.0; // Kollsman value last taken from the weather
+        Ref<RadioNav> radio_nav;      // NAV 1 + DME + ADF
+        Ref<RadioNav> radio_nav2;     // NAV 2
+        double frame_delta = 1.0 / 60.0;
+        double magvar_deg = 0.0;      // WMM declination at the aircraft
+        double magvar_lat = 999.0, magvar_lon = 999.0; // where it was computed
+        double magvar_year = 0.0;
+        double prev_frq_btn = 0.0;    // KR 87 FRQ button edge
+        double prev_vtrue_mps = -1.0; // total-energy variometer: last true airspeed
+        double te_filtered_mps = 0.0; // the variometer's own lag (about a second, as the real instrument)
+        double gear_agl_offset_ft = 0.0;      // CG height above the wheels on the ground (set from the FDM at rest)
+        double agl_history_t = 0.0;
+        PackedVector2Array agl_history;       // (t, gear agl) over the last two seconds
+        bool fdm_mirror = false;
+        String power_property;
+        double power_threshold = 24.0;
+        double nose_steer_max_deg = 20.0;
+        // [animation] elevator/rudder_pos_norm_per_deg: FlightGear models built
+        // against YASim read surface-positions/*-pos-norm scaled past +-1
+        // (the ASK 21: +-4 for full travel); 0 = the FDM's own norm
+        double elevator_norm_per_deg = 0.0, rudder_norm_per_deg = 0.0;
+        PackedStringArray pull_keys;
+        Dictionary init_defaults;     // normalised path -> value
+        Dictionary property_aliases;  // normalised path -> target path
+        Dictionary node_cache;        // property path -> bool (FDM has the node)
+        int mirror_pushed = 0, mirror_pulled = 0;
+        bool fdm_has(JSBGodot *jsb, const String &key);
+        void mirror_push(JSBGodot *jsb, Dictionary &p);
+        void mirror_pull(JSBGodot *jsb, Dictionary &p);
 
         static constexpr int GEAR_UNITS = 3; // 0 nose, 1 left main, 2 right main
         static constexpr int ENGINES = 2;
@@ -85,6 +157,8 @@ namespace jsbgodot
         void fuel(JSBGodot *jsb, Dictionary &p);
         void flight_instruments(JSBGodot *jsb, Dictionary &p, bool airborne);
         void controls(JSBGodot *jsb, Dictionary &p);
+        void radios(JSBGodot *jsb, Dictionary &p, double lat_deg, double lon_deg, double alt_m, double true_heading_deg);
+        void update_magvar(double lat_deg, double lon_deg, double alt_m);
         double ctl(const char *key, double def) const;
     };
 

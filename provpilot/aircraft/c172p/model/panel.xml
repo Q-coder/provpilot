@@ -27,6 +27,19 @@
   <!-- bottom row -->
   <model><name>tach</name><path>Aircraft/Instruments-3d/tach/tach.xml</path>
     <offsets><x-m>-0.778</x-m><y-m>-0.357</y-m><z-m>1.541</z-m><pitch-deg>3.5</pitch-deg></offsets></model>
+  <!-- radio navigation (docs/RADIO_NAVIGATION.md): the VOR 1 course
+       deviation indicator in the fourth hole of the top row, the ADF in the
+       fourth hole of the middle row, and the KX 165 NAV/COMM and KR 87 ADF
+       receivers over the painted radio stack, whose face is 5 cm closer to
+       the pilot than the instrument panel. -->
+  <model><name>vor</name><path>Aircraft/Instruments-3d/vor/vor.xml</path>
+    <offsets><x-m>-0.785</x-m><y-m>-0.051</y-m><z-m>1.757</z-m><pitch-deg>3.5</pitch-deg></offsets></model>
+  <model><name>adf</name><path>Aircraft/Instruments-3d/adf/adf.xml</path>
+    <offsets><x-m>-0.779</x-m><y-m>-0.053</y-m><z-m>1.653</z-m><pitch-deg>3.5</pitch-deg></offsets></model>
+  <model><name>kx165-1</name><path>Aircraft/Instruments-3d/kx165/kx165-1.xml</path>
+    <offsets><x-m>-0.737</x-m><y-m>0.107</y-m><z-m>1.625</z-m></offsets></model>
+  <model><name>kr87</name><path>Aircraft/Instruments-3d/kr87-adf/kr87.xml</path>
+    <offsets><x-m>-0.737</x-m><y-m>0.107</y-m><z-m>1.575</z-m></offsets></model>
   <!-- blanking plates (ProvPilot extension): black discs just behind every
        hole, so the cowling does not show through gaps around an instrument
        or through the holes that have no instrument yet: 10 mm forward of
@@ -102,4 +115,8 @@
   <animation><type>rotate</type><object-name>Switch_StrobeLt</object-name><property>controls/lighting/strobe</property><factor>-20</factor><axis><x>1</x><y>0</y><z>0</z></axis></animation>
   <animation><type>rotate</type><object-name>Switch_Alt</object-name><property>controls/electric/engine/generator</property><factor>-20</factor><axis><x>1</x><y>0</y><z>0</z></axis></animation>
   <animation><type>rotate</type><object-name>Switch_Bat</object-name><property>controls/electric/battery-switch</property><factor>-20</factor><axis><x>1</x><y>0</y><z>0</z></axis></animation>
+  <!-- ADF compass card: the fgdata ADF has no knob mesh, so the card itself
+       is the knob (click / wheel over the face, Shift = coarse). -->
+  <animation><type>knob</type><object-name>adf__Face</object-name>
+    <action><binding><command>property-adjust</command><property>instrumentation/adf/rotation-deg</property><factor>1</factor><min>0</min><max>360</max><wrap>1</wrap></binding></action></animation>
 </PropertyList>

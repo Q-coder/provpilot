@@ -1,6 +1,7 @@
 #include "key_bindings.h"
 #include "vfr_map.h"
 #include "geo.h"
+#include "navaids_lib.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/classes/config_file.hpp>
@@ -66,6 +67,10 @@ namespace
     const Color C_AIRPORT_GA(0.85, 0.9, 1.0, 1.0);    // regional / GA airport
     const Color C_LABEL_SHADOW(0.0, 0.0, 0.0, 0.8);   // text shadow
     const Color C_CANTON(1.0, 1.0, 1.0, 0.25);        // canton borders
+    const Color C_VOR(0.55, 0.78, 1.0, 1.0);          // VOR / DME symbols and labels
+    const Color C_NDB(1.0, 0.6, 0.9, 1.0);            // NDB symbols and labels
+    const Color C_ILS(0.65, 1.0, 0.75, 0.9);          // ILS feathers and labels
+    const Color C_ILS_FILL(0.65, 1.0, 0.75, 0.25);    // shaded half of a feather
     const Color C_NO_TILE(0.13, 0.17, 0.14, 1.0);     // missing-tile fill
 
     constexpr int TITLE_H = 26;                        // title bar height (px)
@@ -225,6 +230,7 @@ void VfrMap::_bind_methods()
     ClassDB::bind_method(D_METHOD("update_lv95", "e", "n", "heading_deg", "ui_visible"), &VfrMap::update_lv95);
     ClassDB::bind_method(D_METHOD("get_cached_tile_count"), &VfrMap::get_cached_tile_count);
     ClassDB::bind_method(D_METHOD("get_visible_airport_count"), &VfrMap::get_visible_airport_count);
+    ClassDB::bind_method(D_METHOD("get_visible_navaid_count"), &VfrMap::get_visible_navaid_count);
     ClassDB::bind_method(D_METHOD("get_zoom_index"), &VfrMap::get_zoom_index);
     ClassDB::bind_method(D_METHOD("get_view_width_m"), &VfrMap::get_view_width_m);
     ClassDB::bind_method(D_METHOD("toggle_visible"), &VfrMap::toggle_visible);
@@ -548,6 +554,7 @@ bool VfrMap::is_map_enabled() const
 void VfrMap::load_static_data()
 {
     parse_airports("res://airports.json");
+    load_navaids();
     parse_cantons("res://web/data/cantons.geojson");
 }
 
@@ -586,6 +593,68 @@ void VfrMap::parse_airports(const String &path)
         ap.international = (type == "international_airport");
         airports.push_back(ap);
     }
+}
+
+void VfrMap::load_navaids()
+{
+    navaids.clear();
+    for (const Navaid &n : NavaidsLib::all())
+    {
+        if (n.kind == 0)
+        {
+            continue;
+        }
+        Vector2 lv = wgs84_to_lv95(n.lat, n.lon);
+        NavaidMark m;
+        m.e = lv.x;
+        m.n = lv.y;
+        m.ident = n.ident;
+        m.kind = n.kind;
+        m.freq = n.freq_khz >= 100000 ? String::num(n.freq_khz / 1000.0, 2) : String::num_int64(n.freq_khz);
+        navaids.push_back(m);
+    }
+}
+
+// ILS feathers from the resolved ILS list (NavaidsLib), rebuilt when the
+// geometry was re-resolved (the welcome screen hands over the runways).
+void VfrMap::refresh_ils_marks()
+{
+    if (ils_marks_gen == NavaidsLib::ils_generation())
+    {
+        return;
+    }
+    ils_marks_gen = NavaidsLib::ils_generation();
+    ils_marks.clear();
+    for (const Ils &s : NavaidsLib::all_ils())
+    {
+        if (!s.resolved)
+        {
+            continue;
+        }
+        const double dx = s.far_e - s.thr_e, dy = s.far_n - s.thr_n;
+        const double len = std::sqrt(dx * dx + dy * dy);
+        if (len < 1.0)
+        {
+            continue;
+        }
+        // outbound unit vector (away from the runway) and its left normal
+        const double ux = -dx / len, uy = -dy / len;
+        const double nx = -uy, ny = ux;
+        const double L = 7000.0, W = 600.0;
+        IlsMark m;
+        m.apex = Vector2(s.thr_e, s.thr_n);
+        m.base_c = Vector2(s.thr_e + ux * L, s.thr_n + uy * L);
+        m.base_l = m.base_c + Vector2(nx, ny) * W;
+        m.base_r = m.base_c - Vector2(nx, ny) * W;
+        m.label = String(s.synthetic ? "ILS* " : "ILS ") + String::num(s.freq_khz / 1000.0, 2) + " " + s.rwy;
+        m.synthetic = s.synthetic;
+        ils_marks.push_back(m);
+    }
+}
+
+int VfrMap::get_visible_navaid_count() const
+{
+    return visible_navaids;
 }
 
 void VfrMap::parse_cantons(const String &path)
@@ -1013,9 +1082,97 @@ void VfrMap::_draw()
         }
     }
 
+    // ILS feathers up to the 40 km view: outline, the left half shaded
+    refresh_ils_marks();
+    if (zoom_index <= 3)
+    {
+        for (const IlsMark &m : ils_marks)
+        {
+            Vector2 a, bl, bc, br;
+            project(m.apex.x, m.apex.y, a);
+            if (!map_area.grow(120.0).has_point(a))
+            {
+                continue;
+            }
+            project(m.base_l.x, m.base_l.y, bl);
+            project(m.base_c.x, m.base_c.y, bc);
+            project(m.base_r.x, m.base_r.y, br);
+            PackedVector2Array fill;
+            fill.push_back(a);
+            fill.push_back(bc);
+            fill.push_back(bl);
+            draw_colored_polygon(fill, m.synthetic ? Color(C_ILS_FILL, 0.12) : C_ILS_FILL);
+            PackedVector2Array outline;
+            outline.push_back(a);
+            outline.push_back(bl);
+            outline.push_back(br);
+            outline.push_back(a);
+            draw_polyline(outline, m.synthetic ? Color(C_ILS, 0.5) : C_ILS, 1.0, false);
+            draw_line(a, bc, m.synthetic ? Color(C_ILS, 0.5) : C_ILS, 1.0, false);
+            if (font.is_valid() && zoom_index <= 2 && map_area.has_point(bc))
+            {
+                draw_string(font, bc + Vector2(5, 4), m.label, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, C_LABEL_SHADOW);
+                draw_string(font, bc + Vector2(4, 3), m.label, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, C_ILS);
+            }
+        }
+    }
+
+    // Radio navaids (docs/RADIO_NAVIGATION.md): VOR as a hexagon with a
+    // centre dot, NDB as a dotted ring, DME / TACAN alone as a square.
+    visible_navaids = 0;
+    for (const NavaidMark &nv : navaids)
+    {
+        Vector2 sp;
+        project(nv.e, nv.n, sp);
+        if (!map_area.has_point(sp))
+        {
+            continue;
+        }
+        visible_navaids++;
+        if (nv.kind & NavaidsLib::KIND_VOR)
+        {
+            PackedVector2Array hex;
+            for (int k = 0; k <= 6; k++)
+            {
+                const double a = Math_PI / 6.0 + k * Math_PI / 3.0;
+                hex.push_back(sp + Vector2(std::cos(a), std::sin(a)) * 6.0);
+            }
+            draw_polyline(hex, C_VOR, 1.5, false);
+            draw_circle(sp, 1.5, C_VOR);
+        }
+        else if (nv.kind & NavaidsLib::KIND_NDB)
+        {
+            draw_circle(sp, 1.8, C_NDB);
+            for (int k = 0; k < 12; k++)
+            {
+                const double a = k * Math_PI / 6.0;
+                draw_circle(sp + Vector2(std::cos(a), std::sin(a)) * 6.0, 0.9, C_NDB);
+            }
+        }
+        else
+        {
+            draw_rect(Rect2(sp.x - 4, sp.y - 4, 8, 8), C_VOR, false, 1.5);
+        }
+    }
+
     // ICAO labels (screen-aligned, next to the projected airport positions).
     if (font.is_valid())
     {
+        for (const NavaidMark &nv : navaids)
+        {
+            Vector2 sp;
+            project(nv.e, nv.n, sp);
+            if (!map_area.grow(8.0).has_point(sp))
+            {
+                continue;
+            }
+            // ident and frequency up to the 20 km view, ident alone beyond
+            const String text = zoom_index <= 2 ? nv.ident + String(" ") + nv.freq : nv.ident;
+            const Color c = (nv.kind & NavaidsLib::KIND_NDB) ? C_NDB : C_VOR;
+            Vector2 pos(sp.x + 8, sp.y + 12);
+            draw_string(font, pos + Vector2(1, 1), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, C_LABEL_SHADOW);
+            draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, c);
+        }
         for (const Airport &ap : airports)
         {
             Vector2 sp;
