@@ -511,7 +511,7 @@ void SceneryDownloaderPanel::step_hashing()
 	begin_extract();
 }
 
-// On Windows the bundled tar.exe (libarchive) handles ZIP64 and long paths
+// On Windows the bundled tar.exe (libarchive) and on macOS /usr/bin/tar handle ZIP64 and long paths
 // cleanly, which Godot's ZIPReader does not for the multi-GB bundles; the
 // ZIPReader is the fallback everywhere else.
 void SceneryDownloaderPanel::begin_extract()
@@ -541,23 +541,31 @@ void SceneryDownloaderPanel::begin_extract()
 		}
 		zip->close();
 	}
-	if (OS::get_singleton()->get_name() == "Windows")
+	// The system tar unpacks a zip of half a million tiles in a minute or two;
+	// ZIPReader.read_file() locates every entry by a scan of the central
+	// directory, which made the fallback below take hours on the base packs
+	// (measured 2026-11-01: 50 files/s on the 60 000-tile Denmark pack).
+	// Windows 10+ ships tar.exe (libarchive), macOS /usr/bin/tar is bsdtar
+	// and reads zip too; GNU tar on Linux does not, so Linux keeps ZIPReader.
+	const String os_name = OS::get_singleton()->get_name();
+	const String tar_exe = os_name == "Windows" ? String("tar.exe") : (os_name == "macOS" ? String("/usr/bin/tar") : String());
+	if (!tar_exe.is_empty())
 	{
 		PackedStringArray args;
 		args.push_back("-xf");
 		args.push_back(job_zip_path);
 		args.push_back("-C");
 		args.push_back(dest_root);
-		tar_pid = OS::get_singleton()->create_process("tar.exe", args);
+		tar_pid = OS::get_singleton()->create_process(tar_exe, args);
 		if (tar_pid > 0)
 		{
 			progress->set_value(0.0);
-			progress_lbl->set_text(String::utf8("Extracting via tar.exe\xE2\x80\xA6"));
+			progress_lbl->set_text(String::utf8("Extracting via tar\xE2\x80\xA6"));
 			tar_poll_t = 0.0;
 			phase = PHASE_EXTRACT_TAR;
 			return;
 		}
-		UtilityFunctions::push_warning("SceneryDownloader: OS.create_process('tar.exe') failed - falling back to ZIPReader.");
+		UtilityFunctions::push_warning("SceneryDownloader: OS.create_process('", tar_exe, "') failed - falling back to ZIPReader.");
 	}
 	if (open_err != OK)
 	{
@@ -590,7 +598,7 @@ void SceneryDownloaderPanel::step_extract_tar(double delta)
 		if (tar_poll_t >= 0.5)
 		{
 			tar_poll_t = 0.0;
-			progress_lbl->set_text(String::utf8("Extracting via tar.exe\xE2\x80\xA6 (") + String::num_int64(count_files_under(root_edit->get_text().strip_edges(), 4000)) + " files)");
+			progress_lbl->set_text(String::utf8("Extracting via tar\xE2\x80\xA6 (") + String::num_int64(count_files_under(root_edit->get_text().strip_edges(), 4000)) + " files)");
 		}
 		return;
 	}
@@ -598,11 +606,11 @@ void SceneryDownloaderPanel::step_extract_tar(double delta)
 	tar_pid = -1;
 	if (exit_code != 0)
 	{
-		finish_job_failed(String("Extraction failed: tar.exe exited with code ") + String::num_int64(exit_code));
+		finish_job_failed(String("Extraction failed: tar exited with code ") + String::num_int64(exit_code));
 		return;
 	}
 	progress->set_value(100.0);
-	progress_lbl->set_text("Extraction complete (tar.exe)");
+	progress_lbl->set_text("Extraction complete (tar)");
 	finish_extract_ok();
 }
 

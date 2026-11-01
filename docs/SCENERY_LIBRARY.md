@@ -93,8 +93,12 @@ Pipeline per pack:
   `<install_root>/.downloads/<pack_id>.zip` (threaded, no size limit).
 - Size + sha256 are verified against the manifest entry (chunked HashingContext
   with per-frame yields so the UI stays responsive).
-- ZIPReader extracts every entry into `<install_root>/`, yielding every 32
-  files. The top-level region directory (e.g. `Switzerland/` or
+- Extraction: the system tar (`tar.exe` on Windows, `/usr/bin/tar` on macOS,
+  both libarchive and zip-capable) unpacks into `<install_root>/`; Godot's
+  ZIPReader is the fallback (Linux, or tar missing) and is slow on the base
+  packs (it locates every entry by scanning the central directory, ~50
+  files/s on 60 000 tiles). `tests/probe_scenery_download.gd` installs one
+  pack from any manifest URL through this pipeline. The top-level region directory (e.g. `Switzerland/` or
   `Germany/Baden-Wuertemberg/`) is detected automatically by walking the
   single-child chain until an asset subdir is found.
 - The zip is deleted on success.

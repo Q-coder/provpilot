@@ -84,7 +84,11 @@ Output `/Volumes/Data1/provpilot/build/world-packs/<id>-base-v<ver>.zip` plus
 `scenery_manifest.json`. Upload the ZIPs to `provpilot/scenery/` and the
 manifest to `provpilot/scenery_manifest.json`; the downloader keys installs
 by sha256, so a re-packed region with a new `--version` shows as "Update
-available". The packs own the plain country directories (`Switzerland`,
+available". Test a pack through the real pipeline before uploading: serve
+the output directory locally (`python3 -m http.server 8765` there, a copy of
+the manifest with `http://127.0.0.1:8765/` urls) and run
+`PROBE_MANIFEST=… PROBE_REGION=denmark PROBE_ROOT=/tmp/dl godot --headless
+--path provpilot -s tests/probe_scenery_download.gd`. The packs own the plain country directories (`Switzerland`,
 `Germany`, …); a 1 m add-on installed under the same name must move to
 `<Name>-HD` first (design §11.3) because the tile names collide. Not
 distributed: the detail add-ons (CH 1 m, BW), the custom object packs
