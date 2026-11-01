@@ -272,8 +272,8 @@
       <a href="https://jsbsim.sourceforge.net">JSBSim</a> flight dynamics and the
       <a href="https://godotengine.org">Godot</a> engine. A base scenery covers nine countries
       from Norway to Italy with real terrain, airports and night lighting; photoreal 1&nbsp;m add-ons
-      for Switzerland and Baden-Württemberg come straight from <a href="https://www.swisstopo.admin.ch">swisstopo</a>
-      and <a href="https://www.lgl-bw.de">LGL&nbsp;BW</a>. Pick a Cessna, a PC-7, an A-10, a glider or an MD-80,
+      for Switzerland and Baden-Württemberg built from <a href="https://www.swisstopo.admin.ch">swisstopo</a>
+      and <a href="https://www.lgl-bw.de">LGL&nbsp;BW</a> data are being reworked and will return. Pick a Cessna, a PC-7, an A-10, a glider or an MD-80,
       pick an airport, and go.
     </p>
     <div class="ctas">
@@ -317,8 +317,8 @@
         <p>Norway, Sweden, Finland, Denmark, Germany, Switzerland, Austria, Italy and France at 30&nbsp;m terrain resolution, with 3&nbsp;700 airports: runways, taxiways and aprons from OpenStreetMap and OurAirports, PAPI and approach lights at night. 0.2&ndash;2&nbsp;GB per country, installed from inside the app.</p>
       </div>
       <div class="card">
-        <h3>Photoreal add-ons</h3>
-        <p>Switzerland and Baden-W&uuml;rttemberg at 1&nbsp;m: swissALTI3D terrain, SWISSIMAGE orthophotos, swissBUILDINGS3D with per-building meshes, swissTLM3D roads, rail and water, surveyed lake beds. Mountains look like mountains.</p>
+        <h3>Photoreal add-ons (in rework)</h3>
+        <p>Switzerland and Baden-W&uuml;rttemberg at 1&nbsp;m: swissALTI3D terrain, SWISSIMAGE orthophotos, swissBUILDINGS3D with per-building meshes, swissTLM3D roads, rail and water, surveyed lake beds. The packs are being rebuilt for the new globe and are offline until then.</p>
       </div>
       <div class="card">
         <h3>Six aircraft, one glider</h3>
@@ -363,9 +363,9 @@
     <p>
       The app itself is a ~330&nbsp;MB download with all aircraft on board. Scenery
       is installed from inside the app: the <strong>base packs</strong> are one small
-      download per country (0.2&ndash;2&nbsp;GB), the photoreal Swiss and
-      Baden-W&uuml;rttemberg <strong>add-ons</strong> are the big ones (~165&nbsp;GB for
-      full coverage) &mdash; pick the regions and quadrants you actually fly over.
+      download per country (0.2&ndash;2&nbsp;GB). The photoreal Swiss and
+      Baden-W&uuml;rttemberg <strong>add-ons</strong> (~165&nbsp;GB for full coverage)
+      are being reworked and are not available at the moment.
     </p>
 
     <div class="platforms">
@@ -381,14 +381,12 @@
               without right-click&nbsp;&rarr;&nbsp;Open.</li>
           <li>On first launch, open <strong>Settings &rarr; Downloads</strong>
               and install the base pack of the countries you fly in &mdash; Switzerland
-              is 0.2&nbsp;GB, Germany 1.3&nbsp;GB. Each one is flyable on its own. Add
-              the photoreal add-ons for Switzerland or Baden-W&uuml;rttemberg later
-              if you want 1&nbsp;m terrain, orthophotos and buildings.</li>
+              is 0.2&nbsp;GB, Germany 1.3&nbsp;GB. Each one is flyable on its own.</li>
           <li>Pick an airport in the welcome screen and click <strong>Fly!</strong></li>
         </ol>
         <p style="color: var(--fg-dim); font-size: 13px;">
           Requirements: macOS 12+, Apple Silicon (M1 or newer). Disk: a few GB for
-          the base packs, ~200&nbsp;GB with the full Switzerland + Baden-Württemberg add-ons.
+          the base packs.
         </p>
       </div>
 
@@ -413,7 +411,7 @@
         </ol>
         <p style="color: var(--fg-dim); font-size: 13px;">
           Requirements: Windows 10/11 x64, dedicated GPU with Vulkan support
-          recommended. Disk: a few GB for the base packs, ~200&nbsp;GB with the full add-ons.
+          recommended. Disk: a few GB for the base packs.
         </p>
         <p style="color: var(--fg-dim); font-size: 13px;">
           Trouble? Logs are written to
@@ -513,9 +511,8 @@
       terrain, every airport with runways, taxiways, aprons and night lighting, and the
       Swiss road and rail network where it has been baked. It is small and flyable on its
       own. The <strong>photoreal add-ons</strong> for Switzerland and Baden-W&uuml;rttemberg
-      sit on top: 1&nbsp;m terrain, orthophotos, buildings and trees, split into a base
-      pack per region and four detail quadrants (NW / NE / SW / SE) so you install only the
-      corners you actually fly in.
+      (1&nbsp;m terrain, orthophotos, buildings and trees) sit on top of it in the Scenery
+      Library; they are being rebuilt for the new globe and are offline for now.
     </p>
     <p>
       Use the in-app downloader: <strong>Settings &rarr; Downloads</strong>.
@@ -547,59 +544,11 @@
 
     <div class="map-wrap"><div id="map"></div></div>
     <p style="color: var(--fg-dim); font-size: 13px; margin-top: 14px;">
-      Cantons coloured green have the photoreal add-ons available today: all of
-      Switzerland and Baden-Württemberg. Click any canton for details. The base
-      scenery covers the nine countries listed above.
+      Cantons coloured green are covered by the Switzerland base pack, the
+      Baden-Württemberg outline by the Germany pack; click either for the download.
+      The photoreal 1&nbsp;m add-ons for both regions return once they are rebuilt.
     </p>
 
-    <h3 id="scenery-direct" style="margin-top: 32px;">Photoreal add-ons</h3>
-    <p>
-      The in-app downloader is the recommended path for the base packs above — it
-      streams the same files, sha256-verifies each one and extracts to a folder you
-      pick. The 1&nbsp;m add-ons below are installed by hand: download, extract next
-      to your other scenery and add the folder in <strong>Settings &rarr; Scenery</strong>
-      above the base packs. Each add-on <em>base</em> pack is flyable on its own; add
-      the detail quadrants (NW/NE/SW/SE) for the corners you actually fly in.
-    </p>
-    <table class="dl-table" id="scenery-dl-table">
-      <thead>
-        <tr><th>Region</th><th>Pack</th><th>Size</th><th>SHA-256</th></tr>
-      </thead>
-      <tbody>
-        <tr class="base"><td class="region" rowspan="5">Switzerland</td>
-            <td><a class="zip" href="https://www.md80.ch/provpilot/scenery/switzerland-base-v3.zip">base &mdash; terrain, roads, water, airports, VFR map</a></td>
-            <td class="size">46.1 GiB</td>
-            <td><code class="sha">487fe0d3&hellip;0710ed24</code></td></tr>
-        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/switzerland-detail-nw-v1.zip">detail — North-West (orthophoto + buildings)</a></td>
-            <td class="size">12.0 GiB</td>
-            <td><code class="sha">6080ede5&hellip;12518393</code></td></tr>
-        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/switzerland-detail-ne-v1.zip">detail — North-East</a></td>
-            <td class="size">14.6 GiB</td>
-            <td><code class="sha">fdef98c7&hellip;58364886</code></td></tr>
-        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/switzerland-detail-sw-v1.zip">detail — South-West</a></td>
-            <td class="size">11.5 GiB</td>
-            <td><code class="sha">2421b77b&hellip;0f71d281</code></td></tr>
-        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/switzerland-detail-se-v1.zip">detail — South-East</a></td>
-            <td class="size">7.5 GiB</td>
-            <td><code class="sha">88cb9c89&hellip;4484ecda</code></td></tr>
-        <tr class="base"><td class="region" rowspan="5">Baden-Württemberg</td>
-            <td><a class="zip" href="https://www.md80.ch/provpilot/scenery/baden-wuerttemberg-base-v3.zip">base &mdash; terrain, roads, water, VFR map</a></td>
-            <td class="size">34.9 GiB</td>
-            <td><code class="sha">b51f6eae&hellip;df769b4f</code></td></tr>
-        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/baden-wuerttemberg-detail-nw-v2.zip">detail — North-West</a></td>
-            <td class="size">11.0 GiB</td>
-            <td><code class="sha">74165866&hellip;cdf464c2</code></td></tr>
-        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/baden-wuerttemberg-detail-ne-v1.zip">detail — North-East</a></td>
-            <td class="size">12.0 GiB</td>
-            <td><code class="sha">27baea7c&hellip;46cf781f</code></td></tr>
-        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/baden-wuerttemberg-detail-sw-v2.zip">detail — South-West</a></td>
-            <td class="size">12.2 GiB</td>
-            <td><code class="sha">a799a6b9&hellip;188e3e67</code></td></tr>
-        <tr><td><a class="zip" href="https://www.md80.ch/provpilot/scenery/baden-wuerttemberg-detail-se-v1.zip">detail — South-East</a></td>
-            <td class="size">9.2 GiB</td>
-            <td><code class="sha">2819502f&hellip;630b9925</code></td></tr>
-      </tbody>
-    </table>
     <p style="color: var(--fg-dim); font-size: 12px; margin-top: 10px;">
       Live manifest with the exact byte counts and full hashes:
       <a href="https://www.md80.ch/provpilot/scenery_manifest.json">scenery_manifest.json</a>.
@@ -798,35 +747,21 @@ Promise.all([
 
   // Switzerland scenery packs (mirrors scenery_manifest.json) ────────────
   const SCENERY_BASE = "https://www.md80.ch/provpilot/scenery/";
-  const CH_BASE   = { url: SCENERY_BASE + "switzerland-base-v3.zip",      size: "46.1 GiB" };
-  const CH_DETAIL = {
-    nw: { url: SCENERY_BASE + "switzerland-detail-nw-v1.zip", name: "North-West", size: "12.0 GiB" },
-    ne: { url: SCENERY_BASE + "switzerland-detail-ne-v1.zip", name: "North-East", size: "14.6 GiB" },
-    sw: { url: SCENERY_BASE + "switzerland-detail-sw-v1.zip", name: "South-West", size: "11.5 GiB" },
-    se: { url: SCENERY_BASE + "switzerland-detail-se-v1.zip", name: "South-East", size:  "7.5 GiB" }
-  };
-  // Split point in WGS84 \u2014 approx of LV95 E=2659328 / N=1183744 from
-  // scripts/scenery_regions.json. Good enough for canton centroids.
-  const CH_SPLIT_LON = 8.43;
-  const CH_SPLIT_LAT = 46.74;
-  const quadrantOf = ll => (ll.lat >= CH_SPLIT_LAT ? "n" : "s") + (ll.lng >= CH_SPLIT_LON ? "e" : "w");
+  const CH_BASE   = { url: SCENERY_BASE + "switzerland-base-base-v1.zip", size: "0.19 GiB" };
 
   const popupHtml = (b, name, center) => {
     if (!b)                   return `<h3>${name}</h3><div class="meta">No bundle planned yet.</div>`;
     if (b.status === "soon")  return `<h3>${name}</h3><div class="meta">Coming soon.</div>`;
-    const q = quadrantOf(center);
-    const det = CH_DETAIL[q];
     return `<h3>${name}</h3>
             <div class="meta">
-              Photoreal add-on: download the ZIPs, extract them next to your other scenery and add the folder in <strong>Settings &rarr; Scenery</strong> above the base packs:
+              Covered by the Switzerland base pack (30&nbsp;m terrain, airports, Z&uuml;rich-area roads and rail).
+              Install in-app via <strong>Settings &rarr; Downloads</strong>, or download it directly:
               <ul style="margin:8px 0 0; padding-left: 18px;">
                 <li><a href="${CH_BASE.url}">Switzerland base</a>
                     <span style="color:var(--fg-dim)">(${CH_BASE.size})</span></li>
-                <li><a href="${det.url}">Switzerland detail \u2014 ${det.name}</a>
-                    <span style="color:var(--fg-dim)">(${det.size})</span></li>
               </ul>
               <div style="margin-top:6px; font-size:11px; color:var(--fg-dim);">
-                See the full <a href="#scenery-direct">downloads table</a> for all quadrants.
+                The photoreal 1&nbsp;m add-on is being rebuilt and is offline for now.
               </div>
             </div>`;
   };
@@ -845,30 +780,18 @@ Promise.all([
   // Polygon comes from OSM relation 62611 (web/data/bw.geojson). The four
   // scenery quadrants share an LV95 split point that is approximately
   // lon 9.11 / lat 48.66 in WGS84 (scripts/scenery_pipeline.lv95_to_wgs84).
-  const BW_BASE   = { url: SCENERY_BASE + "baden-wuerttemberg-base-v3.zip",      size: "34.9 GiB" };
-  const BW_DETAIL = {
-    nw: { url: SCENERY_BASE + "baden-wuerttemberg-detail-nw-v2.zip", name: "North-West", size: "11.0 GiB" },
-    ne: { url: SCENERY_BASE + "baden-wuerttemberg-detail-ne-v1.zip", name: "North-East", size: "12.0 GiB" },
-    sw: { url: SCENERY_BASE + "baden-wuerttemberg-detail-sw-v2.zip", name: "South-West", size:  "12.2 GiB" },
-    se: { url: SCENERY_BASE + "baden-wuerttemberg-detail-se-v1.zip", name: "South-East", size:  "9.2 GiB" }
-  };
-  const BW_SPLIT_LON = 9.11;
-  const BW_SPLIT_LAT = 48.66;
-  const bwQuadrant = ll => (ll.lat >= BW_SPLIT_LAT ? "n" : "s") + (ll.lng >= BW_SPLIT_LON ? "e" : "w");
+  const BW_BASE   = { url: SCENERY_BASE + "germany-base-v1.zip", size: "1.28 GiB" };
   const bwPopupHtml = ll => {
-    const det = BW_DETAIL[bwQuadrant(ll)];
     return `<h3>Baden-W&uuml;rttemberg</h3>
             <div class="meta">
-              Photoreal add-on: download the ZIPs, extract them next to your other scenery and add the folder in <strong>Settings &rarr; Scenery</strong> above the base packs:
+              Covered by the Germany base pack (30&nbsp;m terrain, airports).
+              Install in-app via <strong>Settings &rarr; Downloads</strong>, or download it directly:
               <ul style="margin:8px 0 0; padding-left: 18px;">
-                <li><a href="${BW_BASE.url}">Baden-W&uuml;rttemberg base</a>
+                <li><a href="${BW_BASE.url}">Germany base</a>
                     <span style="color:var(--fg-dim)">(${BW_BASE.size})</span></li>
-                <li><a href="${det.url}">Baden-W&uuml;rttemberg detail \u2014 ${det.name}</a>
-                    <span style="color:var(--fg-dim)">(${det.size})</span></li>
               </ul>
               <div style="margin-top:6px; font-size:11px; color:var(--fg-dim);">
-                Click anywhere inside Baden-W&uuml;rttemberg to get the matching detail quadrant.
-                See the full <a href="#scenery-direct">downloads table</a> for all four.
+                The photoreal 1&nbsp;m add-on is being rebuilt and is offline for now.
               </div>
             </div>`;
   };
