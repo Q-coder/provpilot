@@ -112,9 +112,18 @@ def main():
         with open(os.path.join(args.out, variant + ".json"), "w") as f:
             json.dump(catalog, f, indent=1)
         print("fg_liveries: %s: %d liveries, %d default textures" % (variant, len(catalog["liveries"]), len(catalog["defaults"])))
-    # the editor must not import the PNGs as compressed textures: they are read as files
-    with open(os.path.join(args.out, ".gdignore"), "w") as f:
-        f.write("")
+    # The PNGs are read as files at runtime (Image.load_from_file), never as
+    # imported textures: a keep-mode .import per image tells the editor to leave
+    # them alone and the exporter to pack them as they are (a .gdignore would hide
+    # the folder from the export altogether). The editor fills in the uid.
+    res_prefix = "res://" + os.path.relpath(args.out, os.path.join(os.path.dirname(__file__), "..", "provpilot")).replace(os.sep, "/")
+    for png in copied:
+        rel = os.path.relpath(png, args.out).replace(os.sep, "/")
+        with open(png + ".import", "w") as f:
+            f.write('[remap]\n\nimporter="keep"\ntype=""\n\n[deps]\n\nsource_file="%s/%s"\ndest_files=[]\n' % (res_prefix, rel))
+    gdignore = os.path.join(args.out, ".gdignore")
+    if os.path.exists(gdignore):
+        os.remove(gdignore)
     total = sum(os.path.getsize(p) for p in copied)
     print("fg_liveries: %d files, %.1f MB -> %s" % (len(copied), total / 1e6, args.out))
     for m in missing:

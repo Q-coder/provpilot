@@ -1,0 +1,10 @@
+[remap]
+
+importer="skip"
+type=""
+uid="uid://78e5yr0utaus"
+
+[deps]
+
+source_file="res://aircraft/pc7/model/pc7_source.glb"
+dest_files=[]

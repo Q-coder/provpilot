@@ -1,0 +1,10 @@
+[remap]
+
+importer="keep"
+type=""
+uid="uid://bui6sqqd7qs66"
+
+[deps]
+
+source_file="res://aircraft/md87/model/md87_fg.glb"
+dest_files=[]

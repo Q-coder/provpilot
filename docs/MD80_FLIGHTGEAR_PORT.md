@@ -608,7 +608,8 @@ seed `sim/model/n1-tach|n2-tach/texture` the same way (the -217 / -217A /
 -219 gauge faces). `scripts/fg_liveries.py` exports them: the images (156
 files, 18 MB, PNG as shipped) go to `md80/model/liveries/` in FlightGear's
 own layout relative to `Models/` (`Liveries/MD-82/AA_fuselage.png`,
-`Instruments/n1-217.png`; one tree for the family, `.gdignore`'d), one
+`Instruments/n1-217.png`; one tree for the family, keep-mode `.import` files
+so the export carries the raw PNGs), one
 catalog per variant (`MD-81.json`: 11 liveries, MD-82 24, MD-83 23, MD-87 2;
 two skipped for missing files: the MD-81 JAL and the MD-87 White). `FGAnimator` learnt `texture-prop`
 (generic: the A-10 / glider manifests have none): the record's property is

@@ -1,0 +1,10 @@
+[remap]
+
+importer="keep"
+type=""
+uid="uid://cvmoh65ma36tp"
+
+[deps]
+
+source_file="res://aircraft/re44/model/re44.glb"
+dest_files=[]

@@ -3,6 +3,7 @@
 *.import
 # ...but DO track aircraft model import settings (keep-mode glb fix must reach all platforms)
 !provpilot/aircraft/*/model/*.glb.import
+!provpilot/aircraft/*/model/liveries/**/*.png.import
 
 # Build artifacts
 *.o

@@ -150,7 +150,7 @@ Error AircraftInstaller::copy_tree(const String &src_res, const String &dest_abs
 				}
 			}
 		}
-		// livery images (model/liveries/, .gdignore'd) are read as files at
+		// livery images (model/liveries/, keep-mode imports) are read as files at
 		// runtime, not baked into a glb: the one place loose PNGs are shipped
 		else if (!in_list(name.get_extension().to_lower(), SKIP_EXTENSIONS, 7) ||
 				 (name.get_extension().to_lower() == "png" && src_res.contains("/liveries")))

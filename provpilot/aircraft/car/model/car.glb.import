@@ -1,0 +1,10 @@
+[remap]
+
+importer="keep"
+type=""
+uid="uid://bd0iydhsrv8hv"
+
+[deps]
+
+source_file="res://aircraft/car/model/car.glb"
+dest_files=[]

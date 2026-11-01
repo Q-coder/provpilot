@@ -146,7 +146,9 @@ texture for "" or the `<texture>` the glb was built with. The Aircraft tab
 shows a **Livery** option for aircraft with a catalog; the choice is stored
 as `aircraft_<id>_livery` (livery id, "" = as built) and applies at once to
 the aircraft being flown (`livery_changed` → `AircraftRig::set_livery`). The
-folder carries a `.gdignore` (the editor must not import the PNGs); the
+folder carries a keep-mode `.import` per image (the editor leaves them alone,
+the exporter packs them as they are; a `.gdignore` would hide them from the
+export); the
 installer copies PNGs only below a `liveries` folder and the export preset
 includes `aircraft/*/model/liveries/**`.
 
