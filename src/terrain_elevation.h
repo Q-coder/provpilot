@@ -49,6 +49,10 @@ namespace jsbgodot
         // Arm the post-teleport cooldown: pin the AC at pin_pos for
         // rebase_cooldown_frames frames while terrain settles.
         void start_rebase(const Vector3 &pin_pos);
+        // An airborne start (FlightSpawn::set_start): when the cooldown expires
+        // the aircraft is re-initialised agl_m over the terrain at airspeed_kts
+        // and heading_deg instead of on the ground. agl_m 0 = ground start.
+        void set_airborne_release(double agl_m, double airspeed_kts, double heading_deg);
 
         // Per-frame: pin the AC while the countdown runs; on expiry, finalise the
         // ground height (with NAN retry up to terrain_init_fallback_msec), lift
@@ -102,6 +106,7 @@ namespace jsbgodot
         // Rebase cooldown state
         int _rebase_cooldown = 0;
         Vector3 _teleport_pin_pos;
+        double _airborne_agl_m = 0.0, _airborne_kts = 0.0, _airborne_heading = 0.0;
         double _rebase_retry_start_msec = 0.0;  // 0 = not currently retrying
         double _rebase_last_busy_msec = 0.0;
         static constexpr double REBASE_HARD_CAP_MSEC = 90000.0;

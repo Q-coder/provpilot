@@ -46,6 +46,13 @@ void TerrainElevation::start_rebase(const Vector3 &pin_pos)
 	_rebase_cooldown = rebase_cooldown_frames;
 }
 
+void TerrainElevation::set_airborne_release(double agl_m, double airspeed_kts, double heading_deg)
+{
+	_airborne_agl_m = agl_m;
+	_airborne_kts = airspeed_kts;
+	_airborne_heading = heading_deg;
+}
+
 void TerrainElevation::process_rebase(Object *p_jsb, double precise_h, double fallback_h, bool scenery_valid, bool streamer_busy)
 {
 	const double terrain_height_at_ac = precise_h;
@@ -95,10 +102,12 @@ void TerrainElevation::process_rebase(Object *p_jsb, double precise_h, double fa
 	_rebase_retry_start_msec = 0.0;
 	_last_pushed_h = NAN;
 
+	const bool airborne = _airborne_agl_m > 0.5 && _airborne_kts > 1.0;
 	if (h > 0.1)
 	{
 		const geo::Geodetic g = geo::geodetic_of(_teleport_pin_pos);
-		_teleport_pin_pos = geo::ecef_of(g.lat, g.lon, h + 0.5); // a hair above the ground (as the first flight), along local up
+		// a hair above the ground (as the first flight), or the airborne start height, along local up
+		_teleport_pin_pos = geo::ecef_of(g.lat, g.lon, h + (airborne ? _airborne_agl_m : 0.5));
 		ac_node->set_global_position(_teleport_pin_pos);
 		UtilityFunctions::print("Teleport: updated terrain height to " + String::num_real(h, 1) + "m");
 	}
@@ -107,10 +116,18 @@ void TerrainElevation::process_rebase(Object *p_jsb, double precise_h, double fa
 	JSBGodot *fdm = Object::cast_to<JSBGodot>(p_jsb);
 	if (fdm != nullptr)
 	{
-		fdm->reinitialize_from_pose(ac_node->get_global_transform(), 0.0, h);
+		if (airborne)
+		{
+			fdm->initialize_airborne(h, _teleport_pin_pos, _airborne_heading, _airborne_agl_m, _airborne_kts);
+		}
+		else
+		{
+			fdm->reinitialize_from_pose(ac_node->get_global_transform(), 0.0, h);
+		}
 		update_terrain_elevation(p_jsb, h, scenery_valid);
 		fdm->set_slew_mode(false);
 	}
+	_airborne_agl_m = 0.0; // one shot: the next pin (editor exit, teleport) releases on the ground unless told again
 	UtilityFunctions::print("Teleport cooldown expired – JSBSim released at ", ac_node->get_global_position());
 }
 

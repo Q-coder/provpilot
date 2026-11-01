@@ -1514,7 +1514,9 @@ final terrain (so they sit on the plateau). Zurich: 3 996 fixtures
 airports, so the mapped fixtures are an *override per class*: a class
 with at least 8 mapped fixtures replaces the generated one for that
 airport, otherwise the generated layout is used. PAPI/VASI are always
-generated (OSM maps one node per system and never the angles).
+generated (OSM maps one node per system and never the angles) and lit day
+and night: the shader applies the night intensity only to modes 0 and 1
+(gery, 2026-11-01: "the PAPI should always be visible").
 
 **Generated layout** (`src/runways.cpp`, one PRIMITIVE_POINTS mesh per
 airport, one vertex per fixture, lights 35 cm above the surface):
@@ -1895,6 +1897,13 @@ now in `build_world_roads.py`:
   cut side ends it at once), so it never becomes a flat flap where the
   ground rises again; runs are padded by one station so the strip tapers
   out (`emit_skirts`; 6 800 km over the Zürich box, tiles 362 → 511 MB).
+  Since 2026-10-25 the strip also stops at the edge of a neighbouring
+  ribbon at or below the road (`skirt_neighbours`: it dips under that
+  pavement instead of cutting across it), a side whose edge already lies
+  inside another ribbon gets none, a lone station needs 1 m of height
+  (a terrain pixel made spikes), and the shader draws it matte in the
+  tone the ortho-textured ground renders (specular 0.5 had mirrored the
+  sky into pale blue-grey slabs).
 - Sidecars (`roads_E_N.ways.json`) carry the *untrimmed* way to its
   nodes, so the editor snaps to the junction, not to a cut-back ribbon
   end; a way is also listed in the tiles of both its end nodes.
@@ -2036,6 +2045,140 @@ their axis; cut polygons become side cutters; the ramp is re-joined to
 blocks are chosen where two one-way ways of one class continue each other
 with a lane more or less (none in the Zürich box's TLM data yet: TLM does
 not carry lane counts, the class gives 2). Left-side ramps mirror X.
+
+**Level network (2026-10-25).** gery: "still stuck … messy when seen up
+close and therefore not drivable" (A51 at Kloten in the editor). Measured
+on the tiles: the two carriageways ran 1.5 m apart in height 10 m apart,
+the southbound one with a 16 % hump at an OSM split, and the median held
+the higher one's skirt. Three causes, three passes in
+`build_world_roads.py`:
+- `smooth_chains` (stage 1b): the along-track smoothing runs once per
+  chain of ways joined end to end at a node where nothing else ends, not
+  per OSM way. A 70 m way smoothed alone over the 124 m window was the
+  mean of the two or three pixels it touched; the next way's mean
+  differed by a metre or two. Surveyed ways and design chains with height
+  offsets end a chain.
+- `couple_parallel` (stage 2b): parallel ways with less than 8 m between
+  their ribbon edges (both carriageways, a ramp beside its motorway, a
+  road along a railway) share a cross-section height: the rank-weighted
+  mean (motorway 4 … link 1, railway 3, surveyed ×3) of their profiles,
+  three passes with a 15 m smoothing after each; crossings and other
+  levels (more than 6 m apart) do not count; bridges, tunnels and deck
+  approaches keep theirs.
+- the corridor `cap`: the pixels that carry a ribbon (under it or within
+  three quarters of a pixel of its edge) never end up more than 0.1 m
+  above its profile. The blend with a higher neighbour's corridor used to
+  lift the ground into the lower ribbon and `ground_under` then raised
+  the ribbon into the hump.
+Zürich 7 × 7 km box: the carriageways now agree within 0.2 m, the hump is
+a 2.5 % grade, embankment strips 52 → 48 km; the bake prints the chains,
+the stations the coupling moved and the stations steeper than 6 % on
+motorway / trunk / primary. The pale green triangles in gery's screenshot
+are the editor's one-way arrows (`update_direction_arrows`), not the
+tiles. Open: the gore pavement of a block renders lighter grey than the
+ribbon; embankment strips on a 30 m posting remain flat planes; the fine
+Swiss terrain (`--terrain-overlay`) would make most of them go away.
+
+**Coherent network (2026-10-25, afternoon).** gery, driving the car at
+Balsberg: "the roads are not coherent … circles have to be clean circles
+with nice transitions … sections of the autobahn have gaps in heights and
+roads to bridges are too steep … the circles would be higher up than the
+autobahn in reality, the bridge connects the two circles; the height model
+does not give that away, so a little imagination is needed". Measured on
+the tiles (a step finder over 2 m cells: pavement vertices of two ways
+0.35–4 m apart): 96 step cells in the Kloten box. Causes and passes, all
+in `build_world_roads.py`:
+- Approach ramps stopped at the first OSM way (`ramp_approaches` raised
+  only the way touching the deck; a 29 m way under a 4 m deck left 2.7 m
+  as one step at its far end). `propagate` now carries any profile change
+  (ramp, cutting, node fix) on over the network: along the way, then into
+  every way at its far node whatever the degree, fading at the grade,
+  never into decks, tunnels, surveyed ways or rings. Fields from several
+  sources merge per station by the deepest dip / highest lift
+  (`_collect`), they never stack (two carriageways and the link between
+  them under one bridge had handed their dips to each other: 7 m).
+- Bridge chords started from the raw ground at the abutments, not from the
+  approach profiles: a step at every bridge end. They start from the
+  profile of the way through the abutment point (`approach_h`, by point,
+  so a ring or an unsplit through road counts too).
+- Smoothing is one-sided at a junction, so two secondaries meeting on a
+  slope arrived 3 m apart. `reconcile_nodes`: one height per node, the
+  rank-weighted mean of the ends (decks, tunnels, surveyed ways and rings
+  fixed; ramps and cuttings weigh three times as much), the difference
+  propagated at 4 %; a way ending alone on another way (a T on an unsplit
+  road, a link ending beside the carriageway) takes that way's height. It
+  runs before the decks (so ramps and cuttings start from consistent
+  approaches) and again after the coupling.
+- **Cut or lift** (`bridge_decks`): a deck lifted by `rise` needs
+  rise / grade of approach on both sides. The approach can be the road
+  beyond the abutment, or the deck itself beyond its last crossing (a
+  flyover coming down onto the motorway it joins fades its lift inside
+  the deck: `fade_a` / `fade_b`); a lower-rank deck never ramps a higher
+  road, a ring is no approach. Where that is short (Balsberg: two
+  roundabouts 56 m apart, the Werftstrasse bridge between them, free 0 of
+  138 m) the deck takes the share its approaches can ramp and the crossed
+  ways dip for the rest (`apply_dip`: a cutting at 4 % for roads, 2.5 %
+  for rail, propagated along their network) — the A11 now runs 5 m under
+  the roundabout square with the square at grade, as in the Google Earth
+  view. A short tunnel drawn at grade (an underpass) dips the same way
+  under what crosses it (`underpass_dips`). A crossing within 2 m of the
+  deck's own abutment (the ring it ends on) does not count.
+- **Roundabouts** (`fit_roundabouts`, stage 1): every junction=roundabout
+  ring (one closed way or several joined) is fitted with a least-squares
+  circle; if its nodes lie within 25 % of the radius it becomes a true
+  circle: nodes moved onto it at their own angle, arcs sampled every 3 m,
+  every leg ending on a ring node bent to meet the circle radially over
+  its last 18 m or 1.5 r (`bend_leg`, a Hermite curve), the ring's profile
+  one flat plane (fixed in the reconciliation, left out of the coupling,
+  no ramp or cutting walks into it), its island a flat disc just under the
+  pavement in the ground's colour and no embankment strip on the inner
+  side. At a ring node only the fan's corner cuts apply: the merge and
+  gore rules (a 43 m lane taper on the through legs, an overlap cut on a
+  tangential leg) had eaten the whole ring into one patch. Zürich box: 13
+  rings, 1 kept as drawn (an oval).
+- Two quick fixes after gery's close look (11:26): a fitted ring is at
+  least 6.5 m wide (`RING_MIN_WIDTH_M`; the OSM tag "one lane, one-way"
+  gave a 4 m ring no car could circulate on), and **lane overlaps**: a
+  lower-rank way running along a higher one with its ribbon more than 1 m
+  inside the other's (a merge or collector lane OSM draws as its own way
+  a few metres off the carriageway axis) keeps its pavement but drops its
+  own lines inside the carriageway's pavement, and the carriageway's edge
+  line on that side turns into dashes for the stretch (marking cutters,
+  the mechanism the blocks use). Both ribbons had painted their edge
+  lines there: the doubled bands in the red box.
+Kloten tiles: step cells 96 → 26, the rest tunnels against portals and
+decks against the ways under them. The bake prints "roundabouts … node
+steps reconciled … cuttings N (M dips)"; `PVP_DEBUG_STEEP=1` prints every
+deck decision, ramp and way steeper than 6 %, `PVP_DEBUG_WAY=id,id` traces
+the profile changes of those ways. Open: the big Flughofstrasse ovals stay
+as drawn; a T-junction on an unsplit road still gets a union patch, not a
+fan; the terrain of a cutting is one 31 m pixel wide.
+
+**Network model, slices 1 and 2 (2026-10-25, evening).** gery agreed to
+the lane-based network model ("let's do both in that order"); the plan with
+six slices is `docs/ROAD_NETWORK_PLAN.md`. Done the same evening, in
+`build_world_roads.py`: slice 1, markings per chain (`chain_off` /
+`chain_fwd` from `iter_chains(chain_links(through=True))`, chains that
+continue through a junction along the straightest same-class pair of legs,
+also used by the chain smoothing; dashes and the asphalt grain laid out in
+chain chainage; one `ASPHALT` colour for every class, in the mesher too;
+the shader's broad asphalt variation reduced so patch and block boundaries
+are not seams); slice 2, dual carriageways (`pair_carriageways`: the two
+one-way ways of a motorway paired station by station, the separation
+smoothed and held at the two half widths plus 1.5 m, both moved half the
+difference, ramps following their nodes; a median strip in the ground
+colour from each inner edge to the midline, no skirt on that side). Also
+that day: `RING_MIN_WIDTH_M` 6.5 m and the lane-overlap cutters (a
+lower-rank way inside a carriageway drops its lines there, the
+carriageway's edge line dashes), and the editor's pick keeps the baked
+height (`adopt_baked_heights`). Slice 3, step 1 (same evening): entry and
+exit blocks generated from the measured overlap of the link with the
+carriageway (`make_merge_block`, join at the overlap start, the link cut
+back to it); the drawings entry.json / exit.json are unused. A node whose
+ends were moved by different amounts in `pair_carriageways` had split by
+position and lost its mitre and blocks: the ends at a node now share one
+move. Zürich box after all of it: entry 12, exit 14, lane add 19, lane
+drop 22, 82 dual-carriageway ways, 21 km of median.
 
 Order of work stays as above: far files + chunk archives in the bake,
 cache-or-fetch + far-file support in the streamer, per-airport runway

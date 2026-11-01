@@ -219,6 +219,7 @@ void SceneryEditor::_bind_methods()
 	ClassDB::bind_method(D_METHOD("way_near", "e", "n"), &SceneryEditor::way_near);
 	ClassDB::bind_method(D_METHOD("hidden_way_set"), &SceneryEditor::hidden_way_set);
 	ClassDB::bind_method(D_METHOD("apply_hidden_ways"), &SceneryEditor::apply_hidden_ways);
+	ClassDB::bind_method(D_METHOD("adopt_baked_heights", "node_ids"), &SceneryEditor::adopt_baked_heights);
 	ClassDB::bind_method(D_METHOD("terrain_patches"), &SceneryEditor::terrain_patches);
 	ClassDB::bind_method(D_METHOD("airport_protection"), &SceneryEditor::airport_protection);
 	ClassDB::bind_method(D_METHOD("apply_terrain_patches", "force"), &SceneryEditor::apply_terrain_patches, DEFVAL(false));
@@ -2093,6 +2094,42 @@ String SceneryEditor::way_label(const Dictionary &rec)
 	return vformat("%s, %d lanes%s%s (OSM way %d)", String(rec.get("cls", "")), int(rec.get("lanes", 0)), bool(rec.get("oneway", false)) ? String(", one-way") : String(), extra, int64_t(rec.get("id", 0)));
 }
 
+// The nodes of an imported way keep the baked height: each gets the offset
+// between the drawn road surface and the terrain. On the terrain alone a
+// roundabout beside the A11 cutting sank 4 m into the trench the bake's
+// corridor had dug under it, and its terrain patch then buried the motorway
+// (2026-10-25). The road lookup still holds a way just picked: hiding it
+// takes effect at the next tile reload. Returns the nodes moved.
+int SceneryEditor::adopt_baked_heights(const Array &ids)
+{
+	const Array rms = road_managers();
+	int lifted = 0;
+	for (int i = 0; i < ids.size(); i++)
+	{
+		const int nid = ids[i];
+		const Vector2 p = design->node_pos(nid);
+		const double ground = elevation_lv95(p.x, p.y);
+		if (std::isnan(ground))
+			continue;
+		double road = NAN;
+		for (int k = 0; k < rms.size() && std::isnan(road); k++)
+		{
+			Object *rm = rms[k];
+			if (rm != nullptr && rm->has_method("surface_height_at"))
+				road = (double)rm->call("surface_height_at", p.x, p.y, ground, 15.0);
+		}
+		if (std::isnan(road))
+			continue;
+		const double off = road - 0.20 /* SceneryDesignMesher::ROAD_LIFT_M, the live pavement over the ground */ - ground;
+		if (std::abs(off) > 0.1)
+		{
+			design->set_node_offset(nid, off);
+			lifted++;
+		}
+	}
+	return lifted;
+}
+
 // Pick tool: the baked way under the cursor becomes design nodes / edges.
 bool SceneryEditor::pick_way()
 {
@@ -2106,8 +2143,10 @@ bool SceneryEditor::pick_way()
 	}
 	edit_begins();
 	const Array ids = design->import_way(rec);
+	const int lifted = adopt_baked_heights(ids);
 	adopt_attrs(rec);
-	tool_note = vformat("picked %s: %d nodes; the panel now has its settings, extend it with 2 Road from an end node", way_label(rec), ids.size());
+	tool_note = vformat("picked %s: %d nodes%s; the panel now has its settings, extend it with 2 Road from an end node", way_label(rec), ids.size(),
+						lifted > 0 ? vformat(" (%d keep the baked height over the ground)", lifted) : String());
 	mesher->rebuild(design);
 	return true;
 }

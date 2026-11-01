@@ -66,7 +66,7 @@ func _test_catalog_and_matching() -> void:
 	var ids := []
 	for s in sections:
 		ids.append(s["id"])
-	check(ids == ["flight", "slew", "editor"], "three sections in order: %s" % [ids])
+	check(ids == ["flight", "vehicle", "slew", "editor"], "four sections in order: %s" % [ids])
 	var flight: Array = kb.get_actions("flight")
 	var editor: Array = kb.get_actions("editor")
 	check(flight.size() > 30 and editor.size() > 30, "catalog populated (%d flight, %d editor)" % [flight.size(), editor.size()])

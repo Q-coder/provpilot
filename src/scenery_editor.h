@@ -186,6 +186,8 @@ namespace jsbgodot
         Dictionary baked_join_near(double e, double n, double radius);
         static String way_label(const Dictionary &rec);
         bool pick_way();
+        // the nodes of an imported baked way take the baked surface height (offsets over the ground); returns the nodes moved
+        int adopt_baked_heights(const Array &ids);
         Dictionary current_attrs();
         void adopt_attrs(const Dictionary &attrs);
         bool place_point();

@@ -73,8 +73,11 @@ func _ready() -> void:
 		print("probe_scenery_editor: under E %.0f N %.0f: %s" % [e, n, SceneryEditor.way_label(rec)])
 		if not rec.is_empty():
 			var ids: Array = ed.design.import_way(rec)
+			print("probe_scenery_editor: baked heights adopted on %d nodes" % ed.adopt_baked_heights(ids))
 			ed.design.set_node_offset(ids[ids.size() / 2], 6.0)
-			print("probe_scenery_editor: picked %d nodes, middle node lifted" % ids.size())
+			print("probe_scenery_editor: picked %d nodes, middle node lifted; note: %s" % [ids.size(), ed.tool_note])
+			for nid in ids:
+				print("  [offset] node %d %+.2f m" % [nid, ed.design.node_offset(nid)])
 	ed.rebuild_live()
 	for i in range(30):
 		ed.update(0.016)

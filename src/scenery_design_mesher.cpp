@@ -94,12 +94,10 @@ double SceneryDesignMesher::lane_m(const String &cls)
 
 Color SceneryDesignMesher::class_colour(const String &cls)
 {
-	if (cls == "motorway" || cls == "motorway_link") return Color(0.30, 0.30, 0.31);
-	if (cls == "trunk" || cls == "trunk_link") return Color(0.32, 0.32, 0.33);
-	if (cls == "primary" || cls == "primary_link") return Color(0.34, 0.34, 0.35);
-	if (cls == "secondary" || cls == "secondary_link") return Color(0.36, 0.36, 0.37);
-	if (cls == "tertiary" || cls == "tertiary_link") return Color(0.38, 0.38, 0.39);
-	return Color(0.35, 0.35, 0.36);
+	// one pavement colour for every class (build_world_roads.py ASPHALT): a
+	// class change along a road is not a seam
+	(void)cls;
+	return Color(0.32, 0.32, 0.33);
 }
 
 double SceneryDesignMesher::class_drop_m(const String &cls)
