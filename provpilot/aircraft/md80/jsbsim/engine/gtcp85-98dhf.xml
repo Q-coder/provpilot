@@ -1,0 +1,69 @@
+<?xml version="1.0"?>
+
+<!-- Copyright (c) 2026 Josh Davidson (Octal450) -->
+
+<turbine_engine name="GTCP85-98DHF APU">
+	
+	<milthrust>25</milthrust> <!-- For fuel flow -->
+	<bypassratio>1</bypassratio>
+	<tsfc>0.5</tsfc>
+	<bleed>0.96</bleed>
+	<ignitionn1>6</ignitionn1>
+	<ignitionn2>15.1</ignitionn2> <!-- Any lower and it won't start? -->
+	<n1spinup>240</n1spinup> <!-- Spins up to ignition% really fast -->
+	<n2spinup>10</n2spinup> <!-- Take longer so that n1 stays at ignition% for a bit -->
+	<n1spindown>9.5</n1spindown> <!-- ~35 seconds -->
+	<n2spindown>9.5</n2spindown> <!-- ~35 seconds -->
+	<n1startrate>1.448</n1startrate> <!-- ~65 seconds -->
+	<n2startrate>1.308</n2startrate> <!-- ~65 seconds -->
+	<idlen1>99.5</idlen1>
+	<idlen2>99.5</idlen2>
+	<maxn1>99.6</maxn1>
+	<maxn2>99.6</maxn2>
+	<augmented>0</augmented>
+	<injected>0</injected>
+	<disable-windmill>1</disable-windmill>
+	
+	<function name="IdleThrust">
+		<product>
+			<value>0.1199</value>
+			<table>
+				<independentVar lookup="row">velocities/mach</independentVar>
+				<independentVar lookup="column">atmosphere/density-altitude</independentVar>
+				<tableData>
+					    -10000   0       10000   20000   30000   45000   52000
+					0.0  0.0398  0.0474  0.0544  0.0594  0.0654  0.0694  0.0000
+					0.2  0.0223  0.0311  0.0375  0.0464  0.0557  0.0603  0.0000
+					0.4  0.0000  0.0104  0.0177  0.0312  0.0434  0.0507  0.0000
+					0.5  0.0000  0.0000  0.0087  0.0226  0.0358  0.0452  0.0000
+					0.6  0.0000  0.0000  0.0000  0.0144  0.0282  0.0394  0.0000
+					0.8  0.0000  0.0000  0.0000  0.0000  0.0138  0.0244  0.0000
+					1.0  0.0000  0.0000  0.0000  0.0000  0.0000  0.0113  0.0000
+					1.2  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000
+				</tableData>
+			</table>
+		</product>
+	</function>
+	
+	<function name="MilThrust">
+		<product>
+			<value>0.12</value>
+			<table>
+				<independentVar lookup="row">velocities/mach</independentVar>
+				<independentVar lookup="column">atmosphere/density-altitude</independentVar>
+				<tableData>
+					    -10000   0       10000   20000   30000   45000   52000
+					0.0  1.2100  1.0000  0.7400  0.5320  0.3340  0.2210  0.0000
+					0.2  1.1710  0.9740  0.7090  0.5040  0.3090  0.2040  0.0000
+					0.4  1.1500  0.9570  0.6920  0.4940  0.3110  0.2090  0.0000
+					0.6  1.1640  0.9410  0.7140  0.4940  0.3090  0.2080  0.0000
+					0.8  1.1890  0.9710  0.7350  0.5070  0.3060  0.2070  0.0000
+					0.9  1.1920  0.9760  0.7320  0.5010  0.2930  0.1940  0.0000
+					1.0  1.1810  0.9510  0.7020  0.4590  0.2430  0.1560  0.0000
+					1.2  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000
+				</tableData>
+			</table>
+		</product>
+	</function>
+
+</turbine_engine>

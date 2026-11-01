@@ -1,0 +1,148 @@
+<?xml version="1.0"?>
+
+<PropertyList>
+	
+	<logic>
+		<input>
+			<and>
+				<greater-than-equation>
+					<property>/systems/electrical/outputs/firetank</property>
+					<value>112</value>
+				</greater-than-equation>
+				<property>/controls/firetank/droppower/switch</property>
+			</and>
+		</input>
+		<output>/systems/firetank/droppower</output>
+	</logic>
+	
+	<logic>
+		<input>
+			<and>
+				<property>/systems/firetank/droppower</property>
+				<property>/controls/firetank/salvodrop/switch</property>
+				<property>/controls/firetank/droparm/switch</property>
+			</and>
+		</input>
+		<output>/systems/firetank/opentankdoors</output>
+	</logic>
+	
+	<logic>
+		<input>
+			<and>
+				<property>/systems/firetank/droppower</property>
+				<property>/controls/firetank/test/button</property>
+			</and>
+		</input>
+		<output>/systems/firetank/lamptest</output>
+	</logic>
+	
+	<filter>
+		<type>gain</type>
+		<gain>1.0</gain>
+		<input>
+			<condition>
+				<property>/controls/firetank/bright/switch</property>
+			</condition>
+			<value>1</value>
+		</input>
+		<input>0.5</input>
+		<output>/systems/firetank/bright</output>
+	</filter>
+	
+	<logic>
+		<input>
+			<and>
+				<property>/systems/firetank/droppower</property>
+				<property>/controls/firetank/droparm/switch</property>
+			</and>
+		</input>
+		<output>/systems/firetank/ready</output>
+	</logic>
+	
+	<logic>
+		<input>
+			<and>
+				<property>/systems/firetank/droppower</property>
+				<not>
+					<property>/controls/firetank/droparm/switch</property>
+				</not>
+			</and>
+		</input>
+		<output>/systems/firetank/notready</output>
+	</logic>
+	
+	<logic>
+		<input>
+			<and>
+				<property>/systems/firetank/droppower</property>
+				<or>
+					<and>
+						<less-than>
+							<property>/fdm/jsbsim/inertia/pointmass-weight-lbs[4]</property>
+							<value>35470</value>
+						</less-than>
+						<not>
+							<property>systems/firetank/foam</property>
+						</not>
+					</and>
+					<and>
+						<less-than>
+							<property>/fdm/jsbsim/inertia/pointmass-weight-lbs[4]</property>
+							<value>33350</value>
+						</less-than>
+						<property>/systems/firetank/foam</property>
+					</and>
+				</or>
+			</and>
+		</input>
+		<output>/systems/firetank/spaceopen</output>
+	</logic>
+	
+	<logic>
+		<input>
+			<and>
+				<property>/systems/firetank/droppower</property>
+				<greater-than>
+					<property>/fdm/jsbsim/inertia/pointmass-weight-lbs[4]</property>
+					<value>80.001</value>
+				</greater-than>
+			</and>
+		</input>
+		<output>/systems/firetank/fluiddetected</output>
+	</logic>
+	
+	<logic>
+		<input>
+			<and>
+				<property>/systems/firetank/droppower</property>
+				<less-than>
+					<property>/fdm/jsbsim/inertia/pointmass-weight-lbs[4]</property>
+					<value>80.001</value>
+				</less-than>
+			</and>
+		</input>
+		<output>/systems/firetank/presslow</output>
+	</logic>
+	
+	<!-- Wildfire submodel triggers for foam/water or retardant graphics -->
+	<logic>
+		<input>
+			<and>
+				<property>/systems/firetank/retardantdropparticlectrl</property>
+				<property>/systems/firetank/foam</property>
+			</and>
+		</input>
+		<output>/systems/firetank/waterdropped</output>
+	</logic>
+	
+	<logic>
+		<input>
+			<and>
+				<property>/systems/firetank/retardantdropparticlectrl</property>
+				<not><property>/systems/firetank/foam</property></not>
+			</and>
+		</input>
+		<output>/systems/firetank/retardantdropped</output>
+	</logic>
+
+</PropertyList>

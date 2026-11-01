@@ -4,9 +4,15 @@
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/classes/grid_container.hpp>
 #include <godot_cpp/classes/h_slider.hpp>
+#include <godot_cpp/classes/check_box.hpp>
+#include <godot_cpp/classes/option_button.hpp>
+#include <godot_cpp/classes/h_box_container.hpp>
+#include <godot_cpp/classes/h_separator.hpp>
+#include <godot_cpp/classes/spin_box.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/timer.hpp>
 #include <godot_cpp/classes/v_box_container.hpp>
+#include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/variant/callable.hpp>
 #include <godot_cpp/variant/string.hpp>
 
@@ -16,6 +22,7 @@ namespace jsbgodot
 {
 
     class SettingsStore;
+    class AircraftConfig;
 
     // Settings > Aircraft tab (formerly aircraft_settings_panel.gd): per-aircraft
     // settings and reference data for the aircraft selected on the welcome
@@ -42,6 +49,26 @@ namespace jsbgodot
         // Fill every tank of a JSBGodot to pct of its capacity.
         static void apply_fuel(Object *jsb, double pct);
         String fuel_key() const;
+        // Start conditions (per aircraft): height above the ground in ft and
+        // airspeed in kt (0 / 0 = on the runway), heading in degrees or NaN for
+        // the runway heading. Defaults from aircraft.cfg [start] agl_ft / speed_kt.
+        String start_key(const char *name) const;
+        static double start_agl_ft(SettingsStore *store, const Ref<AircraftConfig> &cfg, const String &id);
+        static double start_speed_kt(SettingsStore *store, const Ref<AircraftConfig> &cfg, const String &id);
+        static double start_heading_deg(SettingsStore *store, const String &id);
+        // Controls: do the throttle inputs (keys, gamepad triggers, axis) work the
+        // airbrakes (gliders)? Stored as aircraft_<id>_throttle_drives = "airbrakes" /
+        // "throttle"; default from aircraft.cfg [controls] throttle_drives.
+        static bool throttle_drives_airbrakes(SettingsStore *store, const Ref<AircraftConfig> &cfg, const String &id);
+        // Liveries: aircraft.cfg [liveries] catalog names a model/liveries/<variant>.json
+        // (scripts/fg_liveries.py): {defaults {prop: file}, liveries [{id, name, textures {prop: file}}]}.
+        // The choice is stored as aircraft_<id>_livery = livery id ("" = the paint the
+        // glb was built with); the rig applies it at flight start and, when that
+        // aircraft is flown, on the livery_changed signal.
+        static Dictionary livery_catalog(const Ref<AircraftConfig> &cfg, const String &id);
+        static String livery_key(const String &id);
+        OptionButton *get_livery_button() const;
+        void _on_livery_selected(int idx);
         // Test access.
         String get_aircraft_id() const;
         Label *get_title_label() const;
@@ -56,6 +83,9 @@ namespace jsbgodot
         Callable get_name_provider() const; void set_name_provider(const Callable &c);         // id -> display name
 
         void _on_fuel_changed(double v);
+        void _on_start_changed(double v);
+        void _on_runway_heading_toggled(bool on);
+        void _on_throttle_drives_selected(int idx);
         void _update_live(bool force = false);
 
     protected:
@@ -66,6 +96,18 @@ namespace jsbgodot
         HSlider *fuel_slider = nullptr;
         Label *fuel_label = nullptr;
         Label *fuel_note = nullptr;
+        SpinBox *start_agl = nullptr;
+        SpinBox *start_speed = nullptr;
+        SpinBox *start_heading = nullptr;
+        CheckBox *runway_heading = nullptr;
+        OptionButton *throttle_drives = nullptr;
+        Label *livery_title = nullptr;
+        HBoxContainer *livery_row = nullptr;
+        HSeparator *livery_sep = nullptr;
+        OptionButton *livery = nullptr;
+        PackedStringArray livery_ids; // per option: "" (as built) or the livery id
+        Label *controls_note = nullptr;
+        Label *start_note = nullptr;
         GridContainer *info_grid = nullptr;
         Label *cg_label = nullptr;
         HSlider *cg_bar = nullptr;
@@ -76,6 +118,7 @@ namespace jsbgodot
         SettingsStore *find_store() const;
         Object *fdm_if_flown() const;
         void update_fuel_label();
+        void update_start_note();
         static String fmt(double v);
     };
 

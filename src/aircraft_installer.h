@@ -32,7 +32,7 @@ namespace jsbgodot
         static String get_bundle_version();
 
     protected:
-        static constexpr const char *BUNDLE_VERSION = "1.0.11";
+        static constexpr const char *BUNDLE_VERSION = "1.0.12";
         static constexpr const char *RES_AIRCRAFT_ROOT = "res://aircraft";
 
         Error copy_tree(const String &src_res, const String &dest_abs);

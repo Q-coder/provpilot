@@ -13,6 +13,8 @@
 #include <cstdio>
 
 #include "aircraft_config.h"
+#include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/json.hpp>
 #include "jsbgodot.h"
 #include "settings_store.h"
 
@@ -37,8 +39,20 @@ void AircraftSettingsPanel::_bind_methods()
 {
 	ClassDB::bind_method(D_METHOD("refresh"), &AircraftSettingsPanel::refresh);
 	ClassDB::bind_static_method("AircraftSettingsPanel", D_METHOD("apply_fuel", "jsb", "pct"), &AircraftSettingsPanel::apply_fuel);
+	ClassDB::bind_static_method("AircraftSettingsPanel", D_METHOD("start_agl_ft", "store", "cfg", "id"), &AircraftSettingsPanel::start_agl_ft);
+	ClassDB::bind_static_method("AircraftSettingsPanel", D_METHOD("start_speed_kt", "store", "cfg", "id"), &AircraftSettingsPanel::start_speed_kt);
+	ClassDB::bind_static_method("AircraftSettingsPanel", D_METHOD("start_heading_deg", "store", "id"), &AircraftSettingsPanel::start_heading_deg);
 	ClassDB::bind_method(D_METHOD("fuel_key"), &AircraftSettingsPanel::fuel_key);
 	ClassDB::bind_method(D_METHOD("get_aircraft_id"), &AircraftSettingsPanel::get_aircraft_id);
+	ClassDB::bind_method(D_METHOD("_on_start_changed", "value"), &AircraftSettingsPanel::_on_start_changed);
+	ClassDB::bind_method(D_METHOD("_on_runway_heading_toggled", "on"), &AircraftSettingsPanel::_on_runway_heading_toggled);
+	ClassDB::bind_method(D_METHOD("_on_throttle_drives_selected", "idx"), &AircraftSettingsPanel::_on_throttle_drives_selected);
+	ClassDB::bind_method(D_METHOD("_on_livery_selected", "idx"), &AircraftSettingsPanel::_on_livery_selected);
+	ClassDB::bind_static_method("AircraftSettingsPanel", D_METHOD("livery_catalog", "cfg", "id"), &AircraftSettingsPanel::livery_catalog);
+	ClassDB::bind_static_method("AircraftSettingsPanel", D_METHOD("livery_key", "id"), &AircraftSettingsPanel::livery_key);
+	ClassDB::bind_method(D_METHOD("get_livery_button"), &AircraftSettingsPanel::get_livery_button);
+	ADD_SIGNAL(MethodInfo("livery_changed", PropertyInfo(Variant::STRING, "aircraft_id"), PropertyInfo(Variant::STRING, "livery_id")));
+	ClassDB::bind_static_method("AircraftSettingsPanel", D_METHOD("throttle_drives_airbrakes", "store", "cfg", "id"), &AircraftSettingsPanel::throttle_drives_airbrakes);
 	ClassDB::bind_method(D_METHOD("get_title_label"), &AircraftSettingsPanel::get_title_label);
 	ClassDB::bind_method(D_METHOD("get_info_grid"), &AircraftSettingsPanel::get_info_grid);
 	ClassDB::bind_method(D_METHOD("get_cg_label"), &AircraftSettingsPanel::get_cg_label);
@@ -112,6 +126,75 @@ void AircraftSettingsPanel::_ready()
 	fuel_note->set_modulate(Color(0.8, 0.85, 0.9));
 	add_child(fuel_note);
 	add_child(memnew(HSeparator));
+	// start conditions
+	add_child(make_label("Start", 16));
+	GridContainer *start_grid = memnew(GridContainer);
+	start_grid->set_columns(2);
+	start_grid->add_theme_constant_override("h_separation", 24);
+	start_grid->add_theme_constant_override("v_separation", 6);
+	add_child(start_grid);
+	auto spin = [&](double min, double max, double step, const String &suffix) {
+		SpinBox *sb = memnew(SpinBox);
+		sb->set_min(min);
+		sb->set_max(max);
+		sb->set_step(step);
+		sb->set_suffix(suffix);
+		sb->set_custom_minimum_size(Vector2(160, 0));
+		sb->connect("value_changed", Callable(this, "_on_start_changed"));
+		return sb;
+	};
+	start_grid->add_child(make_label("Height above the ground"));
+	start_agl = spin(0.0, 30000.0, 100.0, "ft");
+	start_grid->add_child(start_agl);
+	start_grid->add_child(make_label("Airspeed"));
+	start_speed = spin(0.0, 400.0, 5.0, "kt");
+	start_grid->add_child(start_speed);
+	start_grid->add_child(make_label("Heading"));
+	HBoxContainer *hdg_row = memnew(HBoxContainer);
+	hdg_row->add_theme_constant_override("separation", 12);
+	start_grid->add_child(hdg_row);
+	runway_heading = memnew(CheckBox);
+	runway_heading->set_text("Runway heading");
+	runway_heading->connect("toggled", Callable(this, "_on_runway_heading_toggled"));
+	hdg_row->add_child(runway_heading);
+	start_heading = spin(0.0, 359.0, 1.0, String::utf8("\xC2\xB0"));
+	hdg_row->add_child(start_heading);
+	start_note = make_label("", 12);
+	start_note->set_modulate(Color(0.8, 0.85, 0.9));
+	start_note->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	start_note->set_custom_minimum_size(Vector2(520, 0));
+	add_child(start_note);
+	add_child(memnew(HSeparator));
+	// controls
+	add_child(make_label("Controls", 16));
+	HBoxContainer *ctl_row = memnew(HBoxContainer);
+	ctl_row->add_theme_constant_override("separation", 24);
+	add_child(ctl_row);
+	ctl_row->add_child(make_label("Throttle keys, triggers and axis work the"));
+	throttle_drives = memnew(OptionButton);
+	throttle_drives->add_item("Throttle (engines)", 0);
+	throttle_drives->add_item("Airbrakes (glider lever)", 1);
+	throttle_drives->connect("item_selected", Callable(this, "_on_throttle_drives_selected"));
+	ctl_row->add_child(throttle_drives);
+	controls_note = make_label("", 12);
+	controls_note->set_modulate(Color(0.8, 0.85, 0.9));
+	controls_note->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	controls_note->set_custom_minimum_size(Vector2(520, 0));
+	add_child(controls_note);
+	add_child(memnew(HSeparator));
+	// livery (only aircraft with a [liveries] catalog show the section)
+	livery_title = make_label("Livery", 16);
+	add_child(livery_title);
+	livery_row = memnew(HBoxContainer);
+	livery_row->add_theme_constant_override("separation", 24);
+	add_child(livery_row);
+	livery_row->add_child(make_label("Paint scheme"));
+	livery = memnew(OptionButton);
+	livery->set_custom_minimum_size(Vector2(320, 0));
+	livery->connect("item_selected", Callable(this, "_on_livery_selected"));
+	livery_row->add_child(livery);
+	livery_sep = memnew(HSeparator);
+	add_child(livery_sep);
 	// reference data
 	add_child(make_label("Reference data", 16));
 	info_grid = memnew(GridContainer);
@@ -226,20 +309,60 @@ void AircraftSettingsPanel::refresh()
 			}
 		}
 	}
+	Ref<AircraftConfig> cfg;
+	if (config_provider.is_valid() && !aircraft_id.is_empty())
+	{
+		cfg = config_provider.call(aircraft_id);
+	}
 	updating = true;
 	fuel_slider->set_value(pct);
+	// start conditions: the stored values, else the cfg defaults, else the runway
+	start_agl->set_value(start_agl_ft(store, cfg, aircraft_id));
+	start_speed->set_value(start_speed_kt(store, cfg, aircraft_id));
+	const double hdg = start_heading_deg(store, aircraft_id);
+	runway_heading->set_pressed(std::isnan(hdg));
+	start_heading->set_editable(!std::isnan(hdg));
+	start_heading->set_value(std::isnan(hdg) ? 0.0 : hdg);
+	const bool brakes = throttle_drives_airbrakes(store, cfg, aircraft_id);
+	throttle_drives->select(brakes ? 1 : 0);
+	controls_note->set_text(brakes ? "Airbrakes: throttle full = brakes in, throttle idle = brakes fully out; B toggles between the two. Applied now when flying this aircraft."
+								   : "Throttle: the usual engine control. Gliders default to the airbrakes (aircraft.cfg [controls] throttle_drives).");
+	// livery: the catalog's names, the stored choice selected
+	livery->clear();
+	livery_ids = PackedStringArray();
+	const Array liveries = livery_catalog(cfg, aircraft_id).get("liveries", Array());
+	const bool has_liveries = !liveries.is_empty();
+	livery_title->set_visible(has_liveries);
+	livery_row->set_visible(has_liveries);
+	livery_sep->set_visible(has_liveries);
+	if (has_liveries)
+	{
+		const String lkey = livery_key(aircraft_id);
+		const String cur = store != nullptr && store->has_setting(lkey) ? String(store->get_setting(lkey)) : String();
+		livery->add_item("As built (the model's own paint)");
+		livery_ids.push_back("");
+		int sel = 0;
+		for (int i = 0; i < liveries.size(); i++)
+		{
+			const Dictionary l = liveries[i];
+			const String lid = l.get("id", "");
+			livery->add_item(l.get("name", lid));
+			livery_ids.push_back(lid);
+			if (!lid.is_empty() && lid == cur)
+			{
+				sel = i + 1;
+			}
+		}
+		livery->select(sel);
+	}
 	updating = false;
 	update_fuel_label();
+	update_start_note();
 	// reference data
 	const TypedArray<Node> kids = info_grid->get_children();
 	for (int i = 0; i < kids.size(); i++)
 	{
 		Object::cast_to<Node>(kids[i])->queue_free();
-	}
-	Ref<AircraftConfig> cfg;
-	if (config_provider.is_valid() && !aircraft_id.is_empty())
-	{
-		cfg = config_provider.call(aircraft_id);
 	}
 	for (const auto &row : INFO_ROWS)
 	{
@@ -296,6 +419,160 @@ void AircraftSettingsPanel::update_fuel_label()
 	}
 }
 
+String AircraftSettingsPanel::start_key(const char *name) const
+{
+	return String("aircraft_") + aircraft_id + "_start_" + name;
+}
+
+double AircraftSettingsPanel::start_agl_ft(SettingsStore *store, const Ref<AircraftConfig> &cfg, const String &id)
+{
+	const String key = String("aircraft_") + id + "_start_agl_ft";
+	if (store != nullptr && store->has_setting(key))
+	{
+		return store->get_setting(key);
+	}
+	return cfg.is_valid() ? cfg->get_float("start", "agl_ft", 0.0) : 0.0;
+}
+
+double AircraftSettingsPanel::start_speed_kt(SettingsStore *store, const Ref<AircraftConfig> &cfg, const String &id)
+{
+	const String key = String("aircraft_") + id + "_start_speed_kt";
+	if (store != nullptr && store->has_setting(key))
+	{
+		return store->get_setting(key);
+	}
+	return cfg.is_valid() ? cfg->get_float("start", "speed_kt", 0.0) : 0.0;
+}
+
+double AircraftSettingsPanel::start_heading_deg(SettingsStore *store, const String &id)
+{
+	const String key = String("aircraft_") + id + "_start_heading_deg";
+	if (store != nullptr && store->has_setting(key))
+	{
+		const Variant v = store->get_setting(key);
+		if (v.get_type() == Variant::FLOAT || v.get_type() == Variant::INT)
+		{
+			return (double)v;
+		}
+	}
+	return NAN;
+}
+
+bool AircraftSettingsPanel::throttle_drives_airbrakes(SettingsStore *store, const Ref<AircraftConfig> &cfg, const String &id)
+{
+	const String key = String("aircraft_") + id + "_throttle_drives";
+	String v;
+	if (store != nullptr && store->has_setting(key))
+	{
+		v = String(store->get_setting(key));
+	}
+	else if (cfg.is_valid())
+	{
+		v = cfg->get_string("controls", "throttle_drives", "throttle");
+	}
+	return v.to_lower() == "airbrakes";
+}
+
+OptionButton *AircraftSettingsPanel::get_livery_button() const { return livery; }
+
+String AircraftSettingsPanel::livery_key(const String &id)
+{
+	return String("aircraft_") + id + "_livery";
+}
+
+Dictionary AircraftSettingsPanel::livery_catalog(const Ref<AircraftConfig> &cfg, const String &id)
+{
+	if (cfg.is_null() || !cfg->is_loaded())
+	{
+		return Dictionary();
+	}
+	const String rel = cfg->get_string("liveries", "catalog", "");
+	if (rel.is_empty())
+	{
+		return Dictionary();
+	}
+	const String path = AircraftConfig::resolve_aircraft_file(id, rel);
+	Ref<FileAccess> f = FileAccess::open(path, FileAccess::READ);
+	if (f.is_null())
+	{
+		UtilityFunctions::push_warning("AircraftSettingsPanel: livery catalog not found: ", path);
+		return Dictionary();
+	}
+	const Variant v = JSON::parse_string(f->get_as_text());
+	return v.get_type() == Variant::DICTIONARY ? Dictionary(v) : Dictionary();
+}
+
+void AircraftSettingsPanel::_on_livery_selected(int idx)
+{
+	if (updating || store == nullptr || idx < 0 || idx >= livery_ids.size())
+	{
+		return;
+	}
+	const String lid = livery_ids[idx];
+	store->set_setting(livery_key(aircraft_id), lid);
+	emit_signal("livery_changed", aircraft_id, lid);
+}
+
+void AircraftSettingsPanel::_on_throttle_drives_selected(int idx)
+{
+	if (updating || aircraft_id.is_empty() || store == nullptr)
+	{
+		return;
+	}
+	store->set_setting(String("aircraft_") + aircraft_id + "_throttle_drives", idx == 1 ? "airbrakes" : "throttle");
+	controls_note->set_text(idx == 1 ? "Airbrakes: throttle full = brakes in, throttle idle = brakes fully out; B toggles between the two. Applied now when flying this aircraft."
+									 : "Throttle: the usual engine control. Gliders default to the airbrakes (aircraft.cfg [controls] throttle_drives).");
+	if (JSBGodot *jsb = Object::cast_to<JSBGodot>(fdm_if_flown()))
+	{
+		jsb->set_throttle_drives_airbrakes(idx == 1);
+	}
+}
+
+void AircraftSettingsPanel::update_start_note()
+{
+	const bool airborne = start_agl->get_value() > 0.0 && start_speed->get_value() > 0.0;
+	if (airborne)
+	{
+		start_note->set_text("The flight starts in the air over the chosen airport, level and trimmed at this height and speed (a glider without a winch or tow starts this way). 0 ft or 0 kt = on the runway.");
+	}
+	else
+	{
+		start_note->set_text("On the runway. Give a height and a speed for an airborne start over the airport (a glider needs one until winch and tow exist).");
+	}
+}
+
+void AircraftSettingsPanel::_on_start_changed(double)
+{
+	if (updating || aircraft_id.is_empty() || store == nullptr)
+	{
+		return;
+	}
+	store->set_setting(start_key("agl_ft"), start_agl->get_value());
+	store->set_setting(start_key("speed_kt"), start_speed->get_value());
+	if (!runway_heading->is_pressed())
+	{
+		store->set_setting(start_key("heading_deg"), start_heading->get_value());
+	}
+	update_start_note();
+}
+
+void AircraftSettingsPanel::_on_runway_heading_toggled(bool on)
+{
+	start_heading->set_editable(!on);
+	if (updating || aircraft_id.is_empty() || store == nullptr)
+	{
+		return;
+	}
+	if (on)
+	{
+		store->get_settings().erase(start_key("heading_deg"));
+	}
+	else
+	{
+		store->set_setting(start_key("heading_deg"), start_heading->get_value());
+	}
+}
+
 void AircraftSettingsPanel::_on_fuel_changed(double v)
 {
 	if (updating || aircraft_id.is_empty())
@@ -321,10 +598,8 @@ void AircraftSettingsPanel::apply_fuel(Object *p_jsb, double pct)
 	{
 		return;
 	}
-	for (int i = 0; i < jsb->get_tank_count(); i++)
-	{
-		jsb->set_tank_contents_lbs(i, jsb->get_tank_capacity_lbs(i) * Math::clamp(pct, 0.0, 100.0) / 100.0);
-	}
+	// wing tanks first, then the centreline ones (the CG moves with the fuel as on the real aircraft)
+	jsb->set_fuel_percent(pct);
 }
 
 void AircraftSettingsPanel::_update_live(bool force)
@@ -352,6 +627,17 @@ void AircraftSettingsPanel::_update_live(bool force)
 			(double)cg.get("cg_x_in", 0.0), (double)cg.get("pct_mac", 0.0), (double)cg.get("weight_lbs", 0.0));
 	cg_label->set_text(String::utf8(buf));
 	cg_bar->set_value(Math::clamp((double)cg.get("pct_mac", 0.0), cg_bar->get_min(), cg_bar->get_max()));
+	// the FDM's own limits (weight dependent) when it has them, the cfg's otherwise
+	if (cg.has("cg_fwd_limit_pct"))
+	{
+		snprintf(buf, sizeof(buf), "Limits at this weight: %.1f \xE2\x80\x93 %.1f %% MAC (the aircraft's load manager)",
+				(double)cg.get("cg_fwd_limit_pct", 0.0), (double)cg.get("cg_aft_limit_pct", 0.0));
+		cg_limits->set_text(String::utf8(buf));
+	}
+	else if (String(cg.get("pct_mac_source", "estimate")) != "estimate" && cg_limits->get_text().begins_with("% MAC estimates"))
+	{
+		cg_limits->set_text("% MAC from the aircraft's own mean chord; no limits given for this aircraft.");
+	}
 }
 
 } // namespace jsbgodot

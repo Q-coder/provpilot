@@ -1,3 +1,4 @@
+#include "navaids_lib.h"
 #include "welcome_screen.h"
 
 #include <godot_cpp/core/class_db.hpp>
@@ -44,8 +45,16 @@ static const struct { const char *id; const char *label; const char *desc; } AIR
 	{"c172p", "Cessna 172P Skyhawk", "Single-engine piston, 4-seat trainer. 160 HP."},
 	{"pc7", "Pilatus PC-7 Turbo Trainer", "Single-engine turboprop military trainer. PT6A, ~650 SHP."},
 	{"a10", "Fairchild A-10A Thunderbolt II", "Twin-engine close air support jet. 2x GE TF34 turbofans."},
+	// the MD-80 family: md80 is the MD-82; md81 / md83 / md87 are variants of it
+	// (aircraft.cfg [aircraft] base "md80": own FDM, livery folder and, for the
+	// MD-87, airframe); liveries in Settings > Aircraft
+	{"md81", "McDonnell Douglas MD-81", "Twin-jet airliner. 2x P&W JT8D-217. FlightGear MD-80 (Octal450); liveries in Settings > Aircraft."},
+	{"md80", "McDonnell Douglas MD-82", "Twin-jet airliner. 2x P&W JT8D-217A. FlightGear MD-80 (Octal450); liveries in Settings > Aircraft."},
+	{"md83", "McDonnell Douglas MD-83", "Twin-jet airliner, longer range. 2x P&W JT8D-219, auxiliary tanks. FlightGear MD-80 (Octal450)."},
+	{"md87", "McDonnell Douglas MD-87", "Short-fuselage MD-80. 2x P&W JT8D-217C. FlightGear MD-80 (Octal450)."},
+	{"ask21", "Schleicher ASK 21", "Two-seat training glider. No winch or tow yet: set the start height and speed in Settings > Aircraft."},
 };
-static const int AIRCRAFT_COUNT = 3;
+static const int AIRCRAFT_COUNT = 8;
 // Ground vehicles (aircraft/<id>/aircraft.cfg with a [vehicle] section): the
 // "Vehicles" frame below the aircraft. Fly! places them on the runway;
 // DriveMode drives a car, a train is placed only (for now).
@@ -118,6 +127,8 @@ void WelcomeScreen::_ready()
 void WelcomeScreen::populate_airports(const TypedArray<Dictionary> &p_airports)
 {
 	airports = p_airports;
+	// the ILS geometry follows the same runways the list offers (pack runways merged)
+	NavaidsLib::set_airports(p_airports);
 	apply_filters();
 	if (!filtered_airports.is_empty())
 	{

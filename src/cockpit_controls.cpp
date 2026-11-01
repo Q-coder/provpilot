@@ -107,6 +107,16 @@ void CockpitControls::set_flap_positions(const Array &positions)
 	}
 }
 
+Array CockpitControls::get_flap_positions() const
+{
+	Array a;
+	for (double v : flap_positions)
+	{
+		a.push_back(v);
+	}
+	return a;
+}
+
 void CockpitControls::set_flap_names(const PackedStringArray &names)
 {
 	if (names.size() > 0)
@@ -343,7 +353,7 @@ bool CockpitControls::handle_mouse_motion(const Vector2 &position, Object *p_jsb
 	{
 		// Drag down = more flaps, up = less (vertical, like a pull-down lever)
 		const int steps = static_cast<int>((position.y - drag_start_px) / DRAG_PX_PER_STEP);
-		const int new_pos = Math::clamp(drag_start_pos + steps, 0, 3);
+		const int new_pos = Math::clamp(drag_start_pos + steps, 0, flap_last_position());
 		if (new_pos != flap_position)
 		{
 			set_flap_position(new_pos, p_jsb);
@@ -524,7 +534,7 @@ void CockpitControls::handle_flap_keys(JSBGodot *fdm)
 	}
 	else
 	{
-		flap_position = std::min(flap_position + 1, 3); // flaps down
+		flap_position = std::min(flap_position + 1, flap_last_position()); // flaps down
 	}
 
 	if (flap_position != old_pos)
@@ -591,7 +601,7 @@ void CockpitControls::set_magneto_position(int position, Object *p_jsb)
 
 void CockpitControls::set_flap_position(int position, Object *p_jsb)
 {
-	flap_position = position;
+	flap_position = Math::clamp(position, 0, flap_last_position());
 	apply_flap(Object::cast_to<JSBGodot>(p_jsb));
 }
 
@@ -854,24 +864,17 @@ String CockpitControls::flap_name(int position) const
 	return "?";
 }
 
-int CockpitControls::flaps_norm_to_position(double norm)
+int CockpitControls::flaps_norm_to_position(double norm) const
 {
-	if (norm < 0.167)
+	int best = 0;
+	for (int i = 1; i < int(flap_positions.size()); i++)
 	{
-		return 0;
+		if (std::abs(flap_positions[i] - norm) < std::abs(flap_positions[best] - norm))
+		{
+			best = i;
+		}
 	}
-	else if (norm < 0.5)
-	{
-		return 1;
-	}
-	else if (norm < 0.833)
-	{
-		return 2;
-	}
-	else
-	{
-		return 3;
-	}
+	return best;
 }
 
 } // namespace jsbgodot

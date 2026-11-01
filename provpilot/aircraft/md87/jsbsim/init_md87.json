@@ -1,0 +1,9 @@
+{
+ "_comment": "MD-87 additions to md80/jsbsim/init_properties.json (aircraft.cfg [jsbsim] init_properties lists both): the MD-87-set.xml stab arm factor and the FlightGear-side properties Systems/md-87-cockpit-firetank references (the rest of the fire-tank switches are in the base list)",
+ "aero/arm-factor": 0.97,
+ "/controls/firetank/distribution/dial": 0,
+ "/controls/firetank/droparm/cover": 0,
+ "/controls/firetank/droppower/cover": 0,
+ "/controls/firetank/salvodrop/cover": 0,
+ "/systems/firetank/lamptest": 0
+}

@@ -48,6 +48,8 @@ namespace jsbgodot
     public:
         static void _bind_methods();
         FGControls();
+        // Property path normalised like the animator: no leading slash, no [0].
+        static String norm(const String &p);
 
         // Reads the manifest's controls and resolves their meshes under
         // model_root; returns the number of clickable meshes.
@@ -60,6 +62,19 @@ namespace jsbgodot
         String hover_name(Camera3D *camera, const Vector2 &screen_pos);
         // Mouse button on the cockpit; true when a control took it.
         bool click(Camera3D *camera, const Vector2 &screen_pos, int button, bool pressed, bool shift);
+        // cfg [model] knob_actions ("property[:step[:min:max]]", ...): rotate /
+        // knob animations driving these properties that have no binding of
+        // their own (the MD-80's flood knobs) get a property-adjust action,
+        // so they turn with the mouse like the other knobs. Set before setup().
+        void set_knob_actions(const Array &specs);
+        Array get_knob_actions() const;
+        // Nasal shim table (JSON) for the aircraft's cockpit bindings; count loaded.
+        int load_shims(const String &path);
+        int get_shim_count() const;
+        // Per frame: expire the pulses the shims started.
+        void tick(double delta);
+        // Every property path the controls' bindings act on (toggle, adjust, assign ...).
+        PackedStringArray binding_properties() const;
         // Current value of a property: set by a control before, else the animator's.
         double value_of(const String &prop) const;
         // The clickable meshes as {node, aabb, recs} (tests / probes).
@@ -85,7 +100,24 @@ namespace jsbgodot
         Callable on_change;
         Vector<Item> items;
         FGAnimator *animator = nullptr;
-        Dictionary pressed; // button -> record whose release bindings are pending
+        Dictionary pressed; // button -> [{rec, action}] whose release / mod-up bindings are pending
+        // Nasal shims (docs/MD80_FLIGHTGEAR_PORT.md D5): aircraft/<id>/.../nasal_shims.json
+        // maps a Nasal call head ("core.Sound.switch1(") to a property action
+        // (pulse / assign / set / adjust / toggle / swap / cycle / action).
+        Array shims;
+        Array knob_actions;
+        Array pulses;       // [{prop, t}] properties set back to 0 after t seconds
+        Dictionary cycle_values; // norm(prop) -> every value the cockpit's property-cycle lists hold for it
+        void collect_cycle_values(const Variant &v);
+        bool run_shim(const String &statement, const Dictionary &ctx);
+        // Does any binding of this record do something here (a property command,
+        // or a Nasal call a shim / the built-in map understands)? Records whose
+        // bindings are all unknown Nasal (the ASK 21's canopy glass) take no
+        // clicks and draw no hotspot, so they do not shadow the real controls.
+        bool record_actionable(const Dictionary &rec) const;
+        bool nasal_actionable(const String &script) const;
+        static Array shim_args(const String &statement);
+        static String shim_prop(const String &tmpl, const Array &args);
         int count = 0;
         bool debug = false;
         Vector<uint64_t> debug_boxes;
@@ -93,13 +125,16 @@ namespace jsbgodot
         static MeshInstance3D *item_node(const Item &it);
         int hit_index(Camera3D *camera, const Vector2 &screen_pos);
         bool nearest_face_hit(Item &it, const Vector3 &lf, const Vector3 &ld, Vector3 &out) const;
-        bool press(const Dictionary &rec, int button, bool shift);
-        void release(const Dictionary &rec, int button);
+        void press_item(const Array &recs, int button, bool shift, Array &ran);
+        bool press_knob(const Dictionary &rec, int button, bool shift);
+        void release(const Array &entries);
+        static int action_direction(const Dictionary &action);
         static Array as_list(const Variant &v);
         static Array bindings(const Variant &container);
-        static String norm(const String &p);
+
         void assign(const String &prop, const Variant &v);
         void run(const Array &bindings, const Dictionary &rec, const Dictionary &ctx);
+        bool cond_ok(const Variant &condition) const;
         void nasal(const String &script, const Dictionary &ctx);
         void nasal_action(const String &kind, const Array &args, const Dictionary &ctx);
         static double num(const Variant &v, double def = 0.0);

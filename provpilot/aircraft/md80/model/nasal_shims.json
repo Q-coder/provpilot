@@ -1,0 +1,272 @@
+{
+ "_comment": "Nasal call -> property action table for the MD-80 cockpit bindings (docs/MD80_FLIGHTGEAR_PORT.md D5). A binding's script is split at ';' and each statement matched by prefix. Actions: pulse (1 for <seconds>, then 0), assign (value / value_arg / value_map), set (several), adjust (step_arg x factor, min, max, wrap, mask, resolution), toggle, swap, cycle (values, dir_arg), action (ProvPilot: gear_cmd, flaps_step, speedbrake). {n} in a property takes the n-th call argument.",
+ "shims": [
+  {
+   "match": "core.Sound.switch1(",
+   "action": "pulse",
+   "property": "sim/sound/switch1"
+  },
+  {
+   "match": "core.Sound.btn1(",
+   "action": "pulse",
+   "property": "sim/sound/btn1"
+  },
+  {
+   "match": "core.Sound.btn3(",
+   "action": "pulse",
+   "property": "sim/sound/btn3"
+  },
+  {
+   "match": "core.Sound.knb1(",
+   "action": "pulse",
+   "property": "sim/sound/knb1"
+  },
+  {
+   "match": "core.Sound.ohBtn(",
+   "action": "pulse",
+   "property": "sim/sound/btn2"
+  },
+  {
+   "match": "systems.THRLIM.setMode(",
+   "action": "assign",
+   "property": "systems/engines/limit/active-mode-int",
+   "value_arg": 0
+  },
+  {
+   "match": "systems.THRLIM.testBtn(",
+   "action": "assign",
+   "property": "systems/engines/limit/active-mode-int",
+   "value_arg": 0,
+   "value_map": {
+    "1": 6,
+    "0": -1
+   }
+  },
+  {
+   "match": "systems.ENGINES.adjustManEpr(",
+   "action": "adjust",
+   "property": "controls/engines/engine[{0}]/man-epr",
+   "step_arg": 1,
+   "factor": 0.01,
+   "min": 1.0,
+   "max": 2.5
+  },
+  {
+   "match": "systems.FCS.dialAFlap(",
+   "action": "adjust",
+   "property": "controls/flight/dial-a-flap",
+   "step_arg": 0,
+   "min": -1,
+   "max": 24,
+   "resolution": 0.25
+  },
+  {
+   "match": "controls.gearDownSmart(",
+   "action": "action",
+   "kind": "gear_cmd"
+  },
+  {
+   "match": "controls.gearDown(",
+   "action": "action",
+   "kind": "gear_cmd"
+  },
+  {
+   "match": "controls.flapsDown(",
+   "action": "action",
+   "kind": "flaps_step"
+  },
+  {
+   "match": "core.deploySpeedbrake(",
+   "action": "action",
+   "kind": "speedbrake",
+   "value": 1
+  },
+  {
+   "match": "core.retractSpeedbrake(",
+   "action": "action",
+   "kind": "speedbrake",
+   "value": 0
+  },
+  {
+   "match": "instruments.NAV.adjustInt(",
+   "action": "adjust",
+   "property": "instrumentation/nav[{0}]/frequencies/selected-mhz",
+   "step_arg": 1,
+   "mask": "integer",
+   "min": 108,
+   "max": 118,
+   "wrap": "true"
+  },
+  {
+   "match": "instruments.NAV.adjustDec(",
+   "action": "adjust",
+   "property": "instrumentation/nav[{0}]/frequencies/selected-mhz",
+   "step_arg": 1,
+   "factor": 0.05,
+   "mask": "decimal",
+   "min": 0,
+   "max": 1,
+   "wrap": "true"
+  },
+  {
+   "match": "instruments.NAV.adjustCrs(",
+   "action": "adjust",
+   "property": "instrumentation/nav[{0}]/radials/selected-deg",
+   "step_arg": 1,
+   "min": 0,
+   "max": 360,
+   "wrap": "true"
+  },
+  {
+   "match": "instruments.ADF.adjust(",
+   "action": "adjust",
+   "property": "instrumentation/adf[{0}]/frequencies/selected-khz",
+   "step_arg": 1,
+   "min": 190,
+   "max": 1750,
+   "wrap": "true"
+  },
+  {
+   "match": "instruments.crp[0].adjustDec(",
+   "action": "adjust",
+   "property": "instrumentation/comm/frequencies/standby-mhz",
+   "step_arg": 0,
+   "factor": 0.025,
+   "mask": "decimal",
+   "min": 0,
+   "max": 1,
+   "wrap": "true"
+  },
+  {
+   "match": "instruments.crp[0].adjustInt(",
+   "action": "adjust",
+   "property": "instrumentation/comm/frequencies/standby-mhz",
+   "step_arg": 0,
+   "mask": "integer",
+   "min": 118,
+   "max": 137,
+   "wrap": "true"
+  },
+  {
+   "match": "instruments.crp[0].swap(",
+   "action": "swap",
+   "property": "instrumentation/comm/frequencies/selected-mhz",
+   "property2": "instrumentation/comm/frequencies/standby-mhz"
+  },
+  {
+   "match": "instruments.crp[1].adjustDec(",
+   "action": "adjust",
+   "property": "instrumentation/comm[1]/frequencies/standby-mhz",
+   "step_arg": 0,
+   "factor": 0.025,
+   "mask": "decimal",
+   "min": 0,
+   "max": 1,
+   "wrap": "true"
+  },
+  {
+   "match": "instruments.crp[1].adjustInt(",
+   "action": "adjust",
+   "property": "instrumentation/comm[1]/frequencies/standby-mhz",
+   "step_arg": 0,
+   "mask": "integer",
+   "min": 118,
+   "max": 137,
+   "wrap": "true"
+  },
+  {
+   "match": "instruments.crp[1].swap(",
+   "action": "swap",
+   "property": "instrumentation/comm[1]/frequencies/selected-mhz",
+   "property2": "instrumentation/comm[1]/frequencies/standby-mhz"
+  },
+  {
+   "match": "instruments.EFIS.adjustMode(",
+   "action": "adjust",
+   "property": "instrumentation/efis[{0}]/mode",
+   "step_arg": 1,
+   "min": 0,
+   "max": 4
+  },
+  {
+   "match": "instruments.EFIS.setRange(",
+   "action": "cycle",
+   "property": "instrumentation/efis[{0}]/inputs/range-nm",
+   "values": [
+    10,
+    20,
+    40,
+    80,
+    160,
+    320
+   ],
+   "dir_arg": 1
+  },
+  {
+   "match": "instruments.XPDR.modeKnob(",
+   "action": "adjust",
+   "property": "instrumentation/transponder/output/knob",
+   "step_arg": 0,
+   "min": 0,
+   "max": 4
+  },
+  {
+   "match": "cockpit.ApPanel.hdgAdjust(",
+   "action": "adjust",
+   "property": "it-autoflight/input/hdg",
+   "step_arg": 0,
+   "min": 0,
+   "max": 360,
+   "wrap": "true"
+  },
+  {
+   "match": "cockpit.ApPanel.altAdjust(",
+   "action": "adjust",
+   "property": "it-autoflight/input/alt",
+   "step_arg": 0,
+   "factor": 100,
+   "min": 0,
+   "max": 50000
+  },
+  {
+   "match": "cockpit.ApPanel.spdAdjust(",
+   "action": "adjust",
+   "property": "it-autoflight/input/kts",
+   "step_arg": 0,
+   "min": 100,
+   "max": 400
+  },
+  {
+   "match": "cockpit.ApPanel.vsAdjust(",
+   "action": "adjust",
+   "property": "it-autoflight/input/vs",
+   "step_arg": 0,
+   "factor": 100,
+   "min": -6000,
+   "max": 6000
+  },
+  {
+   "match": "cockpit.ApPanel.apDisc(",
+   "action": "set",
+   "set": {
+    "it-autoflight/output/ap1": 0,
+    "it-autoflight/output/ap2": 0
+   }
+  },
+  {
+   "match": "cockpit.ApPanel.atDisc(",
+   "action": "set",
+   "set": {
+    "it-autoflight/output/athr": 0
+   }
+  },
+  {
+   "match": "if (dfgs.Output.ap1",
+   "action": "set",
+   "set": {
+    "it-autoflight/output/ap1": 0,
+    "it-autoflight/output/ap2": 0
+   }
+  }
+ ]
+}

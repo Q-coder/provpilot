@@ -63,16 +63,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", required=True)
     ap.add_argument("--out", action="append", required=True)
+    ap.add_argument("--base-xml", default="A-10-base.xml", help="the -set / main XML holding <sound><path>, relative to --src")
+    ap.add_argument("--prefix", default="Aircraft/A-10/", help="FlightGear path prefix of the package")
     args = ap.parse_args()
-    base_xml = ET.parse(os.path.join(args.src, "A-10-base.xml")).getroot()
+    prefix = args.prefix
+    base_xml = ET.parse(os.path.join(args.src, args.base_xml)).getroot()
     sound_path = None
     for s in base_xml.iter("sound"):
         p = s.findtext("path")
         if p:
             sound_path = p
     if sound_path is None:
-        sys.exit("no <sound><path> in A-10-base.xml")
-    xml_file = os.path.join(args.src, sound_path.replace("Aircraft/A-10/", ""))
+        sys.exit("no <sound><path> in " + args.base_xml)
+    xml_file = os.path.join(args.src, sound_path.replace(prefix, ""))
     fx = ET.parse(xml_file).getroot().find("fx")
     records, missing, files = [], [], {}
     for snd in fx:
@@ -81,10 +84,20 @@ def main():
             continue
         rec = {"tag": snd.tag, "name": (snd.findtext("name") or snd.tag).strip(), "mode": (snd.findtext("mode") or "once").strip(),
                "path": path.strip(), "raw": xml_to_dict(snd)}
-        override_engine_conditions(rec)
-        local = os.path.join(args.src, path.replace("Aircraft/A-10/", "")) if path.startswith("Aircraft/A-10/") else None
+        if prefix.startswith("Aircraft/A-10"):
+            override_engine_conditions(rec)
+        local = os.path.join(args.src, path.replace(prefix, "")) if path.startswith(prefix) else None
+        if local is None:
+            # a generic $FG_ROOT sound (Sounds/wind.wav): the repo's vendored
+            # fgdata subset (third_party/fgdata, GPL-2), then a local FlightGear
+            here = os.path.dirname(os.path.abspath(__file__))
+            for root in (os.path.join(here, "..", "third_party", "fgdata"), "/Applications/FlightGear.app/Contents/Resources/data", os.path.expanduser("~/fgdata")):
+                cand = os.path.normpath(os.path.join(root, path.lstrip("/")))
+                if os.path.exists(cand):
+                    local = cand
+                    break
         if local and os.path.exists(local):
-            rel = os.path.relpath(local, os.path.join(args.src, "Sounds")).replace(os.sep, "_")
+            rel = (os.path.relpath(local, os.path.join(args.src, "Sounds")) if local.startswith(os.path.abspath(args.src)) else "fgdata_" + os.path.basename(local)).replace(os.sep, "_")
             files[rel] = local
             rec["file"] = rel
         else:
@@ -97,7 +110,7 @@ def main():
         for rel, local in files.items():
             shutil.copyfile(local, os.path.join(out, rel))
         with open(os.path.join(out, "sounds.json"), "w") as f:
-            json.dump({"source": "FlightGear A-10 " + sound_path, "sounds": records, "missing": missing}, f, indent=1)
+            json.dump({"source": "FlightGear " + sound_path, "sounds": records, "missing": missing}, f, indent=1)
     print("fg_a10_sounds: %d sounds, %d files, %d missing generic files (%s) -> %s" % (len(records), len(files), len(missing), ", ".join(missing), ", ".join(args.out)))
 
 

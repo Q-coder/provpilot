@@ -21,6 +21,9 @@ static const char *const REQUIRED_FILES[] = {
 	"c172p/model/C172P_1.glb",
 	"pc7/model/pc7.glb",
 	"a10/model/a10.glb",
+	"md80/model/md80_fg.glb",
+	"md87/model/md87_fg.glb",
+	"ask21/model/ask21_fg.glb",
 	"car/model/car.glb",
 	"re44/model/re44.glb",
 };
@@ -147,7 +150,10 @@ Error AircraftInstaller::copy_tree(const String &src_res, const String &dest_abs
 				}
 			}
 		}
-		else if (!in_list(name.get_extension().to_lower(), SKIP_EXTENSIONS, 7))
+		// livery images (model/liveries/, .gdignore'd) are read as files at
+		// runtime, not baked into a glb: the one place loose PNGs are shipped
+		else if (!in_list(name.get_extension().to_lower(), SKIP_EXTENSIONS, 7) ||
+				 (name.get_extension().to_lower() == "png" && src_res.contains("/liveries")))
 		{
 			const Error err = copy_file(src, dst);
 			if (err != OK)

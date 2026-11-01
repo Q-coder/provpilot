@@ -7,6 +7,7 @@
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/spot_light3d.hpp>
+#include <godot_cpp/classes/omni_light3d.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/string.hpp>
@@ -49,6 +50,11 @@ namespace jsbgodot
         void setup(Node *model_root, const Ref<AircraftConfig> &cfg, Node3D *ac);
         void clear();
         void set_landing_lights(bool on);
+        // A fixture's level from the aircraft's own systems (the MD-80's
+        // exterior-light and cockpit flood properties): the i-th fixture of a kind.
+        void set_fixture_level(const String &kind, int index, double level);
+        double get_fixture_level(const String &kind, int index) const;
+        int fixture_count_of(const String &kind) const;
         bool landing_lights_on() const;
         bool toggle_landing_lights();
         int fixture_count(const String &kind = String()) const;
@@ -77,6 +83,8 @@ namespace jsbgodot
             Node3D *on_mesh = nullptr;
             Node3D *off_mesh = nullptr;
             SpotLight3D *spot = nullptr;
+            OmniLight3D *omni = nullptr; // flood: a cockpit light
+            double level = -1.0;         // set_fixture_level: 0..1 from an aircraft property, -1 = the built-in logic
             Node3D *anchor = nullptr;
             uint64_t anchor_id = 0;
             Vector3 centre; // sprite vertex in anchor space
@@ -103,6 +111,8 @@ namespace jsbgodot
         Vector3 forward = Vector3(0, 0, -1);
         Vector3 down = Vector3(0, -1, 0);
         double spot_energy = 12.0;
+        double flood_range_m = 2.0;  // [lights] flood_range_m / flood_energy: cockpit floods
+        double flood_energy = 1.2;
         Node3D *ac = nullptr;
         bool debug_all_on = false;
         bool nav_enabled = true;

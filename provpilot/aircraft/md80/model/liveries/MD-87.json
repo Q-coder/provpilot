@@ -1,0 +1,32 @@
+{
+ "variant": "MD-87",
+ "source": "FlightGear MD-80, Models/Liveries/MD-87",
+ "defaults": {
+  "sim/model/n1-tach/texture": "n1-217a.png",
+  "sim/model/n2-tach/texture": "n2-217a.png"
+ },
+ "liveries": [
+  {
+   "id": "Erickson",
+   "name": "Erickson Aero Tanker",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-87/Erickson_fuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-87/Erickson_fuselage_fairing.png",
+    "sim/model/rudders/texture": "Liveries/MD-87/Erickson_vstab_engines.png",
+    "sim/model/hstab/texture": "Liveries/MD-87/Erickson_hstab_gear.png",
+    "sim/model/wing/texture": "Liveries/MD-87/Erickson_wing.png"
+   }
+  },
+  {
+   "id": "JKK",
+   "name": "Spannair 1986-1999",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-87/JKK_fuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-87/JKK_fuselage_fairing.png",
+    "sim/model/rudders/texture": "Liveries/MD-87/JKK_vstab_engines.png",
+    "sim/model/hstab/texture": "txt_hstab_gear.png",
+    "sim/model/wing/texture": "txt_wing.png"
+   }
+  }
+ ]
+}

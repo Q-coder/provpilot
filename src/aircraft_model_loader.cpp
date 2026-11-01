@@ -1,4 +1,5 @@
 #include "aircraft_model_loader.h"
+#include "aircraft_config.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
@@ -126,7 +127,9 @@ Node *AircraftModelLoader::load_from_disk(const String &aircraft_id, const Strin
 	{
 		return nullptr;
 	}
-	const String path = ir->get_aircraft_dir(aircraft_id).path_join(rel_path);
+	// the installed folder, else the base aircraft's for a variant that shares
+	// its model ([aircraft] base), else the res:// source tree in the editor
+	const String path = AircraftConfig::resolve_aircraft_file(aircraft_id, rel_path);
 	if (!FileAccess::file_exists(path))
 	{
 		return nullptr;

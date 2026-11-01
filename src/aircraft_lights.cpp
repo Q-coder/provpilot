@@ -22,13 +22,16 @@ using namespace godot;
 namespace jsbgodot
 {
 
-static const char *const KINDS[] = {"nav_left", "nav_right", "nav_tail", "strobe", "beacon", "landing", "taxi"};
+static const char *const KINDS[] = {"nav_left", "nav_right", "nav_tail", "strobe", "beacon", "landing", "taxi", "flood"};
 
 void AircraftLights::_bind_methods()
 {
 	ClassDB::bind_method(D_METHOD("setup", "model_root", "cfg", "ac"), &AircraftLights::setup);
 	ClassDB::bind_method(D_METHOD("clear"), &AircraftLights::clear);
 	ClassDB::bind_method(D_METHOD("set_landing_lights", "on"), &AircraftLights::set_landing_lights);
+	ClassDB::bind_method(D_METHOD("set_fixture_level", "kind", "index", "level"), &AircraftLights::set_fixture_level);
+	ClassDB::bind_method(D_METHOD("get_fixture_level", "kind", "index"), &AircraftLights::get_fixture_level);
+	ClassDB::bind_method(D_METHOD("fixture_count_of", "kind"), &AircraftLights::fixture_count_of);
 	ClassDB::bind_method(D_METHOD("landing_lights_on"), &AircraftLights::landing_lights_on);
 	ClassDB::bind_method(D_METHOD("toggle_landing_lights"), &AircraftLights::toggle_landing_lights);
 	ClassDB::bind_method(D_METHOD("fixture_count", "kind"), &AircraftLights::fixture_count, DEFVAL(String()));
@@ -111,6 +114,8 @@ void AircraftLights::setup(Node *model_root, const Ref<AircraftConfig> &cfg, Nod
 	landing_range_m = cfg->get_float("lights", "landing_range_m", 300.0);
 	taxi_range_m = cfg->get_float("lights", "taxi_range_m", 90.0);
 	spot_energy = cfg->get_float("lights", "spot_energy", 12.0);
+	flood_range_m = cfg->get_float("lights", "flood_range_m", 2.0);
+	flood_energy = cfg->get_float("lights", "flood_energy", 1.2);
 	// "pair_meshes false": leave "<x>-on"/"<x>-off" mesh visibility to another
 	// system (the FlightGear select animations on the A-10)
 	pair_meshes = cfg->get_bool("lights", "pair_meshes", true);
@@ -153,15 +158,17 @@ void AircraftLights::setup(Node *model_root, const Ref<AircraftConfig> &cfg, Nod
 			}
 			add_fixture(kind, anchor);
 		}
-		// "<kind>_pos": "x, y, z" in model-root units, for models without a lens mesh
+		// "<kind>_pos": "x, y, z[, x, y, z ...]" in model-root units, one fixture
+		// per triple, for models without a lens mesh (the MD-80's lights were
+		// FlightGear effects the build leaves out)
 		const Array pos = cfg->get_float_array("lights", kind + String("_pos"), Array());
 		Node3D *root3d = Object::cast_to<Node3D>(model_root);
-		if (pos.size() == 3 && root3d != nullptr)
+		for (int i = 0; root3d != nullptr && i + 2 < pos.size(); i += 3)
 		{
 			Node3D *n = memnew(Node3D);
-			n->set_name("Light_" + kind);
+			n->set_name(vformat("Light_%s_%d", kind, i / 3));
 			root3d->add_child(n);
-			n->set_position(Vector3((double)pos[0], (double)pos[1], (double)pos[2]));
+			n->set_position(Vector3((double)pos[i], (double)pos[i + 1], (double)pos[i + 2]));
 			add_fixture(kind, n);
 		}
 	}
@@ -274,8 +281,66 @@ void AircraftLights::clear()
 	fixtures.clear();
 }
 
+void AircraftLights::set_fixture_level(const String &kind, int index, double level)
+{
+	int k = 0;
+	for (int i = 0; i < fixtures.size(); i++)
+	{
+		if (fixtures[i].kind == kind && k++ == index)
+		{
+			fixtures.write[i].level = level;
+			return;
+		}
+	}
+}
+
+double AircraftLights::get_fixture_level(const String &kind, int index) const
+{
+	int k = 0;
+	for (int i = 0; i < fixtures.size(); i++)
+	{
+		if (fixtures[i].kind == kind && k++ == index)
+		{
+			return fixtures[i].level;
+		}
+	}
+	return -1.0;
+}
+
+int AircraftLights::fixture_count_of(const String &kind) const
+{
+	int k = 0;
+	for (int i = 0; i < fixtures.size(); i++)
+	{
+		k += fixtures[i].kind == kind ? 1 : 0;
+	}
+	return k;
+}
+
 void AircraftLights::add_fixture(const String &kind, Node3D *anchor)
 {
+	if (kind == "flood")
+	{
+		// a cockpit flood: an omni light at the anchor, its level from the
+		// aircraft's flood knob (set_fixture_level); no lens sprite
+		Fixture f;
+		f.kind = kind;
+		f.anchor = anchor;
+		f.anchor_id = anchor->get_instance_id();
+		OmniLight3D *omni = memnew(OmniLight3D);
+		omni->set_name("Flood");
+		omni->set_color(Color(1.0, 0.93, 0.8));
+		omni->set_param(Light3D::PARAM_ENERGY, 0.0);
+		omni->set_param(Light3D::PARAM_RANGE, flood_range_m);
+		omni->set_param(Light3D::PARAM_ATTENUATION, 1.5);
+		omni->set_shadow(false);
+		omni->set_visible(false);
+		anchor->add_child(omni);
+		f.omni = omni;
+		f.energy = flood_energy;
+		fixtures.push_back(f);
+		return;
+	}
 	Vector3 centre;
 	MeshInstance3D *am = Object::cast_to<MeshInstance3D>(anchor);
 	if (am != nullptr && am->get_mesh().is_valid())
@@ -467,6 +532,22 @@ void AircraftLights::apply_states()
 		{
 			on = (landing_lit && powered && (f.kind == "landing" || taxi_enabled)) ? 1.0 : 0.0;
 		}
+		// a level the aircraft's systems give (extension, dimming, power) replaces the logic above
+		if (f.level >= 0.0)
+		{
+			on = Math::clamp(f.level, 0.0, 1.0);
+		}
+		if (f.kind == "flood")
+		{
+			// the knob is a display intent: linear light through the sRGB curve
+			const double lin = std::pow(on, 2.2);
+			if (f.omni != nullptr)
+			{
+				f.omni->set_visible(lin > 0.002);
+				f.omni->set_param(Light3D::PARAM_ENERGY, f.energy * lin);
+			}
+			continue;
+		}
 		f.mat->set_shader_parameter("on", on);
 		const bool anchor_alive = f.anchor_id != 0 && UtilityFunctions::is_instance_id_valid(f.anchor_id);
 		if (f.on_mesh != nullptr && anchor_alive)
@@ -477,8 +558,9 @@ void AircraftLights::apply_states()
 		if (f.spot != nullptr)
 		{
 			f.spot->set_visible(on > 0.01);
-			// a landing light barely shows on sunlit ground
-			f.spot->set_param(Light3D::PARAM_ENERGY, f.energy * (0.08 + 0.92 * night));
+			// a landing light barely shows on sunlit ground; the level the
+			// aircraft's systems give (DIM 0.6 / BRT 1) is a display intent
+			f.spot->set_param(Light3D::PARAM_ENERGY, f.energy * (0.08 + 0.92 * night) * std::pow(on, 2.2));
 			if (f.spot->is_visible() && anchor_alive && f.anchor->is_inside_tree())
 			{
 				const Vector3 origin = f.anchor->get_global_transform().xform(f.centre);

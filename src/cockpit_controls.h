@@ -80,6 +80,7 @@ namespace jsbgodot
         void set_flap_positions(const Array &positions);
         // HUD labels per lever notch (cfg flaps.names).
         void set_flap_names(const PackedStringArray &names);
+        Array get_flap_positions() const;
 
         // ── Node registration (base transforms are captured here) ──
         // Nulls every registered pointer and resets the gear command to fully
@@ -222,7 +223,8 @@ namespace jsbgodot
         void toggle_throttle_debug();
 
         // JSBSim flap-pos-norm (0.0-1.0) -> lever notch index (0-3).
-        static int flaps_norm_to_position(double norm);
+        int flaps_norm_to_position(double norm) const; // nearest detent
+        int flap_last_position() const { return int(flap_positions.size()) - 1; }
         String flap_name(int position) const;
     };
 

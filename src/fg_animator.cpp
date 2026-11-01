@@ -6,6 +6,14 @@
 #include <godot_cpp/classes/base_material3d.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/classes/texture2d.hpp>
+#include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
+#include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/shader.hpp>
+#include <godot_cpp/classes/shader_material.hpp>
+#include <godot_cpp/classes/label3d.hpp>
+#include <godot_cpp/classes/font_file.hpp>
+#include <cstdio>
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/core/math.hpp>
 
@@ -23,7 +31,10 @@ namespace jsbgodot
         ClassDB::bind_method(D_METHOD("set_properties", "values"), &FGAnimator::set_properties);
         ClassDB::bind_method(D_METHOD("get_property", "path"), &FGAnimator::get_property);
         ClassDB::bind_method(D_METHOD("property_names"), &FGAnimator::property_names);
+        ClassDB::bind_method(D_METHOD("set_texture_root", "dir"), &FGAnimator::set_texture_root);
+        ClassDB::bind_method(D_METHOD("get_texture_root"), &FGAnimator::get_texture_root);
         ClassDB::bind_method(D_METHOD("unknown_properties"), &FGAnimator::unknown_properties);
+        ClassDB::bind_method(D_METHOD("get_aliases"), &FGAnimator::get_aliases);
         ClassDB::bind_method(D_METHOD("update", "delta"), &FGAnimator::update);
         ClassDB::bind_method(D_METHOD("animation_count"), &FGAnimator::animation_count);
         ClassDB::bind_method(D_METHOD("node_count"), &FGAnimator::node_count);
@@ -283,6 +294,7 @@ namespace jsbgodot
         Vector<Node *> stack;
         stack.push_back(root);
         int fixed = 0;
+        int blended = 0;
         while (!stack.is_empty())
         {
             Node *n = stack[stack.size() - 1];
@@ -299,10 +311,28 @@ namespace jsbgodot
             {
                 Ref<Material> m = mi->get_active_material(s);
                 BaseMaterial3D *bm = Object::cast_to<BaseMaterial3D>(m.ptr());
-                if (bm == nullptr || !bm->get_feature(BaseMaterial3D::FEATURE_EMISSION))
+                if (bm == nullptr)
+                    continue;
+                // FlightGear blends any texture that carries alpha (instrument
+                // glass, shadow planes, decals); the AC3D import leaves the
+                // material opaque, so the transparent parts came out grey
+                if (bm->get_transparency() == BaseMaterial3D::TRANSPARENCY_DISABLED)
+                {
+                    Ref<Texture2D> tex = bm->get_texture(BaseMaterial3D::TEXTURE_ALBEDO);
+                    Ref<Image> img = tex.is_valid() ? tex->get_image() : Ref<Image>();
+                    if (img.is_valid() && img->detect_alpha() != Image::ALPHA_NONE)
+                    {
+                        bm->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA_DEPTH_PRE_PASS);
+                        blended++;
+                    }
+                }
+                if (!bm->get_feature(BaseMaterial3D::FEATURE_EMISSION))
                     continue;
                 Ref<Texture2D> albedo = bm->get_texture(BaseMaterial3D::TEXTURE_ALBEDO);
                 Color e = bm->get_emission();
+                // an imported emissive texture is the lit texture itself: colour x texture, not colour + texture
+                if (bm->get_texture(BaseMaterial3D::TEXTURE_EMISSION).is_valid())
+                    bm->set_emission_operator(BaseMaterial3D::EMISSION_OP_MULTIPLY);
                 if (albedo.is_valid() && bm->get_texture(BaseMaterial3D::TEXTURE_EMISSION).is_null() && e.r > 0.9 && e.g > 0.9 && e.b > 0.9)
                 {
                     // a self-lit texture: show it as it is, no sunlight on top,
@@ -315,6 +345,8 @@ namespace jsbgodot
         }
         if (fixed > 0)
             UtilityFunctions::print("FGAnimator: ", fixed, " self-lit textured surfaces drawn unshaded");
+        if (blended > 0)
+            UtilityFunctions::print("FGAnimator: ", blended, " surfaces with alpha textures alpha-blended");
     }
 
     void FGAnimator::collect_nodes(Node *n, HashMap<String, Vector<Node *>> &by_name)
@@ -393,6 +425,15 @@ namespace jsbgodot
                 node_states[i].node->set_transform(node_states[i].base);
                 node_states[i].node->set_visible(true);
             }
+        for (int i = 0; i < text_states.size(); i++)
+        {
+            Object *o = ObjectDB::get_instance(ObjectID(text_states[i].label_id));
+            Node *n = Object::cast_to<Node>(o);
+            if (n != nullptr)
+                n->queue_free();
+        }
+        text_states.clear();
+        fonts.clear();
         conds.clear();
         anims.clear();
         node_states.clear();
@@ -439,13 +480,26 @@ namespace jsbgodot
             file_root = by_name[root_name][0];
         if (file_root == nullptr)
             UtilityFunctions::push_warning("FGAnimator: manifest root node '", root_name, "' not found; using the model root as the file frame");
+        aliases = m.get("aliases", Dictionary());
+        load_texts(m, manifest_path.get_base_dir(), by_name);
         model_roots.clear();
+        model_dirs.clear();
+        textures.clear();
         Array subs = m.get("submodels", Array());
         for (int i = 0; i < subs.size(); i++)
         {
             Dictionary sd = subs[i];
             String tag = sd.get("tag", "");
             String node = sd.get("node", "");
+            // "Models/Instruments/n1L.xml" -> "Instruments": texture-prop files
+            // are relative to the record's XML, the liveries tree to Models/
+            String xdir = String(sd.get("xml", "")).get_base_dir();
+            if (xdir == "Models")
+                xdir = String();
+            else if (xdir.begins_with("Models/"))
+                xdir = xdir.substr(7);
+            if (!model_dirs.has(tag))
+                model_dirs[tag] = xdir;
             if (by_name.has(node) && by_name[node].size() > 0)
                 model_roots[tag] = by_name[node][0];
         }
@@ -485,14 +539,32 @@ namespace jsbgodot
                 a.type = A_MATERIAL;
             else if (type == "textranslate")
                 a.type = A_TEXTRANSLATE;
+            else if (type == "texrotate")
+                a.type = A_TEXROTATE;
             else
             {
                 skipped++;
                 continue;
             }
             a.model = rec.get("model", "");
+            // the frame node of this record's own sub-model instance ("frame",
+            // exact name): a file imported several times shares its tag, and a
+            // centre resolved in another copy's frame swings the part metres away
+            Node *rec_frame = nullptr;
+            const String frame_name = rec.get("frame", "");
+            if (!frame_name.is_empty() && by_name.has(frame_name))
+            {
+                const Vector<Node *> &fv = by_name[frame_name];
+                for (int j = 0; j < fv.size(); j++)
+                    if (String(fv[j]->get_name()) == frame_name)
+                        rec_frame = fv[j];
+            }
             // targets
             Array objs = rec.get("objects", Array());
+            // "exact": the record names one node (a sub-model's placement empty,
+            // from <model><condition>); the Blender duplicate stem must not pull
+            // in the other copies of the same file
+            const bool exact = bool(rec.get("exact", false));
             Vector<Node *> targets;
             for (int j = 0; j < objs.size(); j++)
             {
@@ -501,7 +573,8 @@ namespace jsbgodot
                 {
                     const Vector<Node *> &v = by_name[nm];
                     for (int k = 0; k < v.size(); k++)
-                        targets.push_back(v[k]);
+                        if (!exact || String(v[k]->get_name()) == nm)
+                            targets.push_back(v[k]);
                 }
             }
             if (targets.is_empty())
@@ -525,6 +598,19 @@ namespace jsbgodot
                     Dictionary e = entries[j];
                     a.table_in.push_back(num(e.get("ind", 0.0), 0.0));
                     a.table_out.push_back(num(e.get("dep", 0.0), 0.0));
+                }
+                // FlightGear sorts the entries by their input (the ASK 21's airbrake
+                // lever lists 1 -> 0 before 0 -> 0.21); the lookup needs ascending keys
+                for (int j = 1; j < a.table_in.size(); j++)
+                {
+                    for (int k = j; k > 0 && a.table_in[k - 1] > a.table_in[k]; k--)
+                    {
+                        const double ti = a.table_in[k - 1], to = a.table_out[k - 1];
+                        a.table_in.write[k - 1] = a.table_in[k];
+                        a.table_out.write[k - 1] = a.table_out[k];
+                        a.table_in.write[k] = ti;
+                        a.table_out.write[k] = to;
+                    }
                 }
             }
             switch (a.type)
@@ -564,7 +650,15 @@ namespace jsbgodot
                 a.min_v = num(raw.get("min-m", Variant()), 0.0);
                 a.max_v = num(raw.get("max-m", Variant()), 0.0);
                 Dictionary axis = raw.get("axis", Dictionary());
-                a.axis = fg_vec(axis, "x", "y", "z", Vector3(1, 0, 0));
+                if (axis.has("x1-m") || axis.has("y1-m") || axis.has("z1-m"))
+                {
+                    // the direction from one point to another (the ASK 21's airbrake lever slides along its slot)
+                    a.axis = fg_vec(axis, "x2-m", "y2-m", "z2-m", Vector3()) - fg_vec(axis, "x1-m", "y1-m", "z1-m", Vector3());
+                }
+                else
+                {
+                    a.axis = fg_vec(axis, "x", "y", "z", Vector3(1, 0, 0));
+                }
                 if (a.axis.length_squared() < 1e-12)
                     a.axis = Vector3(1, 0, 0);
                 a.axis.normalize();
@@ -582,8 +676,26 @@ namespace jsbgodot
                     a.tex_axis = Vector2(1, 0);
                 break;
             }
+            case A_TEXROTATE:
+            {
+                // FlightGear rotates the texture about <center> (texture coordinates)
+                // by property * factor degrees; the yaw string is drawn this way
+                Dictionary ctr = raw.get("center", Dictionary());
+                a.tex_center = Vector2(num(ctr.get("x", 0.5), 0.5), num(ctr.get("y", 0.5), 0.5));
+                a.offset = num(raw.get("offset", Variant()), 0.0);
+                break;
+            }
             case A_MATERIAL:
             {
+                a.transparent = bool(raw.get("transparent", false));
+                if (raw.has("texture-prop"))
+                {
+                    const String pbase = raw.get("property-base", "");
+                    const String tp = raw["texture-prop"];
+                    a.tex_prop = prop_id(pbase.is_empty() ? tp : pbase.path_join(tp));
+                    a.tex_default = raw.get("texture", "");
+                    a.tex_dir = model_dirs.has(a.model) ? model_dirs[a.model] : String();
+                }
                 Dictionary em = raw.get("emission", Dictionary());
                 if (!em.is_empty())
                 {
@@ -600,6 +712,8 @@ namespace jsbgodot
                 {
                     a.has_diffuse = true;
                     a.diffuse = Color(num(di.get("red", 0.0), 0.0), num(di.get("green", 0.0), 0.0), num(di.get("blue", 0.0), 0.0));
+                    if (di.has("factor-prop"))
+                        a.diffuse_factor_prop = prop_id(di["factor-prop"]);
                 }
                 Dictionary tr = raw.get("transparency", Dictionary());
                 if (!tr.is_empty())
@@ -617,7 +731,7 @@ namespace jsbgodot
             default:
                 break;
             }
-            Node *frame_root = model_roots.has(a.model) ? model_roots[a.model] : file_root;
+            Node *frame_root = rec_frame != nullptr ? rec_frame : (model_roots.has(a.model) ? model_roots[a.model] : file_root);
             if ((bool)rec.get("control", false) && (a.type == A_ROTATE || a.type == A_SPIN) && !((Dictionary)raw.get("center", Dictionary())).size())
             {
                 // a knob without <center> turns about its own bounds centre
@@ -657,7 +771,7 @@ namespace jsbgodot
             anims.push_back(a);
             for (int j = 0; j < targets.size(); j++)
             {
-                if (a.type == A_MATERIAL || a.type == A_TEXTRANSLATE)
+                if (a.type == A_MATERIAL || a.type == A_TEXTRANSLATE || a.type == A_TEXROTATE)
                 {
                     // apply to every mesh in the target subtree
                     Vector<Node *> stack;
@@ -669,6 +783,9 @@ namespace jsbgodot
                         MeshInstance3D *mi = Object::cast_to<MeshInstance3D>(n);
                         if (mi != nullptr)
                             anims.write[ai].targets.push_back(mat_state_for(mi));
+                        Label3D *lb = Object::cast_to<Label3D>(n);
+                        if (lb != nullptr && a.type == A_MATERIAL)
+                            anims.write[ai].labels.push_back(lb->get_instance_id());
                         for (int k = 0; k < n->get_child_count(); k++)
                             stack.push_back(n->get_child(k));
                     }
@@ -688,8 +805,170 @@ namespace jsbgodot
             }
         }
         UtilityFunctions::print("FGAnimator: ", anims.size(), " animations on ", node_states.size(), " nodes and ", mat_states.size(),
-                                " materials, ", prop_names.size(), " properties, ", skipped, " records of other types skipped");
+                                " materials, ", text_states.size(), " texts, ", prop_names.size(), " properties, ", skipped, " records of other types skipped");
         return true;
+    }
+
+    // ── <text> ─────────────────────────────────────────────────────────
+    // FlightGear draws osgText at the text's <offsets> in the model file's
+    // frame: a printf-formatted number (number-value), a string property
+    // (text-value) or a literal, in a font of <character-size> metres,
+    // anchored by <alignment> ("right-bottom"), lying in <axis-alignment>
+    // ("yz-plane": baseline along +y, up +z, facing +x aft = towards the
+    // pilots). The builder placed an empty per text; a Label3D goes under it.
+    void FGAnimator::load_texts(const Dictionary &m, const String &manifest_dir, HashMap<String, Vector<Node *>> &by_name)
+    {
+        const Dictionary font_files = m.get("fonts", Dictionary());
+        const Array texts = m.get("texts", Array());
+        int missing = 0;
+        for (int i = 0; i < texts.size(); i++)
+        {
+            const Dictionary rec = texts[i];
+            const Dictionary raw = rec.get("raw", Dictionary());
+            const String node_name = rec.get("node", "");
+            Node3D *anchor = nullptr;
+            if (by_name.has(node_name))
+            {
+                const Vector<Node *> &v = by_name[node_name];
+                for (int k = 0; k < v.size() && anchor == nullptr; k++)
+                    if (String(v[k]->get_name()) == node_name)
+                        anchor = Object::cast_to<Node3D>(v[k]);
+            }
+            if (anchor == nullptr)
+            {
+                missing++;
+                continue;
+            }
+            Label3D *lb = memnew(Label3D);
+            lb->set_name("Text");
+            const String kind = raw.get("type", "literal");
+            TextState ts;
+            ts.kind = kind == "number-value" ? 1 : (kind == "text-value" ? 2 : 0);
+            ts.format = String(raw.get("format", ts.kind == 2 ? "%s" : "%f"));
+            if (ts.kind == 0)
+                ts.last = String(raw.get("text", ""));
+            else
+                ts.prop = prop_id(raw.get("property", ""));
+            lb->set_text(ts.last);
+            // font: the aircraft's own file when the builder copied it, else Godot's default
+            const String font = raw.get("font", "");
+            if (!font.is_empty() && font_files.has(font))
+            {
+                if (!fonts.has(font))
+                {
+                    Ref<FontFile> ff;
+                    ff.instantiate();
+                    if (ff->load_dynamic_font(manifest_dir.path_join(font_files[font])) == OK)
+                        fonts[font] = ff;
+                    else
+                        fonts[font] = Ref<Font>();
+                }
+                if (fonts[font].is_valid())
+                    lb->set_font(fonts[font]);
+            }
+            // character-size is the glyph height in metres: 64 px glyphs scaled to it
+            const double char_m = num(raw.get("character-size", 0.01), 0.01);
+            lb->set_font_size(64);
+            lb->set_pixel_size(char_m / 64.0);
+            const String align = raw.get("alignment", "left-baseline");
+            lb->set_horizontal_alignment(align.begins_with("right") ? HORIZONTAL_ALIGNMENT_RIGHT : (align.begins_with("center") ? HORIZONTAL_ALIGNMENT_CENTER : HORIZONTAL_ALIGNMENT_LEFT));
+            lb->set_vertical_alignment(align.ends_with("top") ? VERTICAL_ALIGNMENT_TOP : (align.ends_with("center") ? VERTICAL_ALIGNMENT_CENTER : VERTICAL_ALIGNMENT_BOTTOM));
+            // Label3D: baseline +x, up +y, facing +z; FlightGear's planes in the
+            // Godot frame (x aft, y up, z left = -y_fg)
+            const String plane = raw.get("axis-alignment", "xy-plane");
+            Basis b;
+            if (plane == "yz-plane")
+                b = Basis(Vector3(0, 1, 0), Math_PI / 2); // facing +x (aft), baseline -z (= +y_fg, right)
+            else if (plane == "reversed-yz-plane")
+                b = Basis(Vector3(0, 1, 0), -Math_PI / 2);
+            else if (plane == "xy-plane")
+                b = Basis(Vector3(1, 0, 0), -Math_PI / 2); // facing up
+            else if (plane == "reversed-xy-plane")
+                b = Basis(Vector3(1, 0, 0), Math_PI / 2);
+            else if (plane == "reversed-xz-plane")
+                b = Basis(Vector3(0, 1, 0), Math_PI);
+            // a hair in front of the panel face so the digits never z-fight the window
+            lb->set_transform(Transform3D(b, b.xform(Vector3(0, 0, 0.0003))));
+            lb->set_draw_flag(Label3D::FLAG_SHADED, false);
+            lb->set_draw_flag(Label3D::FLAG_DOUBLE_SIDED, false);
+            lb->set_alpha_cut_mode(Label3D::ALPHA_CUT_DISCARD);
+            lb->set_texture_filter(BaseMaterial3D::TEXTURE_FILTER_LINEAR_WITH_MIPMAPS);
+            anchor->add_child(lb);
+            ts.label_id = lb->get_instance_id();
+            text_states.push_back(ts);
+            by_name[String(lb->get_name())].push_back(lb);
+        }
+        if (missing > 0)
+            UtilityFunctions::push_warning("FGAnimator: ", missing, " text anchors not found in the model");
+        if (texts.size() > 0)
+            type_counts["text"] = text_states.size();
+    }
+
+    // printf with FlightGear's one-conversion formats ("%6.2f", ".%003.0f",
+    // "+%04.0f", "%s"): the value goes through snprintf like osgText does
+    String FGAnimator::format_text(const String &fmt, double v, const String &str, int kind)
+    {
+        const CharString f = fmt.utf8();
+        const char *c = f.get_data();
+        int convs = 0;
+        char conv = 0;
+        for (const char *p = c; *p; p++)
+        {
+            if (*p != '%')
+                continue;
+            if (p[1] == '%')
+            {
+                p++;
+                continue;
+            }
+            const char *q = p + 1;
+            while (*q && strchr("-+ 0#.123456789", *q))
+                q++;
+            conv = *q;
+            convs++;
+        }
+        char buf[128];
+        if (convs != 1 || conv == 0)
+            return kind == 2 ? str : String::num(v, 2);
+        if (strchr("fFeEgG", conv))
+            snprintf(buf, sizeof(buf), c, v);
+        else if (strchr("diouxX", conv))
+        {
+            // promote the length to long long whatever the format says
+            String g = fmt;
+            const int at = g.rfind(String::chr(conv));
+            g = g.substr(0, at) + "ll" + g.substr(at);
+            snprintf(buf, sizeof(buf), g.utf8().get_data(), (long long)std::llround(v));
+        }
+        else if (conv == 's')
+        {
+            const CharString sc = str.utf8();
+            snprintf(buf, sizeof(buf), c, sc.get_data());
+        }
+        else
+            return kind == 2 ? str : String::num(v, 2);
+        return String::utf8(buf);
+    }
+
+    void FGAnimator::update_texts()
+    {
+        for (int i = 0; i < text_states.size(); i++)
+        {
+            TextState &ts = text_states.write[i];
+            if (ts.kind == 0)
+                continue;
+            Label3D *lb = Object::cast_to<Label3D>(ObjectDB::get_instance(ObjectID(ts.label_id)));
+            if (lb == nullptr)
+                continue;
+            const double v = ts.prop >= 0 ? prop_values[ts.prop] : 0.0;
+            const String str = ts.prop >= 0 ? (prop_strings[ts.prop].is_empty() ? String::num(v, 0) : prop_strings[ts.prop]) : String();
+            const String out = format_text(ts.format, v, str, ts.kind);
+            if (out != ts.last)
+            {
+                ts.last = out;
+                lb->set_text(out);
+            }
+        }
     }
 
     // ── properties ─────────────────────────────────────────────────────
@@ -744,6 +1023,11 @@ namespace jsbgodot
         return out;
     }
 
+    Dictionary FGAnimator::get_aliases() const
+    {
+        return aliases;
+    }
+
     PackedStringArray FGAnimator::unknown_properties() const
     {
         PackedStringArray out;
@@ -792,11 +1076,19 @@ namespace jsbgodot
             BaseMaterial3D *bm = Object::cast_to<BaseMaterial3D>(m.mats[i].ptr());
             if (bm == nullptr)
                 continue;
+            if (a.transparent && bm->get_transparency() == BaseMaterial3D::TRANSPARENCY_DISABLED)
+            {
+                // the texture's alpha decides (shadow planes, glass); drawn after the opaque panel
+                bm->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+                bm->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+            }
             if (a.has_emission)
             {
                 double f = 1.0;
                 if (a.emission_is_prop && a.emission_factor_prop >= 0)
                     f = prop_values[a.emission_factor_prop];
+                // FlightGear's colour x factor is an sRGB intent; BaseMaterial3D's
+                // emission is a source_color the renderer linearises itself
                 Color e = a.emission * (float)f;
                 bool lit = on && (e.r + e.g + e.b) > 0.001;
                 bm->set_feature(BaseMaterial3D::FEATURE_EMISSION, lit);
@@ -807,6 +1099,11 @@ namespace jsbgodot
                     Ref<Texture2D> albedo = bm->get_texture(BaseMaterial3D::TEXTURE_ALBEDO);
                     if (albedo.is_valid() && bm->get_texture(BaseMaterial3D::TEXTURE_EMISSION).is_null())
                         bm->set_texture(BaseMaterial3D::TEXTURE_EMISSION, albedo);
+                    // Godot's default operator ADDS the texture to the colour
+                    // (a black dial came out solid orange, white markings
+                    // white); FlightGear's fixed function multiplies
+                    if (bm->get_texture(BaseMaterial3D::TEXTURE_EMISSION).is_valid())
+                        bm->set_emission_operator(BaseMaterial3D::EMISSION_OP_MULTIPLY);
                     bm->set_emission(e);
                     bm->set_emission_energy_multiplier(1.0);
                 }
@@ -820,6 +1117,72 @@ namespace jsbgodot
                 c.a = (float)Math::clamp(al, 0.0, 1.0);
                 bm->set_albedo(c);
                 bm->set_transparency(c.a < 0.999 ? BaseMaterial3D::TRANSPARENCY_ALPHA : BaseMaterial3D::TRANSPARENCY_DISABLED);
+            }
+        }
+    }
+
+    void FGAnimator::set_texture_root(const String &dir) { texture_root = dir; }
+    String FGAnimator::get_texture_root() const { return texture_root; }
+
+    Ref<Texture2D> FGAnimator::load_texture_file(const String &path)
+    {
+        if (textures.has(path))
+            return textures[path];
+        Ref<Texture2D> tex;
+        Ref<Image> img = FileAccess::file_exists(path) ? Image::load_from_file(path) : Ref<Image>();
+        if (img.is_valid() && !img->is_empty())
+        {
+            img->generate_mipmaps();
+            tex = ImageTexture::create_from_image(img);
+        }
+        else
+            UtilityFunctions::push_warning("FGAnimator: texture-prop file not found: ", path);
+        textures[path] = tex;
+        return tex;
+    }
+
+    // material <texture-prop>: the property's value names the albedo image of
+    // the record's objects (a livery, an engine variant's gauge face); empty
+    // or the <texture> the glb was built with restores the glb's own
+    void FGAnimator::apply_texture_prop(Anim &a)
+    {
+        const String v = prop_strings[a.tex_prop].strip_edges();
+        if (v == a.tex_last)
+            return;
+        a.tex_last = v;
+        const bool restore = v.is_empty() || v == a.tex_default || texture_root.is_empty();
+        Ref<Texture2D> tex;
+        if (!restore)
+        {
+            const String rel = a.tex_dir.is_empty() ? v : a.tex_dir.path_join(v);
+            tex = load_texture_file(texture_root.path_join(rel));
+            if (tex.is_null())
+                return; // keep what is shown
+        }
+        for (int t = 0; t < a.targets.size(); t++)
+        {
+            if (a.targets[t] < 0 || a.targets[t] >= mat_states.size())
+                continue;
+            MatState &m = mat_states.write[a.targets[t]];
+            if (m.base_albedo.size() != m.mats.size())
+            {
+                m.base_albedo.clear();
+                for (int i = 0; i < m.mats.size(); i++)
+                {
+                    BaseMaterial3D *bm = Object::cast_to<BaseMaterial3D>(m.mats[i].ptr());
+                    m.base_albedo.push_back(bm != nullptr ? bm->get_texture(BaseMaterial3D::TEXTURE_ALBEDO) : Ref<Texture2D>());
+                }
+            }
+            for (int i = 0; i < m.mats.size(); i++)
+            {
+                BaseMaterial3D *bm = Object::cast_to<BaseMaterial3D>(m.mats[i].ptr());
+                if (bm == nullptr)
+                    continue;
+                Ref<Texture2D> nt = restore ? m.base_albedo[i] : tex;
+                bm->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, nt);
+                // the emission texture pairs the albedo (lit panels keep their markings)
+                if (bm->get_texture(BaseMaterial3D::TEXTURE_EMISSION).is_valid())
+                    bm->set_texture(BaseMaterial3D::TEXTURE_EMISSION, nt);
             }
         }
     }
@@ -885,14 +1248,54 @@ namespace jsbgodot
         for (int i = 0; i < anims.size(); i++)
         {
             Anim &a = anims.write[i];
-            if (a.type != A_MATERIAL && a.type != A_TEXTRANSLATE)
+            if (a.type != A_MATERIAL && a.type != A_TEXTRANSLATE && a.type != A_TEXROTATE)
                 continue;
             bool on = eval(a.cond);
+            if (a.type == A_MATERIAL && a.tex_prop >= 0)
+                apply_texture_prop(a);
+            if (a.type == A_MATERIAL && on && !a.labels.is_empty() && (a.has_diffuse || a.has_emission))
+            {
+                // the digits' colour: FlightGear's diffuse (or emission) times its factor property
+                Color c = a.has_diffuse ? a.diffuse : a.emission;
+                const int fp = a.has_diffuse ? a.diffuse_factor_prop : (a.emission_is_prop ? a.emission_factor_prop : -1);
+                if (fp >= 0)
+                    c = c * (float)Math::clamp(prop_values[fp], 0.0, 1.0);
+                // FlightGear's colour x dimmer factor is a display (sRGB) intent;
+                // Label3D's modulate is an sRGB vertex colour (FLAG_SRGB_VERTEX_COLOR),
+                // so the numbers go through as they are
+                c.a = 1.0;
+                for (int j = 0; j < a.labels.size(); j++)
+                {
+                    Label3D *lb = Object::cast_to<Label3D>(ObjectDB::get_instance(ObjectID(a.labels[j])));
+                    if (lb != nullptr && lb->get_modulate() != c)
+                        lb->set_modulate(c);
+                }
+            }
             for (int j = 0; j < a.targets.size(); j++)
             {
                 MatState &ms = mat_states.write[a.targets[j]];
                 if (a.type == A_MATERIAL)
                     apply_material(a, ms, on);
+                else if (a.type == A_TEXROTATE)
+                {
+                    if (!on)
+                        continue;
+                    ensure_texrotate_materials(ms);
+                    double v = a.prop >= 0 ? prop_values[a.prop] : 0.0;
+                    if (a.table_in.size() > 0)
+                    {
+                        Anim tmp = a;
+                        v = eval_value(tmp);
+                    }
+                    else
+                        v = (v + a.offset) * a.factor;
+                    for (int s = 0; s < ms.rot_mats.size(); s++)
+                    {
+                        ShaderMaterial *sm = Object::cast_to<ShaderMaterial>(ms.rot_mats[s].ptr());
+                        if (sm != nullptr)
+                            sm->set_shader_parameter("angle", Math::deg_to_rad(v));
+                    }
+                }
                 else if (on)
                 {
                     double v = a.prop >= 0 ? prop_values[a.prop] : 0.0;
@@ -930,6 +1333,52 @@ namespace jsbgodot
                 }
             }
         }
+        update_texts();
+    }
+
+    // texrotate: Godot's standard material cannot rotate UVs, so the surface
+    // gets a small shader (albedo texture, alpha, unshaded) with the angle as
+    // a parameter; the texture, colour and transparency come from the
+    // material the glTF import made.
+    void FGAnimator::ensure_texrotate_materials(MatState &m)
+    {
+        if (m.rot_mats.size() == m.mats.size() || m.mesh == nullptr)
+            return;
+        if (texrotate_shader.is_null())
+        {
+            texrotate_shader.instantiate();
+            texrotate_shader->set_code(
+                "shader_type spatial;\n"
+                "render_mode cull_disabled, blend_mix, depth_draw_opaque;\n"
+                "uniform sampler2D tex : source_color;\n"
+                "uniform vec4 tint : source_color = vec4(1.0);\n"
+                "uniform vec2 center = vec2(0.5, 0.5);\n"
+                "uniform float angle = 0.0;\n"
+                "void fragment() {\n"
+                "  vec2 uv = UV - center;\n"
+                "  float c = cos(angle); float s = sin(angle);\n"
+                "  uv = vec2(c * uv.x - s * uv.y, s * uv.x + c * uv.y) + center;\n"
+                "  vec4 col = texture(tex, uv) * tint;\n"
+                "  ALBEDO = col.rgb; ALPHA = col.a;\n"
+                "}\n");
+        }
+        m.rot_mats.clear();
+        for (int s = 0; s < m.mats.size(); s++)
+        {
+            Ref<ShaderMaterial> sm;
+            sm.instantiate();
+            sm->set_shader(texrotate_shader);
+            BaseMaterial3D *bm = Object::cast_to<BaseMaterial3D>(m.mats[s].ptr());
+            if (bm != nullptr)
+            {
+                Ref<Texture2D> tex = bm->get_texture(BaseMaterial3D::TEXTURE_ALBEDO);
+                if (tex.is_valid())
+                    sm->set_shader_parameter("tex", tex);
+                sm->set_shader_parameter("tint", bm->get_albedo());
+            }
+            m.mesh->set_surface_override_material(s, sm);
+            m.rot_mats.push_back(sm);
+        }
     }
 
     Dictionary FGAnimator::stats() const
@@ -940,6 +1389,7 @@ namespace jsbgodot
         d["materials"] = mat_states.size();
         d["properties"] = prop_names.size();
         d["skipped"] = skipped;
+        d["texts"] = text_states.size();
         d["types"] = type_counts;
         return d;
     }

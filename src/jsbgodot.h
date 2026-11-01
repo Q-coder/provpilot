@@ -32,7 +32,14 @@ namespace jsbgodot
         float input_throttle = 0.0;
         float input_aileron = 0.0f;  // Aileron input (-1.0 to 1.0)
         float input_elevator = 0.0f; // Elevator input (-1.0 to 1.0)
-        float elevator_trim = 0.0f;  // Elevator trim (-1.0 to 1.0)
+        float elevator_trim = 0.0f;  // Pitch trim command (fcs/pitch-trim-cmd-norm, -1.0 to 1.0)
+        float elevator_hold = 0.0f;  // elevator the airborne trim could not move into the pitch trim
+        float default_pitch_trim = 0.0f; // [jsbsim] pitch_trim_default: the trim a fresh session starts with
+        double mac_le_x_in = 0.0, mac_ref_in = 0.0; // [performance] mac_le_x_in / mac_in
+        double gear_transit_s = 0.0;                 // [gear] fdm_position false: retract_seconds
+        double last_joy_roll = NAN, last_joy_pitch = NAN, last_joy_yaw = NAN, last_joy_throttle = NAN;
+        float brake_axis = 0.0f;   // flight_brakes axis, pulled half 0..1
+        bool brake_button = false; // "Hold brakes" button
         float trigger_left_value = 0.0f;   // LT trigger value for throttle decrease
         float trigger_right_value = 0.0f;  // RT trigger value for throttle increase
         bool trim_up_held = false;   // Y button held for trim up
@@ -40,6 +47,7 @@ namespace jsbgodot
         double altitude_ft = 0.0;
         double heading_deg = 0.0;
         float flaps = 0.0f; // Flaps input (0.0 to 1.0)
+        std::vector<float> flap_detents = {0.0f, 0.333f, 0.667f, 1.0f}; // lever notches ([flaps] positions)
         float input_mixture = 1.0f; // Mixture input (0.0 = cutoff, 1.0 = full rich)
         int input_magnetos = 3; // Magneto switch: 0=OFF, 1=R, 2=L, 3=BOTH, 4=START
         int init_starter_frames = 0; // Grace period: keep starter engaged after init
@@ -50,6 +58,10 @@ namespace jsbgodot
         float gear_cmd = 1.0f;
         // Existing control input variables...
         float input_brake = 0.0f; // Brake input (0.0 to 1.0)
+        // Glider mode (Settings > Aircraft > Controls): the throttle inputs
+        // (keys, triggers, axis) work the airbrake lever instead: throttle 1 =
+        // brakes in, 0 = fully out. The engines (none) get no command.
+        bool throttle_drives_airbrakes = false;
 
         double airspeed_knots;
         double vertical_speed_fpm;
@@ -90,6 +102,8 @@ namespace jsbgodot
 
         void set_input_throttle(float value);
         float get_input_throttle() const;
+        void set_throttle_drives_airbrakes(bool on);
+        bool get_throttle_drives_airbrakes() const;
 
         void set_input_elevator(float value);
         float get_input_elevator() const;
@@ -114,9 +128,11 @@ namespace jsbgodot
         float get_input_mixture() const;
 
         // Flaps control (4 discrete positions: 0, 0.333, 0.667, 1.0)
-        void increase_flaps();
+        void increase_flaps();        // next cfg detent (set_flap_detents), default thirds
         void decrease_flaps();
-        void set_flaps(float value);  // Direct set (snaps to nearest notch)
+        void set_flap_detents(const Array &positions);
+        Array get_flap_detents() const;
+        void set_flaps(float value);  // Direct set (the exact lever value)
         float get_flaps() const;      // Actual kinematic position (for wing animation)
         float get_flap_cmd() const;   // Commanded position (for lever indicator)
 
@@ -160,6 +176,14 @@ namespace jsbgodot
         // node's ECEF position with a TRUE compass heading (degrees). Must be
         // called before the first physics step for proper ground collision.
         void initialize_at_terrain(double terrain_elevation_m, Vector3 godot_pos, double heading_deg);
+        // Airborne start (gliders without a winch or tow, any aircraft from the
+        // Aircraft tab): level at agl_m above the terrain under godot_pos, the
+        // calibrated airspeed set and the longitudinal axes trimmed (alpha,
+        // elevator) so the aircraft starts in a steady glide / cruise.
+        void initialize_airborne(double terrain_elevation_m, Vector3 godot_pos, double heading_deg, double agl_m, double airspeed_kts);
+        // Trim pitch axis (alpha / elevator / throttle) at the current initial
+        // conditions; false (and an untrimmed start) when the trim fails.
+        bool trim_longitudinal();
         
         // Set Godot world Y offset for terrain (transforms JSBSim altitude to Godot Y)
         // godot_y = jsbsim_altitude - terrain_elevation + godot_terrain_y
@@ -184,11 +208,23 @@ namespace jsbgodot
         // location and basis = body-to-ECEF DCM.
         // Diagnostic: read any JSBSim property (0.0 if the FDM is not created).
         double get_property(const String &name) const;
+        // Whether the FDM's property tree holds this node (systems create theirs at load).
+        bool has_property(const String &name) const;
         // Fuel tanks (Aircraft settings tab): count, capacity and contents in lb, direct fill.
         int get_tank_count() const;
         double get_tank_capacity_lbs(int index) const;
         double get_tank_contents_lbs(int index) const;
         void set_tank_contents_lbs(int index, double lbs);
+        // Fuel as a share of the total capacity: wing tanks first, then the centreline ones.
+        void set_fuel_percent(double pct);
+        // [performance] mac_le_x_in / mac_in (cfg): the leading edge of the mean
+        // chord aft of the datum and its length, for an exact % MAC (0 = estimate).
+        void set_mac_reference(double le_x_in, double mac_in);
+        // [gear] fdm_position false: PVP drives gear/gear-pos-norm towards the
+        // command over this many seconds (0 = the FDM's own kinematic does).
+        void set_gear_transit(double seconds);
+        // Settings > Joystick axes, once per frame from node_3d.gd (NAN = unbound axis).
+        void apply_joystick(double roll, double pitch, double yaw, double throttle, bool throttle_absolute, double brakes_axis, bool brakes_button);
         // Centre of gravity: {cg_x_in, cg_y_in, cg_z_in, weight_lbs, mac_ft, aero_rp_x_in, pct_mac}
         // pct_mac estimates the aerodynamic centre at 25 % MAC (LEMAC = rp - 0.25 * MAC).
         Dictionary get_cg_info() const;
@@ -215,6 +251,26 @@ namespace jsbgodot
         // physics tick and pushed into JSBSim's FGWinds (wind NED + MIL-F-8785C
         // turbulence); qnh_hpa goes to the atmosphere's sea-level pressure.
         void set_weather(const Array &layers, double qnh_hpa);
+        // [jsbsim] init_properties "_links" {dst: src}: copied src -> dst every
+        // physics step (the FlightGear property rules we do not run, e.g. the
+        // MD-80's APU starter / cutoff into the engine controls); "_pulse"
+        // {prop: seconds}: held at 1 for that much FDM time after a (re)start,
+        // then 0 (FlightGear's acconfig "autoconfig-running" window).
+        int get_engine_count() const;
+        void set_property_links(const Dictionary &links);
+        void set_init_pulses(const Dictionary &pulses);
+        // [jsbsim] pitch_trim_default (cfg): the pitch trim command of a fresh
+        // session (the MD-80 starts about 3 units nose-up like FlightGear's).
+        void set_default_pitch_trim(double trim);
+        double get_default_pitch_trim() const;
+        double get_pitch_trim() const;
+        // Run the FDM a number of steps at the nominal rate and put the vehicle
+        // state back to the initial conditions: the control actuators (a rate
+        // limited stabilizer) reach their commands while the aircraft stays put.
+        void settle_fcs(int steps);
+        void top_up_feed_tanks();
+        void mirror_engines_to_fg();
+        void apply_property_links_and_pulses(double delta);
         // Diagnostics: the sampled wind (north, east, down) in knots and the
         // turbulence level (0..3) at a geodetic altitude.
         Vector3 get_weather_wind_ned_kts(double alt_m) const;
@@ -259,6 +315,9 @@ namespace jsbgodot
             double wind_e_kts = 0.0;
             int turbulence = 0;
         };
+        Dictionary property_links; // dst -> src
+        Dictionary init_pulses;    // prop -> seconds left (<= 0: done)
+        bool links_applied_once = false;
         std::vector<WeatherLayer> weather_layers;  // sorted by base_m
         double weather_qnh_hpa = 1013.25;
         WeatherSample sample_weather(double alt_m) const;

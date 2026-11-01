@@ -11,6 +11,8 @@
 #include <godot_cpp/classes/audio_stream_ogg_vorbis.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/input.hpp>
+#include <godot_cpp/classes/json.hpp>
+#include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/classes/global_constants.hpp>
 #include <godot_cpp/classes/mesh.hpp>
@@ -22,6 +24,9 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include "aircraft_model_loader.h"
+#include "flight_hud.h"
+#include "settings_store.h"
+#include "aircraft_settings_panel.h"
 #include "jsbgodot.h"
 
 using namespace godot;
@@ -62,12 +67,16 @@ void AircraftRig::_bind_methods()
 	ClassDB::bind_method(D_METHOD("set_parking_brake", "on"), &AircraftRig::set_parking_brake);
 	ClassDB::bind_method(D_METHOD("get_fg_bridge"), &AircraftRig::get_fg_bridge);
 	ClassDB::bind_method(D_METHOD("get_fg_controls"), &AircraftRig::get_fg_controls);
+	ClassDB::bind_method(D_METHOD("get_fg_property_rules"), &AircraftRig::get_fg_property_rules);
 	ClassDB::bind_method(D_METHOD("get_fg_sounds"), &AircraftRig::get_fg_sounds);
 	ClassDB::bind_method(D_METHOD("get_fg_animator"), &AircraftRig::get_fg_animator);
 	ClassDB::bind_method(D_METHOD("get_aircraft_lights"), &AircraftRig::get_aircraft_lights);
 	ClassDB::bind_method(D_METHOD("setup_aircraft_lights"), &AircraftRig::setup_aircraft_lights);
 	ClassDB::bind_method(D_METHOD("setup_fg_animations"), &AircraftRig::setup_fg_animations);
 	ClassDB::bind_method(D_METHOD("setup_fg_sounds"), &AircraftRig::setup_fg_sounds);
+	ClassDB::bind_method(D_METHOD("set_livery", "livery_id"), &AircraftRig::set_livery);
+	ClassDB::bind_method(D_METHOD("get_livery"), &AircraftRig::get_livery);
+	ClassDB::bind_method(D_METHOD("get_liveries"), &AircraftRig::get_liveries);
 	ClassDB::bind_method(D_METHOD("_on_fg_control", "prop", "value"), &AircraftRig::_on_fg_control);
 
 	ClassDB::bind_method(D_METHOD("get_control_surfaces"), &AircraftRig::get_control_surfaces);
@@ -105,7 +114,7 @@ bool AircraftRig::load_config(const String &p_aircraft_id)
 {
 	aircraft_id = p_aircraft_id.is_empty() ? String("c172p") : p_aircraft_id;
 	const String cfg_path = AircraftConfig::resolve_path(aircraft_id);
-	cfg = AircraftConfig::load_from_file(cfg_path);
+	cfg = AircraftConfig::load_for_aircraft(aircraft_id); // [aircraft] base: the base's sections under the variant's
 	if (!cfg->is_loaded())
 	{
 		UtilityFunctions::print("Aircraft config not found (", cfg_path, ") - using built-in defaults");
@@ -210,6 +219,8 @@ void AircraftRig::apply_nose_steer_range(Object *p_jsb)
 bool AircraftRig::apply_selected_aircraft(const String &p_aircraft_id, Object *p_jsb)
 {
 	const String id = p_aircraft_id.is_empty() ? String("c172p") : p_aircraft_id;
+	// the previous flight's sounds must not carry into the next zoom-in
+	silence_sounds();
 	if (id != aircraft_id || cfg.is_null())
 	{
 		load_config(id);
@@ -224,6 +235,7 @@ bool AircraftRig::apply_selected_aircraft(const String &p_aircraft_id, Object *p
 	{
 		UtilityFunctions::print("Loading JSBSim model '", jsbsim_model, "' for aircraft '", aircraft_id, "'");
 		fdm->load_aircraft(aircraft_id, jsbsim_model);
+		apply_fdm_init_properties(fdm);
 	}
 	else if (is_vehicle())
 	{
@@ -320,7 +332,9 @@ void AircraftRig::apply_model_normals(Node *root)
 // cabin; the Dynamic_Switch_* subtree (re-rigged controls) is skipped too.
 void AircraftRig::flip_normals_recursive(Node *node, const String &prefix)
 {
-	if (node->get_name().begins_with("Dynamic_Switch_"))
+	// the FlightGear instruments built into the panel (fg_panel_build.py's
+	// Panel_Root) have correct normals; a model-wide flip must spare them
+	if (node->get_name().begins_with("Dynamic_Switch_") || node->get_name() == StringName("Panel_Root"))
 	{
 		return;
 	}
@@ -484,6 +498,21 @@ void AircraftRig::resolve_nodes(Object *p_jsb)
 	setup_aircraft_lights();
 	setup_fg_animations();
 	setup_fg_sounds();
+	setup_fg_property_rules();
+	if (fg_animator != nullptr)
+	{
+		PackedStringArray keys = fg_animator->property_names();
+		if (fg_sounds != nullptr)
+		{
+			keys.append_array(fg_sounds->property_names());
+		}
+		if (fg_rules.is_valid())
+		{
+			keys.append_array(fg_rules->input_names());
+		}
+		fg_bridge->set_mirror_pull_keys(keys);
+		fg_bridge->set_property_aliases(fg_animator->get_aliases());
+	}
 	emit_signal("nodes_resolved");
 	apply_hidden_nodes();
 }
@@ -586,6 +615,10 @@ void AircraftRig::resolve_levers(Object *p_jsb)
 	UtilityFunctions::print("Cockpit levers: mixture=", mixture != nullptr, " throttle=", throttle != nullptr,
 			" magneto=", magneto != nullptr, " flaps=", flap != nullptr);
 	CockpitControls *cc = cockpit_controls.ptr();
+	if (JSBGodot *fdm = Object::cast_to<JSBGodot>(p_jsb))
+	{
+		fdm->set_flap_detents(cc->get_flap_positions()); // the keys / joystick step the cfg detents
+	}
 	cc->register_levers(mixture, throttle, magneto, flap); // captures base transforms
 	cc->create_pick_bodies();
 	// degrees per magneto position about the key's local Z (sign = key sense)
@@ -744,10 +777,46 @@ void AircraftRig::apply_camera_config()
 		// Head look composes on top of this transform; the rig resets Camera1
 		// to its captured base every frame.
 		camera_rig->capture_cockpit_base();
+		camera_rig->set_cockpit_move_scale(cfg->get_float("model", "scale", 1.0));
+		Vector3 eye;
+		if (SettingsStore *st = settings_store())
+		{
+			const Variant v = st->get_setting("aircraft_" + aircraft_id + "_eye_offset");
+			if (v.get_type() == Variant::VECTOR3)
+			{
+				eye = v;
+			}
+		}
+		camera_rig->set_eye_offset(eye);
 		camera_rig->set_orbit_distance_min(cfg->get_float("camera", "orbit_distance_min", 1.5));
 		camera_rig->set_orbit_distance_max(cfg->get_float("camera", "orbit_distance_max", 50.0));
 		camera_rig->set_orbit_distance(cfg->get_float("camera", "orbit_distance", 6.0));
 	}
+}
+
+SettingsStore *AircraftRig::settings_store() const
+{
+	return host != nullptr ? Object::cast_to<SettingsStore>(host->get("_settings")) : nullptr;
+}
+
+void AircraftRig::save_eye_offset()
+{
+	SettingsStore *st = settings_store();
+	if (st == nullptr || camera_rig == nullptr)
+	{
+		return;
+	}
+	const Vector3 eye = camera_rig->get_eye_offset();
+	const String key = "aircraft_" + aircraft_id + "_eye_offset";
+	if (eye.length_squared() < 1e-12)
+	{
+		st->get_settings().erase(key); // back at the cfg default: no entry (save() drops the stale key)
+	}
+	else
+	{
+		st->set_setting(key, eye);
+	}
+	st->save();
 }
 
 // ── Engine sound ────────────────────────────────────────────────────────────
@@ -793,10 +862,19 @@ void AircraftRig::update(Object *p_jsb, double delta, double user_volume_pct)
 		return;
 	}
 	control_surfaces->update(p_jsb, delta);
+	// the engine loop is driven from update_systems() (it runs during the
+	// intro zoom too, with the same sounds_active gate as the FlightGear set)
+}
+
+void AircraftRig::silence_sounds()
+{
 	if (engine_audio != nullptr)
 	{
-		// an aircraft with a FlightGear sound set plays its own engines
-		engine_sound->update(control_surfaces->get_visual_rpm(), has_fg_sounds() ? 0.0 : user_volume_pct);
+		engine_audio->set_volume_db(-80.0);
+	}
+	if (fg_sounds != nullptr)
+	{
+		fg_sounds->silence();
 	}
 }
 
@@ -804,6 +882,7 @@ void AircraftRig::update(Object *p_jsb, double delta, double user_volume_pct)
 
 Ref<FGBridge> AircraftRig::get_fg_bridge() const { return fg_bridge; }
 Ref<FGControls> AircraftRig::get_fg_controls() const { return fg_controls; }
+Ref<FGPropertyRules> AircraftRig::get_fg_property_rules() const { return fg_rules; }
 FGSounds *AircraftRig::get_fg_sounds() const { return fg_sounds; }
 FGAnimator *AircraftRig::get_fg_animator() const { return fg_animator; }
 AircraftLights *AircraftRig::get_aircraft_lights() const { return aircraft_lights; }
@@ -830,6 +909,14 @@ void AircraftRig::setup_aircraft_lights()
 		host->add_child(aircraft_lights);
 	}
 	aircraft_lights->setup(get_model_root(), cfg, ac_node);
+	// lights driven by the aircraft's own properties ([lights] <kind>_props, FDM
+	// paths; the MD-80's exterior-light levels and cockpit flood knobs) and
+	// the switch properties the L key sets (landing_switch_props)
+	landing_props = cfg->get_string_array("lights", "landing_props", Array());
+	flood_props = cfg->get_string_array("lights", "flood_props", Array());
+	landing_switch_props = cfg->get_string_array("lights", "landing_switch_props", Array());
+	landing_switch_on = cfg->get_float("lights", "landing_switch_on", 1.0);
+	landing_switch_off = cfg->get_float("lights", "landing_switch_off", 0.0);
 	if (aircraft_lights->fixture_count() > 0)
 	{
 		UtilityFunctions::print("Aircraft lights: ", aircraft_lights->fixture_count(), " fixtures (nav ",
@@ -863,13 +950,28 @@ void AircraftRig::setup_fg_animations()
 	}
 	const String path = AircraftConfig::resolve_aircraft_file(aircraft_id, rel);
 	Node *model_root = get_model_root();
+	// texture-prop files (liveries, gauge faces): [model] textures_dir, the base
+	// aircraft's folder for a variant without its own
+	fg_animator->set_texture_root(AircraftConfig::resolve_aircraft_file(aircraft_id, cfg->get_string("model", "textures_dir", "model/liveries")));
 	if (fg_animator->load(path, model_root))
 	{
 		UtilityFunctions::print("FlightGear animations loaded for '", aircraft_id, "': ", fg_animator->stats());
 		fg_controls->set_state(Dictionary());
 		fg_seeded = false;
 		fg_controls->set_on_change(Callable(this, "_on_fg_control"));
+		// cfg [model] nasal_shims: the aircraft's Nasal call -> property action table.
+		// Loaded before setup(): setup keeps only records with a binding it can
+		// run, and a shim is what makes a Nasal binding runnable. An empty path
+		// clears the previous aircraft's shims.
+		fg_controls->set_knob_actions(cfg->get_string_array("model", "knob_actions", Array()));
+		const String shims_rel = cfg->get_string("model", "nasal_shims", "");
+		const int n = fg_controls->load_shims(shims_rel.is_empty() ? String() : AircraftConfig::resolve_aircraft_file(aircraft_id, shims_rel));
+		if (!shims_rel.is_empty())
+		{
+			UtilityFunctions::print("Nasal shims for '", aircraft_id, "': ", n);
+		}
 		UtilityFunctions::print("FlightGear cockpit controls: ", fg_controls->setup(path, model_root, fg_animator), " clickable parts");
+		setup_liveries();
 	}
 	else
 	{
@@ -900,7 +1002,149 @@ void AircraftRig::setup_fg_sounds()
 	}
 	const String path = AircraftConfig::resolve_aircraft_file(aircraft_id, rel);
 	const int n = fg_sounds->load(path, path.get_base_dir());
+	// [sound] aliases "a = b, ...": a reads b's value when nothing writes a
+	Dictionary aliases;
+	const Array al = cfg->get_string_array("sound", "aliases", Array());
+	for (int i = 0; i < al.size(); i++)
+	{
+		const PackedStringArray kv = String(al[i]).split("=");
+		if (kv.size() == 2)
+		{
+			aliases[kv[0].strip_edges()] = kv[1].strip_edges();
+		}
+	}
+	fg_sounds->set_aliases(aliases);
 	UtilityFunctions::print("FlightGear sounds for '", aircraft_id, "': ", n, " loaded, ", fg_sounds->get_skipped().size(), " without a file");
+}
+
+// cfg [jsbsim] property_rules "a.xml, b.xml": FlightGear property-rule files
+// (the <autopilot><path> entries of the -set file) run by FGPropertyRules on
+// the bridge dictionary every frame, after collect() and before the animator
+// and the sounds read it; outputs the FDM has a node for go into the FDM.
+void AircraftRig::setup_liveries()
+{
+	livery_defaults.clear();
+	livery_list.clear();
+	livery_props = PackedStringArray();
+	livery_id = String();
+	if (cfg.is_null() || cfg->get_string("liveries", "catalog", "").is_empty())
+	{
+		return;
+	}
+	const Dictionary catalog = AircraftSettingsPanel::livery_catalog(cfg, aircraft_id);
+	livery_defaults = catalog.get("defaults", Dictionary());
+	livery_list = catalog.get("liveries", Array());
+	for (int i = 0; i < livery_list.size(); i++)
+	{
+		const Dictionary tex = Dictionary(livery_list[i]).get("textures", Dictionary());
+		const Array keys = tex.keys();
+		for (int k = 0; k < keys.size(); k++)
+		{
+			if (!livery_props.has(keys[k]))
+			{
+				livery_props.push_back(keys[k]);
+			}
+		}
+	}
+	SettingsStore *store = settings_store();
+	const String key = AircraftSettingsPanel::livery_key(aircraft_id);
+	if (store != nullptr && store->has_setting(key))
+	{
+		livery_id = store->get_setting(key);
+	}
+	apply_livery_props();
+	UtilityFunctions::print("Liveries for '", aircraft_id, "': ", livery_list.size(), " in the catalog, ", livery_defaults.size(),
+			" variant textures, selected '", livery_id.is_empty() ? String("as built") : livery_id, "'");
+}
+
+// The texture properties as the state the bridge publishes every frame: the
+// variant's defaults, then the chosen livery's files; a property no livery
+// sets any more goes back to "" (FGAnimator restores the glb's texture).
+void AircraftRig::apply_livery_props()
+{
+	if (fg_controls.is_null() || fg_animator == nullptr)
+	{
+		return;
+	}
+	Dictionary vals;
+	Array keys = livery_defaults.keys();
+	for (int i = 0; i < keys.size(); i++)
+	{
+		vals[keys[i]] = livery_defaults[keys[i]];
+	}
+	for (int i = 0; i < livery_props.size(); i++)
+	{
+		if (!vals.has(livery_props[i]))
+		{
+			vals[livery_props[i]] = String();
+		}
+	}
+	for (int i = 0; i < livery_list.size(); i++)
+	{
+		const Dictionary l = livery_list[i];
+		if (!livery_id.is_empty() && String(l.get("id", "")) == livery_id)
+		{
+			const Dictionary tex = l.get("textures", Dictionary());
+			const Array tk = tex.keys();
+			for (int k = 0; k < tk.size(); k++)
+			{
+				vals[tk[k]] = tex[tk[k]];
+			}
+			break;
+		}
+	}
+	if (vals.is_empty())
+	{
+		return;
+	}
+	Dictionary state = fg_controls->get_state();
+	keys = vals.keys();
+	for (int i = 0; i < keys.size(); i++)
+	{
+		state[keys[i]] = vals[keys[i]];
+	}
+	fg_controls->set_state(state);
+	fg_animator->set_properties(vals);
+}
+
+void AircraftRig::set_livery(const String &p_livery_id)
+{
+	livery_id = p_livery_id;
+	apply_livery_props();
+}
+
+String AircraftRig::get_livery() const { return livery_id; }
+Array AircraftRig::get_liveries() const { return livery_list; }
+
+void AircraftRig::setup_fg_property_rules()
+{
+	if (fg_rules.is_null())
+	{
+		fg_rules.instantiate();
+	}
+	fg_rules->clear();
+	rule_fdm_nodes.clear();
+	const Array files = cfg.is_valid() ? cfg->get_string_array("jsbsim", "property_rules", Array()) : Array();
+	for (int i = 0; i < files.size(); i++)
+	{
+		const String rel = String(files[i]).strip_edges();
+		if (rel.is_empty())
+		{
+			continue;
+		}
+		const String path = AircraftConfig::resolve_aircraft_file(aircraft_id, rel);
+		const int n = fg_rules->load(path);
+		if (n < 0)
+		{
+			UtilityFunctions::push_warning("FlightGear property rules not loaded from ", path);
+			continue;
+		}
+		UtilityFunctions::print("FlightGear property rules for '", aircraft_id, "': ", n, " components from ", rel);
+	}
+	if (!fg_rules->unsupported().is_empty())
+	{
+		UtilityFunctions::print("FlightGear property rules: components not run: ", fg_rules->unsupported());
+	}
 }
 
 void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *rendering_cam, Camera3D *pick_camera, double night,
@@ -912,6 +1156,24 @@ void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *renderin
 		return;
 	}
 	last_jsb = p_jsb;
+	// Basic engine loop (aircraft without a FlightGear sound set): follows the
+	// visual propeller rpm while sounds are active, silent otherwise and for
+	// aircraft that play their own engines. Loading / welcome: everything silent.
+	if (engine_audio != nullptr)
+	{
+		if (sounds_active && !has_fg_sounds())
+		{
+			engine_sound->update(control_surfaces->get_visual_rpm(), user_volume_pct);
+		}
+		else
+		{
+			engine_audio->set_volume_db(-80.0);
+		}
+	}
+	if (!sounds_active && has_fg_sounds())
+	{
+		fg_sounds->silence();
+	}
 	const bool gear_down = !gear_retractable || fdm->get_gear_pos() > 0.05;
 	const bool airborne = !fdm->get_weight_on_wheels();
 	if (aircraft_lights != nullptr && aircraft_lights->fixture_count() > 0)
@@ -922,7 +1184,22 @@ void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *renderin
 	}
 	if (fg_animator == nullptr || fg_animator->animation_count() == 0)
 	{
+		push_nav_text(String());
 		return;
+	}
+	// fixture levels from the FDM (exterior-light extension / dimming, flood knobs)
+	if (aircraft_lights != nullptr && fdm != nullptr)
+	{
+		for (int i = 0; i < landing_props.size(); i++)
+		{
+			const String pr = String(landing_props[i]).strip_edges();
+			aircraft_lights->set_fixture_level("landing", i, fdm->has_property(pr) ? fdm->get_property(pr) : 0.0);
+		}
+		for (int i = 0; i < flood_props.size(); i++)
+		{
+			const String pr = String(flood_props[i]).strip_edges();
+			aircraft_lights->set_fixture_level("flood", i, fdm->has_property(pr) ? fdm->get_property(pr) : 0.0);
+		}
 	}
 	const bool landing_on = aircraft_lights != nullptr && aircraft_lights->landing_lights_on() && gear_down;
 	fg_bridge->set_landing_light(landing_on);
@@ -930,12 +1207,36 @@ void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *renderin
 	// "internal" follows the camera that renders (the intro zoom and the
 	// external cameras are outside even while the mode says cockpit)
 	fg_bridge->set_cockpit_view(rendering_cam != nullptr && rendering_cam == cockpit_camera);
+	if (camera_rig != nullptr && camera_rig->take_eye_offset_settled())
+	{
+		save_eye_offset();
+	}
 	fg_bridge->set_sim_time_seconds(sim_time_seconds);
 	sync_parking_brake(p_jsb);
+	fg_controls->tick(delta);
 	fg_bridge->set_control_state(fg_controls->get_state());
 	fg_bridge->advance_canopy(delta);
-	const Dictionary props = fg_bridge->collect(p_jsb, airborne, night);
+	fg_bridge->set_frame_delta(delta);
+	Dictionary props = fg_bridge->collect(p_jsb, airborne, night);
+	if (fg_rules.is_valid() && fg_rules->get_component_count() > 0)
+	{
+		fg_rules->apply(props, delta);
+		const PackedStringArray outs = fg_rules->output_names();
+		for (int i = 0; i < outs.size(); i++)
+		{
+			const String &k = outs[i];
+			if (!rule_fdm_nodes.has(k))
+			{
+				rule_fdm_nodes[k] = fdm->has_property(String("/") + k);
+			}
+			if ((bool)rule_fdm_nodes[k] && props.has(k))
+			{
+				fdm->set_property(String("/") + k, (double)props[k]);
+			}
+		}
+	}
 	fg_animator->set_properties(props);
+	push_nav_text(fg_bridge->nav_status_text());
 	if (aircraft_lights != nullptr)
 	{
 		aircraft_lights->set_powered(fg_bridge->get_dc_volts() > 0.0);
@@ -955,7 +1256,24 @@ void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *renderin
 		const PackedStringArray unknown = fg_animator->unknown_properties();
 		for (int i = 0; i < unknown.size(); i++)
 		{
-			state[unknown[i]] = FGBridge::switch_default(unknown[i]);
+			state[unknown[i]] = fg_bridge->default_for(unknown[i]);
+		}
+		// properties only the clickable controls act on (a switch no
+		// animation reads): start from the aircraft's init list or the FDM
+		const PackedStringArray bound = fg_controls->binding_properties();
+		for (int i = 0; i < bound.size(); i++)
+		{
+			// only properties nothing else provides: a value the bridge or
+			// the FDM mirror already publishes (throttle, flap lever) must
+			// not be frozen into the switch state
+			if (!state.has(bound[i]) && fg_animator->get_property(bound[i]).get_type() == Variant::NIL)
+			{
+				const Variant v = fg_bridge->initial_value(bound[i], p_jsb);
+				if (v.get_type() != Variant::NIL)
+				{
+					state[bound[i]] = v;
+				}
+			}
 		}
 		const Dictionary defaults = FGBridge::switch_defaults();
 		const Array keys = defaults.keys();
@@ -975,6 +1293,99 @@ void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *renderin
 	{
 		const String over = fg_controls->hover_name(pick_camera, host->get_viewport()->get_mouse_position());
 		Input::get_singleton()->set_default_cursor_shape(over.is_empty() ? Input::CURSOR_ARROW : Input::CURSOR_POINTING_HAND);
+	}
+}
+
+// cfg [jsbsim] init_properties: a JSON file {"property": value, ...} of FDM
+// property values set after the model loads and on every Fly! — the cockpit
+// switch state an aircraft whose systems live in JSBSim starts with (the
+// MD-80's "after start" panel). [jsbsim] fg_property_mirror turns on the
+// bridge's two-way property mirror; [electrical] power_property names the
+// bus that powers the panel.
+void AircraftRig::apply_fdm_init_properties(JSBGodot *fdm)
+{
+	if (cfg.is_null() || fdm == nullptr)
+	{
+		return;
+	}
+	fg_bridge->set_fdm_mirror(cfg->get_bool("jsbsim", "fg_property_mirror", false));
+	fg_bridge->set_power_property(cfg->get_string("electrical", "power_property", ""));
+	fg_bridge->set_power_threshold(cfg->get_float("electrical", "power_threshold", 24.0));
+	fg_bridge->set_nose_steer_max_deg(cfg->get_float("jsbsim", "nose_steer_max_deg", 20.0));
+	fdm->set_default_pitch_trim(cfg->get_float("jsbsim", "pitch_trim_default", 0.0));
+	fdm->set_mac_reference(cfg->get_float("performance", "mac_le_x_in", 0.0), cfg->get_float("performance", "mac_in", 0.0));
+	// an FDM without a gear kinematic (the MD-80's gear ran in Nasal): PVP moves gear-pos-norm
+	fdm->set_gear_transit(cfg->get_bool("gear", "fdm_position", true) ? 0.0 : cfg->get_float("gear", "retract_seconds", 10.0));
+	fg_bridge->set_surface_norm_per_deg(cfg->get_float("animation", "elevator_pos_norm_per_deg", 0.0), cfg->get_float("animation", "rudder_pos_norm_per_deg", 0.0));
+	fg_bridge->reset_mirror_cache();
+	// per-aircraft control override (Settings > Aircraft > Controls; cfg [controls]
+	// throttle_drives gives the default): a glider's throttle inputs work the airbrakes
+	fdm->set_throttle_drives_airbrakes(AircraftSettingsPanel::throttle_drives_airbrakes(settings_store(), cfg, aircraft_id));
+	// readout units ([instruments] units "metric": km/h, m, m/s)
+	if (FlightHud *hud = Object::cast_to<FlightHud>(host != nullptr ? host->get("_hud") : Variant()))
+	{
+		hud->set_metric(cfg->get_string("instruments", "units", "aviation").to_lower() == "metric");
+	}
+	// one JSON file, or a comma-separated list merged in order (a variant
+	// aircraft adds its few values to the base aircraft's list)
+	const Array rels = cfg->get_string_array("jsbsim", "init_properties", Array());
+	if (rels.is_empty())
+	{
+		return;
+	}
+	Dictionary d;
+	for (int r = 0; r < rels.size(); r++)
+	{
+		const String path = AircraftConfig::resolve_aircraft_file(aircraft_id, rels[r]);
+		Ref<FileAccess> f = FileAccess::open(path, FileAccess::READ);
+		if (f.is_null())
+		{
+			UtilityFunctions::print("WARNING: init_properties not found at ", path);
+			continue;
+		}
+		const Variant data = JSON::parse_string(f->get_as_text());
+		if (data.get_type() != Variant::DICTIONARY)
+		{
+			UtilityFunctions::print("WARNING: init_properties is not a JSON object: ", path);
+			continue;
+		}
+		d.merge(Dictionary(data), true);
+	}
+	fg_bridge->set_init_defaults(d);
+	// "_links" {dst: src} and "_pulse" {prop: seconds} are the FDM's per-step
+	// helpers (JSBGodot::apply_property_links_and_pulses); cleared for an
+	// aircraft that has none
+	const Variant links = d.get("_links", Variant());
+	fdm->set_property_links(links.get_type() == Variant::DICTIONARY ? Dictionary(links) : Dictionary());
+	const Variant pulses = d.get("_pulse", Variant());
+	const Array keys = d.keys();
+	int n = 0;
+	for (int i = 0; i < keys.size(); i++)
+	{
+		const Variant v = d[keys[i]];
+		if (v.get_type() == Variant::FLOAT || v.get_type() == Variant::INT || v.get_type() == Variant::BOOL)
+		{
+			// a leading slash is an absolute (FlightGear-side) path; JSBSim's own live under fdm/jsbsim
+			fdm->set_property(String(keys[i]), (double)v);
+			n++;
+		}
+	}
+	// the pulses start after the plain values (they override some of them for a while)
+	fdm->set_init_pulses(pulses.get_type() == Variant::DICTIONARY ? Dictionary(pulses) : Dictionary());
+	UtilityFunctions::print("FDM init properties for '", aircraft_id, "': ", n, " set from ", String(", ").join(PackedStringArray(rels)));
+}
+
+// The HUD's radio navigation line (host $Control HUD, FlightHud).
+void AircraftRig::push_nav_text(const String &text)
+{
+	if (host == nullptr)
+	{
+		return;
+	}
+	FlightHud *hud = Object::cast_to<FlightHud>(host->get("_hud"));
+	if (hud != nullptr)
+	{
+		hud->set_nav_text(text);
 	}
 }
 
@@ -1008,7 +1419,14 @@ void AircraftRig::poll_keys(Object *p_jsb)
 			if (fdm != nullptr)
 			{
 				speedbrake_out = !speedbrake_out;
-				fdm->set_property("fcs/speedbrake-cmd-norm", speedbrake_out ? 1.0 : 0.0);
+				if (fdm->get_throttle_drives_airbrakes())
+				{
+					fdm->set_input_throttle(speedbrake_out ? 0.0f : 1.0f); // the lever the throttle inputs work
+				}
+				else
+				{
+					fdm->set_property("fcs/speedbrake-cmd-norm", speedbrake_out ? 1.0 : 0.0);
+				}
 				UtilityFunctions::print("Speed brakes: ", speedbrake_out ? "OUT" : "IN");
 			}
 		}
@@ -1027,6 +1445,15 @@ void AircraftRig::poll_keys(Object *p_jsb)
 			{
 				const bool on = aircraft_lights->toggle_landing_lights();
 				UtilityFunctions::print("Landing lights: ", on ? "ON" : "OFF");
+				if (fg_controls->get_count() > 0 && landing_switch_props.size() > 0)
+				{
+					// the cockpit switches (the FDM's systems light the fixtures from them)
+					Dictionary st = fg_controls->get_state();
+					for (int i = 0; i < landing_switch_props.size(); i++)
+					{
+						st[String(landing_switch_props[i]).strip_edges()] = on ? landing_switch_on : landing_switch_off;
+					}
+				}
 				if (fg_controls->get_count() > 0)
 				{
 					Dictionary state = fg_controls->get_state();
@@ -1093,6 +1520,33 @@ void AircraftRig::_on_fg_control(const String &prop, const Variant &value)
 			UtilityFunctions::print("Parking brake: ", on ? "SET" : "RELEASED");
 		}
 	}
+	else if (prop == "controls/engines/engine/throttle")
+	{
+		// a throttle lever dragged with the mouse (the glider's airbrake lever
+		// in FlightGear: 1 = brakes in, 0 = fully out)
+		if (fdm != nullptr)
+		{
+			fdm->set_input_throttle((float)Math::clamp(v, 0.0, 1.0));
+		}
+	}
+	else if (prop == "controls/flight/spoilers")
+	{
+		// the airbrake lever (FlightGear property-adjust 0..1): the FDM's speedbrake
+		// command, through the throttle input when that drives the airbrakes
+		if (fdm != nullptr)
+		{
+			const double sb = Math::clamp(v, 0.0, 1.0);
+			if (fdm->get_throttle_drives_airbrakes())
+			{
+				fdm->set_input_throttle(1.0f - (float)sb);
+			}
+			else
+			{
+				fdm->set_property("fcs/speedbrake-cmd-norm", sb);
+			}
+			speedbrake_out = sb > 0.5;
+		}
+	}
 	else if (prop == "sim/model/A-10/controls/lighting/land-lights-switch")
 	{
 		if (aircraft_lights != nullptr)
@@ -1135,6 +1589,19 @@ void AircraftRig::_on_fg_control(const String &prop, const Variant &value)
 			UtilityFunctions::print("Landing lights: ", on ? "ON" : "OFF");
 		}
 	}
+	else if (landing_switch_props.has(prop))
+	{
+		// one of the aircraft's landing light switches: lit when any is at its on value
+		bool any = false;
+		for (int i = 0; i < landing_switch_props.size(); i++)
+		{
+			any = any || fg_controls->value_of(String(landing_switch_props[i]).strip_edges()) >= landing_switch_on - 1e-6;
+		}
+		if (aircraft_lights != nullptr)
+		{
+			aircraft_lights->set_landing_lights(any);
+		}
+	}
 	else if (prop == "controls/lighting/taxi-light")
 	{
 		if (aircraft_lights != nullptr)
@@ -1145,6 +1612,37 @@ void AircraftRig::_on_fg_control(const String &prop, const Variant &value)
 	else if (prop == "sim/model/A-10/controls/canopy/canopy-switch")
 	{
 		fg_bridge->set_canopy_target(v);
+	}
+	else if (prop == "provpilot/gear-cmd")
+	{
+		Dictionary state = fg_controls->get_state();
+		state.erase(prop);
+		if (fdm != nullptr && gear_retractable)
+		{
+			cockpit_controls->set_gear_down(on);
+			control_surfaces->set_gear_down(on);
+			fdm->set_gear_down(on);
+			UtilityFunctions::print("Gear (handle): ", on ? "DOWN" : "UP");
+		}
+	}
+	else if (prop == "provpilot/flaps-step")
+	{
+		Dictionary state = fg_controls->get_state();
+		state.erase(prop);
+		if (fdm != nullptr && cockpit_controls.is_valid())
+		{
+			cockpit_controls->set_flap_position(cockpit_controls->get_flap_position() + (v >= 0.0 ? 1 : -1), fdm);
+		}
+	}
+	else if (prop == "provpilot/speedbrake")
+	{
+		Dictionary state = fg_controls->get_state();
+		state.erase(prop);
+		if (fdm != nullptr)
+		{
+			speedbrake_out = on;
+			fdm->set_property("fcs/speedbrake-cmd-norm", on ? 1.0 : 0.0);
+		}
 	}
 	else if (prop == "provpilot/gear-toggle")
 	{

@@ -1,0 +1,1971 @@
+{
+ "source": "FlightGear Aircraft/MD-80/Sounds/sound.xml",
+ "sounds": [
+  {
+   "tag": "sb",
+   "name": "sb",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/Cockpit/seatbelt.wav",
+   "raw": {
+    "mode": "once",
+    "name": "sb",
+    "path": "Aircraft/MD-80/Sounds/Cockpit/seatbelt.wav",
+    "condition": {
+     "and": {
+      "greater-than-equals": {
+       "property": "/systems/electrical/outputs/efis",
+       "value": "24"
+      },
+      "property": "/sim/sound/seatbelt-sign"
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/internal-custom"
+    }
+   },
+   "file": "Cockpit_seatbelt.wav"
+  },
+  {
+   "tag": "ns",
+   "name": "ns",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/Cockpit/nosmoko.wav",
+   "raw": {
+    "mode": "once",
+    "name": "ns",
+    "path": "Aircraft/MD-80/Sounds/Cockpit/nosmoko.wav",
+    "condition": {
+     "and": {
+      "greater-than-equals": {
+       "property": "/systems/electrical/outputs/efis",
+       "value": "24"
+      },
+      "property": "/sim/sound/no-smoking-sign"
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/internal-custom"
+    }
+   },
+   "file": "Cockpit_nosmoko.wav"
+  },
+  {
+   "tag": "switch",
+   "name": "Button1",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/Cockpit/button.wav",
+   "raw": {
+    "name": "Button1",
+    "mode": "once",
+    "path": "Aircraft/MD-80/Sounds/Cockpit/button.wav",
+    "condition": {
+     "property": "/sim/sound/btn1"
+    }
+   },
+   "file": "Cockpit_button.wav"
+  },
+  {
+   "tag": "switch",
+   "name": "Button2",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/Cockpit/button2.wav",
+   "raw": {
+    "name": "Button2",
+    "mode": "once",
+    "path": "Aircraft/MD-80/Sounds/Cockpit/button2.wav",
+    "condition": {
+     "property": "/sim/sound/btn2"
+    }
+   },
+   "file": "Cockpit_button2.wav"
+  },
+  {
+   "tag": "switch",
+   "name": "Button3",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/Cockpit/button3.wav",
+   "raw": {
+    "name": "Button3",
+    "mode": "once",
+    "path": "Aircraft/MD-80/Sounds/Cockpit/button3.wav",
+    "condition": {
+     "property": "/sim/sound/btn3"
+    }
+   },
+   "file": "Cockpit_button3.wav"
+  },
+  {
+   "tag": "switch",
+   "name": "Knob",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/Cockpit/knob.wav",
+   "raw": {
+    "name": "Knob",
+    "mode": "once",
+    "path": "Aircraft/MD-80/Sounds/Cockpit/knob.wav",
+    "condition": {
+     "property": "/sim/sound/knb1"
+    }
+   },
+   "file": "Cockpit_knob.wav"
+  },
+  {
+   "tag": "switch",
+   "name": "Switch",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/Cockpit/switch.wav",
+   "raw": {
+    "name": "Switch",
+    "mode": "once",
+    "path": "Aircraft/MD-80/Sounds/Cockpit/switch.wav",
+    "condition": {
+     "property": "/sim/sound/switch1"
+    }
+   },
+   "file": "Cockpit_switch.wav"
+  },
+  {
+   "tag": "wow",
+   "name": "wow0",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/SASA/Touch-Nose.wav",
+   "raw": {
+    "mode": "once",
+    "name": "wow0",
+    "path": "Aircraft/MD-80/Sounds/SASA/Touch-Nose.wav",
+    "condition": {
+     "property": "gear/gear[0]/wow"
+    },
+    "volume": {
+     "property": "/sim/sound/internal-custom"
+    }
+   },
+   "file": "SASA_Touch-Nose.wav"
+  },
+  {
+   "tag": "wow",
+   "name": "wow1",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/SASA/Touch-Main.wav",
+   "raw": {
+    "mode": "once",
+    "name": "wow1",
+    "path": "Aircraft/MD-80/Sounds/SASA/Touch-Main.wav",
+    "condition": {
+     "property": "gear/gear[1]/wow"
+    },
+    "volume": {
+     "property": "/sim/sound/internal-custom"
+    }
+   },
+   "file": "SASA_Touch-Main.wav"
+  },
+  {
+   "tag": "wow",
+   "name": "wow2",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/SASA/Touch-Main.wav",
+   "raw": {
+    "mode": "once",
+    "name": "wow2",
+    "path": "Aircraft/MD-80/Sounds/SASA/Touch-Main.wav",
+    "condition": {
+     "property": "gear/gear[2]/wow"
+    },
+    "volume": {
+     "property": "/sim/sound/internal-custom"
+    }
+   },
+   "file": "SASA_Touch-Main.wav"
+  },
+  {
+   "tag": "misc",
+   "name": "Roll",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/ground-roll.wav",
+   "raw": {
+    "mode": "looped",
+    "name": "Roll",
+    "path": "Aircraft/MD-80/Sounds/SASA/ground-roll.wav",
+    "condition": {
+     "and": {
+      "property": [
+       "gear/gear[0]/wow",
+       "/sim/sound/internal-custom"
+      ]
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/other/roll",
+     "factor": "0.7"
+    }
+   },
+   "file": "SASA_ground-roll.wav"
+  },
+  {
+   "tag": "misc",
+   "name": "Roll",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/ground-roll.wav",
+   "raw": {
+    "mode": "looped",
+    "name": "Roll",
+    "path": "Aircraft/MD-80/Sounds/SASA/ground-roll.wav",
+    "condition": {
+     "and": {
+      "property": [
+       "gear/gear[1]/wow",
+       "/sim/sound/internal-custom"
+      ]
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/other/roll",
+     "factor": "0.7"
+    }
+   },
+   "file": "SASA_ground-roll.wav"
+  },
+  {
+   "tag": "misc",
+   "name": "Roll",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/ground-roll.wav",
+   "raw": {
+    "mode": "looped",
+    "name": "Roll",
+    "path": "Aircraft/MD-80/Sounds/SASA/ground-roll.wav",
+    "condition": {
+     "and": {
+      "property": [
+       "gear/gear[2]/wow",
+       "/sim/sound/internal-custom"
+      ]
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/other/roll",
+     "factor": "0.7"
+    }
+   },
+   "file": "SASA_ground-roll.wav"
+  },
+  {
+   "tag": "switch",
+   "name": "Flaps Click",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/SASA/flaps-click.wav",
+   "raw": {
+    "name": "Flaps Click",
+    "mode": "once",
+    "path": "Aircraft/MD-80/Sounds/SASA/flaps-click.wav",
+    "condition": {
+     "property": "/sim/sound/flaps-click"
+    }
+   },
+   "file": "SASA_flaps-click.wav"
+  },
+  {
+   "tag": "switch",
+   "name": "Speedbrake Arm Click",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/SASA/flaps-click.wav",
+   "raw": {
+    "name": "Speedbrake Arm Click",
+    "mode": "once",
+    "path": "Aircraft/MD-80/Sounds/SASA/flaps-click.wav",
+    "condition": {
+     "property": "/sim/sound/speedbrake-arm-click"
+    }
+   },
+   "file": "SASA_flaps-click.wav"
+  },
+  {
+   "tag": "switch",
+   "name": "Gear",
+   "mode": "in-transit",
+   "path": "Aircraft/MD-80/Sounds/SASA/gear.wav",
+   "raw": {
+    "name": "Gear",
+    "mode": "in-transit",
+    "path": "Aircraft/MD-80/Sounds/SASA/gear.wav",
+    "property": "/gear/gear[0]/position-norm",
+    "volume": {
+     "property": "/sim/sound/internal-custom"
+    }
+   },
+   "file": "SASA_gear.wav"
+  },
+  {
+   "tag": "MDAMB",
+   "name": "MD PACKS",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/Cockpit/packs.wav",
+   "raw": {
+    "name": "MD PACKS",
+    "mode": "looped",
+    "path": "Aircraft/MD-80/Sounds/Cockpit/packs.wav",
+    "condition": {
+     "property": "/sim/sound/internal-custom"
+    },
+    "volume": {
+     "property": "/sim/sound/packs"
+    }
+   },
+   "file": "Cockpit_packs.wav"
+  },
+  {
+   "tag": "MDAMB",
+   "name": "MD AVONICS FAN",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/Cockpit/fans.wav",
+   "raw": {
+    "name": "MD AVONICS FAN",
+    "path": "Aircraft/MD-80/Sounds/Cockpit/fans.wav",
+    "mode": "looped",
+    "condition": {
+     "property": "/sim/sound/internal-custom"
+    },
+    "volume": {
+     "property": "/sim/sound/avionics-fan"
+    },
+    "pitch": {
+     "property": "/sim/sound/avionics-fanp"
+    }
+   },
+   "file": "Cockpit_fans.wav"
+  },
+  {
+   "tag": "MDAMB",
+   "name": "MD WIND C",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/wind-cockpit.wav",
+   "raw": {
+    "name": "MD WIND C",
+    "path": "Aircraft/MD-80/Sounds/SASA/wind-cockpit.wav",
+    "mode": "looped",
+    "condition": {
+     "property": "/sim/sound/internal-custom"
+    },
+    "volume": {
+     "property": "/sim/sound/wind"
+    },
+    "pitch": {
+     "property": "/sim/sound/wind-p"
+    }
+   },
+   "file": "SASA_wind-cockpit.wav"
+  },
+  {
+   "tag": "MDB_WHN",
+   "name": "MDA WHN 1",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/idle.wav",
+   "raw": {
+    "name": "MDA WHN 1",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/idle.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDA_WHN_1",
+     "factor": "0.9"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDA_WHN_1"
+    },
+    "position": {
+     "x": "10",
+     "y": "2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_idle.wav"
+  },
+  {
+   "tag": "MDA_WHN",
+   "name": "MDA WHN 2",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/spool.wav",
+   "raw": {
+    "name": "MDA WHN 2",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/spool.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDA_WHN_2",
+     "factor": "0.9"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDA_WHN_2"
+    },
+    "position": {
+     "x": "10",
+     "y": "2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_spool.wav"
+  },
+  {
+   "tag": "MDA_WHN",
+   "name": "MDA WHN 3",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/whine.wav",
+   "raw": {
+    "name": "MDA WHN 3",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/whine.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDA_WHN_3",
+     "factor": "0.9"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDA_WHN_3"
+    },
+    "position": {
+     "x": "10",
+     "y": "2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_whine.wav"
+  },
+  {
+   "tag": "MDA_WHN",
+   "name": "MDA Howl",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/howl.wav",
+   "raw": {
+    "name": "MDA Howl",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/howl.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDA_howl",
+     "factor": "0.4"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDA_howl"
+    },
+    "position": {
+     "x": "10",
+     "y": "2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_howl.wav"
+  },
+  {
+   "tag": "MDA_WHN",
+   "name": "MDA Hum High",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/hum_high.wav",
+   "raw": {
+    "name": "MDA Hum High",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/hum_high.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDA_hum_high",
+     "factor": "0.9"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDA_hum"
+    },
+    "position": {
+     "x": "10",
+     "y": "2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_hum_high.wav"
+  },
+  {
+   "tag": "MDA_WHN",
+   "name": "MDA WHN 4",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/buzz_low.wav",
+   "raw": {
+    "name": "MDA WHN 4",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/buzz_low.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDA_WHN_4",
+     "factor": "0.9"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDA_WHN_4"
+    },
+    "position": {
+     "x": "10",
+     "y": "2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_buzz_low.wav"
+  },
+  {
+   "tag": "MDA_WHN",
+   "name": "MDA WHN 5",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/buzz.wav",
+   "raw": {
+    "name": "MDA WHN 5",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/buzz.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDA_WHN_5",
+     "factor": "0.9"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDA_WHN_5"
+    },
+    "position": {
+     "x": "10",
+     "y": "2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_buzz.wav"
+  },
+  {
+   "tag": "MDA_REV",
+   "name": "MDA Reverser",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/reverser.wav",
+   "raw": {
+    "name": "MDA Reverser",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/reverser.wav",
+    "mode": "looped",
+    "condition": {
+     "property": "sim/sound/internal-custom"
+    },
+    "volume": {
+     "property": "/sim/sound/engine/MDA_REV",
+     "factor": "0.9"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDA_REV"
+    },
+    "position": {
+     "x": "10",
+     "y": "2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_reverser.wav"
+  },
+  {
+   "tag": "MDB_WHN",
+   "name": "MDB WHN 1",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/idle.wav",
+   "raw": {
+    "name": "MDB WHN 1",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/idle.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDB_WHN_1",
+     "factor": "0.9"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDB_WHN_1"
+    },
+    "position": {
+     "x": "10",
+     "y": "-2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_idle.wav"
+  },
+  {
+   "tag": "MDB_WHN",
+   "name": "MDB WHN 2",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/spool.wav",
+   "raw": {
+    "name": "MDB WHN 2",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/spool.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDB_WHN_2",
+     "factor": "0.9"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDB_WHN_2"
+    },
+    "position": {
+     "x": "10",
+     "y": "-2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_spool.wav"
+  },
+  {
+   "tag": "MDB_WHN",
+   "name": "MDB WHN 3",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/whine.wav",
+   "raw": {
+    "name": "MDB WHN 3",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/whine.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDB_WHN_3",
+     "factor": "0.9"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDB_WHN_3"
+    },
+    "position": {
+     "x": "10",
+     "y": "-2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_whine.wav"
+  },
+  {
+   "tag": "MDB_WHN",
+   "name": "MDB Howl",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/howl.wav",
+   "raw": {
+    "name": "MDB Howl",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/howl.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDB_howl",
+     "factor": "0.4"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDB_howl"
+    },
+    "position": {
+     "x": "10",
+     "y": "-2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_howl.wav"
+  },
+  {
+   "tag": "MDB_WHN",
+   "name": "MDB Hum High",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/hum_high.wav",
+   "raw": {
+    "name": "MDB Hum High",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/hum_high.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDB_hum_high",
+     "factor": "0.9"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDB_hum"
+    },
+    "position": {
+     "x": "10",
+     "y": "-2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_hum_high.wav"
+  },
+  {
+   "tag": "MDB_WHN",
+   "name": "MDB WHN 4",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/buzz_low.wav",
+   "raw": {
+    "name": "MDB WHN 4",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/buzz_low.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDB_WHN_4",
+     "factor": "0.9"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDB_WHN_4"
+    },
+    "position": {
+     "x": "10",
+     "y": "-2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_buzz_low.wav"
+  },
+  {
+   "tag": "MDB_WHN",
+   "name": "MDB WHN 5",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/buzz.wav",
+   "raw": {
+    "name": "MDB WHN 5",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/buzz.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDB_WHN_5",
+     "factor": "0.9"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDB_WHN_5"
+    },
+    "position": {
+     "x": "10",
+     "y": "-2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_buzz.wav"
+  },
+  {
+   "tag": "MDB_REV",
+   "name": "MDB Reverser",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/reverser.wav",
+   "raw": {
+    "name": "MDB Reverser",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/reverser.wav",
+    "mode": "looped",
+    "condition": {
+     "property": "sim/sound/internal-custom"
+    },
+    "volume": {
+     "property": "/sim/sound/engine/MDB_REV",
+     "factor": "0.9"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDB_REV"
+    },
+    "position": {
+     "x": "10",
+     "y": "-2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_reverser.wav"
+  },
+  {
+   "tag": "MDA_CMB",
+   "name": "MDA CMB 0",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/rumble.wav",
+   "raw": {
+    "name": "MDA CMB 0",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/rumble.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDA_CMB_1",
+     "factor": "0.6"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDA_CMB_1"
+    },
+    "position": {
+     "x": "10",
+     "y": "2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_rumble.wav"
+  },
+  {
+   "tag": "MDB_CMB",
+   "name": "MDB CMB 0",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/rumble.wav",
+   "raw": {
+    "name": "MDB CMB 0",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/rumble.wav",
+    "mode": "looped",
+    "property": "sim/sound/internal-custom",
+    "volume": {
+     "property": "/sim/sound/engine/MDB_CMB_1",
+     "factor": "0.6"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDB_CMB_1"
+    },
+    "position": {
+     "x": "10",
+     "y": "-2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_rumble.wav"
+  },
+  {
+   "tag": "MDA_WHN",
+   "name": "XMDA WHN 1",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/idle.wav",
+   "raw": {
+    "name": "XMDA WHN 1",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/idle.wav",
+    "mode": "looped",
+    "condition": {
+     "not": {
+      "property": "sim/sound/internal-custom"
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/engine/MDA_WHN_1",
+     "factor": "1.2"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDA_WHN_1"
+    },
+    "reference-dist": "100",
+    "position": {
+     "x": "10",
+     "y": "2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_Exterior_idle.wav"
+  },
+  {
+   "tag": "MDA_WHN",
+   "name": "XMDA WHN 2",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/idle_2.wav",
+   "raw": {
+    "name": "XMDA WHN 2",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/idle_2.wav",
+    "mode": "looped",
+    "condition": {
+     "not": {
+      "property": "sim/sound/internal-custom"
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/engine/MDA_WHN_2",
+     "factor": "1.2"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDA_WHN_2"
+    },
+    "reference-dist": "100",
+    "position": {
+     "x": "10",
+     "y": "2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_Exterior_idle_2.wav"
+  },
+  {
+   "tag": "MDA_WHN",
+   "name": "XMDA WHN 3",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/spool.wav",
+   "raw": {
+    "name": "XMDA WHN 3",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/spool.wav",
+    "mode": "looped",
+    "condition": {
+     "not": {
+      "property": "sim/sound/internal-custom"
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/engine/MDA_WHN_3",
+     "factor": "1.2"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDA_WHN_3"
+    },
+    "orientation": {
+     "x": "-1"
+    },
+    "reference-dist": "100",
+    "position": {
+     "x": "10",
+     "y": "2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_Exterior_spool.wav"
+  },
+  {
+   "tag": "MDA_WHN",
+   "name": "XMDA WHN 4",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/high.wav",
+   "raw": {
+    "name": "XMDA WHN 4",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/high.wav",
+    "mode": "looped",
+    "condition": {
+     "not": {
+      "property": "sim/sound/internal-custom"
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/engine/MDA_WHN_4",
+     "factor": "1.2"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDA_WHN_4"
+    },
+    "orientation": {
+     "x": "-1"
+    },
+    "reference-dist": "100",
+    "position": {
+     "x": "10",
+     "y": "2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_Exterior_high.wav"
+  },
+  {
+   "tag": "MDA_WHN",
+   "name": "XMDA WHN 5",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/buzz.wav",
+   "raw": {
+    "name": "XMDA WHN 5",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/buzz.wav",
+    "mode": "looped",
+    "condition": {
+     "not": {
+      "property": "sim/sound/internal-custom"
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/engine/MDA_WHN_5",
+     "factor": "1.2"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDA_WHN_5",
+     "factor": "0.5"
+    },
+    "orientation": {
+     "x": "-1"
+    },
+    "reference-dist": "100",
+    "position": {
+     "x": "10",
+     "y": "2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_Exterior_buzz.wav"
+  },
+  {
+   "tag": "MDB_WHN",
+   "name": "XMDB WHN 1",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/idle.wav",
+   "raw": {
+    "name": "XMDB WHN 1",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/idle.wav",
+    "mode": "looped",
+    "condition": {
+     "not": {
+      "property": "sim/sound/internal-custom"
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/engine/MDB_WHN_1",
+     "factor": "1.2"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDB_WHN_1"
+    },
+    "reference-dist": "100",
+    "position": {
+     "x": "10",
+     "y": "-2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_Exterior_idle.wav"
+  },
+  {
+   "tag": "MDB_WHN",
+   "name": "XMDB WHN 2",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/idle_2.wav",
+   "raw": {
+    "name": "XMDB WHN 2",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/idle_2.wav",
+    "mode": "looped",
+    "condition": {
+     "not": {
+      "property": "sim/sound/internal-custom"
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/engine/MDB_WHN_2",
+     "factor": "1.2"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDB_WHN_2"
+    },
+    "reference-dist": "100",
+    "position": {
+     "x": "10",
+     "y": "-2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_Exterior_idle_2.wav"
+  },
+  {
+   "tag": "MDB_WHN",
+   "name": "XMDB WHN 3",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/spool.wav",
+   "raw": {
+    "name": "XMDB WHN 3",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/spool.wav",
+    "mode": "looped",
+    "condition": {
+     "not": {
+      "property": "sim/sound/internal-custom"
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/engine/MDB_WHN_3",
+     "factor": "1.2"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDB_WHN_3"
+    },
+    "orientation": {
+     "x": "-1"
+    },
+    "reference-dist": "100",
+    "position": {
+     "x": "10",
+     "y": "-2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_Exterior_spool.wav"
+  },
+  {
+   "tag": "MDB_WHN",
+   "name": "XMDB WHN 4",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/high.wav",
+   "raw": {
+    "name": "XMDB WHN 4",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/high.wav",
+    "mode": "looped",
+    "condition": {
+     "not": {
+      "property": "sim/sound/internal-custom"
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/engine/MDB_WHN_4",
+     "factor": "1.2"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDB_WHN_4"
+    },
+    "orientation": {
+     "x": "-1"
+    },
+    "reference-dist": "100",
+    "position": {
+     "x": "10",
+     "y": "-2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_Exterior_high.wav"
+  },
+  {
+   "tag": "MDB_WHN",
+   "name": "XMDB WHN 5",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/buzz.wav",
+   "raw": {
+    "name": "XMDB WHN 5",
+    "path": "Aircraft/MD-80/Sounds/SASA/Engines/Exterior/buzz.wav",
+    "mode": "looped",
+    "condition": {
+     "not": {
+      "property": "sim/sound/internal-custom"
+     }
+    },
+    "volume": {
+     "property": "/sim/sound/engine/MDB_WHN_5",
+     "factor": "1.2"
+    },
+    "pitch": {
+     "property": "/sim/sound/enginep/MDB_WHN_5",
+     "factor": "0.5"
+    },
+    "orientation": {
+     "x": "-1"
+    },
+    "reference-dist": "100",
+    "position": {
+     "x": "10",
+     "y": "-2.7",
+     "z": "0.7"
+    }
+   },
+   "file": "SASA_Engines_Exterior_buzz.wav"
+  },
+  {
+   "tag": "rain",
+   "name": "RainOutside",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/Effects/rain.wav",
+   "raw": {
+    "name": "RainOutside",
+    "mode": "looped",
+    "path": "Aircraft/MD-80/Sounds/Effects/rain.wav",
+    "condition": {
+     "not": {
+      "property": "sim/sound/internal-custom"
+     },
+     "greater-than": {
+      "property": "/environment/rain-norm",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "property": "/environment/rain-norm",
+     "factor": "0.39"
+    }
+   },
+   "file": "Effects_rain.wav"
+  },
+  {
+   "tag": "rain",
+   "name": "RainInside",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/Effects/rain.wav",
+   "raw": {
+    "name": "RainInside",
+    "mode": "looped",
+    "path": "Aircraft/MD-80/Sounds/Effects/rain.wav",
+    "condition": {
+     "property": "sim/sound/internal-custom",
+     "greater-than": {
+      "property": "/environment/rain-norm",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "property": "/environment/rain-norm",
+     "factor": "0.095"
+    }
+   },
+   "file": "Effects_rain.wav"
+  },
+  {
+   "tag": "rain-windshield",
+   "name": "RainWindshieldInside",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/Effects/rain-windshield.wav",
+   "raw": {
+    "name": "RainWindshieldInside",
+    "mode": "looped",
+    "path": "Aircraft/MD-80/Sounds/Effects/rain-windshield.wav",
+    "condition": {
+     "property": "sim/sound/internal-custom",
+     "greater-than": {
+      "property": "/environment/rain-norm",
+      "value": "0"
+     }
+    },
+    "volume": {
+     "property": "velocities/airspeed-kt",
+     "factor": "0.0075",
+     "min": "0.04",
+     "max": "0.38"
+    }
+   },
+   "file": "Effects_rain-windshield.wav"
+  },
+  {
+   "tag": "thunder1",
+   "name": "thunder1",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/Effects/thunder1.wav",
+   "raw": {
+    "name": "thunder1",
+    "mode": "once",
+    "path": "Aircraft/MD-80/Sounds/Effects/thunder1.wav",
+    "type": "avionics",
+    "property": "sim/sound/thunder1",
+    "pitch": {
+     "property": "sim/sound/dist-thunder1",
+     "factor": "2",
+     "offset": "0.50",
+     "min": "1.00",
+     "max": "2.00"
+    },
+    "volume": {
+     "property": "sim/sound/dist-thunder1"
+    }
+   },
+   "file": "Effects_thunder1.wav"
+  },
+  {
+   "tag": "thunder2",
+   "name": "thunder2",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/Effects/thunder2.wav",
+   "raw": {
+    "name": "thunder2",
+    "mode": "once",
+    "path": "Aircraft/MD-80/Sounds/Effects/thunder2.wav",
+    "type": "avionics",
+    "property": "sim/sound/thunder2",
+    "pitch": {
+     "property": "sim/sound/dist-thunder2",
+     "factor": "2",
+     "offset": "0.50",
+     "min": "1.00",
+     "max": "2.00"
+    },
+    "volume": {
+     "property": "sim/sound/dist-thunder2"
+    }
+   },
+   "file": "Effects_thunder2.wav"
+  },
+  {
+   "tag": "thunder3",
+   "name": "thunder3",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/Effects/thunder3.wav",
+   "raw": {
+    "name": "thunder3",
+    "mode": "once",
+    "path": "Aircraft/MD-80/Sounds/Effects/thunder3.wav",
+    "type": "avionics",
+    "property": "sim/sound/thunder3",
+    "pitch": {
+     "property": "sim/sound/dist-thunder3",
+     "factor": "1",
+     "offset": "0.50",
+     "min": "1.00",
+     "max": "2.00"
+    },
+    "volume": {
+     "property": "sim/sound/dist-thunder3"
+    }
+   },
+   "file": "Effects_thunder3.wav"
+  },
+  {
+   "tag": "thunder4",
+   "name": "thunder4",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/Effects/thunder4.wav",
+   "raw": {
+    "name": "thunder4",
+    "mode": "once",
+    "path": "Aircraft/MD-80/Sounds/Effects/thunder4.wav",
+    "type": "avionics",
+    "property": "sim/sound/thunder4",
+    "pitch": {
+     "property": "sim/sound/dist-thunder4",
+     "factor": "1",
+     "offset": "0.50",
+     "min": "1.00",
+     "max": "2.00"
+    },
+    "volume": {
+     "property": "sim/sound/dist-thunder4"
+    }
+   },
+   "file": "Effects_thunder4.wav"
+  },
+  {
+   "tag": "thunder5",
+   "name": "thunder5",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/Effects/thunder5.wav",
+   "raw": {
+    "name": "thunder5",
+    "mode": "once",
+    "path": "Aircraft/MD-80/Sounds/Effects/thunder5.wav",
+    "type": "avionics",
+    "property": "sim/sound/thunder5",
+    "pitch": {
+     "property": "sim/sound/dist-thunder5",
+     "factor": "1",
+     "offset": "0.50",
+     "min": "1.00",
+     "max": "2.00"
+    },
+    "volume": {
+     "property": "sim/sound/dist-thunder5"
+    }
+   },
+   "file": "Effects_thunder5.wav"
+  },
+  {
+   "tag": "pushback",
+   "name": "Pushback_outside",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/Effects/pushback.wav",
+   "raw": {
+    "name": "Pushback_outside",
+    "mode": "looped",
+    "path": "Aircraft/MD-80/Sounds/Effects/pushback.wav",
+    "condition": {
+     "and": {
+      "not": {
+       "property": "/sim/sound/internal-custom"
+      },
+      "property": "/sim/model/autopush/enabled"
+     }
+    },
+    "volume": {
+     "value": "0.35"
+    },
+    "pitch": {
+     "property": "sim/model/autopush/force-lbf",
+     "factor": "0.0001",
+     "offset": "0.50",
+     "min": "0.50",
+     "max": "0.65"
+    }
+   },
+   "file": "Effects_pushback.wav"
+  },
+  {
+   "tag": "pushback",
+   "name": "Pushback_inside",
+   "mode": "looped",
+   "path": "Aircraft/MD-80/Sounds/Effects/pushback.wav",
+   "raw": {
+    "name": "Pushback_inside",
+    "mode": "looped",
+    "path": "Aircraft/MD-80/Sounds/Effects/pushback.wav",
+    "condition": {
+     "and": {
+      "property": [
+       "/sim/sound/internal-custom",
+       "/sim/model/autopush/enabled"
+      ]
+     }
+    },
+    "volume": {
+     "value": "0.15"
+    },
+    "pitch": {
+     "property": "sim/model/autopush/force-lbf",
+     "factor": "0.0001",
+     "offset": "0.50",
+     "min": "0.50",
+     "max": "0.65"
+    }
+   },
+   "file": "Effects_pushback.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "500",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/500.wav",
+   "raw": {
+    "name": "500",
+    "path": "Aircraft/MD-80/Sounds/CAWS/500.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "and": {
+      "not-equals": {
+       "property": "/controls/switches/minimums",
+       "value": "500"
+      },
+      "less-than-equals": {
+       "property": "/position/gear-agl-ft",
+       "value": "500"
+      },
+      "greater-than": {
+       "property": "/position/gear-agl-ft",
+       "value": "450"
+      },
+      "less-than": {
+       "property": [
+        "/position/gear-agl-ft-2-sec",
+        "/position/gear-agl-ft"
+       ]
+      },
+      "greater-than-equals": {
+       "property": "/systems/electrical/outputs/mk-viii",
+       "value": "24"
+      }
+     }
+    }
+   },
+   "file": "CAWS_500.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "100",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/100.wav",
+   "raw": {
+    "name": "100",
+    "path": "Aircraft/MD-80/Sounds/CAWS/100.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "and": {
+      "not-equals": {
+       "property": "/controls/switches/minimums",
+       "value": "100"
+      },
+      "less-than-equals": {
+       "property": "/position/gear-agl-ft",
+       "value": "100"
+      },
+      "greater-than": {
+       "property": "/position/gear-agl-ft",
+       "value": "80"
+      },
+      "less-than": {
+       "property": [
+        "/position/gear-agl-ft-2-sec",
+        "/position/gear-agl-ft"
+       ]
+      },
+      "greater-than-equals": {
+       "property": "/systems/electrical/outputs/mk-viii",
+       "value": "24"
+      }
+     }
+    }
+   },
+   "file": "CAWS_100.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "50",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/50.wav",
+   "raw": {
+    "name": "50",
+    "path": "Aircraft/MD-80/Sounds/CAWS/50.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "and": {
+      "not-equals": {
+       "property": "/controls/switches/minimums",
+       "value": "50"
+      },
+      "less-than-equals": {
+       "property": "/position/gear-agl-ft",
+       "value": "50"
+      },
+      "greater-than": {
+       "property": "/position/gear-agl-ft",
+       "value": "42"
+      },
+      "less-than": {
+       "property": [
+        "/position/gear-agl-ft-2-sec",
+        "/position/gear-agl-ft"
+       ]
+      },
+      "greater-than-equals": {
+       "property": "/systems/electrical/outputs/mk-viii",
+       "value": "24"
+      }
+     }
+    }
+   },
+   "file": "CAWS_50.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "40",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/40.wav",
+   "raw": {
+    "name": "40",
+    "path": "Aircraft/MD-80/Sounds/CAWS/40.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "and": {
+      "not-equals": {
+       "property": "/controls/switches/minimums",
+       "value": "40"
+      },
+      "less-than-equals": {
+       "property": "/position/gear-agl-ft",
+       "value": "40"
+      },
+      "greater-than": {
+       "property": "/position/gear-agl-ft",
+       "value": "32"
+      },
+      "less-than": {
+       "property": [
+        "/position/gear-agl-ft-2-sec",
+        "/position/gear-agl-ft"
+       ]
+      },
+      "greater-than-equals": {
+       "property": "/systems/electrical/outputs/mk-viii",
+       "value": "24"
+      }
+     }
+    }
+   },
+   "file": "CAWS_40.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "30",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/30.wav",
+   "raw": {
+    "name": "30",
+    "path": "Aircraft/MD-80/Sounds/CAWS/30.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "and": {
+      "not-equals": {
+       "property": "/controls/switches/minimums",
+       "value": "30"
+      },
+      "less-than-equals": {
+       "property": "/position/gear-agl-ft",
+       "value": "30"
+      },
+      "greater-than": {
+       "property": "/position/gear-agl-ft",
+       "value": "22"
+      },
+      "less-than": {
+       "property": [
+        "/position/gear-agl-ft-2-sec",
+        "/position/gear-agl-ft"
+       ]
+      },
+      "greater-than-equals": {
+       "property": "/systems/electrical/outputs/mk-viii",
+       "value": "24"
+      }
+     }
+    }
+   },
+   "file": "CAWS_30.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "20",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/20.wav",
+   "raw": {
+    "name": "20",
+    "path": "Aircraft/MD-80/Sounds/CAWS/20.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "and": {
+      "not-equals": {
+       "property": "/controls/switches/minimums",
+       "value": "20"
+      },
+      "less-than-equals": {
+       "property": "/position/gear-agl-ft",
+       "value": "20"
+      },
+      "greater-than": {
+       "property": "/position/gear-agl-ft",
+       "value": "14"
+      },
+      "less-than": {
+       "property": [
+        "/position/gear-agl-ft-2-sec",
+        "/position/gear-agl-ft"
+       ]
+      },
+      "greater-than-equals": {
+       "property": "/systems/electrical/outputs/mk-viii",
+       "value": "24"
+      }
+     }
+    }
+   },
+   "file": "CAWS_20.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "10",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/10.wav",
+   "raw": {
+    "name": "10",
+    "path": "Aircraft/MD-80/Sounds/CAWS/10.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "and": {
+      "not-equals": {
+       "property": "/controls/switches/minimums",
+       "value": "10"
+      },
+      "less-than-equals": {
+       "property": "/position/gear-agl-ft",
+       "value": "10"
+      },
+      "greater-than": {
+       "property": "/position/gear-agl-ft",
+       "value": "4"
+      },
+      "less-than": {
+       "property": [
+        "/position/gear-agl-ft-2-sec",
+        "/position/gear-agl-ft"
+       ]
+      },
+      "greater-than-equals": {
+       "property": "/systems/electrical/outputs/mk-viii",
+       "value": "24"
+      }
+     }
+    }
+   },
+   "file": "CAWS_10.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "Approaching Minimum",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/approaching-minimum.wav",
+   "raw": {
+    "name": "Approaching Minimum",
+    "path": "Aircraft/MD-80/Sounds/CAWS/approaching-minimum.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "and": {
+      "less-than-equals": {
+       "property": [
+        "/position/gear-agl-ft",
+        "/systems/misc/minimums-plus-50"
+       ]
+      },
+      "greater-than": {
+       "property": [
+        "/position/gear-agl-ft",
+        "/controls/switches/minimums"
+       ]
+      },
+      "property": "/systems/misc/minimums-latch-sound",
+      "greater-than-equals": {
+       "property": "/systems/electrical/outputs/mk-viii",
+       "value": "24"
+      },
+      "equals": {
+       "property": "/position/wow",
+       "value": "0"
+      }
+     }
+    },
+    "pitch": {
+     "property": "/systems/misc/minimums-horn-pitch"
+    }
+   },
+   "file": "CAWS_approaching-minimum.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "Minimum",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/minimum.wav",
+   "raw": {
+    "name": "Minimum",
+    "path": "Aircraft/MD-80/Sounds/CAWS/minimum.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "and": {
+      "greater-than": [
+       {
+        "property": "/controls/switches/minimums",
+        "value": "0"
+       },
+       {
+        "property": [
+         "/position/gear-agl-ft",
+         "/systems/misc/minimums-minus-50"
+        ]
+       }
+      ],
+      "less-than-equals": {
+       "property": [
+        "/position/gear-agl-ft",
+        "/controls/switches/minimums"
+       ]
+      },
+      "less-than": {
+       "property": [
+        "/position/gear-agl-ft-2-sec",
+        "/position/gear-agl-ft"
+       ]
+      },
+      "greater-than-equals": {
+       "property": "/systems/electrical/outputs/mk-viii",
+       "value": "24"
+      }
+     }
+    }
+   },
+   "file": "CAWS_minimum.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "Altitude Alert",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/altitude-alert.wav",
+   "raw": {
+    "name": "Altitude Alert",
+    "path": "Aircraft/MD-80/Sounds/CAWS/altitude-alert.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "and": {
+      "equals": {
+       "property": "/systems/caws/logic/altitude-alert",
+       "value": "2"
+      },
+      "greater-than-equals": {
+       "property": "/systems/electrical/outputs/mk-viii",
+       "value": "24"
+      }
+     }
+    }
+   },
+   "file": "CAWS_altitude-alert.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "Altitude Tone",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/altitude-tone.wav",
+   "raw": {
+    "name": "Altitude Tone",
+    "path": "Aircraft/MD-80/Sounds/CAWS/altitude-tone.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "and": {
+      "and": {
+       "equals": {
+        "property": "/systems/caws/logic/altitude-alert",
+        "value": "1"
+       },
+       "property": "/systems/caws/logic/altitude-alert-aural-1"
+      },
+      "greater-than-equals": {
+       "property": "/systems/electrical/outputs/mk-viii",
+       "value": "24"
+      }
+     }
+    }
+   },
+   "file": "CAWS_altitude-tone.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "Landing Gear Warning",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/landing-gear.wav",
+   "raw": {
+    "name": "Landing Gear Warning",
+    "path": "Aircraft/MD-80/Sounds/CAWS/landing-gear.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "greater-than": {
+      "property": "/systems/caws/landing-gear/out",
+      "value": "0"
+     }
+    }
+   },
+   "file": "CAWS_landing-gear.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "AP Off Warning",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/apoff.wav",
+   "raw": {
+    "name": "AP Off Warning",
+    "path": "Aircraft/MD-80/Sounds/CAWS/apoff.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "greater-than": {
+      "property": "/systems/caws/apoff/out",
+      "value": "0"
+     }
+    }
+   },
+   "file": "CAWS_apoff.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "AP Off Warning 2",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/apoff.wav",
+   "raw": {
+    "name": "AP Off Warning 2",
+    "path": "Aircraft/MD-80/Sounds/CAWS/apoff.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "greater-than": {
+      "property": "/systems/caws/apoff/single-out",
+      "value": "0"
+     }
+    }
+   },
+   "file": "CAWS_apoff.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "Overspeed",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/overspeed.wav",
+   "raw": {
+    "name": "Overspeed",
+    "path": "Aircraft/MD-80/Sounds/CAWS/overspeed.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "greater-than": {
+      "property": "/systems/caws/overspeed/out",
+      "value": "0"
+     }
+    }
+   },
+   "file": "CAWS_overspeed.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "Slat Overspeed",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/slat-overspeed.wav",
+   "raw": {
+    "name": "Slat Overspeed",
+    "path": "Aircraft/MD-80/Sounds/CAWS/slat-overspeed.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "greater-than": {
+      "property": "/systems/caws/slat-overspeed/out",
+      "value": "0"
+     }
+    }
+   },
+   "file": "CAWS_slat-overspeed.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "Stabilizer Buzz",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/stabilizer-buzz.wav",
+   "raw": {
+    "name": "Stabilizer Buzz",
+    "path": "Aircraft/MD-80/Sounds/CAWS/stabilizer-buzz.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "greater-than": {
+      "property": "/systems/caws/stabilizer-buzz/out",
+      "value": "0"
+     }
+    }
+   },
+   "file": "CAWS_stabilizer-buzz.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "Stabilizer Motion",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/stabilizer-motion.wav",
+   "raw": {
+    "name": "Stabilizer Motion",
+    "path": "Aircraft/MD-80/Sounds/CAWS/stabilizer-motion.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "greater-than": {
+      "property": "/systems/caws/stabilizer-motion/out",
+      "value": "0"
+     }
+    }
+   },
+   "file": "CAWS_stabilizer-motion.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "Stall 1",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/stall-1.wav",
+   "raw": {
+    "name": "Stall 1",
+    "path": "Aircraft/MD-80/Sounds/CAWS/stall-1.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "greater-than": {
+      "property": "/systems/caws/stall-1/out",
+      "value": "0"
+     }
+    }
+   },
+   "file": "CAWS_stall-1.wav"
+  },
+  {
+   "tag": "caws",
+   "name": "Stall 2",
+   "mode": "once",
+   "path": "Aircraft/MD-80/Sounds/CAWS/stall-2.wav",
+   "raw": {
+    "name": "Stall 2",
+    "path": "Aircraft/MD-80/Sounds/CAWS/stall-2.wav",
+    "type": "avionics",
+    "mode": "once",
+    "condition": {
+     "greater-than": {
+      "property": "/systems/caws/stall-2/out",
+      "value": "0"
+     }
+    }
+   },
+   "file": "CAWS_stall-2.wav"
+  }
+ ],
+ "missing": []
+}

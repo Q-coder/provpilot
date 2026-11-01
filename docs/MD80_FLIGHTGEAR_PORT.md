@@ -1,0 +1,632 @@
+# MD-80 port from the FlightGear package — plan and progress (2026-10-31)
+
+Goal (gery): fly the FlightGear McDonnell Douglas MD-80 by Josh Davidson
+(Octal450, GPL-2.0, `aircraft/MD-80`) in ProVPilot, with its Nasal handled
+as an optional module that other aircraft can ignore. Variant: MD-82
+(JT8D-217A). Source of truth: the package's JSBSim FDE, model XML, AC3D
+meshes and sound set, like the A-10 port (docs/A10_FLIGHTGEAR_PORT.md).
+
+## 1. What the package is
+
+| Part | Size | Where it runs in FlightGear |
+|---|---|---|
+| JSBSim FDE + 20 `<system>` files (electrical, fuel, hydraulics, pneumatics, APU, pressurization, HVAC, fire, FCS, spoilers, ignition, thrust limits, DFGS servos, IRS/AHRS, instrumentation, cockpit, performance) | 1 768 properties defined | JSBSim |
+| Model XML: 184 files, 302 sub-models, 978 animations (rotate 323, select 236, translate 160, textranslate 136, material 108), 324 clickable controls | | SimGear scene graph |
+| Nasal: 10 400 lines (DFGS autoflight logic 1 800, HT9100 FMS/MCDU 2 000, canvas PFD / ND / EDP-SDP / FMA 1 800, systems glue, radios, cockpit panel, acconfig, autopush) | | FlightGear Nasal VM |
+| FlightGear property rules (`Systems/dfgs-*.xml`, `core-rules.xml`, `instrumentation.xml`: PID / filter / logic) | 181 rules | FlightGear autopilot subsystem |
+| Canvas displays (PFD, ND, EDP/SDP, FMA, MCDU) | | FlightGear Canvas |
+| Sound set `Sounds/sound.xml` | 77 sounds | FlightGear sound manager |
+
+The decisive fact: the **aircraft systems live in JSBSim**, reading
+FlightGear-side properties (`/controls/...`, `/instrumentation/...`,
+`/engines/engine[n]/n1`, `/position/altitude-ft`, 365 of them) and writing
+their results under `/systems/...`, `/engines/engine[n]/*-actual`,
+`/instrumentation/ai[n]/...`. Nasal is glue around that core, plus the
+displays and the autoflight *mode* logic.
+
+## 2. Architecture
+
+**D1 — FDM as delivered.** `aircraft/md80/jsbsim/` holds `FDE/MD-82.xml`
+(as `aircraft/md80/md80.xml` with its `FDE/Config`), `Systems/` and
+`Engines/` copied unchanged; the APU is JSBSim engine[2]. In standalone
+JSBSim a property path with a leading slash is absolute (the FlightGear
+tree), one without lives under `fdm/jsbsim`: the systems' `/controls/...`
+references land at the root, JSBSim's own `fcs/...` under the FDM node.
+Every FlightGear-side property a system references must exist before the
+first run (a JSBSim function throws otherwise), so
+`jsbsim/init_properties.json` lists all 365 with defaults, overlaid with the
+"after start" panel state of the package's acconfig (battery, generators,
+pumps, bleeds, IRS, gear lever, dial-a-flap), and a few FDM-root properties
+newer JSBSim versions tie and ours lacks (`sim-time-sec`,
+`inertia/empty-weight-x-in`, `propulsion/engine[n]/IdleThrust`,
+`propulsion/tank[n]/x-position`). `[jsbsim] init_properties` is applied
+after the model loads and on every Fly!.
+
+**D2 — FlightGear property mirror (FGBridge, generic).** With `[jsbsim]
+fg_property_mirror true`, the bridge pushes its FlightGear-side values into
+the FDM every frame (controls incl. the cockpit switch state, instruments,
+flight state, environment, the engine interface n1 / n2 / fuel flow) and
+pulls back every property the model animations or sounds reference that the
+FDM defines. `[electrical] power_property` (the MD-80's `/systems/electrical/bus/dc-l`)
+replaces the built-in electrical model. Other aircraft are untouched.
+
+**D3 — Model.** `scripts/fg_a10_build.py` generalised: `--prefix
+Aircraft/MD-80/ --root Models/MD-82.xml --glb-name md80_fg.glb --skip ...`,
+SimGear `include=` / `omit-node` PropertyList includes, bare `.ac`
+sub-models, no A-10 overrides. Output `model/md80_fg.glb` (20 MB, 1 882
+objects) + `animations.json`. Effects, services (chocks, pushback),
+liveries (default textures stay) and the paint kit are skipped; the canvas
+screens are hidden via `[model] hide_nodes`.
+
+**D4 — Sounds.** `scripts/fg_a10_sounds.py --base-xml MD-80-main.xml
+--prefix Aircraft/MD-80/` exports the 77 sounds; their conditions read the
+FDM-mirrored properties and the `sim/sound/*` pulses the cockpit clicks set.
+
+**D5 — Nasal as a module (not in this step).** The 448 cockpit bindings
+call 65 distinct Nasal functions; 231 of them are the three sound-click
+helpers (`core.Sound.switch1/btn1/knb1`: pulse a `sim/sound/*` property for
+0.2 s), the rest adjust radios, EPR bugs, thrust-limit mode, the EFIS and
+the autopilot panel. Two ways forward, in order:
+1. *Data-driven shims* (`aircraft/<id>/nasal_shims.json`): map a script head
+   to a property action (pulse / toggle / adjust / assign). Covers the
+   clicks, radios, EFIS, thrust-limit mode and dial-a-flap without an
+   interpreter.
+2. *A real Nasal runtime* (`src/nasal/`, the SimGear Nasal C library, LGPL)
+   with the FlightGear stdlib (`props`, `globals`, `math`, `string`, timers,
+   listeners) and our property tree behind `getprop/setprop`, loaded per
+   aircraft from `[nasal] modules`. Canvas stays out (static screens) and
+   `fgcommand` becomes a small table. This runs the systems glue, radios,
+   cockpit panel and the DFGS mode logic unchanged. It is the module gery
+   asked for: it must only touch aircraft that list Nasal modules.
+Prerequisite for the DFGS: the FlightGear property-rule interpreter (D6).
+
+**D6 — FlightGear property rules (started in step 12 with
+`sound-control.xml`: logic + filter components; the controllers are still
+open).** `Systems/dfgs-*.xml`,
+`core-rules.xml`, `instrumentation.xml` are FlightGear `<autopilot>` files
+(pid-controller, pi-simple-controller, filter, predict-simple, logic,
+flipflop). A C++ `FGPropertyRules` module (~600 lines) evaluating them each
+frame over the same property dictionary gives the autoflight servos, the
+EPR constants `/systems/engines/epr/c1,c2`, the engine cutoff hand-off and
+several instrument helpers. Without it those properties keep their init
+values.
+
+## 3. Progress
+
+### Step 1 — FDM in ProVPilot (2026-10-31)
+- `aircraft/md80/` (both copies): jsbsim tree, `aircraft.cfg`,
+  `jsbsim/init_properties.json`, sounds.
+- C++: `JSBGodot::has_property`, `AircraftRig::apply_fdm_init_properties`,
+  `FGBridge` mirror (`set_fdm_mirror`, `power_property`, pull keys from the
+  animator and the sound set), FlightGear flight-state paths every aircraft
+  now publishes (`position/altitude-ft`, rates, environment,
+  `sim/time/elapsed-sec`, `controls/flight/flaps`...), real engine values for
+  mirrored aircraft; welcome list and installer entries.
+- `tests/smoke_md80_fdm.tscn`: load, engines running, buses, hydraulics,
+  bleed, gear, mirror counts, throttle response.
+
+### Step 2 — model, mirror, shims (2026-10-31)
+- Model built: `fg_a10_build.py` generalised (prefix / root / glb name / skip
+  list, PropertyList `include=` + `omit-node`, bare `.ac` sub-models, a
+  model file's own `<offsets>` now move its nested sub-models too — the
+  MD-80 airframe file shifts everything 22.6 m nose-ward, which had left the
+  cockpit at the model origin). `md80_fg.glb` 20 MB, 1 882 objects, 978
+  animations + 324 controls; canvas screens hidden; gear offset 6.49 units
+  (`probe_gear_height`); captain's eye from FlightGear view 0.
+- Property mirror: 44 inputs pushed, 426 outputs pulled per frame; every one
+  of the model's 632 properties is bridged or mirrored (0 unbridged).
+  Standalone-JSBSim path rule found the hard way: leading slash = absolute
+  (FlightGear side), none = `fdm/jsbsim`; newer-JSBSim ties the systems
+  expect are created by the init list (`zero`, `aero/arm-factor`,
+  `sim-time-sec` refreshed each frame, `inertia/empty-weight-x-in`,
+  `IdleThrust`, tank `x-position`). The cockpit switch state is seeded from
+  the init list (and, for switches no animation reads, from the FDM's
+  current value), so the panel starts in the "after start" state and a
+  click on the battery switch turns it off, not on.
+- Nasal shims (D5 step 1): `FGControls` loads `model/nasal_shims.json`
+  (34 entries): click sounds pulse `sim/sound/*`, thrust-limit mode, manual
+  EPR bugs, dial-a-flap, gear handle, flap lever, speed brake, NAV / ADF /
+  COMM tuning (NAV 1 feeds ProVPilot's receiver), EFIS mode and range,
+  transponder knob, autopilot panel inputs. Pulses expire in
+  `FGControls::tick`.
+- Tests: `smoke_md80_fdm` (engines, buses 28 V / 115 V, hydraulics 3 000
+  psi, bleed, gear, mirror, thrust), `smoke_md80_cockpit` (model, 399
+  clickable parts, shims, hidden screens, sounds, battery switch click ->
+  pulse + FDM, NAV knob -> receiver).
+
+### Open after step 2
+- Cockpit textures: the glareshield / FGCP / overhead label plates render
+  white (FlightGear `<effect>` or `texture-prop` materials the builder does
+  not apply); the instruments themselves are textured.
+- Canvas displays (PFD, ND, EDP/SDP, FMA, MCDU) are hidden; the EDP/SDP
+  "off" plate shows. The analog standby and engine gauges work.
+- D6 property rules (DFGS servos, EPR constants, `core-rules` engine
+  cutoff hand-off) and the Nasal runtime (D5 step 2) are not started.
+- Flap lever: the FDM reads `controls/flight/flaps` (lever 0..0.91) which
+  the mirror derives from `fcs/flap-cmd-norm` with the cfg detents; the
+  FDM's own `fcs/flap-pos-deg` drives the surfaces. Check in flight.
+- Thrust reversers, autobrake, pushback, ground services: not wired.
+
+### Step 3 — check flight fixes (2026-10-31, gery's first flight)
+Reported: fans and gear doors on wrong pivots and "detached" parts, no
+surface motion, mirrored yaw, GPWS altitude callouts on take-off, C and H
+keys dead with only the spot view.
+- **Pivots**: the manifest's sub-model `node` named the placement empty,
+  while the airframe meshes sit under the file's own-offset empty 22.6 m
+  away; the animator resolves centres in that node's frame, so every pivot
+  was 22.6 m off. `node` now names the frame empty (`placement` keeps the
+  other). Tyres, doors and fans rotate in place (`pivot_check` probe).
+- **Surfaces**: the model animates `rotors/main/blade[n]/flap-deg`,
+  `sim/multiplay/generic/float[n]` etc., which the -set file *aliases* to
+  the FDM's `/systems/fcs/.../final-deg`, the gear roll speeds and the
+  spoilers (a multiplayer trick). The builder (`--set-xml`) writes those 41
+  aliases into the manifest and the bridge resolves them every frame.
+  Note for tests: the ailerons and elevators are tab-driven and the FCS
+  gives them no authority below 7 psf, so on a stationary aircraft only the
+  control tabs and the hydraulic rudder move (`smoke_md80_cockpit` checks
+  `AilTabControlL` and `Rudder`).
+- **Yaw**: FlightGear's `/controls/flight/rudder` is +1 for right pedal and
+  its JSBSim interface negates it into `fcs/rudder-cmd-norm`; the bridge
+  published the JSBSim sign, so the MD-80's FCS (tiller, yaw damper) saw the
+  pedal mirrored. Fixed for every aircraft (the A-10 pedal animation turns
+  the FlightGear way now).
+- **Callouts**: `/position/gear-agl-ft-2-sec` is FlightGear's
+  predict-simple (height two seconds *ahead*); the "10 .. 500" sounds play
+  when the prediction is below the current height. The bridge now publishes
+  `position/gear-agl-ft` and the prediction from a two-second history, so
+  climbing is silent and descending calls.
+- **Keys / spot view**: reproduced the flow headless and in a window: the
+  intro zoom holds about 60 s after Fly! (keys are ignored while it plays,
+  Space skips it), then C and H act normally at 63 fps. Could not reproduce
+  dead keys after the intro; if it recurs, note whether the intro HUD was
+  still showing.
+
+### Step 4 — second check flight (2026-10-31, gery's screenshot)
+- **"Minimums" repeating on the ground**: the CAWS conditions compare two
+  properties (`/position/gear-agl-ft` against `/systems/misc/minimums-minus-50`
+  etc.). The sound set's property collector only knew the single-string
+  form, so the FDM-side right-hand sides were never pulled and read 0: every
+  descent flicker of the 2-second predictor below 200 ft "called minimums".
+  Both sides are collected now, and the predictor ignores rates under
+  0.5 ft/s (FDM settling noise on the ground).
+- **Overlapping altimeter / DH module**: `<model><condition>` (FlightGear
+  shows a sub-model only while the condition holds) was ignored by the
+  builder, so the EFIS *and* the analog instrument sets were both in the
+  panel. The builder now emits a `select` animation on the sub-model's
+  placement empty (`exact: true`, so the Blender duplicate stem does not
+  catch the other copy; manifest node names use Godot's `_001` suffix). The
+  options are set analog in `init_properties.json` (`efis` 0, `edp-sdp` 0,
+  `combined-standby` 0, no aux tanks): PVP has no canvas displays, the
+  analog ADI / HSI / radio altimeter / engine gauges animate.
+- **Eye point**: `[camera] cockpit_position` raised 0.4 m, and the cockpit
+  camera can be moved in every aircraft (MSFS style): Ctrl+arrows sideways /
+  up-down, Ctrl+Shift+Up/Down forward / back, Ctrl+Space back to the
+  default; 0.5 m/s, 1.5 m range, saved per aircraft in provpilot.cfg
+  (`aircraft_<id>_eye_offset`).
+- **Keys after the scenery editor**: F8 / Escape round trips in flight keep
+  C and H working (probe `probe_keys_after_editor -- f8|esc|editmode`). The
+  reproducible failure was welcome *Edit Mode* → Escape → **Continue**: Edit
+  Mode parks the aircraft hidden at the edited airport, and Continue resumed
+  that non-flight (no aircraft, spot view, cockpit camera inside nothing).
+  Continue is disabled after an Edit Mode session and never resumes with
+  the aircraft hidden.
+
+### Step 5 — third check flight (2026-10-31, EFIS over the engine panel)
+- **EDP/SDP displays over the round engine gauges**: FlightGear lets an
+  animation name a `<model>` of the same file by its `<name>` (the centre
+  panel's `select` switches `edpsdp` / `trp` / `wntart` against the 25 round
+  gauges). The builder now maps such names to the sub-model's placement
+  empty (exact match); the sub-models are imported before the file's
+  animations so the names exist.
+- **Keys "changing over time"**: macOS swallows the key-up of Cmd and Shift
+  after a system shortcut (Cmd+Shift+4 screenshot), so Godot's `Input` kept
+  them pressed: C (needs no modifier) matched nothing and H read as
+  Ctrl+Shift+H, the hotspot overlay. `KeyBindings` now takes the modifier
+  state from the latest input event and releases a stale modifier with a
+  synthetic key-up, so the next mouse move heals it.
+- **Hotspot boxes of hidden panels**: the overlay drew boxes for the EFIS
+  selector panels switched off by their condition (clicks already ignored
+  hidden parts); the overlay skips them too.
+- **Nose wheel**: the model rotates the strut by `gear/gear[0]/steering-norm`
+  (via a -set alias), FlightGear's steering angle over the gear's
+  `max_steer`. The bridge publishes it from `fcs/steer-pos-deg[0]` and the
+  new `[jsbsim] nose_steer_max_deg` (82 for the MD-80).
+- **Elevator**: not changed. `/controls/flight/elevator` keeps the JSBSim
+  sign (FlightGear's JSBSim interface negates only the rudder). The MD-80's
+  elevators are tab-driven and free-floating: on the ground they do not
+  follow the yoke (zero authority below 7 psf), only the control, geared and
+  anti-float tabs move, and in flight the surface follows the tab with the
+  FDM's lag and alpha float — ask for a description or video if it still
+  looks wrong.
+
+### Step 6 — fourth check flight (2026-10-31, gery: "instruments have no power")
+Reported: ADI and nav instruments dead with engines running and generators
+on, APU switch only OFF/RUN, white squares on some switches.
+- **Dead ADI / HSI / RMI**: not power — every `power-avail` was 1. The
+  flags are the *platform*: `att-avail` and `heading-avail` need
+  `/systems/platform[0]/aligned`, the AHRS (`acconfig/options/nav` 0) never
+  aligned because its `can-align` flip-flop only latches when `aligned` or
+  `/systems/acconfig/autoconfig-running` is 1. FlightGear's acconfig holds
+  that flag for five seconds after setting the panel state and the systems
+  shortcut on it (instant alignment, gauges to their place). The init list
+  now has a generic **`_pulse`** entry (`{"/systems/acconfig/autoconfig-running": 5}`):
+  `JSBGodot` holds it at 1 for that much *FDM time* after every (re)start
+  (wall time would expire while the scenery loads) and then clears it. The
+  AHRS aligns within the pulse; ADI and HSI are live from the first frame.
+- **APU START**: the knob's upper half is a press-and-hold pick (`mod-up`
+  springs 2 back to 1), which `FGControls` already does — hold the mouse
+  button two seconds and the starter latches (`starter-run-start-timer`).
+  Two things were missing behind it: FlightGear's `core-rules.xml` copies
+  `/systems/apu/starter` and `/cutoff` (and the ignition system's for the
+  JT8Ds) into `/controls/engines/engine[n]/starter|cutoff`, and its JSBSim
+  interface hands those to the engines every frame. Both are generic now:
+  the init list's **`_links`** (`{dst: src}`, copied each step) and
+  `JSBGodot::apply_property_links_and_pulses`, which calls `SetStarter` /
+  `SetCutoff` on every engine whose FlightGear control properties exist.
+  The bridge also publishes *every* FDM engine to the FlightGear engine
+  interface, not two: the APU is engine[2] and the APU system spools from
+  `/engines/engine[2]/n2`.
+- **Three copies of the aircraft data**: `provpilot/aircraft/md80` (res://),
+  the repo-root `aircraft/md80` (what headless smokes and editor runs load:
+  the install root is the first folder with a `provpilot.cfg`) and
+  `/Users/gery/provpilot/aircraft/md80` (the packaged app). Sync both after
+  editing; the log line `JSBSim root:` names the loaded one.
+- **White squares on switches** (L GEN, R GEN, APU master; the cockpit and
+  cabin temperature slews, the trim handles and the ASI pointers too): the
+  FlightGear model's `<visible>false</visible>` picks — sense surfaces for
+  the halves of a three-position switch that FlightGear never draws. The
+  importer keeps them as plain meshes, so they rendered as white quads.
+  `FGControls::setup` now takes every `visible=false` pick (actionable or
+  not) out of the camera's layers (`layer_mask 0`, no shadows); the mesh
+  stays in the tree for the ray, so the halves still take clicks. Log line:
+  "N invisible sense surfaces taken out of the camera's layers" (14 here,
+  4 on the ASK 21's altimeter knob, 5 on the Cessna / PC-7 gyros).
+- **Mouse house rule** (gery): on anything that moves both ways the left
+  button and wheel down go *down / counter-clockwise*, the right button and
+  wheel up go *up / clockwise*. FlightGear aircraft disagree about which of
+  their buttons 0 / 1 / 3 / 4 is which way (this model pairs `[0,4]` / `[1,3]`
+  on the overhead, `[0,3]` / `[1,4]` on the hydraulic panel, and the APU
+  START half has wheel-up going *down*), so `FGControls::press_item` reads
+  the direction from the action itself (`action_direction`: the sign of a
+  `property-adjust` step, the order of a `property-cycle` list, else the
+  wheel button the action is paired with) and the listed buttons only break
+  ties; pushes, toggles and one-way halves keep FlightGear's numbering.
+  `knob` records: right / wheel up = increase (clockwise). The release runs
+  `mod-up` of the action that actually ran, not of every action on the
+  record. So the APU is started by holding the *right* button on the upper
+  half of the knob; the left button on it moves the knob down to OFF.
+- **Switches stop at their ends** (gery: the landing light switch jumped
+  from ON back to RETRACT on the next click, same with the wheel):
+  FlightGear's `property-cycle` wraps by default and this model never sets
+  `wrap`. `FGControls` now wraps only when `wrap` is true or the list is a
+  plain toggle — two values that are all the property is ever cycled over
+  in this cockpit (`cycle_values`, gathered over every record at setup).
+  A two-value list that is a sub-range (the APU master's lower half cycles
+  `[1,0]` of `{0,1,2}`, the L GEN upper half `[0,1]` of `{-1,0,1}`) is a
+  one-way half and stops; three or more values always stop.
+- Tests: `smoke_md80_cockpit` checks the aligned platform, the live ADI /
+  HSI, the published APU engine, the hidden L GEN / APU sense surfaces and
+  the house rule on EMER LTS (switch), EMER PWR (knob) and APU START (hold),
+  the end stops of the landing light switch and the APU master's lower half; `probe_md80_power.tscn` prints the
+  power / alignment / APU chain and starts the APU through the control state.
+
+### Step 7 — FlightGear `<text>` elements (2026-11-01, gery: "frequency and course are not displayed in the two NAV instruments")
+The FGCP's NAV frequency and CRS windows (and HDG / IAS / ALT / VS, the
+pedestal COMM, ADF and transponder heads, the fuel totaliser) are not
+textures: FlightGear draws them with `<text>` elements — osgText at
+`<offsets>` in the model file's frame, `number-value` with a printf
+`<format>` on a property, `text-value` (a string) or `literal`, in a 7-segment
+`<font>` from the package's `Fonts/`, `<character-size>` metres tall,
+anchored by `<alignment>` (`right-bottom`), lying in `<axis-alignment>`
+(`yz-plane`: baseline +y, up +z, facing +x aft). The builder ignored them,
+so the windows were empty. Generic now:
+- `fg_a10_build.py` (`import_texts`): an empty per text placed like a
+  sub-model (`place`), the record in the manifest's `texts` list ({model,
+  node, frame, raw}); the referenced fonts copied to `model/fonts/`
+  (`fonts` map; LiberationSans is not shipped and falls back to Godot's
+  default). A text's `<name>` is an object other animations select; a
+  unique name goes into `local_names` (exact), a name several texts share
+  (`Digits.Test`, one per window) lists every copy so one exact select
+  reaches them all. Octal450's `<prop>-fmt` properties are the Nasal's
+  working copies of `<prop>`: the builder points the text at the base
+  property and keeps the original as `property_fg`.
+- `FGAnimator::load_texts`: a `Label3D` under each empty — the aircraft's
+  font (`FontFile::load_dynamic_font`), 64 px glyphs at `character-size /
+  64` m per pixel, alignment, the plane as a basis (yz-plane = +90° about
+  y in the Godot frame), 0.3 mm in front of the panel, unshaded, alpha
+  cut. `update_texts` runs the format through `snprintf` like osgText
+  (one conversion; `%003.0f`, `.%3.0f`, `+%04.0f` as written). Select
+  animations hide the empty (power, annun-test); a material animation on
+  the text tints the label (`diffuse` × `factor-prop`, so the FGCP digits
+  are amber at `systems/lighting/fgcp-digital`). FlightGear ships
+  `controls/lighting/fgcp-digital` / `capt-digital` / `fo-digital` at 1
+  (`MD-80-main.xml`); the init list had 0, which the Digits select treats
+  as off. NAV 2 is seeded with FlightGear's 109.55.
+- Tests: `smoke_md80_cockpit` checks 61 texts built, the NAV 1 window
+  showing the tuned frequency, lit, and the CRS window following the
+  course knob; `probe_md80_text_shot.tscn` saves close-ups of the FGCP and
+  the pedestal (`CameraRig::set_head_look`, new, aims the head directly).
+- Not done: the FGCP's autoflight windows (HDG, IAS, ALT, VS) read
+  `it-autoflight/*`, which only the Nasal autoflight writes — they stay
+  dark until D6; `text-value` strings (`alt-thousands`) the same.
+
+### Step 8 — CG, pitch trim, IVSI, airborne start (2026-11-01, gery: "does the fuel lever change the CG? I pull a lot to stay level; the VSI does not work")
+- **CG is modelled**: the FDM's tanks and point masses carry positions and
+  JSBSim recomputes weight and CG every step. Two things hid it. The fuel
+  slider filled every tank to the same share, and with this FDM's tank arms
+  the fuel's own centre then sits exactly on the aircraft CG, so the bar could
+  not move; `JSBGodot::set_fuel_percent` now loads the wing tanks first and the
+  centreline tanks after (`apply_fuel` uses it). And the settings screen pauses
+  the FDM: `set_tank_contents_lbs` feeds the tank weights into the mass
+  balance and runs it at once, so the CG reads follow the slider. `% MAC`
+  comes from the cfg's `[performance] mac_le_x_in` / `mac_in` when given
+  (the MD-80's own `inertia/cg-percent-mac` constants: 908.06 in, 120.47 in),
+  else from the FDM's function, else the 25 % estimate; the MD-80's load
+  manager limits (`/systems/load-manager/cg-fwd-limit` / `-aft-limit`,
+  weight dependent, from the FCOM) show under the bar.
+- **Pitch trim goes through JSBSim's trim command** (`fcs/pitch-trim-cmd-norm`)
+  instead of being added to the elevator: the conventional aircraft sum the
+  two at unity in their "Pitch Trim Sum", so nothing changes for them; the
+  MD-80 drives its stabilizer from it (`controls/flight/elevator-trim`, which
+  the mirror derives from the trim command: 12.5 deg per unit, -12.5 .. +2.5).
+  Before, the stabilizer sat at 0 deg and the column carried the whole trim,
+  hence the pull. `[jsbsim] pitch_trim_default -0.24` starts a session at
+  FlightGear's 3 units nose-up. The trim keys / buttons move the trim command
+  (the stabilizer follows at its own 1/3 deg/s).
+- **IVSI**: the model's `vert-speed-fpm` channel reads
+  `it-autoflight/internal/vert-speed-fpm`, which only the Nasal autoflight
+  wrote (on the ground it shows -75 x pitch rate, the "moves down on
+  rotation"). `_links` values may now be `{src, factor, offset}`; the init
+  list links it from `velocities/h-dot-fps` x 60.
+- **Airborne start — dynamic trim** (`JSBGodot::trim_longitudinal`, all
+  aircraft): JSBSim's FGTrim evaluates every probe with the time step at 0,
+  so an FDM whose column, stabilizer or engines answer through filters,
+  actuators and spool dynamics shows it no response and it diverges (it did
+  for the MD-80: every axis "Failed"). Now the FDM runs at its real rate with
+  the vehicle state pinned to the initial conditions after each step
+  (`FGPropagate::SetInitialState`), the actuators and systems settle, one
+  zero-step read gives the turbines' static thrust, and a secant per axis
+  nulls the accelerations: alpha for w-dot, throttles for u-dot (JSBSim's
+  command plus the FlightGear levers the thrust limiter reads), the trim
+  command for q-dot; a residual the trim cannot take stays on the elevator.
+  What it had to work around, all generic: the FDM is *held* before release
+  (held models skip) — lifted for the solve; JSBSim's starvation flag was
+  latched from ground frames with empty feed pipes and only clears while fuel
+  is consumed — a few un-trimmed steps first, the pipes (feed tanks under
+  100 lb) topped up, engines re-lit; the systems read the FlightGear engine
+  interface the bridge normally mirrors — `mirror_engines_to_fg` (n1, n2,
+  running) each pinned step; the autoconfig flag that speeds the stabilizer
+  also zeroes the rated thrust — the throttle axis and a final refinement run
+  with it off, and the flag is cleared after the solve (it had stayed at 1
+  once its pulse had already ended: idle thrust for the whole flight). About
+  2 s and 10 000 pinned steps; the log prints every round.
+- Tests: `smoke_md80_airborne` (8000 ft, 250 kt: column centred, stabilizer
+  carries the trim, FlightGear elevator-trim mirrors it, level within 10 fps,
+  autoflight vs linked, IVSI follows a pull, weight and CG change with the fuel
+  slider without an FDM step).
+
+### Step 9 — GS flag, gear, fuel quantity (2026-11-01, gery: "GS flag on during the whole approach; gear not animated outside; fuel qty blank")
+- **GS flag**: the HSI's flag (and the glide slope needle's select) need
+  `instrumentation/nav[0]/signal-quality-norm` above 0.99. The receiver gave
+  `1 - distance / range`, i.e. below 0.99 beyond a quarter mile: the flag was
+  up everywhere except over the antenna (and on the ground at LSZH, which is
+  the "GS shown before take-off" the pilot saw). FlightGear's quality is 1
+  within range; `RadioNav` now holds 1 and fades over the last tenth of the
+  range, for VOR and ILS alike.
+- **Gear**: this FDM has no gear kinematic channel — FlightGear's `gear.nas`
+  moved the legs and JSBSim never copies `gear/gear-cmd-norm` into
+  `gear/gear-pos-norm` by itself, so the legs stayed down in the FDM (drag,
+  WOW) and in the model whatever the lever did. `[gear] fdm_position false`
+  makes `JSBGodot` move the position towards the command over
+  `retract_seconds` (10 s here); the bridge's `gear/gear[n]/position-norm`
+  then animates the exterior.
+- **Fuel quantity**: the pedestal indicator's digits are text elements
+  selected by `systems/lighting/pedestal-digital`, whose knob the init list
+  had at 0; every `controls/lighting/*` default now follows
+  `MD-80-main.xml` (pedestal-digital 1).
+- Tests: `smoke_md80_airborne` retracts the gear (position after 3 and 12 s,
+  the model property), `smoke_md80_cockpit` reads the left main tank
+  readout, `smoke_radio_nav` still passes with the new signal quality.
+
+### Step 10 — brakes (2026-11-01, gery: "a wheel brake axis; is the autobrake available?")
+- The MD-80's flight controls compute `fcs/left|right-brake-cmd-norm`
+  themselves: max of `/controls/gear/brake-left|right`, `brake-parking` and
+  `/systems/abs/brake-output`, through a hydraulic actuator, forced to 1 while
+  the autoconfig flag or the chocks are on. PVP's push of JSBSim's command was
+  overwritten every step, so pedal braking did nothing on this aircraft (the
+  start held because of the setup flag). `copy_inputs_to_JSBSim` now also
+  writes the FlightGear pedal properties when the FDM has them.
+- **Autobrake is available**: it is the JSBSim system "DFGS: Autobrake"
+  (`md-80-dfgs.xml`): the pedestal AUTO BRAKE selector (`controls/cockpit/abs-knob`,
+  OFF / MIN / MED / MAX / T.O.) and the ARM switch (`controls/abs/armed`) are
+  clickable; `can-arm` wants the spoilers armed and the usual conditions,
+  the T.O. mode is RTO protection and disarms with the throttles; the
+  brake output enters the max above. Not flight-tested yet.
+- Joystick: `Flight: Wheel brakes` axis and the per-frame poll of the flight
+  axes (docs/AIRCRAFT_CONFIG.md, Joystick).
+- Tests: `smoke_md80_fdm` presses the pedal and reads the MD-80's own brake
+  command.
+
+### Step 11 — lights, brightness, flaps (2026-11-01, gery: "landing lights don't work; digital lights too bright; no flood lights; flap detents wrong")
+- **Landing lights**: the model has no light meshes (FlightGear's lights are
+  effect sub-models the build leaves out) and the cfg had no `[lights]`. Now
+  `[lights] landing_pos` takes several triples (one fixture each; root units,
+  FlightGear's placements with the airframe file's -22.62 m offset: wing
+  lights at the wing root, the nose light on the nose gear) and
+  `landing_props` names the FDM properties that light them
+  (`/systems/exterior-lights/left|nose|right-landing-light`: the MD-80's
+  systems extend the wing lights over 7 s and dim the nose light at EXT).
+  `landing_switch_props` are what the L key sets (RET 0 / ON 1) and what the
+  rig watches when the cockpit switches are clicked.
+- **Cockpit floods**: `[lights] flood_pos` / `flood_props`: an omni light per
+  flood knob (`/controls/lighting/capt-flood`, `fo-flood`, `pedestal-flood`,
+  `overhead-flood`; `flood_range_m`, `flood_energy`). FlightGear has no light
+  source for these knobs either (its ALS cockpit lighting is renderer side);
+  the positions are a first placement above the glareshield, the pedestal
+  and under the overhead — tune by eye.
+- **Digital brightness**: FlightGear's colour x dimmer factor is a display
+  (sRGB) intent; Godot shades in linear light, so a knob at 0.3 showed about
+  60 % brightness. The animator now runs the digits' tint and the material
+  emission through `srgb_to_linear`, and the floods' knob through a 2.2 curve.
+- **Flaps**: `JSBGodot::set_flaps` snapped every lever value to thirds (a
+  Cessna habit), so the 11 detent (0.36) reached the MD-80's lever table as
+  0.333 = slats only and the next step was 15. The exact cfg value goes
+  through now; the detents are UP/RET, UP/MID, DIAL, 11, 15, 28, 40 (lever
+  table: 0.14 / 0.25 / 0.36 / 0.58 / 0.8 / 0.91). The DIAL detent gives the
+  thumbwheel's 1-10 deg (`systems.FCS.dialAFlap(+-0.25)` shimmed to
+  `controls/flight/dial-a-flap`, -1 .. 24 as FlightGear; the wheel starts at
+  -1 = not set, so DIAL is slats only until dialled).
+- Tests: `smoke_md80_fdm` sweeps the lever (11 at 0.36, 15 at 0.58, dial 5
+  at 0.25), counts 3 landing fixtures and 4 floods, lights the nose light
+  from its switch and the captain's flood from its knob.
+
+### Step 12 — flood knobs, nose light DIM, sounds (2026-11-01, gery: "no mouse sense area for the flood dials; no difference between BRT and DIM on the nose light; engine and wind sounds do not work")
+- **Flood knobs**: in the FlightGear model they are plain `rotate`
+  animations with no `<action>` (the panel / digital knobs next to them are
+  `knob` animations with property-adjust bindings), so they were never
+  clickable in FlightGear either. New generic `[model] knob_actions
+  "property[:step[:min:max]]"`: `FGControls::setup` turns a rotate / knob
+  animation on the property that has no binding into a knob with a
+  property-adjust action (the same binding shape as the panel knobs, so the
+  mouse rule applies: right / wheel up = brighter). The MD-80 lists the four
+  flood knobs at 0.05 per click.
+- **Nose light DIM**: the systems give `/systems/exterior-lights/nose-landing-light`
+  0.6 at DIM and 1 at BRT, and the fixture level read it, but the spot used
+  the level only to switch on (> 0.01): its energy was constant. The spot's
+  energy now follows the level through the 2.2 curve (DIM = about a third
+  of BRT in linear light).
+- **Sounds**: the sound set (77 sounds) loaded and 0 files were missing, but
+  every engine, wind, pack and fan sound reads `/sim/sound/*` volumes and
+  pitches that the package computes in `Sounds/sound-control.xml`, a
+  FlightGear property-rule file (`<autopilot n="6">` in MD-80-main.xml:
+  51 components, `<logic>` for the view selection and `<filter>` gain /
+  noise-spike with `<table>` / `<product>` / `<min>` expressions from
+  `n1-actual`, the fake N2, the reversers, airspeed and the pack flows).
+  Nothing ran it, so everything stayed at 0 = silent. New
+  `src/fg_property_rules.cpp` (`FGPropertyRules`, D6's first half): parses
+  the XML at runtime (Godot `XMLParser`), runs `logic` and the filter types
+  gain / exponential / double-exponential / moving-average / noise-spike /
+  reciprocal / derivative / integrator with FlightGear's conditional input
+  lists, `enable`, `u_min` / `u_max`, SimGear's expression and condition
+  grammars; outputs go into the bridge dictionary (and into the FDM when it
+  has the node) and are remembered so a rule may read a later rule's last
+  value. Loaded from `[jsbsim] property_rules` (the file is copied to
+  `sounds/sound-control.xml`); its inputs join the mirror's pull keys, and
+  the rig runs it between `collect()` and the animator / sounds. Other
+  component kinds (`pid-controller`, `pi-simple-controller`,
+  `predict-simple`, `flipflop`) are reported once and skipped — the DFGS
+  files need them (D6's second half). The cockpit wind sound reads
+  `/sim/sound/wind`, which nothing in the package writes (the rules compute
+  `wind-v`): `[sound] aliases "/sim/sound/wind = /sim/sound/wind-v"`
+  (generic `FGSounds::set_aliases`). Wind starts above 102 kt, as the
+  table says.
+- Tests: `smoke_md80_fdm` checks the nose light at DIM (0.60), the four
+  flood knobs among the binding properties, 51 rule components with none
+  unsupported, `internal-custom` 1 in the cockpit, fake N2 54 at idle, and
+  the engine whines of both engines playing (-7 dB at idle).
+
+### Step 13 — flap steps, NAV 2, brightness (2026-11-01, gery: "flaps go UP, 0/slats, then straight to 15; digital and overhead lights still overload; the second HSI is slaved to NAV 1")
+- **Flap steps**: the joystick buttons (and the keys through
+  `CockpitControls`) still stepped by thirds: 0 -> 0.333 -> 0.667 -> 1,
+  which the MD-80's lever table reads as UP/MID (slats, the handle near 11),
+  15, 40 — exactly the sequence reported. `JSBGodot::increase_flaps` /
+  `decrease_flaps` now step a detent list the rig hands over from `[flaps]
+  positions` (`set_flap_detents`), the keyboard / lever-drag notch count and
+  the resync from the commanded value use the same list (nearest detent),
+  so every path walks UP/RET, UP/MID, DIAL, 11, 15, 28, 40. FlightGear's own
+  stepping moves the DIAL detent to the slot matching the dialled range
+  (0-10 between UP/MID and 11, 12-14 between 11 and 15, 16-24 between 15
+  and 28); PVP keeps a single DIAL detent at 0.25 (1-10 deg), the other two
+  ranges are not reachable yet.
+- **NAV 2**: the bridge had one receiver, and the FO's HSI (`hsi2.xml`,
+  `instrumentation/nav[1]/...`) read zeros. `RadioNav` got a
+  `receiver_index` (n > 0 writes `instrumentation/nav[n]/...`, no DME / ADF)
+  and the bridge runs a second one from the FGCP NAV 2 / CRS 2 knobs
+  (`instrumentation/nav[1]/frequencies/selected-mhz`, seeded 109.55 by the
+  init list, and `.../radials/selected-deg`). The MD-80's own system gates
+  the HSI 2 deviation on `nav[1]/in-range` and `signal-quality-norm`, which
+  the mirror now pushes. docs/RADIO_NAVIGATION.md §3.
+- **Brightness ("overloaded" panels)**: measured with the new
+  `tests/probe_md80_night_shot.tscn` (23:00, knobs as arguments, saves the
+  main panel / FGCP / overhead and prints the blown-out fraction). The dials
+  were solid orange with white markings: `BaseMaterial3D`'s default
+  emission operator is ADD, `EMISSION = colour + texture`, so pairing the
+  dial texture as emission texture (step 11's "modulate by the albedo") made
+  the black dial `orange + black` and the markings `orange + white`.
+  FlightGear's fixed function multiplies. The animator now sets
+  `EMISSION_OP_MULTIPLY` whenever an emission texture is in play, also for
+  the imported self-lit lamps. Step 11's `srgb_to_linear` on the digits'
+  modulate and on the emission colour was a double conversion (Label3D's
+  modulate is an sRGB vertex colour, a material colour is a `source_color`
+  the renderer linearises) and is gone again: FlightGear's colour x factor
+  goes through as it is. The floods were far too strong (energy 1.2 at 2 m
+  blew out 27-43 % of the frame at full; 0.3 still washed the walls white): `flood_energy 0.1`, full knob = a dim, even cabin light.
+
+### Step 14 — exterior shading (2026-11-01, gery: "segments of the wings throw some kind of shadow, dark on one side and bright on the other; on the MD-80 mostly the ailerons and elevator")
+
+Vertex normals, not shadows: the AC3D add-on never marked sharp edges (it
+applied the crease angle to an empty mesh), so every smooth-shaded face
+blended across its neighbours' caps and edges. `fg_a10_build.py` now
+re-applies each .ac object's crease once the geometry exists ("Crease
+angles" in docs/A10_FLIGHTGEAR_PORT.md). `md80_fg.glb` rebuilt (20.8 MB,
+AileronL 196 → 245 vertices from the splits) and copied to the three
+folders; `animations.json` and `fonts/` unchanged. Rebuild command as in
+D3 plus `--source-note "FlightGear MD-80 by Josh Davidson (Octal450),
+GPL-2.0"` to keep the manifest's source note.
+
+### Step 15 — the MD-80 family and liveries (2026-11-01, gery: "get all MD80 models into the sim: MD-81, 82, 83 and 87 with different liveries; the aircraft selectable on the welcome screen, the liveries in the Aircraft settings tab")
+
+**Variants as thin aircraft.** `aircraft/md81`, `md83` and `md87` are
+aircraft of their own on the welcome screen and in the settings keys, but
+their `aircraft.cfg` names `[aircraft] base "md80"` (new, generic,
+docs/AIRCRAFT_CONFIG.md): the MD-82's config is loaded and the variant's
+sections overlaid on it, and every file the variant lacks is read from
+`md80/` (`AircraftConfig::resolve_aircraft_file`, the FDM loader per JSBSim
+folder: `JSBGodot::load_aircraft` now hands JSBSim the variant's
+`jsbsim/aircraft` and the base's `engine` / `systems`). What each carries:
+
+- md81: `jsbsim/aircraft/md81/md81.xml` (FDE/MD-81.xml, JT8D-217 engines and
+  thrust limits) with `FDE/Config`; the MD-81 livery catalog. 80 KB.
+- md83: the same with FDE/MD-83.xml (JT8D-219, forward / aft auxiliary tanks
+  5 500 / 8 399 lb). 80 KB.
+- md87: FDE/MD-87.xml with the md-87 ground-reaction, mass and external
+  files and `Systems/md-87-cockpit-firetank.xml`; `jsbsim/init_md87.json`
+  (the -set file's `aero/arm-factor` 0.97; `[jsbsim] init_properties` is a
+  list now and merges the base's file first); its own model
+  `model/md87_fg.glb` (21 MB: `--root Models/MD-87.xml`, the MD-82 skips
+  plus `Effects/Firetank` and `Models/firetank.xml`, `--set-xml
+  MD-87-set.xml`; 1 997 objects, 62 texts, the combined standby instrument)
+  with `[camera] cockpit_position` z 166.8 (the cockpit sits 2.9 m further
+  aft of the model origin in MD-87-main.xml) and the lights moved with it
+  (nose light at -17.26 m). Gear height: same `[model] offset` as the MD-82
+  (`tests/probe_gear_height.tscn -- md87`).
+
+**Liveries.** FlightGear liveries are PropertyLists setting
+`sim/model/livery|fairings|rudders/texture` (the MD-87 also `hstab` and
+`wing`), read by `material` animations with `<texture-prop>`; the -set files
+seed `sim/model/n1-tach|n2-tach/texture` the same way (the -217 / -217A /
+-219 gauge faces). `scripts/fg_liveries.py` exports them: the images (156
+files, 18 MB, PNG as shipped) go to `md80/model/liveries/` in FlightGear's
+own layout relative to `Models/` (`Liveries/MD-82/AA_fuselage.png`,
+`Instruments/n1-217.png`; one tree for the family, `.gdignore`'d), one
+catalog per variant (`MD-81.json`: 11 liveries, MD-82 24, MD-83 23, MD-87 2;
+two skipped for missing files: the MD-81 JAL and the MD-87 White). `FGAnimator` learnt `texture-prop`
+(generic: the A-10 / glider manifests have none): the record's property is
+`property-base/texture-prop`, the file resolves below `[model] textures_dir`
+in the directory of the record's own model XML (`submodels[].xml` below
+`Models/`), is loaded once (`Image::load_from_file`, mipmaps) and replaces
+the albedo (and a paired emission texture) of the record's objects; "" or
+the `<texture>` the glb was built with restores the glb's own.
+`AircraftRig::setup_liveries` publishes the catalog defaults and the chosen
+livery's files as control state (strings, which the FDM push skips), the
+Aircraft tab shows a **Livery** option for aircraft with a `[liveries]
+catalog` (all four MD-80 configs have one, the MD-82's in `md80/aircraft.cfg`; stored `aircraft_<id>_livery`, applied at once to the flown
+aircraft through `livery_changed` → `AircraftRig::set_livery`). The
+installer copies PNGs only below a `liveries` folder (bundle 1.0.12) and the
+export preset includes `aircraft/*/model/liveries/**`.
+
+Test: `tests/smoke_md80_variants.tscn` (config inheritance and file
+fallback without a flight, then a flight per variant: FDM tanks / arm
+factor, shared sounds, livery catalogs, the SAS fuselage swap and restore on
+the MD-81, the Aircraft tab's option applying and storing a choice, the
+MD-87 model and eye point).

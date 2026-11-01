@@ -50,10 +50,43 @@ Typed getters each take a default, so omitted keys fall back gracefully:
 ### `[aircraft]`
 `id`, `name`, `description` — identity shown on the welcome screen.
 
+`base "<id>"` — a **variant aircraft** (2026-11-01, the MD-80 family). The
+config of the base aircraft is loaded first and this file's sections are
+overlaid on it key by key (`AircraftConfig::load_for_aircraft`), so a variant
+file holds only what differs. Every file resolved through
+`AircraftConfig::resolve_aircraft_file` (sounds, manifests, Nasal shims, init
+lists, the liveries tree...) is looked for in the variant's folder first and
+then in the base's, and the FDM loader does the same per JSBSim folder: a
+variant ships `jsbsim/aircraft/<model>/` (its FDM, `FDE/Config`, maybe a
+`Systems/` file of its own) and takes `engine/` and `systems/` from the base.
+`res_file` paths are explicit, so a variant that shares the base's glb
+inherits that key unchanged. Examples: `aircraft/md81`, `md83` (same model
+as `md80`), `md87` (own model). The welcome screen lists variants like any
+aircraft (`src/welcome_screen.cpp`) and their settings are keyed by their
+own id.
+
 ### `[jsbsim]`
 `model` — JSBSim model name. Data lives under
 `<aircraft_dir>/jsbsim/{aircraft,engine,systems}`; the file
 `<aircraft_dir>/jsbsim/aircraft/<model>/<model>.xml` must exist.
+`init_properties` — one JSON file, or a comma-separated list merged in order
+(a variant adds its few values after the base's list: `md87` sets the
+MD-87-set.xml stabilizer arm factor in `jsbsim/init_md87.json`).
+
+`property_rules "a.xml, b.xml"` — FlightGear property-rule files (the
+`<autopilot><path>` entries of a -set file: `<logic>` and `<filter>`
+components with SimGear expressions and conditions), paths relative to the
+aircraft dir. `src/fg_property_rules.cpp` runs them every frame on the
+bridge's property dictionary, after the bridge collects and before the
+animator and the sounds read it; an output the FDM has a node for is also
+written into the FDM. Supported: `gain`, `exponential`,
+`double-exponential`, `moving-average`, `noise-spike`, `reciprocal`,
+`derivative`, `integrator` filters with conditional `<input>` lists,
+`<gain>`, `<filter-time>`, `<samples>`, `<max-rate-of-change>`, `<u_min>`
+/ `<u_max>`, `<enable>`; `<logic>` with `<inverted>`. Other components
+(`pid-controller`, `flipflop` ...) are listed once in the log and skipped.
+The MD-80 runs its `sounds/sound-control.xml` this way (engine, wind, pack
+and fan volumes); see `docs/MD80_FLIGHTGEAR_PORT.md` step 12.
 
 ### `[model]`
 - `file` — model path relative to the aircraft dir; `res_file` — `res://` fallback.
@@ -73,7 +106,11 @@ Typed getters each take a default, so omitted keys fall back gracefully:
 `scripts/fg_a10_build.py`; the `FGAnimator` extension runs every FlightGear
 animation of the model with values from `src/fg_bridge.cpp` (see
 `docs/A10_FLIGHTGEAR_PORT.md`). `hide_nodes "a, b"` hides model nodes by name
-(all matches), used for placeholder display textures. `scale` fits a model
+(all matches), used for placeholder display textures. `knob_actions
+"property[:step[:min:max]]", ...` gives a rotate / knob animation on that
+property that has no binding of its own a property-adjust action (default
+0.05 per click, 0..1), so it turns with the mouse like the other knobs (the
+MD-80's flood knobs, which FlightGear never made clickable). `scale` fits a model
 authored in metres: the AC frame draws models at 0.2 m per unit, so `5.0`
 gives a model's own size (PC-7 and A-10, whose meshes match the real
 dimensions). The Cessna's Sketchfab mesh is 14 % oversize (wingtip lenses
@@ -85,6 +122,33 @@ before trusting `5.0`. Generic FlightGear models the package references
 non-FlightGear model (the Cessna) gets instruments the same way: a
 `model/panel.xml` manifest built into the glb by `scripts/fg_panel_build.py`
 and the resulting `animations.json` under `fg_animations`.
+
+`textures_dir` — folder of the texture files FlightGear `material` animations
+with `<texture-prop>` name (default `model/liveries`); a variant without its
+own folder reads the base's.
+
+### `[liveries]`
+`catalog "model/liveries/<variant>.json"` — the liveries of a FlightGear
+package, exported by `scripts/fg_liveries.py` (2026-11-01). A FlightGear
+livery is a PropertyList setting `sim/model/<x>/texture` properties that
+`material` animations with `<property-base>` + `<texture-prop>` read; the
+-set file seeds a few of the same kind (engine-variant N1 / N2 gauge faces).
+The catalog is `{defaults {prop: file}, liveries [{id, name, textures {prop:
+file}}]}`; file names are relative to the animation's own model XML, as in
+FlightGear, and the exporter lays the images out below `textures_dir` in
+exactly that structure (`Liveries/MD-82/AA_fuselage.png`,
+`Instruments/n1-217.png`). At flight start `AircraftRig::setup_liveries`
+publishes the defaults and the chosen livery's files as control state
+(strings the FDM push skips); `FGAnimator::apply_texture_prop` loads the
+image once (`Image::load_from_file`, mipmaps) and swaps the albedo (and a
+paired emission texture) of the record's objects, restoring the glb's own
+texture for "" or the `<texture>` the glb was built with. The Aircraft tab
+shows a **Livery** option for aircraft with a catalog; the choice is stored
+as `aircraft_<id>_livery` (livery id, "" = as built) and applies at once to
+the aircraft being flown (`livery_changed` → `AircraftRig::set_livery`). The
+folder carries a `.gdignore` (the editor must not import the PNGs); the
+installer copies PNGs only below a `liveries` folder and the export preset
+includes `aircraft/*/model/liveries/**`.
 
 ### `[camera]`
 Cockpit camera (Camera1) placement, in AC‑node‑local meters. Omit the whole
@@ -114,6 +178,12 @@ was modeled on, and a leading `-`/`+` inverts the sweep:
 ### `[flaps]`
 - `positions` — JSBSim `flap-cmd-norm` values per detent.
 - `names` — HUD labels (e.g. `"UP, T/O, LAND"`).
+
+Every path that steps the flaps walks this list: the F / Shift+F keys and
+the cockpit lever drag (`CockpitControls`), the joystick buttons and the
+FlightGear lever clicks (`JSBGodot::increase_flaps` / `decrease_flaps`, which
+get the list through `set_flap_detents`). Without a section the list is the
+Cessna's thirds (0, 0.333, 0.667, 1).
 
 ### `[propeller]`
 Drives the spinning prop + RPM‑based **blur disc**.
@@ -179,7 +249,7 @@ centre and follows the node, so lights on animated gear retract with it.
 | `nav_left`, `nav_right`, `nav_tail` | red / green / white steady | on while an aircraft is loaded |
 | `strobe` | white double flash (1.2 s) | airborne (no weight on wheels) |
 | `beacon` | red flash (1 Hz) | always |
-| `landing`, `taxi` | white sprite + `SpotLight3D` on the ground | **L** toggles both; out while the gear is retracted |
+| `landing`, `taxi` | white sprite + `SpotLight3D` on the ground | **L** toggles both; out while the gear is retracted; with `<kind>_props` the spot's energy follows the aircraft's level (DIM 0.6 / BRT 1) through a 2.2 curve |
 | `<kind>_pos` | `"x, y, z"` in model-root units | alternative for models without a lens mesh (the Cessna's cowl lights) |
 | `<kind>_anchor` | animated part the lens rides on | for lens meshes without animation tracks (the A-10 nose-gear lights): the lens is reparented under the part with the offset from the clip pose in which they coincide |
 | `landing_pitch_deg` | spot aim below the aircraft's forward axis (default 5) | |
@@ -216,7 +286,11 @@ centre-of-gravity readout from JSBSim (inches aft of the datum, % MAC with
 the aerodynamic centre taken at 25 % MAC, weight).
 
 ### `[sound]`
-`engine` (ogg path) and RPM‑mapped `pitch_*` / volume tuning.
+`engine` (ogg path) and RPM‑mapped `pitch_*` / volume tuning. `fg_sounds`
+names a FlightGear sound set (`scripts/fg_a10_sounds.py` output) played by
+`src/fg_sounds.cpp`; `aliases "a = b, ..."` lets a property the set reads
+that nothing writes take another's value (the MD-80's cockpit wind reads
+`/sim/sound/wind` while its rules compute `/sim/sound/wind-v`).
 
 ### `[propeller]`
 `blur_start_rpm` shows the translucent disc, `hide_blades_rpm` hides the
@@ -259,7 +333,8 @@ loaded directly — no install‑root sync):
 ## Adding a new aircraft (checklist)
 
 1. Create `provpilot/aircraft/<id>/` with `jsbsim/{aircraft,engine,systems}` and
-   `model/<id>.glb`.
+   `model/<id>.glb` — or, for a variant of an existing aircraft, only
+   `aircraft.cfg` with `[aircraft] base` plus the files that differ.
 2. Write `aircraft.cfg` (copy an existing one; the Cessna file documents the
    format in‑line).
 3. Add the aircraft to the welcome‑screen list in
@@ -282,9 +357,25 @@ unaffected (engine 0 == all engines).
 Keys specific to this airframe: **Ctrl+W** full / limited nose-wheel
 steering, **B** speed brakes (split ailerons, `fcs/speedbrake-cmd-norm`),
 **L** landing / taxi lights, **G** gear. The cockpit switches and knobs are
-clickable (left / right click, wheel, Shift for coarse steps; see
+clickable (left click / wheel down = down or counter-clockwise, right click
+/ wheel up = up or clockwise, Shift for coarse steps; see
 `docs/A10_FLIGHTGEAR_PORT.md` subtask 5). **H** cycles the ProVPilot HUD
 overlay for every aircraft: off, bottom readouts, readouts + upper info.
+
+**Joystick** (Settings > Joystick, `JoystickBindings`, polled once per frame
+by `node_3d.gd` into `JSBGodot::apply_joystick`, 2026-11-01): roll, pitch
+and yaw from their bound axes (applied when the axis moved, so the keyboard
+still nudges a resting stick's controls); the throttle is absolute when it is
+a lever (0..1 across the calibrated range) and keeps the incremental RT / LT
+behaviour when bound to a trigger; **Flight: Wheel brakes** takes the pulled
+half of a centred lever (gery flies brakes and rudder on one lever, as in
+X-Plane: rest = none, pull = 0..1; tick *Inv* if your lever reads positive
+when pulled); the *Hold brakes* button and the `.` / `,` keys combine with it,
+whichever asks for more. The parking brake is that held brake state
+mirrored to the cockpit handle. The brake command also goes to FlightGear's
+`/controls/gear/brake-left|right` when the FDM has them, because an FDM that
+computes its own brake command from those (the MD-80: pedals, parking brake,
+autobrake) overrides JSBSim's.
 
 Ported from the FlightGear A-10 (its standalone JSBSim FDM: twin TF34 turbofan,
 retractable tricycle gear, flaps, speedbrake). The visual model is a

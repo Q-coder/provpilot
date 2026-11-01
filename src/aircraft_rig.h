@@ -20,12 +20,14 @@
 #include "fg_animator.h"
 #include "fg_bridge.h"
 #include "fg_controls.h"
+#include "fg_property_rules.h"
 #include "fg_sounds.h"
 
 using namespace godot;
 
 namespace jsbgodot
 {
+    class SettingsStore;
 
     // The flown airframe as described by its aircraft.cfg: loads the config,
     // pushes its tunables into the animation / cockpit / sound modules it
@@ -92,6 +94,9 @@ namespace jsbgodot
         // Cockpit camera per cfg [camera] (position / rotation / fov / orbit
         // distances); no keys = the scene's own Camera1 transform.
         void apply_camera_config();
+        // Per-aircraft eye point (settings aircraft_<id>_eye_offset), saved when a move ends.
+        void save_eye_offset();
+        SettingsStore *settings_store() const;
         // cfg [gear] steer_limited_deg / steer_full_deg -> JSBGodot.
         void apply_nose_steer_range(Object *jsb);
 
@@ -133,6 +138,7 @@ namespace jsbgodot
         Ref<FGBridge> get_fg_bridge() const;
         Ref<FGControls> get_fg_controls() const;
         FGSounds *get_fg_sounds() const;
+        Ref<FGPropertyRules> get_fg_property_rules() const;
         FGAnimator *get_fg_animator() const;
         AircraftLights *get_aircraft_lights() const;
         // The systems built on the model (called from resolve_nodes; public
@@ -140,6 +146,15 @@ namespace jsbgodot
         void setup_aircraft_lights();
         void setup_fg_animations();
         void setup_fg_sounds();
+        void setup_fg_property_rules();
+        // cfg [liveries] catalog: the texture properties of the chosen livery
+        // (Settings > Aircraft, aircraft_<id>_livery) and the variant's own
+        // texture defaults go into the control state; FGAnimator swaps the
+        // textures. set_livery applies a new choice while flying.
+        void setup_liveries();
+        void set_livery(const String &p_livery_id);
+        String get_livery() const;
+        Array get_liveries() const;
         // A cockpit switch or knob changed a FlightGear property: real effects.
         void _on_fg_control(const String &prop, const Variant &value);
 
@@ -174,18 +189,31 @@ namespace jsbgodot
         Ref<FGBridge> fg_bridge;
         Ref<FGControls> fg_controls;
         FGSounds *fg_sounds = nullptr;
+        Ref<FGPropertyRules> fg_rules;    // cfg [jsbsim] property_rules
+        Dictionary rule_fdm_nodes;        // rule output -> the FDM has that node
         FGAnimator *fg_animator = nullptr;
         AircraftLights *aircraft_lights = nullptr;
         bool fg_seeded = false;
+        Dictionary livery_defaults;      // catalog "defaults": prop -> file (the -set file's gauge faces)
+        Array livery_list;               // catalog "liveries": [{id, name, textures}]
+        PackedStringArray livery_props;  // every property a livery sets (cleared when none is chosen)
+        String livery_id;
+        void apply_livery_props();
         bool parking_brake = false;
         bool speedbrake_out = false;
         bool hotspot_key_held = false;
         bool speedbrake_key_held = false;
         bool landing_key_held = false;
+        Array landing_props, flood_props, landing_switch_props; // [lights] *_props (see setup)
+        double landing_switch_on = 1.0, landing_switch_off = 0.0;
         Object *last_jsb = nullptr;
 
         bool has_fg_sounds() const;
         void sync_parking_brake(Object *jsb);
+        void push_nav_text(const String &text);
+        void apply_fdm_init_properties(JSBGodot *fdm);
+        // Engine loop and FlightGear sounds to silence (aircraft swap, loading).
+        void silence_sounds();
 
         Node3D *resolve_surface(const String &key) const;
         Node3D *resolve_model_node(const String &rel) const;

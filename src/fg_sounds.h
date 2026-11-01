@@ -6,6 +6,7 @@
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/templates/vector.hpp>
 
@@ -40,6 +41,14 @@ namespace jsbgodot
 
         int load(const String &json_path, const String &sounds_dir);
         void clear();
+        // Stop every player (silence); the next update() restarts what should play.
+        void silence();
+        // Every property path the sound set references (conditions, volume, pitch).
+        PackedStringArray property_names() const;
+        // cfg [sound] aliases: a property the sound set reads that nothing
+        // writes (the MD-80's /sim/sound/wind) takes another's value.
+        void set_aliases(const Dictionary &d);
+        Dictionary get_aliases() const;
         // Per frame with the FlightGear property values of this frame.
         void update(const Dictionary &props, double delta);
         // Names of the sounds playing now (tests).
@@ -80,6 +89,7 @@ namespace jsbgodot
         Array skipped;
         Vector<Sound> sounds;
         Dictionary props;
+        Dictionary aliases; // normalised path -> normalised source path
 
         static Array as_list(const Variant &v);
         static String norm(const String &p);

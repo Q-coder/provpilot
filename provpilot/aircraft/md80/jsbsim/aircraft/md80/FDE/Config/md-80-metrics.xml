@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+
+<!-- McDonnell Douglas MD-80 JSBSim -->
+<!-- Copyright (c) 2026 Josh Davidson (Octal450) -->
+
+<metrics>
+	
+	<wingarea unit="FT2">1209</wingarea>
+	<wingspan unit="FT">107.83</wingspan>
+	<chord unit="FT">25.19</chord> <!-- Fudged for coefficient weighting -->
+	
+	<location name="AERORP" unit="M">
+		<x>24.32486</x>
+		<y>0</y>
+		<z>-0.19827</z>
+	</location>
+	
+	<location name="EYEPOINT" unit="M">
+		<x>22</x>
+		<y>0</y>
+		<z>1.17102</z>
+	</location>
+	
+	<location name="VRP" unit="M">
+		<x>22.6236</x>
+		<y>0</y>
+		<z>0</z>
+	</location>
+
+</metrics>

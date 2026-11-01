@@ -29,6 +29,8 @@ void FGSounds::_bind_methods()
 	ClassDB::bind_method(D_METHOD("set_camera_distance_m", "value"), &FGSounds::set_camera_distance_m);
 	ClassDB::bind_method(D_METHOD("get_count"), &FGSounds::get_count);
 	ClassDB::bind_method(D_METHOD("get_skipped"), &FGSounds::get_skipped);
+	ClassDB::bind_method(D_METHOD("set_aliases", "aliases"), &FGSounds::set_aliases);
+	ClassDB::bind_method(D_METHOD("get_aliases"), &FGSounds::get_aliases);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "user_volume"), "set_user_volume", "get_user_volume");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "camera_distance_m"), "set_camera_distance_m", "get_camera_distance_m");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "count"), "", "get_count");
@@ -157,6 +159,110 @@ int FGSounds::load(const String &json_path, const String &sounds_dir)
 	}
 	UtilityFunctions::print("FGSounds: ", count, " sounds loaded, ", skipped.size(), " skipped (no file)");
 	return count;
+}
+
+static void collect_props(const Variant &v, PackedStringArray &out)
+{
+	if (v.get_type() == Variant::DICTIONARY)
+	{
+		const Dictionary d = v;
+		const Array keys = d.keys();
+		for (int i = 0; i < keys.size(); i++)
+		{
+			const String k = keys[i];
+			const Variant c = d[keys[i]];
+			if ((k == "property" || k == "factor-prop") && c.get_type() == Variant::STRING)
+			{
+				String p = String(c).strip_edges();
+				while (p.begins_with("/"))
+				{
+					p = p.substr(1);
+				}
+				p = p.replace("[0]", "");
+				if (!p.is_empty() && !out.has(p))
+				{
+					out.push_back(p);
+				}
+			}
+			else if (k == "property" && c.get_type() == Variant::ARRAY)
+			{
+				// <less-than><property>a</property><property>b</property>: both sides
+				const Array ps = c;
+				for (int j = 0; j < ps.size(); j++)
+				{
+					if (ps[j].get_type() != Variant::STRING)
+					{
+						continue;
+					}
+					String p = String(ps[j]).strip_edges();
+					while (p.begins_with("/"))
+					{
+						p = p.substr(1);
+					}
+					p = p.replace("[0]", "");
+					if (!p.is_empty() && !out.has(p))
+					{
+						out.push_back(p);
+					}
+				}
+			}
+			else
+			{
+				collect_props(c, out);
+			}
+		}
+	}
+	else if (v.get_type() == Variant::ARRAY)
+	{
+		const Array a = v;
+		for (int i = 0; i < a.size(); i++)
+		{
+			collect_props(a[i], out);
+		}
+	}
+}
+
+void FGSounds::set_aliases(const Dictionary &d)
+{
+	aliases.clear();
+	const Array keys = d.keys();
+	for (int i = 0; i < keys.size(); i++)
+	{
+		aliases[norm(keys[i])] = norm(d[keys[i]]);
+	}
+}
+
+Dictionary FGSounds::get_aliases() const { return aliases; }
+
+PackedStringArray FGSounds::property_names() const
+{
+	PackedStringArray out;
+	for (int i = 0; i < sounds.size(); i++)
+	{
+		collect_props(sounds[i].raw, out);
+	}
+	const Array ak = aliases.keys();
+	for (int a = 0; a < ak.size(); a++)
+	{
+		const String src = aliases[ak[a]];
+		if (!out.has(src))
+		{
+			out.push_back(src);
+		}
+	}
+	return out;
+}
+
+void FGSounds::silence()
+{
+	for (int i = 0; i < sounds.size(); i++)
+	{
+		if (sounds[i].player != nullptr)
+		{
+			sounds[i].player->stop();
+			sounds[i].player->set_volume_db(-80.0);
+		}
+	}
 }
 
 void FGSounds::clear()
@@ -358,6 +464,15 @@ void FGSounds::update(const Dictionary &p_props, double delta)
 	for (int i = 0; i < keys.size(); i++)
 	{
 		props[norm(keys[i])] = p_props[keys[i]];
+	}
+	const Array ak = aliases.keys();
+	for (int a = 0; a < ak.size(); a++)
+	{
+		const String src = aliases[ak[a]];
+		if (!props.has(ak[a]) && props.has(src))
+		{
+			props[ak[a]] = props[src];
+		}
 	}
 	for (int i = 0; i < sounds.size(); i++)
 	{

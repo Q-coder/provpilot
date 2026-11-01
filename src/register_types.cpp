@@ -28,6 +28,7 @@
 #include "fg_bridge.h"
 #include "fg_controls.h"
 #include "fg_sounds.h"
+#include "fg_property_rules.h"
 #include "aircraft_lights.h"
 #include "airports_lib.h"
 #include "runways_lib.h"
@@ -47,6 +48,9 @@
 #include "scenery_design_mesher.h"
 #include "scenery_editor.h"
 #include "scenery_objects.h"
+#include "geo_magnetic.h"
+#include "navaids_lib.h"
+#include "radio_nav.h"
 
 using namespace godot;
 using namespace jsbgodot;
@@ -59,6 +63,9 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	}
 	ClassDB::register_class<JSBGodot>();
 	ClassDB::register_class<Geo>();
+	ClassDB::register_class<GeoMagnetic>();
+	ClassDB::register_class<NavaidsLib>();
+	ClassDB::register_class<RadioNav>();
 	ClassDB::register_class<ControlSurfaces>();
 	ClassDB::register_class<CameraRig>();
 	ClassDB::register_class<CockpitControls>();
@@ -83,6 +90,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<FGBridge>();
 	ClassDB::register_class<FGControls>();
 	ClassDB::register_class<FGSounds>();
+	ClassDB::register_class<FGPropertyRules>();
 	ClassDB::register_class<AircraftLights>();
 	ClassDB::register_class<AirportsLib>();
 	ClassDB::register_class<RunwaysLib>();

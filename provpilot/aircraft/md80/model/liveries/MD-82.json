@@ -1,0 +1,226 @@
+{
+ "variant": "MD-82",
+ "source": "FlightGear MD-80, Models/Liveries/MD-82",
+ "defaults": {
+  "sim/model/n1-tach/texture": "n1-217a.png",
+  "sim/model/n2-tach/texture": "n2-217a.png"
+ },
+ "liveries": [
+  {
+   "id": "Aeromexico",
+   "name": "Aeromexico",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/aeromexico_fuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/aeromexico_fairing.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/aeromexico_vstab_engines.png"
+   }
+  },
+  {
+   "id": "Aeropostal",
+   "name": "Aeropostal",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/aeropostalfuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/aeropostalpanza.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/aeropostalm.png"
+   }
+  },
+  {
+   "id": "AS",
+   "name": "Alaska Airlines",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/AS_fuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/AS_fuselage_fairing.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/AS_vstab_engines.png"
+   }
+  },
+  {
+   "id": "Alitalia",
+   "name": "Alitalia",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/AZA.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/AZA_fuselage_fairing.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/AZA_vstab_engines.png"
+   }
+  },
+  {
+   "id": "ALE",
+   "name": "Allegiant Air",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/ALE_fuselage_bac.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/ALE_fuselage_fairing_wht.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/ALE_vstab_engines_bac.png"
+   }
+  },
+  {
+   "id": "AA",
+   "name": "American Airlines",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/AA_fuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/AA_fuselage_fairing.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/AA_vstab_engines.png"
+   }
+  },
+  {
+   "id": "Aerolineas_Austral",
+   "name": "Austral",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/aerolineas_austral_fuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/aerolineas_austral_panza.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/aerolineas_austral_m.png"
+   }
+  },
+  {
+   "id": "BUC",
+   "name": "Bulgarian Air Charter",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/BUC_fuselage_bac.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/BUC_fuselage_fairing_wht.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/BUC_vstab_engines_bac.png"
+   }
+  },
+  {
+   "id": "COA_1968-1990",
+   "name": "Continental Airlines (1968-1990)",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/COA_1968-1990_fuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/COA_1968-1990_fuselage_fairing.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/COA_1968-1990_vstab_engines.png"
+   }
+  },
+  {
+   "id": "DAL_1962-1997",
+   "name": "Delta Air Lines (1962-1997)",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/DAL_1962-1997_fuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/DAL_1962-1997_fuselage_fairing.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/DAL_1962-1997_vstab_engines.png"
+   }
+  },
+  {
+   "id": "DAL",
+   "name": "Delta Airlines",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/DAL_fuselage_bac.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/DAL_fuselage_fairing_wht.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/DAL_vstab_engines_bac.png"
+   }
+  },
+  {
+   "id": "DAL1",
+   "name": "Delta Airlines (N901DE)",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/DAL1A.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/DAL1B.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/DAL1C.png"
+   }
+  },
+  {
+   "id": "DAL2",
+   "name": "Delta Airlines (N996DL)",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/DAL2A.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/DAL1B.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/DAL2C.png"
+   }
+  },
+  {
+   "id": "EvertsAirCargo",
+   "name": "Everts Air Cargo",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/EvertsAirCargo_fuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/EvertsAirCargo_fuselage_fairing_wht.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/EvertsAirCargo_vstab_engines.png"
+   }
+  },
+  {
+   "id": "FFT",
+   "name": "Frontier Airlines",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/FFT_fuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/FFT_fuselage_fairing.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/FFT_vstab_engines.png"
+   }
+  },
+  {
+   "id": "IA",
+   "name": "Insel Air",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/ia_fuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/ia_fairing.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/ia_vstab_engines.png"
+   }
+  },
+  {
+   "id": "MCD",
+   "name": "McDonald's",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/MCD_fuselage_bac.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/MCD_fuselage_fairing_wht.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/MCD_vstab_engines_bac.png"
+   }
+  },
+  {
+   "id": "SAS",
+   "name": "SAS",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/sas_fuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/sas_fuselage_fairing.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/sas_vstab_engines.png"
+   }
+  },
+  {
+   "id": "SAS1",
+   "name": "SAS (OY-KHG)",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/SAS1A.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/SAS1B.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/SAS1C.png"
+   }
+  },
+  {
+   "id": "SAS2",
+   "name": "SAS (SE-DIR)",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/SAS2A.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/SAS2B.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/SAS2C.png"
+   }
+  },
+  {
+   "id": "Spanair",
+   "name": "Spanair",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/spfuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/sppanza.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/spmotor.png"
+   }
+  },
+  {
+   "id": "Swissair",
+   "name": "Swissair",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/Swissair_fuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/Swissair_fuselage_fairing.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/Swissair_vstab_engines.png"
+   }
+  },
+  {
+   "id": "Venezolana",
+   "name": "Venezolana",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/Venezolana_fuselage_bac.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/Venezolana_fuselage_fairing_wht.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/Venezolana_vstab_engines.png"
+   }
+  },
+  {
+   "id": "White",
+   "name": "White",
+   "textures": {
+    "sim/model/livery/texture": "Liveries/MD-82/White_fuselage.png",
+    "sim/model/fairings/texture": "Liveries/MD-82/White_fuselage_fairing.png",
+    "sim/model/rudders/texture": "Liveries/MD-82/White_vstab_engines.png"
+   }
+  }
+ ]
+}

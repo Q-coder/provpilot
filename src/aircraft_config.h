@@ -53,6 +53,11 @@ namespace jsbgodot
         // A data file shipped with the aircraft (relative to its directory):
         // the install tree first, else the bundled res:// copy (globalized).
         static String resolve_aircraft_file(const String &aircraft_id, const String &rel);
+        // [aircraft] base "<id>": a variant aircraft inherits that aircraft's
+        // config (its sections overlaid by the variant's own keys) and its
+        // files (resolve_aircraft_file falls back to the base's folder, the
+        // FDM loader to its jsbsim/ tree). Empty when the cfg names no base.
+        static String base_id(const String &aircraft_id);
         // Loads the config for any aircraft id (null-free: an unloaded config
         // when the file is missing).
         static Ref<AircraftConfig> load_for_aircraft(const String &aircraft_id);

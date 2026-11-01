@@ -42,7 +42,13 @@ func _ready() -> void:
 	_root = (load("res://node_3d.tscn") as PackedScene).instantiate()
 	add_child(_root)
 	await get_tree().create_timer(4.0).timeout
-	for id in ["c172p", "pc7", "a10"]:
+	var args := OS.get_cmdline_user_args()
+	var ids: Array = args if args.size() > 0 else ["c172p", "pc7", "a10", "md80", "ask21"]
+	for id in ids:
+		# on the ground even for aircraft whose cfg starts them airborne (the glider)
+		if _root._settings:
+			_root._settings.set_setting("aircraft_%s_start_agl_ft" % id, 0.0)
+			_root._settings.set_setting("aircraft_%s_start_speed_kt" % id, 0.0)
 		_root._on_welcome_flight_requested(id, E, N, 160.0)
 		var waited := 0.0
 		while not _root.terrain_initialized and waited < 60.0:
