@@ -316,6 +316,8 @@ func _process(delta: float) -> void:
 		_world.terrain_elevation_below(_ac.global_position), JoystickConfig.get_active_device())
 	if KeyBindings.just_pressed("camera_flip"):   # Settings > Keyboard
 		flip_camera()
+	elif KeyBindings.just_pressed("camera_flip_back"):   # Shift+C: the other way round
+		flip_camera(true)
 	_camera_rig.update(delta, JoystickConfig.get_active_device())
 	if slewing:
 		return
@@ -326,10 +328,29 @@ func _process(delta: float) -> void:
 		return
 	if was_slewing:
 		_spawn.update_terrain_elevation()   # JSBSim was re-initialised at the new spot
+	_poll_flight_joystick()
 
 	_aircraft.update(jsb_node, delta, _engine_volume_pct())
 	_spawn.update_terrain_elevation()
 	_hud.update(jsb_node)
+
+
+## Settings > Joystick flight axes into the FDM (docs/MD80_FLIGHTGEAR_PORT.md
+## step 10): roll / pitch / yaw, an absolute throttle when it is a lever (a
+## trigger keeps the incremental RT / LT), the wheel brakes from the pulled
+## half of a centred lever and the "Hold brakes" button. Unbound axes go as NAN.
+func _poll_flight_joystick() -> void:
+	if jsb_node == null or JoystickConfig.get_active_device() < 0:
+		return
+	var axis_or_nan := func(action: String, sign: float) -> float:
+		return sign * JoystickConfig.get_axis(action) if JoystickConfig.get_bound_axis(action) >= 0 else NAN
+	var thr_axis: int = JoystickConfig.get_bound_axis("flight_throttle")
+	var thr_absolute: bool = thr_axis >= 0 and thr_axis != JOY_AXIS_TRIGGER_LEFT and thr_axis != JOY_AXIS_TRIGGER_RIGHT
+	var brakes: float = NAN
+	if JoystickConfig.get_bound_axis("flight_brakes") >= 0:
+		brakes = maxf(0.0, -JoystickConfig.get_axis("flight_brakes"))
+	jsb_node.apply_joystick(axis_or_nan.call("flight_roll", -1.0), axis_or_nan.call("flight_pitch", 1.0), axis_or_nan.call("flight_yaw", 1.0),
+		axis_or_nan.call("flight_throttle", 1.0), thr_absolute, brakes, JoystickConfig.get_button("brakes"))
 
 
 func _ui_up() -> bool:
@@ -393,10 +414,13 @@ func _check_camera_sanity() -> void:
 	push_error("Camera '%s' has a degenerate basis: %s" % [cam.name, chain])
 
 
-# Cockpit -> Orbit -> Chase -> Cockpit (the rig handles the cycling; the
-# mirrors here serve lever picking).
-func flip_camera() -> void:
-	_camera_rig.flip()
+# Cockpit -> Orbit -> Chase -> Cockpit, or the reverse (the rig handles the
+# cycling; the mirrors here serve lever picking).
+func flip_camera(reverse: bool = false) -> void:
+	if reverse:
+		_camera_rig.flip_back()
+	else:
+		_camera_rig.flip()
 	camera_mode = _camera_rig.get_mode()
 	active_camera = camera1 if camera_mode == CameraMode.COCKPIT else camera2
 
@@ -507,6 +531,16 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 	_set_observer_lv95(swiss_e, swiss_n)
 	_cancel_intro_zoom()   # a Fly! during the previous flight's intro ends that zoom first
 	var ride: Camera3D = camera2 if camera_mode == CameraMode.ORBIT else camera1
+	# Start conditions from the Aircraft tab (height above the ground, airspeed,
+	# heading); 0 / 0 = on the runway, the cfg [start] section gives the defaults
+	# (a glider starts airborne until winch and tow exist).
+	var cfg = _config_for_aircraft(aircraft_id)
+	var agl_ft: float = AircraftSettingsPanel.start_agl_ft(_settings, cfg, aircraft_id)
+	var speed_kt: float = AircraftSettingsPanel.start_speed_kt(_settings, cfg, aircraft_id)
+	var start_hdg: float = AircraftSettingsPanel.start_heading_deg(_settings, aircraft_id)
+	_spawn.set_start(agl_ft * 0.3048, speed_kt, start_hdg)
+	if agl_ft > 0.0 and speed_kt > 0.0:
+		print("Start: %s airborne %.0f ft above the ground at %.0f kt%s" % [aircraft_id, agl_ft, speed_kt, "" if is_nan(start_hdg) else ", heading %.0f" % start_hdg])
 	if _spawn.request_flight(swiss_e, swiss_n, heading_deg, ride):
 		active_camera = ride
 	# The zoom doubles as the loading view (status + progress on its HUD); the
@@ -545,7 +579,9 @@ func _on_scenery_editor_exited() -> void:
 		return
 	_edit_session = false
 	if _welcome_screen:
-		_welcome_screen.set_continue_enabled(not _spawn.is_first_flight())
+		# Edit Mode parked the (hidden) aircraft at the edited airport: there is
+		# no flight to continue, the next flight starts with Fly!
+		_welcome_screen.set_continue_enabled(false)
 		_welcome_screen.show_welcome()
 
 
@@ -588,6 +624,7 @@ func _on_welcome_settings_requested() -> void:
 ## Resume the in-progress flight: flight logic only pauses while the welcome
 ## screen is visible, so hiding it is enough.
 func _on_welcome_continue_requested() -> void:
+	_ac.visible = true   # never resume with the aircraft hidden (Edit Mode hides it)
 	if _welcome_screen:
 		_welcome_screen.hide_welcome()
 
@@ -741,13 +778,34 @@ func _apply_fuel_setting() -> void:
 
 # ── Cockpit mouse interaction ──────────────────────────────────────────────
 
-## Cockpit camera only: Space + wheel zooms the view, Space + drag looks
-## around, FlightGear switches / knobs take clicks first, then the lever
-## picking of CockpitControls (mixture, throttle, magneto, flaps).
+## Every camera: the right mouse button held pans the view (cockpit head,
+## orbit, chase). Cockpit camera: Space + wheel zooms the view, Space + drag
+## looks around, FlightGear switches / knobs take clicks first (a right press
+## on a knob turns it and does not start a pan), then the lever picking of
+## CockpitControls (mixture, throttle, magneto, flaps).
 func _unhandled_input(event: InputEvent) -> void:
-	if camera_mode != CameraMode.COCKPIT or not active_camera or _fly_loading or _ui_up():
+	if _fly_loading or _ui_up():
+		if _camera_rig.is_mouse_drag_active():
+			_camera_rig.set_mouse_drag(false)
 		return
+	if event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_RIGHT and not (event as InputEventMouseButton).pressed:
+		if _camera_rig.is_mouse_drag_active():
+			_camera_rig.set_mouse_drag(false)
+			get_viewport().set_input_as_handled()
+			return
 	var handled := false
+	if camera_mode != CameraMode.COCKPIT or not active_camera:
+		if event is InputEventMouseButton:
+			var ext_mb := event as InputEventMouseButton
+			if ext_mb.button_index == MOUSE_BUTTON_RIGHT and ext_mb.pressed:
+				_camera_rig.set_mouse_drag(true)
+				handled = true
+		elif event is InputEventMouseMotion and _camera_rig.is_mouse_drag_active():
+			_camera_rig.mouse_look((event as InputEventMouseMotion).relative)
+			handled = true
+		if handled:
+			get_viewport().set_input_as_handled()
+		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.pressed and _camera_rig.is_mouse_look_active() and mb.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
@@ -757,9 +815,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			handled = true
 		else:
 			handled = _cockpit_controls.handle_mouse_button(active_camera, mb.position, mb.button_index, mb.pressed, jsb_node)
+		if not handled and mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
+			_camera_rig.set_mouse_drag(true)   # right press beside the controls: pan the view
+			handled = true
 	elif event is InputEventMouseMotion:
 		var mm := event as InputEventMouseMotion
-		if _camera_rig.is_mouse_look_active():
+		if _camera_rig.is_mouse_look_active() or _camera_rig.is_mouse_drag_active():
 			_camera_rig.mouse_look(mm.relative)
 			handled = true
 		else:
@@ -781,6 +842,13 @@ func _wire_aircraft_settings_panel() -> void:
 	panel.fdm_provider = func(): return jsb_node
 	panel.config_provider = Callable(self, "_config_for_aircraft")
 	panel.name_provider = func(id: String) -> String: return WelcomeScreen.aircraft_label(id)
+	# a livery picked for the aircraft being flown changes it now
+	panel.livery_changed.connect(_on_livery_changed)
+
+
+func _on_livery_changed(id: String, livery_id: String) -> void:
+	if terrain_initialized and id == _aircraft_id:
+		_aircraft.set_livery(livery_id)
 
 
 ## The aircraft the Aircraft tab shows: the welcome page's selection when the
@@ -795,4 +863,4 @@ func _config_for_aircraft(id: String):
 	if id == _aircraft_id and _aircraft_cfg != null:
 		return _aircraft_cfg
 	var path: String = AircraftConfig.resolve_path(id)
-	return AircraftConfig.load_from_file(path) if FileAccess.file_exists(path) else null
+	return AircraftConfig.load_for_aircraft(id) if FileAccess.file_exists(path) else null

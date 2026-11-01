@@ -5,6 +5,7 @@
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/input.hpp>
+#include <godot_cpp/classes/input_event_with_modifiers.hpp>
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/window.hpp>
@@ -204,6 +205,7 @@ namespace
 		{"fdm_start", "flight", "Start the flight model", "R", ""},
 		{"fdm_stop", "flight", "Stop the flight model", "E", ""},
 		{"camera_flip", "flight", "Next camera (cockpit / orbit / chase)", "C", ""},
+		{"camera_flip_back", "flight", "Previous camera (cockpit / chase / orbit)", "Shift+C", ""},
 		{"view_left", "flight", "Look / orbit left", "Left", ""},
 		{"view_right", "flight", "Look / orbit right", "Right", ""},
 		{"view_up", "flight", "Look / orbit up", "Up", ""},
@@ -211,6 +213,13 @@ namespace
 		{"view_mouse_look", "flight", "Mouse look (hold), recentre (tap)", "Space", ""},
 		{"view_closer", "flight", "Zoom in / closer", "PageUp", ""},
 		{"view_farther", "flight", "Zoom out / farther", "PageDown", ""},
+		{"view_move_left", "flight", "Eye point left", "Ctrl+Left", ""},
+		{"view_move_right", "flight", "Eye point right", "Ctrl+Right", ""},
+		{"view_move_up", "flight", "Eye point up", "Ctrl+Up", ""},
+		{"view_move_down", "flight", "Eye point down", "Ctrl+Down", ""},
+		{"view_move_forward", "flight", "Eye point forward", "Ctrl+Shift+Up", ""},
+		{"view_move_back", "flight", "Eye point back", "Ctrl+Shift+Down", ""},
+		{"view_move_reset", "flight", "Eye point back to the default", "Ctrl+Space", ""},
 		{"hud_cycle", "flight", "Cycle the HUD", "H", ""},
 		{"weather_overlay", "flight", "Weather overlay", "Ctrl+I", ""},
 		{"fps_toggle", "flight", "FPS counter", "Ctrl+Shift+F", ""},
@@ -347,6 +356,8 @@ KeyBindings::Action *KeyBindings::Table::find(const StringName &id)
 // ── the node ────────────────────────────────────────────────────────────────
 
 KeyBindings::Table *KeyBindings::installed = nullptr;
+bool KeyBindings::mods_known = false;
+bool KeyBindings::mod_shift = false, KeyBindings::mod_ctrl = false, KeyBindings::mod_alt = false;
 
 KeyBindings::Table &KeyBindings::defaults()
 {
@@ -410,8 +421,41 @@ void KeyBindings::_ready()
 	if (Engine::get_singleton()->is_editor_hint())
 		return;
 	if (get_tree() != nullptr && get_parent() == get_tree()->get_root())
+	{
 		installed = &table;
+		set_process_input(true);
+	}
 	load();
+}
+
+void KeyBindings::_input(const Ref<InputEvent> &event)
+{
+	if (installed != &table)
+		return;
+	Ref<InputEventWithModifiers> m = event;
+	if (m.is_null())
+		return;
+	mods_known = true;
+	mod_shift = m->is_shift_pressed();
+	mod_ctrl = m->is_ctrl_pressed() || m->is_meta_pressed();
+	mod_alt = m->is_alt_pressed();
+	// a modifier Input still holds while the event says it is up: its key-up
+	// never arrived (macOS system shortcut); release it for everyone
+	Input *in = Input::get_singleton();
+	const Key stale[] = {KEY_SHIFT, KEY_CTRL, KEY_META, KEY_ALT};
+	const bool held[] = {m->is_shift_pressed(), m->is_ctrl_pressed(), m->is_meta_pressed(), m->is_alt_pressed()};
+	for (int i = 0; i < 4; i++)
+	{
+		if (!held[i] && in->is_key_pressed(stale[i]))
+		{
+			Ref<InputEventKey> up;
+			up.instantiate();
+			up->set_keycode(stale[i]);
+			up->set_physical_keycode(stale[i]);
+			up->set_pressed(false);
+			in->parse_input_event(up);
+		}
+	}
 }
 
 // ── runtime reads ───────────────────────────────────────────────────────────
@@ -421,15 +465,20 @@ bool KeyBindings::chord_pressed(const KeyChord &c, int ignore_mods)
 	if (!c.is_bound())
 		return false;
 	Input *in = Input::get_singleton();
+	// modifiers: the latest event's state when known (see _input), else Input
+	const bool shift = mods_known ? mod_shift : in->is_key_pressed(KEY_SHIFT);
+	const bool ctrl = mods_known ? mod_ctrl : (in->is_key_pressed(KEY_CTRL) || in->is_key_pressed(KEY_META));
+	const bool alt = mods_known ? mod_alt : in->is_key_pressed(KEY_ALT);
 	if (c.key == KEY_CTRL || c.key == KEY_META)
-		return in->is_key_pressed(KEY_CTRL) || in->is_key_pressed(KEY_META);
+		return ctrl;
+	if (c.key == KEY_SHIFT)
+		return shift;
+	if (c.key == KEY_ALT)
+		return alt;
 	if (is_modifier_key(c.key))
 		return in->is_key_pressed(c.key);
 	if (!in->is_key_pressed(c.key))
 		return false;
-	const bool shift = in->is_key_pressed(KEY_SHIFT);
-	const bool ctrl = in->is_key_pressed(KEY_CTRL) || in->is_key_pressed(KEY_META);
-	const bool alt = in->is_key_pressed(KEY_ALT);
 	if (!(ignore_mods & 1) && shift != c.shift)
 		return false;
 	if (!(ignore_mods & 2) && ctrl != c.ctrl)

@@ -77,6 +77,8 @@ namespace jsbgodot
         // Direct mode set — used by the world3d intro-zoom handoff, which must
         // jump straight to ORBIT without a head reset. Toggles current flags.
         void set_mode(int mode);
+        // Cycle the other way: COCKPIT → CHASE → ORBIT → COCKPIT (Shift+C).
+        void flip_back();
         // Mouse motion (InputEventMouseMotion.relative) from GDScript; used
         // while Space is held in the cockpit.
         void mouse_look(const Vector2 &relative);
@@ -84,8 +86,27 @@ namespace jsbgodot
         // field of view), < 0 zoom out.
         void mouse_zoom(int notches);
         bool is_mouse_look_active() const;
+        // Right mouse button held: the mouse pans the current view in every
+        // mode (cockpit: head look; orbit: yaw / elevation; chase: yaw /
+        // height). The mouse is captured meanwhile. Motion arrives through
+        // mouse_look(), which accepts it while either Space or the drag holds.
+        void set_mouse_drag(bool held);
+        bool is_mouse_drag_active() const;
         // Head straight ahead, cockpit zoom back to the default.
         void recenter_head();
+        // Aim the head directly (degrees, yaw +right, pitch +down; clamped to
+        // the look limits): screenshot probes aim at a panel.
+        void set_head_look(double yaw_deg, double pitch_deg);
+        // Cockpit eye point (MSFS style): Ctrl+arrows move the seat sideways /
+        // up-down, Ctrl+Shift+Up/Down forward / back, Ctrl+Space resets. The
+        // offset is in the cockpit camera's own axes (x right, y up, z back),
+        // in AC-local units; the rig persists it per aircraft.
+        void set_eye_offset(const Vector3 &offset);
+        Vector3 get_eye_offset() const;
+        // The model scale: the eye moves 0.5 m/s of real cockpit and at most 1.5 m from the default.
+        void set_cockpit_move_scale(double scale);
+        // True once after a movement ended (or a reset): time to save the offset.
+        bool take_eye_offset_settled();
         int get_mode() const;
 
         // Suppress the cockpit branch while a dedicated camera (the intro zoom)
@@ -136,6 +157,11 @@ namespace jsbgodot
         Camera3D *camera2 = nullptr;
         Node3D *ac_node = nullptr;
         Transform3D cockpit_base;
+        Vector3 eye_offset;             // seat position vs the cfg default (camera axes, AC-local units)
+        double cockpit_move_speed = 0.5; // units/s (0.5 m/s x model scale)
+        double cockpit_move_limit = 1.5; // units (1.5 m x model scale)
+        bool eye_moving = false;
+        bool eye_settled = false;
         // Cockpit zoom: the orbit/chase zoom inputs (L1/R1, Page Up/Down) change
         // the cockpit camera's field of view instead of a distance.
         double cockpit_zoom_speed = 40.0; // degrees of FOV per second
@@ -150,10 +176,17 @@ namespace jsbgodot
         double tap_max_s = 0.3;
         double tap_max_px = 5.0;
         bool space_held = false;
+        bool drag_held = false;
+        // Right-drag sensitivity of the external views: degrees of orbit per
+        // pixel, and chase height in units per pixel.
+        double mouse_orbit_deg_per_px = 0.3;
+        double mouse_chase_height_per_px = 0.02;
         double space_time = 0.0;
         double space_motion_px = 0.0;
         Vector2 pending_mouse;
 
+        // MOUSE_MODE_CAPTURED while Space or the right button holds, visible otherwise.
+        void apply_mouse_mode();
         void update_head_look(double delta, int joy_device);
         void update_orbit(double delta, int joy_device);
         void update_chase(double delta, int joy_device);

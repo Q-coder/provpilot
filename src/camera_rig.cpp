@@ -33,11 +33,19 @@ void CameraRig::_bind_methods()
 
 	ClassDB::bind_method(D_METHOD("update", "delta", "joy_device"), &CameraRig::update);
 	ClassDB::bind_method(D_METHOD("flip"), &CameraRig::flip);
+	ClassDB::bind_method(D_METHOD("flip_back"), &CameraRig::flip_back);
+	ClassDB::bind_method(D_METHOD("set_mouse_drag", "held"), &CameraRig::set_mouse_drag);
+	ClassDB::bind_method(D_METHOD("is_mouse_drag_active"), &CameraRig::is_mouse_drag_active);
 	ClassDB::bind_method(D_METHOD("set_mode", "mode"), &CameraRig::set_mode);
 	ClassDB::bind_method(D_METHOD("mouse_look", "relative"), &CameraRig::mouse_look);
 	ClassDB::bind_method(D_METHOD("mouse_zoom", "notches"), &CameraRig::mouse_zoom);
 	ClassDB::bind_method(D_METHOD("is_mouse_look_active"), &CameraRig::is_mouse_look_active);
 	ClassDB::bind_method(D_METHOD("recenter_head"), &CameraRig::recenter_head);
+	ClassDB::bind_method(D_METHOD("set_head_look", "yaw_deg", "pitch_deg"), &CameraRig::set_head_look);
+	ClassDB::bind_method(D_METHOD("set_eye_offset", "offset"), &CameraRig::set_eye_offset);
+	ClassDB::bind_method(D_METHOD("get_eye_offset"), &CameraRig::get_eye_offset);
+	ClassDB::bind_method(D_METHOD("set_cockpit_move_scale", "scale"), &CameraRig::set_cockpit_move_scale);
+	ClassDB::bind_method(D_METHOD("take_eye_offset_settled"), &CameraRig::take_eye_offset_settled);
 	ClassDB::bind_method(D_METHOD("get_mode"), &CameraRig::get_mode);
 	ClassDB::bind_method(D_METHOD("set_cockpit_enabled", "enabled"), &CameraRig::set_cockpit_enabled);
 
@@ -96,10 +104,37 @@ void CameraRig::capture_cockpit_base()
 
 void CameraRig::mouse_look(const Vector2 &relative)
 {
-	if (space_held && mode == MODE_COCKPIT)
+	if ((space_held && mode == MODE_COCKPIT) || drag_held)
 	{
 		pending_mouse += relative;
 	}
+}
+
+void CameraRig::set_mouse_drag(bool held)
+{
+	if (held == drag_held)
+	{
+		return;
+	}
+	drag_held = held;
+	if (held && !space_held)
+	{
+		pending_mouse = Vector2();
+	}
+	apply_mouse_mode();
+}
+
+bool CameraRig::is_mouse_drag_active() const { return drag_held; }
+
+void CameraRig::apply_mouse_mode()
+{
+	Input *input = Input::get_singleton();
+	if (input == nullptr)
+	{
+		return;
+	}
+	const bool grab = drag_held || (space_held && mode == MODE_COCKPIT);
+	input->set_mouse_mode(grab ? Input::MOUSE_MODE_CAPTURED : Input::MOUSE_MODE_VISIBLE);
 }
 
 void CameraRig::mouse_zoom(int notches)
@@ -118,6 +153,12 @@ bool CameraRig::is_mouse_look_active() const
 	return space_held && mode == MODE_COCKPIT;
 }
 
+void CameraRig::set_head_look(double yaw_deg, double pitch_deg)
+{
+	head_yaw = Math::clamp(yaw_deg, -head_yaw_max, head_yaw_max);
+	head_pitch = Math::clamp(pitch_deg, -head_pitch_max, head_pitch_max);
+}
+
 void CameraRig::recenter_head()
 {
 	head_yaw = 0.0;
@@ -126,6 +167,29 @@ void CameraRig::recenter_head()
 	{
 		camera1->set_fov(cockpit_fov_default);
 	}
+}
+
+void CameraRig::set_eye_offset(const Vector3 &offset)
+{
+	eye_offset = offset;
+	eye_moving = false;
+	eye_settled = false;
+}
+
+Vector3 CameraRig::get_eye_offset() const { return eye_offset; }
+
+void CameraRig::set_cockpit_move_scale(double scale)
+{
+	const double s = Math::max(scale, 1e-3);
+	cockpit_move_speed = 0.5 * s;
+	cockpit_move_limit = 1.5 * s;
+}
+
+bool CameraRig::take_eye_offset_settled()
+{
+	const bool r = eye_settled;
+	eye_settled = false;
+	return r;
 }
 
 // ── Mode handling ───────────────────────────────────────────────────────────
@@ -156,6 +220,23 @@ void CameraRig::flip()
 		default:
 			// Back to the cockpit with the head where it was left (the spot
 			// and chase views keep their positions the same way).
+			mode = MODE_COCKPIT;
+			break;
+	}
+	apply_current_flags();
+}
+
+void CameraRig::flip_back()
+{
+	switch (mode)
+	{
+		case MODE_COCKPIT:
+			mode = MODE_CHASE;
+			break;
+		case MODE_CHASE:
+			mode = MODE_ORBIT;
+			break;
+		default:
 			mode = MODE_COCKPIT;
 			break;
 	}
@@ -274,12 +355,16 @@ void CameraRig::update_head_look(double delta, int joy_device)
 		space_time = 0.0;
 		space_motion_px = 0.0;
 		pending_mouse = Vector2();
-		input->set_mouse_mode(Input::MOUSE_MODE_CAPTURED);
+		apply_mouse_mode();
 	}
-	if (space_held)
+	// Space held, or the right mouse button dragged: the mouse turns the head.
+	if (space_held || drag_held)
 	{
-		space_time += delta;
-		space_motion_px += pending_mouse.length();
+		if (space_held)
+		{
+			space_time += delta;
+			space_motion_px += pending_mouse.length();
+		}
 		look_x += pending_mouse.x * mouse_look_deg_per_px / (head_look_speed * std::max(delta, 1e-6));
 		look_y += pending_mouse.y * mouse_look_deg_per_px / (head_look_speed * std::max(delta, 1e-6));
 		pending_mouse = Vector2();
@@ -287,7 +372,7 @@ void CameraRig::update_head_look(double delta, int joy_device)
 	if (!space && space_held)
 	{
 		space_held = false;
-		input->set_mouse_mode(Input::MOUSE_MODE_VISIBLE);
+		apply_mouse_mode();
 		if (space_time < tap_max_s && space_motion_px < tap_max_px)
 		{
 			recenter_head();
@@ -300,8 +385,37 @@ void CameraRig::update_head_look(double delta, int joy_device)
 	head_yaw = Math::clamp(head_yaw, -head_yaw_max, head_yaw_max);
 	head_pitch = Math::clamp(head_pitch, -head_pitch_max, head_pitch_max);
 
-	// Apply rotation to camera (relative to base transform).
+	// Eye point: Ctrl+arrows / Ctrl+Shift+Up-Down move the seat, Ctrl+Space resets.
+	Vector3 mv;
+	if (KeyBindings::pressed("view_move_left")) mv.x -= 1.0;
+	if (KeyBindings::pressed("view_move_right")) mv.x += 1.0;
+	if (KeyBindings::pressed("view_move_up")) mv.y += 1.0;
+	if (KeyBindings::pressed("view_move_down")) mv.y -= 1.0;
+	if (KeyBindings::pressed("view_move_forward")) mv.z -= 1.0;
+	if (KeyBindings::pressed("view_move_back")) mv.z += 1.0;
+	if (mv.length_squared() > 0.0)
+	{
+		eye_offset += mv * cockpit_move_speed * delta;
+		eye_offset.x = Math::clamp(eye_offset.x, -cockpit_move_limit, cockpit_move_limit);
+		eye_offset.y = Math::clamp(eye_offset.y, -cockpit_move_limit, cockpit_move_limit);
+		eye_offset.z = Math::clamp(eye_offset.z, -cockpit_move_limit, cockpit_move_limit);
+		eye_moving = true;
+	}
+	else if (eye_moving)
+	{
+		eye_moving = false;
+		eye_settled = true;
+	}
+	if (KeyBindings::pressed("view_move_reset") && eye_offset.length_squared() > 0.0)
+	{
+		eye_offset = Vector3();
+		eye_moving = false;
+		eye_settled = true;
+	}
+
+	// Apply the seat offset and the head rotation to the camera (relative to the base transform).
 	camera1->set_transform(cockpit_base);
+	camera1->translate_object_local(eye_offset);
 	camera1->rotate_y(Math::deg_to_rad(-head_yaw));                           // Yaw (left/right)
 	camera1->rotate_object_local(Vector3(1, 0, 0), Math::deg_to_rad(-head_pitch)); // Pitch (up/down)
 
@@ -390,16 +504,20 @@ void CameraRig::update_orbit(double delta, int joy_device)
 		look_y = -1.0;
 	}
 
-	// Update orbit angles.
+	// Update orbit angles. A right-button drag adds its pixels directly:
+	// mouse right swings the camera right round the aircraft, mouse up raises it.
 	orbit_yaw += look_x * orbit_speed * delta;
 	orbit_pitch += look_y * orbit_speed * delta;
+	if (drag_held)
+	{
+		orbit_yaw -= pending_mouse.x * mouse_orbit_deg_per_px;
+		orbit_pitch += pending_mouse.y * mouse_orbit_deg_per_px;
+		pending_mouse = Vector2();
+	}
 
 	// Wrap yaw (allow full 360 rotation).
-	if (orbit_yaw > 360.0)
-	{
-		orbit_yaw -= 360.0;
-	}
-	else if (orbit_yaw < 0.0)
+	orbit_yaw = std::fmod(orbit_yaw, 360.0);
+	if (orbit_yaw < 0.0)
 	{
 		orbit_yaw += 360.0;
 	}
@@ -526,6 +644,10 @@ void CameraRig::update_chase(double delta, int joy_device)
 		height_delta = -1.0;
 	}
 	chase_height += height_delta * orbit_zoom_speed * delta;
+	if (drag_held)
+	{
+		chase_height += pending_mouse.y * mouse_chase_height_per_px;
+	}
 	chase_height = Math::clamp(chase_height, 0.5, 20.0);
 
 	// Handle yaw offset with D-pad left/right or arrow keys.
@@ -543,11 +665,13 @@ void CameraRig::update_chase(double delta, int joy_device)
 		yaw_delta = 1.0;
 	}
 	chase_yaw += yaw_delta * orbit_speed * delta;
-	if (chase_yaw > 360.0)
+	if (drag_held)
 	{
-		chase_yaw -= 360.0;
+		chase_yaw -= pending_mouse.x * mouse_orbit_deg_per_px;
+		pending_mouse = Vector2();
 	}
-	else if (chase_yaw < 0.0)
+	chase_yaw = std::fmod(chase_yaw, 360.0);
+	if (chase_yaw < 0.0)
 	{
 		chase_yaw += 360.0;
 	}

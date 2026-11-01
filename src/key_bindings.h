@@ -79,6 +79,13 @@ namespace jsbgodot
         void _enter_tree() override;
         void _exit_tree() override;
         void _ready() override;
+        // The installed node watches every event for the real modifier state:
+        // macOS swallows the key-up of Cmd / Shift after a system shortcut
+        // (Cmd+Shift+4 screenshot) and Input keeps them "pressed" for good —
+        // C then matches nothing and H reads as Ctrl+Shift+H. The polled
+        // matching uses the modifiers of the latest event instead, and a
+        // stale Input state is released with synthetic key-ups.
+        void _input(const Ref<InputEvent> &event) override;
 
         // ── runtime reads (static: the active table) ──
         static bool pressed(const StringName &action);
@@ -134,6 +141,8 @@ namespace jsbgodot
 
         static Table *active();
         static Table *installed;
+        static bool mods_known;
+        static bool mod_shift, mod_ctrl, mod_alt;
         static Table &defaults();
         static bool chord_pressed(const KeyChord &c, int ignore_mods);
         static bool chord_matches(const KeyChord &c, Key keycode, char32_t unicode, bool shift, bool ctrl, bool alt);

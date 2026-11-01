@@ -13,6 +13,9 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 ## Features
 
 - **Realistic Flight Dynamics**: Full 6-DOF simulation powered by JSBSim (Cessna 172P Skyhawk and Pilatus PC-7 Turbo Trainer)
+- **McDonnell Douglas MD-82** (FlightGear MD-80 by Octal450, GPL-2): the full JSBSim systems model (electrical, fuel, hydraulics, pneumatics, APU, flight controls, thrust limits) runs inside the FDM, fed by a two-way FlightGear property mirror; the complete virtual cockpit with 399 clickable parts and its sound set — see [docs/MD80_FLIGHTGEAR_PORT.md](docs/MD80_FLIGHTGEAR_PORT.md)
+- **Schleicher ASK 21** (FlightGear ASK21, GPL-2): the JSBSim glider with its full instrument panel and wind sounds; no winch or tow yet, so it starts airborne from the new **Start** section of the Aircraft settings (height, speed, heading — available for every aircraft) — see [docs/ASK21_PORT.md](docs/ASK21_PORT.md)
+- **Working cockpits**: the Cessna 172 and the Pilatus PC-7 fly with FlightGear's generic 3D instruments built into their panels (airspeed, attitude, altimeter, heading, turn, VSI, VOR/ILS, ADF, clock) and KX 165 / KR 87 radios; the A-10 uses its FlightGear cockpit — see [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md)
 - **Config-Driven Aircraft**: Each airframe is described by a plain-text `aircraft.cfg` (model + JSBSim wiring, animations, gear, propeller, camera) so the engine stays aircraft-agnostic — see [docs/AIRCRAFT_CONFIG.md](docs/AIRCRAFT_CONFIG.md)
 - **Scenery3D World Streaming**: A single C++ GDExtension (`Scenery3D`) streams terrain, buildings, roads, water, and orthophotos on background threads with distance-based LOD
 - **Real-World Terrain**: SwissTopo swissALTI3D elevation data at 1m resolution, streamed as 1024×1024 m float32 tiles
@@ -43,7 +46,8 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 - **Slew Mode**: Reposition aircraft freely with airspeed preservation, then resume flight (Shift+Y)
 - **Scenery editor** (F8 in flight, or the welcome screen's **Edit Mode** button: no aircraft, no intro zoom, straight over the selected airport): free camera + terrain cursor, place roads and railways that are saved with the scenery — see [docs/SCENERY_EDITOR.md](docs/SCENERY_EDITOR.md)
 - **Deferred Scenery Loading**: Scenery3D starts streaming only after the user clicks Fly — instant startup
-- **HUD**: Airspeed, altitude, vertical speed, heading, throttle, Swiss/WGS84 coordinates
+- **HUD**: Airspeed, altitude, vertical speed, heading, throttle, Swiss/WGS84 coordinates, tuned NAV / ADF stations
+- **Radio navigation**: VOR / DME / NDB receivers (C++ `RadioNav`) over the OurAirports navaid catalog (901 stations across the nine regions), ILS localizer / glide slope / DME for 422 airports (real approaches from FlightGear's nav.dat, synthetic ones on every other paved runway of 1500 m or more, aligned with the drawn runways), magnetic headings from the WMM2025 model, Cessna 172 VOR / ADF gauges with KX 165 and KR 87 radios, navaids on the VFR map — see [docs/RADIO_NAVIGATION.md](docs/RADIO_NAVIGATION.md)
 - **VFR Map Frame**: Heading-up in-game map inset (C++ `VfrMap` module) with cartographic hillshade terrain, range rings, airport symbols/ICAO labels, and canton borders — toggle with N, zoom with the wheel; see [docs/VFR_MAP.md](docs/VFR_MAP.md)
 
 ## Controls
@@ -87,13 +91,18 @@ the same section, and **Save** writes `keyboard.cfg` next to `provpilot.cfg`
 | Control | Gamepad | Keyboard |
 |---------|---------|----------|
 | Switch Camera (Cockpit/Orbit/Chase) | Select / Back | C |
+| Switch Camera the other way (Cockpit/Chase/Orbit) | — | Shift+C |
+| Pan the view (cockpit head, orbit, chase) | — | hold the right mouse button + mouse |
 | Head Look (Cockpit) | D-pad | Arrow Keys |
 | Orbit/Chase Camera Adjust | D-pad | Arrow Keys |
 | Zoom In (orbit/chase distance; cockpit field of view) | L1 (Left Shoulder) | Page Up |
 | Zoom Out | R1 (Right Shoulder) | Page Down |
 | Look around (cockpit) | — | hold Space + mouse |
 | Zoom cockpit view | — | hold Space + mouse wheel |
-| Cockpit knobs (Kollsman, course…) | — | click zones, or mouse wheel over the knob (Shift = coarse) |
+| Move the eye point (cockpit): left / right / up / down | — | Ctrl + Arrow Keys |
+| Move the eye point forward / back | — | Ctrl+Shift + Up / Down |
+| Eye point back to the aircraft's default | — | Ctrl+Space |
+| Cockpit knobs (Kollsman, OBS course, radio frequencies, ADF card…) | — | click zones, or mouse wheel over the knob (Shift = coarse); see docs/RADIO_NAVIGATION.md |
 | Show every cockpit mouse-sense area | — | Ctrl+Shift+H |
 | Recentre cockpit view (head + zoom) | — | Space (tap) |
 | HUD overlay: off / readouts / readouts + coordinates | — | H |
