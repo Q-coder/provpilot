@@ -145,6 +145,32 @@ exterior textured with a transparent canopy, cockpit complete from the eye
 point. The old `a10.glb` and the aircraft config are untouched until
 subtask 3 swaps the model in.
 
+**Crease angles (2026-11-01, gery: "segments of the wings throw some kind of
+shadow, dark on one side and bright on the other", on the ASK 21, A-10 and
+MD-80 but not on the Cessna or PC-7).** Not a shadow: the vertex normals.
+The AC3D add-on (io_scene_ac3d) calls `Mesh.set_sharp_from_angle(crease)`
+*before* `Mesh.from_pydata()`, i.e. on an empty mesh (a leftover from the
+auto-smooth API Blender 4.1 removed), so no edge is ever marked sharp and
+every smooth-shaded face averages its normal with the rib caps, panel ends
+and control-surface edges around it: a wing segment's normals lean inboard
+at one end and outboard at the other and it shades dark-to-bright, with a
+step at the next segment. The Cessna comes from a .blend and the PC-7 from a
+glb, which is why they were clean. `Builder.patch_ac3d_crease()` (called
+once the add-on is enabled) wraps `AcObj.create_blender_object` and re-applies
+the object's own crease (`crease` line of the .ac object, OSG's 61° default)
+once the geometry exists. Verified with `PROBE_VIEW=top PROBE_GLB=<glb>`
+on `tests/probe_fg_model_render.gd` (new: frames any glb from its AABB, sun
+ahead): the glider's wing segments render uniformly, the glb grows by the
+split vertices only (ASK 21 wing_L1 218 → 248). All three glbs were rebuilt
+and copied to their three folders. The ASK 21 and MD-80 manifests were
+unchanged (kept: their `source` notes are hand-written; pass
+`--source-note` on a rebuild). The A-10 had not been rebuilt since
+2026-09-21, so its manifest moved to the current builder's layout: root
+`A-10-model_Root` (was `A10_Root`), `placement`/`frame` on the sub-models,
+the MPCD target resolved, ten more material records (86); the A-10 smokes
+and `tests/probe_fg_model` run against it. The A-10 package lives at
+`~/Desktop/A-10` (`--src`, otherwise defaults).
+
 **Finding — visual world scale.** The airframes are drawn at about a fifth
 of real size: the `AC` node is scaled 0.1 and the A-10 lands at 0.2 m per
 model metre (wingtip lenses 3.56 m apart in world metres; C172 2.4 m, PC-7
@@ -316,11 +342,14 @@ panel and the runway lights show through the canopy.
 `knob` / `slider` records (126 clickable meshes; group objects contribute
 every mesh below them). Picking is a ray from the cockpit camera through
 the mouse against each control's bounding box, nearest hit within 4 m —
-no physics bodies. FlightGear input mapping: pick = left button runs the
-action bindings, release runs `mod-up`; knob = left click / wheel up
-increase, right click / wheel down decrease, Shift for the coarse variants,
-old-style knobs (`action` / `release`) get the click direction as the
-offset; slider = the action on click. Bindings: property-toggle / assign /
+no physics bodies. Input mapping (house rule since 2026-10-31, see
+`docs/MD80_FLIGHTGEAR_PORT.md` step 6): pick = the action listing the
+button runs, release runs its `mod-up`; on a two-way control the left
+button / wheel down go down (counter-clockwise), the right button / wheel
+up go up (clockwise), whatever FlightGear button the aircraft listed; knob
+= right click / wheel up increase, left click / wheel down decrease, Shift
+for the coarse variants, old-style knobs (`action` / `release`) get the
+click direction as the offset; slider = the action on click. Bindings: property-toggle / assign /
 adjust (step, min, max, wrap) / cycle / multiply and the A-10's Nasal
 scripts by name (landing and nav light switchers, canopy switch and hold,
 fuel display selector, fill-disable buttons, APU switch, nav mode ILS /
@@ -393,8 +422,8 @@ on a drifted rest. Dead zone 0.3 with a proportional rate in
 - Check flight 2026-09-21 (gery): old-style knobs (single `action` with
   `property-adjust` `factor`, no `step`: HUD mode selector, AIM-9 mode)
   only turned one way — FlightGear passes the click direction as `offset`
-  and multiplies it by `factor`; done now, right click / wheel down turns
-  them back. Lit caution lamps were white blobs: their AC3D material has
+  and multiplies it by `factor`; done now, both directions turn (since the
+  2026-10-31 house rule: right click / wheel up clockwise). Lit caution lamps were white blobs: their AC3D material has
   `emis 1 1 1` on the lit texture, which Godot rendered as sunlight plus a
   flat white emission; `FGAnimator::fixup_emissive_materials` now draws
   such self-lit textured surfaces unshaded (11 surfaces: caution lamps,

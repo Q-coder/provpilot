@@ -56,12 +56,12 @@ func _ready() -> void:
 	# and back on, so the rest of the cockpit stays powered
 	ctl.click(cam, pos, MOUSE_BUTTON_LEFT, true, false); ctl.click(cam, pos, MOUSE_BUTTON_LEFT, false, false)
 	await get_tree().process_frame
-	# HSI course knob: left click +1, right click -1, shift +5
+	# HSI course knob (house rule): right click +1 (clockwise), left click -1, shift +5
 	var knob: Node3D = mroot.find_child("A-10-HSI__course-knob", true, false)
 	pos = _screen_of(cam, knob)
-	ctl.click(cam, pos, MOUSE_BUTTON_LEFT, true, false); ctl.click(cam, pos, MOUSE_BUTTON_LEFT, false, false)
-	ctl.click(cam, pos, MOUSE_BUTTON_LEFT, true, true); ctl.click(cam, pos, MOUSE_BUTTON_LEFT, false, true)
 	ctl.click(cam, pos, MOUSE_BUTTON_RIGHT, true, false); ctl.click(cam, pos, MOUSE_BUTTON_RIGHT, false, false)
+	ctl.click(cam, pos, MOUSE_BUTTON_RIGHT, true, true); ctl.click(cam, pos, MOUSE_BUTTON_RIGHT, false, true)
+	ctl.click(cam, pos, MOUSE_BUTTON_LEFT, true, false); ctl.click(cam, pos, MOUSE_BUTTON_LEFT, false, false)
 	var crs: float = float(ctl.state.get("instrumentation/nav[1]/radials/selected-deg", -1.0))
 	_check(absf(crs - 5.0) < 1e-6, "course knob: +1, +5 (shift), -1 -> 5 (got %.1f)" % crs)
 	# wheel down 6 times wraps below 0
@@ -135,16 +135,16 @@ func _ready() -> void:
 	ctl.click(cam, pos, MOUSE_BUTTON_LEFT, true, false); ctl.click(cam, pos, MOUSE_BUTTON_LEFT, false, false)
 	_check(absf(root.jsb_node.get_gear_cmd() - cmd_before) > 0.5, "gear handle click toggles the gear command (%.0f -> %.0f)" % [cmd_before, root.jsb_node.get_gear_cmd()])
 	ctl.click(cam, pos, MOUSE_BUTTON_LEFT, true, false); ctl.click(cam, pos, MOUSE_BUTTON_LEFT, false, false)
-	# old-style knob (single action, property-adjust with factor): left = +1, right = -1, clamped 0..3
+	# old-style knob (single action, property-adjust with factor): right = +1 (clockwise), left = -1, clamped 0..3
 	var hm: Node3D = mroot.find_child("A-10-hud-panel__mode-selector", true, false)
 	pos = _screen_of(cam, hm)
 	for i in range(2):
-		ctl.click(cam, pos, MOUSE_BUTTON_LEFT, true, false); ctl.click(cam, pos, MOUSE_BUTTON_LEFT, false, false)
-	_check(absf(float(ctl.state.get("controls/hud/m-sel", -1.0)) - 2.0) < 1e-6, "HUD mode selector: two left clicks -> 2")
-	ctl.click(cam, pos, MOUSE_BUTTON_RIGHT, true, false); ctl.click(cam, pos, MOUSE_BUTTON_RIGHT, false, false)
-	_check(absf(float(ctl.state.get("controls/hud/m-sel", -1.0)) - 1.0) < 1e-6, "right click turns it back to 1")
+		ctl.click(cam, pos, MOUSE_BUTTON_RIGHT, true, false); ctl.click(cam, pos, MOUSE_BUTTON_RIGHT, false, false)
+	_check(absf(float(ctl.state.get("controls/hud/m-sel", -1.0)) - 2.0) < 1e-6, "HUD mode selector: two right clicks -> 2")
+	ctl.click(cam, pos, MOUSE_BUTTON_LEFT, true, false); ctl.click(cam, pos, MOUSE_BUTTON_LEFT, false, false)
+	_check(absf(float(ctl.state.get("controls/hud/m-sel", -1.0)) - 1.0) < 1e-6, "left click turns it back to 1")
 	for i in range(5):
-		ctl.click(cam, pos, MOUSE_BUTTON_LEFT, true, false); ctl.click(cam, pos, MOUSE_BUTTON_LEFT, false, false)
+		ctl.click(cam, pos, MOUSE_BUTTON_RIGHT, true, false); ctl.click(cam, pos, MOUSE_BUTTON_RIGHT, false, false)
 	_check(absf(float(ctl.state.get("controls/hud/m-sel", -1.0)) - 3.0) < 1e-6, "stops at its max of 3")
 	# lit caution lamps keep their label: flat emissive materials got the albedo as emission texture
 	var lamp: MeshInstance3D = mroot.find_child("cockpit__l-gen", true, false)

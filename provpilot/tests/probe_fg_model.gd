@@ -55,6 +55,6 @@ func _ready() -> void:
 	print("probe_fg_model: %d nodes, %d meshes, %d animated targets, %d missing, span %.2f m" % [names.size(), meshes, wanted.size(), missing.size(), span])
 	if not missing.is_empty():
 		print("probe_fg_model: missing targets: ", missing.slice(0, 40))
-	for k in ["A10_Root", "Sub_cockpit", "Sub_A-10-asi", "A-10-asi__needle", "UC-NoseStrutTop", "LRudder-L", "Sub_stick", "stick__stick"]:
+	for k in ["A-10-model_Root", "Sub_cockpit", "Sub_A-10-asi", "A-10-asi__needle", "UC-NoseStrutTop", "LRudder-L", "Sub_stick", "stick__stick"]:
 		print("  %-22s %s" % [k, "ok" if names.has(k) else "MISSING"])
 	get_tree().quit(0 if missing.is_empty() and span > 17.0 and span < 18.5 else 1)

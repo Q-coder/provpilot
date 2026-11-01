@@ -1,15 +1,20 @@
 extends SceneTree
 ## Real-renderer look at the FlightGear-built a10_fg.glb on its own (no
 ## aircraft wiring): exterior 3/4 view and the pilot's eye point.
-## Env: PROBE_VIEW ext|cpt (default ext), PROBE_PNG output.
+## Env: PROBE_VIEW ext|cpt|top (default ext), PROBE_PNG output, PROBE_GLB an
+## absolute path to another FlightGear-built glb (top frames it from its AABB,
+## the view of the shading screenshots: above and behind, sun ahead).
 ## Run: godot/bin/godot.macos.editor.double.arm64 --path provpilot --resolution 1400x900 -s tests/probe_fg_model_render.gd
 var _frames := 0
 var _png := ""
 func _initialize() -> void:
 	var dir: String = ProjectSettings.globalize_path("res://aircraft/a10/model")
+	var glb: String = OS.get_environment("PROBE_GLB")
+	if glb == "":
+		glb = dir.path_join("a10_fg.glb")
 	var doc := GLTFDocument.new()
 	var state := GLTFState.new()
-	if doc.append_from_file(dir.path_join("a10_fg.glb"), state) != OK:
+	if doc.append_from_file(glb, state) != OK:
 		printerr("probe: glb load failed"); quit(1); return
 	var model: Node = doc.generate_scene(state)
 	root.add_child(model)
@@ -32,6 +37,13 @@ func _initialize() -> void:
 	var pos := Vector3(-14.0, 7.0, 18.0)
 	var target := Vector3(8.0, 0.3, 0.0)
 	cam.fov = 45.0
+	if view == "top":
+		var aabb := _model_aabb(model)
+		var c := aabb.get_center()
+		var r: float = aabb.size.length() * 0.5
+		pos = c + Vector3(r * 1.6, r * 1.5, 0.0)
+		target = c
+		sun.transform = Transform3D(Basis.from_euler(Vector3(deg_to_rad(-55), deg_to_rad(160), 0)), Vector3.ZERO)
 	if view == "cpt":
 		pos = Vector3(2.95, 1.45, 0.0)      # FlightGear eye point (3.2 aft, 1.5 up), a bit forward
 		target = Vector3(2.4, 1.05, 0.0)
@@ -49,6 +61,26 @@ func _initialize() -> void:
 	cam.transform = Transform3D(Basis(right, up, -fwd), pos)
 	cam.make_current()
 	_png = OS.get_environment("PROBE_PNG")
+func _model_aabb(n: Node) -> AABB:
+	var box := AABB()
+	var first := true
+	for m in n.find_children("*", "MeshInstance3D", true, false):
+		var mi := m as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		# not in the tree yet in _initialize: compose the local transforms
+		var xf := Transform3D()
+		var node: Node = mi
+		while node != null and node != n.get_parent():
+			if node is Node3D:
+				xf = (node as Node3D).transform * xf
+			node = node.get_parent()
+		var b: AABB = xf * mi.get_aabb()
+		if first:
+			box = b; first = false
+		else:
+			box = box.merge(b)
+	return box
 func _process(_delta: float) -> bool:
 	_frames += 1
 	if _frames == 12:
