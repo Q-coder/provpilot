@@ -7,6 +7,11 @@ Run headless:
       --blend provpilot/aircraft/c172p/model/C172P_1.blend \
       --panel provpilot/aircraft/c172p/model/panel.xml \
       --out provpilot/aircraft/c172p/model/C172P_1.glb [--save-blend out.blend]
+  Any other aircraft (no .blend, FlightGear frame == model frame): import its glb,
+  e.g. the PC-7:
+  /Applications/Blender.app/Contents/MacOS/Blender -b --python scripts/fg_panel_build.py -- \
+      --glb aircraft/pc7/model/pc7_source.glb --panel provpilot/aircraft/pc7/model/panel.xml \
+      --out provpilot/aircraft/pc7/model/pc7.glb
 
 The blend is the source of truth and is not modified; the glb and the
 animations.json manifest next to it are the outputs. The panel manifest is a
@@ -105,15 +110,25 @@ def reparent_keep_world(o, new_parent):
     bpy.context.view_layer.update()
 
 
-def build_panel(builder, panel_xml):
+def build_panel(builder, panel_xml, fg_z_rotation_deg=FG_TO_BLENDER_Z_DEG):
     root = bpy.data.objects.new(PANEL_ROOT, None)
     link_scene(root)
     root.empty_display_size = 0.05
     root.rotation_mode = 'XYZ'
-    root.rotation_euler = (0.0, 0.0, math.radians(FG_TO_BLENDER_Z_DEG))
+    root.rotation_euler = (0.0, 0.0, math.radians(fg_z_rotation_deg))
     t = ET.parse(panel_xml).getroot()
     rel_dir = os.path.dirname(panel_xml)
     n = 0
+    # <remove><object-name>..</object-name></remove> (ProvPilot extension):
+    # model parts the instruments replace, e.g. painted gauge discs
+    for rm in t.findall("remove"):
+        for on in rm.findall("object-name"):
+            o = bpy.data.objects.get((on.text or "").strip())
+            if o is None:
+                print("fg_panel_build: <remove> target missing:", on.text)
+                continue
+            bpy.data.objects.remove(o, do_unlink=True)
+            print("fg_panel_build: removed", (on.text or "").strip())
     for m in t.findall("model"):
         p = (m.findtext("path") or "").strip()
         xml = builder.resolve(p, rel_dir)
@@ -516,20 +531,31 @@ def tail_light_lens():
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     ap = argparse.ArgumentParser()
-    ap.add_argument("--blend", required=True)
+    ap.add_argument("--blend", default="", help="the Cessna: a .blend to open (Cessna-specific steps run)")
+    ap.add_argument("--glb", default="", help="any other model: a .glb to import into an empty scene (generic steps only)")
     ap.add_argument("--panel", required=True)
     ap.add_argument("--out", required=True, help="output .glb; animations.json is written next to it")
     ap.add_argument("--save-blend", default="")
+    ap.add_argument("--fg-z-rotation-deg", type=float, default=None,
+                    help="rotation of the FlightGear frame about Z into the model's Blender frame (default: 90 for a .blend, 0 for a .glb)")
     args = ap.parse_args(argv)
+    if not args.blend and not args.glb:
+        ap.error("give --blend or --glb")
+    generic = bool(args.glb)
+    fg_z = args.fg_z_rotation_deg if args.fg_z_rotation_deg is not None else (0.0 if generic else FG_TO_BLENDER_Z_DEG)
 
-    bpy.ops.wm.open_mainfile(filepath=os.path.abspath(args.blend))
+    if generic:
+        bpy.ops.wm.read_homefile(use_empty=True)
+        bpy.ops.import_scene.gltf(filepath=os.path.abspath(args.glb))
+    else:
+        bpy.ops.wm.open_mainfile(filepath=os.path.abspath(args.blend))
     enable_ac3d()
     model_dir = os.path.dirname(os.path.abspath(args.out))
     b = PanelBuilder(model_dir)
-    root, n_instr = build_panel(b, os.path.abspath(args.panel))
+    root, n_instr = build_panel(b, os.path.abspath(args.panel), fg_z)
     fix_alpha_materials([o for o in bpy.data.objects if "__" in o.name])
-    yokes = split_yokes()
-    switches = rocker_switches()
+    yokes = split_yokes() if not generic else []
+    switches = rocker_switches() if not generic else []
     # the manifest's own <animation> records animate model parts by their
     # Godot names (yokes, switches); their axes / centres are Blender
     # coordinates of this model (the runtime maps x,y,z -> x,z,-y into glTF)
@@ -544,17 +570,24 @@ def main():
                 t = o.matrix_world.translation
                 rec["raw"]["center"] = {"x-m": "%.5f" % t.x, "y-m": "%.5f" % t.y, "z-m": "%.5f" % t.z}
                 rec["center_from_origin"] = True
-    piv = nose_gear_pivot()
-    tyres = split_tyres(piv)
-    spin = spinner_pivot()
-    lens = tail_light_lens()
+    piv = nose_gear_pivot() if not generic else None
+    tyres = split_tyres(piv) if not generic else []
+    spin = spinner_pivot() if not generic else None
+    lens = tail_light_lens() if not generic else None
     bpy.context.view_layer.update()
 
     out = os.path.abspath(args.out)
-    bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_apply=False, export_yup=True,
-                              export_animations=False, export_image_format='AUTO',
-                              export_materials='EXPORT', export_extras=False,
-                              export_lights=False, export_cameras=False)
+    # a glb source keeps its animation clips (the PC-7's gear_cycle drives the
+    # gear): the importer puts each clip into NLA tracks of that name on every
+    # animated object, and NLA_TRACKS export merges them back into one clip
+    gltf_args = dict(filepath=out, export_format='GLB', export_apply=False, export_yup=True,
+                     export_animations=generic, export_image_format='AUTO',
+                     export_materials='EXPORT', export_extras=False,
+                     export_lights=False, export_cameras=False)
+    if generic:
+        gltf_args.update(export_animation_mode='NLA_TRACKS', export_frame_range=False,
+                         export_force_sampling=False, export_optimize_animation_size=False)
+    bpy.ops.export_scene.gltf(**gltf_args)
     present = set(bpy.data.objects.keys())
     unresolved = []
     for rec in b.animations + b.controls:
@@ -564,7 +597,7 @@ def main():
     manifest = {
         "unresolved_targets": sorted(set(unresolved)),
         "source": "ProvPilot panel manifest %s with FlightGear generic instruments (fgdata, GPL-2), built by scripts/fg_panel_build.py" % os.path.basename(args.panel),
-        "frame": "FlightGear model frame under %s (rotated %.0f deg about Z into the model's Blender frame); glTF/Godot: y up." % (PANEL_ROOT, FG_TO_BLENDER_Z_DEG),
+        "frame": "FlightGear model frame under %s (rotated %.0f deg about Z into the model's Blender frame); glTF/Godot: y up." % (PANEL_ROOT, fg_z),
         "root": root.name,
         "submodels": b.submodels,
         "animations": b.animations,

@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<!-- ProvPilot panel manifest for the Pilatus PC-7 (docs/INSTRUMENTS.md §6).
+     The Sketchfab model paints every gauge of the front cockpit as its own
+     textured disc (Object_12 ... Object_39, one material per gauge, the
+     ".001" copies are the rear cockpit). The flight instruments are replaced
+     by FlightGear generic instruments (third_party/fgdata) at the same
+     places and sizes; the painted discs they replace are removed
+     (<remove>, ProvPilot extension). The engine gauges (torque, EGT, RPM,
+     oil, fuel flow) stay painted for now.
+     Frame: the glb is in metres with the nose along -x, up +y, the left
+     wing +z; FlightGear's model frame (x aft, y right, z up) therefore maps
+     onto it without any rotation: x-m = glb x, y-m = -glb z, z-m = glb y.
+     The panel face is vertical at x = -1.687; the radios lie on the
+     right-hand console (top at glb y 0.056, z -0.24 .. -0.42, pitch -90 so
+     their faces look up with the display toward the nose).
+     <scale> is a ProvPilot extension (uniform: the fgdata gauges are 8 cm).
+     Built by scripts/fg_panel_build.py - -glb. -->
+<PropertyList>
+  <!-- left column: turn coordinator, VOR / ILS -->
+  <model><name>tc</name><path>Aircraft/Instruments-3d/tc/tc.xml</path>
+    <offsets><x-m>-1.681</x-m><y-m>-0.343</y-m><z-m>0.209</z-m></offsets><scale>1.02</scale></model>
+  <model><name>vor</name><path>Aircraft/Instruments-3d/vor/vor.xml</path>
+    <offsets><x-m>-1.682</x-m><y-m>-0.239</y-m><z-m>0.174</z-m></offsets><scale>1.02</scale></model>
+  <!-- airspeed (300 kt scale) over the ADF -->
+  <model><name>asi300-3d</name><path>Aircraft/Instruments-3d/asi300/asi300-3d.xml</path>
+    <offsets><x-m>-1.680</x-m><y-m>-0.137</y-m><z-m>0.286</z-m></offsets><scale>1.26</scale></model>
+  <model><name>adf</name><path>Aircraft/Instruments-3d/adf/adf.xml</path>
+    <offsets><x-m>-1.679</x-m><y-m>-0.137</y-m><z-m>0.173</z-m></offsets><scale>1.18</scale></model>
+  <!-- centre: attitude indicator over the heading indicator (the painted HSI) -->
+  <model><name>ai</name><path>Aircraft/Instruments-3d/ai/ai.xml</path>
+    <offsets><x-m>-1.668</x-m><y-m>0.000</y-m><z-m>0.283</z-m></offsets><scale>1.50</scale></model>
+  <model><name>hi</name><path>Aircraft/Instruments-3d/hi/hi.xml</path>
+    <offsets><x-m>-1.667</x-m><y-m>0.000</y-m><z-m>0.160</z-m></offsets><scale>1.46</scale></model>
+  <!-- right: altimeter over the vertical speed indicator -->
+  <model><name>altimeter</name><path>Aircraft/Instruments-3d/altimeter/altimeter.xml</path>
+    <offsets><x-m>-1.671</x-m><y-m>0.136</y-m><z-m>0.285</z-m></offsets><scale>1.27</scale></model>
+  <model><name>vsi</name><path>Aircraft/Instruments-3d/vsi/vsi.xml</path>
+    <offsets><x-m>-1.681</x-m><y-m>0.137</y-m><z-m>0.173</z-m></offsets><scale>1.18</scale></model>
+  <!-- radios on the right-hand console: KX 165 NAV/COMM 1 forward, KR 87 ADF aft -->
+  <model><name>kx165-1</name><path>Aircraft/Instruments-3d/kx165/kx165-1.xml</path>
+    <offsets><x-m>-1.600</x-m><y-m>0.330</y-m><z-m>0.058</z-m><pitch-deg>-90</pitch-deg></offsets></model>
+  <model><name>kr87</name><path>Aircraft/Instruments-3d/kr87-adf/kr87.xml</path>
+    <offsets><x-m>-1.430</x-m><y-m>0.330</y-m><z-m>0.058</z-m><pitch-deg>-90</pitch-deg></offsets></model>
+  <!-- painted front-cockpit gauges the instruments above replace -->
+  <remove><object-name>Object_12</object-name></remove> <!-- ADF -->
+  <remove><object-name>Object_14</object-name></remove> <!-- attitude indicator -->
+  <remove><object-name>Object_16</object-name></remove> <!-- altimeter -->
+  <remove><object-name>Object_18</object-name></remove> <!-- airspeed -->
+  <remove><object-name>Object_27</object-name></remove> <!-- HSI -->
+  <remove><object-name>Object_29</object-name></remove> <!-- VOR / ILS -->
+  <remove><object-name>Object_36</object-name></remove> <!-- turn coordinator -->
+  <remove><object-name>Object_38</object-name></remove> <!-- vertical speed -->
+  <!-- ADF compass card: the fgdata ADF has no knob mesh, the card is the knob
+       (click / wheel over the face, Shift = coarse) -->
+  <animation><type>knob</type><object-name>adf__Face</object-name>
+    <action><binding><command>property-adjust</command><property>instrumentation/adf/rotation-deg</property><factor>1</factor><min>0</min><max>360</max><wrap>1</wrap></binding></action></animation>
+</PropertyList>

@@ -75,7 +75,9 @@ oil, EGT, magnetic compass, ...), which is what most FlightGear aircraft use.
   instrument texture (`Meter_01` material). No needle objects, so nothing
   can move in place.
 - `pc7.glb` (Sketchfab): the cockpit is unnamed geometry (`Object_10`...),
-  no panel detail.
+  but every gauge of both cockpits is its own textured disc with a
+  material named after it (`DefaultWhite_asi.png`, `..._hsi.png`; the
+  `.001` copies are the rear seat) — see §5 for how that was used.
 
 Neither model can be animated in place; instruments have to be *added* as
 sub-models placed over (or replacing) the painted panel — exactly what the
@@ -165,16 +167,64 @@ steering pivot), and `[gear] legs` with `roll` spin them about their local
 X with the ground speed — the gear-leg system now also serves fixed gear
 (`retractable false`, `retract_deg 0`).
 
-What is not done: the fourth hole of the top and middle rows and the small
-holes stay empty (VOR / ADF / fuel and oil gauges from fgdata would fit the
-same way), and the PC-7 has no panel yet — its cockpit is unnamed geometry,
-so it needs the hole positions measured the same way and its own
-`panel.xml`.
+The fourth holes of the top and middle rows hold the VOR 1 CDI and the ADF
+since 2026-10-31, with the KX 165 and KR 87 radios over the painted stack
+(docs/RADIO_NAVIGATION.md; the builder resolves fgdata's `<params>`
+aliases for them). What is not done: the small holes stay empty (fuel and
+oil gauges from fgdata would fit the same way), and the PC-7 got its panel on
+2026-10-31 (§5).
 
-## 5. Open points
+## 5. The PC-7 panel (done 2026-10-31)
 
-- Magnetic variation: headings are true today (`attitude/psi-deg`); a
-  compass should read magnetic. One bridge line once a WMM table is in.
+The Sketchfab PC-7 has no Blender source; its front-cockpit gauges are
+painted discs, each a separate mesh (`Object_12` ADF, `_14` attitude,
+`_16` altimeter, `_18` airspeed, `_27` HSI, `_29` VOR/ILS, `_36` turn,
+`_38` VSI; the engine gauges `_20` EGT, `_22` fuel flow, `_24` oil, `_31`
+RPM, `_34` torque). Their centres and diameters, read from the glb, gave
+the instrument positions directly:
+
+1. **Manifest** `aircraft/pc7/model/panel.xml`: fgdata `tc`, `vor`,
+   `asi300` (300 kt scale, vendored for this), `adf`, `ai`, `hi` (for the
+   painted HSI), `altimeter`, `vsi`, each `<scale>`d to the painted disc
+   (1.0 .. 1.5), plus the KX 165 and KR 87 radios lying on the right-hand
+   console (`pitch-deg -90`, display toward the nose, as in the real
+   aircraft). `<remove>` entries (ProvPilot extension) delete the eight
+   painted discs the instruments replace; the engine gauges stay painted
+   (static) for now. The glb is in metres with the nose along -x, up +y,
+   the left wing +z, so FlightGear's frame maps onto it with no rotation:
+   `x-m` = glb x, `y-m` = -glb z, `z-m` = glb y. The panel face is vertical
+   at x = -1.687.
+2. **Build**: `fg_panel_build.py --glb` imports a glb into an empty scene
+   instead of opening the Cessna blend, runs only the generic steps
+   (instruments, blanks, removals, alpha fix) and exports; the pristine
+   Sketchfab file is kept as `model/pc7_source.glb` (the build input; never
+   build from the output, the removed discs are gone and the instruments
+   would double). The node hierarchy the aircraft.cfg animations use
+   (`Sketchfab_model/pc7mki_obj_cleaner_materialmerger_gles/...`) survives
+   the Blender round trip, and so does the model's own `gear_cycle` clip
+   that drives the retraction: the glb path exports animations as NLA
+   tracks, which merges the importer's per-object tracks back into the
+   one clip (the Cessna path exports none, as before).
+3. **Runtime**: `[model] fg_animations "model/animations.json"` in both cfg
+   copies; the model-wide normal flip (`flip_normals_prefix ""`) now spares
+   the `Panel_Root` subtree so the instruments keep their own normals; the
+   electrical model accepts a turboprop's N1 for the generator (JSBSim's
+   PT6A has no N2 or engine-rpm).
+4. **Smoke** `tests/smoke_pc7_panel.tscn`: parts present, painted front
+   airspeed gone and the rear one kept, ASI at the painted gauge's place,
+   altimeter / heading / variation / airspeed readings, KLO received,
+   avionics bus powered, the console KR 87 knob clickable from the cockpit
+   camera. `tests/probe_pc7_cockpit_shot.tscn` saves the cockpit view.
+
+Open: the five engine gauges (torque, ITT, Np, oil, fuel flow) are
+painted and static — fgdata has no turboprop set, they would need own
+needle meshes; the rear seat keeps its painted gauges.
+
+## 6. Open points
+
+- Magnetic variation: done 2026-10-31 — `GeoMagnetic` (WMM2025) gives the
+  declination at the aircraft and every heading instrument reads magnetic
+  (docs/RADIO_NAVIGATION.md).
 - Temperature error: the ISA inversion ignores the temperature offset the
   weather model sets, as FlightGear's does.
 - The A-10 package's remaining gaps (HUD combiner, MFD pages) are canvas
