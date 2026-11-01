@@ -38,10 +38,13 @@ void vertex() {
 		vis = smoothstep(-0.15, 0.35, -side);
 	}
 	float sz = size_px * CUSTOM0.a / dist;
-	POINT_SIZE = clamp(sz, 3.0, 12.0) * (0.6 + 0.4 * intensity);
+	// PAPI / VASI are lit day and night (gery 2026-11-01): the night factor
+	// only dims the runway, approach and threshold lights
+	float lit = (mode == 2) ? 1.0 : intensity;
+	POINT_SIZE = clamp(sz, 3.0, 12.0) * (0.6 + 0.4 * lit);
 	// black colour B = fixture unlit from that side
 	if (dot(col, col) < 1e-4) vis = 0.0;
-	vis *= intensity;
+	vis *= lit;
 }
 
 void fragment() {
