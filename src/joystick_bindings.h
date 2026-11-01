@@ -48,6 +48,8 @@ namespace jsbgodot
         double get_raw_axis(const String &action) const;
         // Calibrated axis in [-1, 1]: centre/min/max remap, deadzone, invert, curve.
         double get_axis(const String &action) const;
+        // The pad axis index an action is bound to, -1 when unbound.
+        int get_bound_axis(const String &action) const;
         static double apply_calibration(double raw, const Dictionary &b);
         bool get_button(const String &action) const;
         // The axis that moved farthest from 0 (>= threshold), or -1.

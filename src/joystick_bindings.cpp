@@ -34,6 +34,7 @@ static const struct { const char *id; const char *label; } AXIS_ACTIONS[] = {
 	{"flight_pitch", "Flight: Pitch (elevator)"},
 	{"flight_yaw", "Flight: Yaw (rudder)"},
 	{"flight_throttle", "Flight: Throttle"},
+	{"flight_brakes", "Flight: Wheel brakes (pull side of a centred lever)"},
 	{"look_x", "Camera: Look X"},
 	{"look_y", "Camera: Look Y"},
 	{"drive_steer", "Vehicle: Steer"},
@@ -66,6 +67,7 @@ void JoystickBindings::_bind_methods()
 	ClassDB::bind_method(D_METHOD("get_active_device"), &JoystickBindings::get_active_device);
 	ClassDB::bind_method(D_METHOD("get_raw_axis", "action"), &JoystickBindings::get_raw_axis);
 	ClassDB::bind_method(D_METHOD("get_axis", "action"), &JoystickBindings::get_axis);
+	ClassDB::bind_method(D_METHOD("get_bound_axis", "action"), &JoystickBindings::get_bound_axis);
 	ClassDB::bind_method(D_METHOD("get_button", "action"), &JoystickBindings::get_button);
 	ClassDB::bind_method(D_METHOD("detect_active_axis", "threshold"), &JoystickBindings::detect_active_axis, DEFVAL(0.5));
 	ClassDB::bind_method(D_METHOD("detect_active_button"), &JoystickBindings::detect_active_button);
@@ -162,6 +164,7 @@ void JoystickBindings::apply_defaults()
 	axis_bindings["flight_pitch"] = axis_default(JOY_AXIS_LEFT_Y, true); // pull-back = pitch up
 	axis_bindings["flight_yaw"] = axis_default(JOY_AXIS_RIGHT_X, false);
 	axis_bindings["flight_throttle"] = axis_default(JOY_AXIS_TRIGGER_RIGHT, false);
+	axis_bindings["flight_brakes"] = axis_unbound(); // a centred lever: pulled = negative half = brakes
 	axis_bindings["look_x"] = axis_unbound();
 	axis_bindings["look_y"] = axis_unbound();
 	axis_bindings["drive_steer"] = axis_default(JOY_AXIS_LEFT_X, false);
@@ -221,6 +224,12 @@ double JoystickBindings::get_raw_axis(const String &action) const
 		return 0.0;
 	}
 	return Input::get_singleton()->get_joy_axis(dev, (JoyAxis)(int)b["axis"]);
+}
+
+int JoystickBindings::get_bound_axis(const String &action) const
+{
+	const Dictionary b = axis_bindings.get(action, Dictionary());
+	return b.is_empty() ? -1 : (int)b.get("axis", -1);
 }
 
 double JoystickBindings::get_axis(const String &action) const
