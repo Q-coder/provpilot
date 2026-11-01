@@ -29,6 +29,8 @@ void FlightSpawn::_bind_methods()
 	ClassDB::bind_method(D_METHOD("has_target"), &FlightSpawn::has_target);
 	ClassDB::bind_method(D_METHOD("process_rebase"), &FlightSpawn::process_rebase);
 	ClassDB::bind_method(D_METHOD("update_terrain_elevation"), &FlightSpawn::update_terrain_elevation);
+	ClassDB::bind_method(D_METHOD("set_start", "agl_m", "airspeed_kts", "heading_deg"), &FlightSpawn::set_start);
+	ClassDB::bind_method(D_METHOD("is_airborne_start"), &FlightSpawn::is_airborne_start);
 	// first: true after the first-flight initialisation, false after a teleport.
 	ADD_SIGNAL(MethodInfo("spawned", PropertyInfo(Variant::BOOL, "first")));
 }
@@ -80,8 +82,24 @@ Dictionary FlightSpawn::get_target() const
 	return d;
 }
 
+void FlightSpawn::set_start(double agl_m, double airspeed_kts, double heading_deg)
+{
+	start_agl_m = Math::max(agl_m, 0.0);
+	start_airspeed_kts = Math::max(airspeed_kts, 0.0);
+	start_heading_deg = heading_deg;
+}
+
+bool FlightSpawn::is_airborne_start() const
+{
+	return start_agl_m > 0.5 && start_airspeed_kts > 1.0;
+}
+
 bool FlightSpawn::request_flight(double e, double n, double true_heading_deg, Camera3D *ride_camera)
 {
+	if (!std::isnan(start_heading_deg))
+	{
+		true_heading_deg = Math::fposmod(start_heading_deg, 360.0);
+	}
 	if (first_flight)
 	{
 		begin_first_flight(e, n, true_heading_deg);
@@ -202,7 +220,8 @@ bool FlightSpawn::process_deferred_init()
 	// Place the aircraft a hair above the terrain (ECEF pose, level, true
 	// heading) so JSBSim's gear springs barely have to settle; JSBSim takes
 	// over position control after initialisation.
-	const double start_h = api_height + SPAWN_GEAR_HEIGHT;
+	const bool airborne = is_airborne_start();
+	const double start_h = api_height + (airborne ? start_agl_m : SPAWN_GEAR_HEIGHT);
 	ac_node->set_global_transform(WorldScenery::ac_transform_at(e, n, start_h, heading, ac_node->get_scale()));
 	// Scenery3D Y is already ASL: no Godot Y -> ASL offset.
 	double jsb_elevation = api_height;
@@ -213,9 +232,20 @@ bool FlightSpawn::process_deferred_init()
 	}
 	fdm->set_godot_terrain_y_offset(WHEEL_GROUND_CLEARANCE);
 	const Vector3 start_pos = ac_node->get_global_position();
-	fdm->initialize_at_terrain(jsb_elevation, start_pos, heading);
-	snprintf(buf, sizeof(buf), "=== JSBSim initialized at %.1f m ASL (terrain %.1f m), heading %.1f ===", start_h, api_height, heading);
+	if (airborne)
+	{
+		fdm->initialize_airborne(jsb_elevation, start_pos, heading, start_agl_m, start_airspeed_kts);
+	}
+	else
+	{
+		fdm->initialize_at_terrain(jsb_elevation, start_pos, heading);
+	}
+	snprintf(buf, sizeof(buf), "=== JSBSim initialized at %.1f m ASL (terrain %.1f m), heading %.1f%s ===", start_h, api_height, heading, airborne ? ", airborne" : "");
 	UtilityFunctions::print(buf);
+	if (terrain != nullptr)
+	{
+		terrain->set_airborne_release(airborne ? start_agl_m : 0.0, start_airspeed_kts, heading);
+	}
 	init_pending = false;
 	initialized = true;
 	emit_signal("spawned", true);
@@ -268,12 +298,21 @@ bool FlightSpawn::teleport(double e, double n, double true_heading_deg, Camera3D
 
 	// On the drawn runway surface with the same gear clearance as the first
 	// flight.
+	const bool airborne = is_airborne_start();
 	ac_node->set_global_transform(WorldScenery::ac_transform_at(e, n,
-			terrain_height + RUNWAY_SURFACE_OFFSET + SPAWN_GEAR_HEIGHT, true_heading_deg, ac_node->get_scale()));
+			terrain_height + (airborne ? start_agl_m : RUNWAY_SURFACE_OFFSET + SPAWN_GEAR_HEIGHT), true_heading_deg, ac_node->get_scale()));
 
 	// Reinitialise JSBSim at the new position but keep slew ON: physics stays
-	// paused until the rebase cooldown expires (TerrainElevation releases it).
-	fdm->reinitialize_from_pose(ac_node->get_global_transform(), 0.0, terrain_height);
+	// paused until the rebase cooldown expires (TerrainElevation releases it,
+	// re-running the on-ground initialisation unless the start is airborne).
+	if (airborne)
+	{
+		fdm->initialize_airborne(terrain_height, ac_node->get_global_position(), true_heading_deg, start_agl_m, start_airspeed_kts);
+	}
+	else
+	{
+		fdm->reinitialize_from_pose(ac_node->get_global_transform(), 0.0, terrain_height);
+	}
 	emit_signal("spawned", false);
 	update_terrain_elevation();
 
@@ -282,9 +321,11 @@ bool FlightSpawn::teleport(double e, double n, double true_heading_deg, Camera3D
 	{
 		slew->note_external_exit();
 	}
-	// Pin the AC here while JSBSim stabilises.
+	// Pin the AC here while JSBSim stabilises (released on the ground, or
+	// re-initialised airborne for an airborne start).
 	if (terrain != nullptr)
 	{
+		terrain->set_airborne_release(airborne ? start_agl_m : 0.0, start_airspeed_kts, true_heading_deg);
 		terrain->start_rebase(ac_node->get_global_position());
 	}
 

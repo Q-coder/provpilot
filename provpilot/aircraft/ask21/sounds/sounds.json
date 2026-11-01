@@ -1,0 +1,185 @@
+{
+ "source": "FlightGear Aircraft/ASK21/Sounds/ask21jsb-sound.xml",
+ "sounds": [
+  {
+   "tag": "wheelbrake",
+   "name": "wheelbrake",
+   "mode": "looped",
+   "path": "Aircraft/ASK21/Sounds/wheelbrake.wav",
+   "raw": {
+    "name": "wheelbrake",
+    "mode": "looped",
+    "path": "Aircraft/ASK21/Sounds/wheelbrake.wav",
+    "condition": {
+     "and": {
+      "property": "/gear/gear[1]/wow",
+      "greater-than": {
+       "property": "/fcs/wheelbrake-cmd",
+       "value": "0.05"
+      }
+     }
+    },
+    "volume": {
+     "property": "velocities/groundspeed-kt",
+     "factor": "0.05"
+    }
+   },
+   "file": "wheelbrake.wav"
+  },
+  {
+   "tag": "wind",
+   "name": "wind",
+   "mode": "looped",
+   "path": "Sounds/wind.wav",
+   "raw": {
+    "name": "wind",
+    "mode": "looped",
+    "path": "Sounds/wind.wav",
+    "property": "velocities/airspeed-kt",
+    "volume": [
+     {
+      "property": "position/altitude-ft",
+      "factor": "-0.000015",
+      "offset": "1.0",
+      "min": "0.1",
+      "max": "1.0"
+     },
+     {
+      "property": "velocities/airspeed-kt",
+      "factor": "0.005",
+      "min": "0.0",
+      "max": "1",
+      "offset": "-0.2"
+     }
+    ],
+    "pitch": {
+     "property": "velocities/airspeed-kt",
+     "factor": "0.01",
+     "offset": "1"
+    }
+   },
+   "file": "fgdata_wind.wav"
+  },
+  {
+   "tag": "wind",
+   "name": "wind front",
+   "mode": "looped",
+   "path": "Sounds/wind.wav",
+   "raw": {
+    "name": "wind front",
+    "mode": "looped",
+    "path": "Sounds/wind.wav",
+    "property": "velocities/airspeed-kt",
+    "volume": [
+     {
+      "property": "position/altitude-ft",
+      "factor": "-0.000015",
+      "offset": "1.0",
+      "min": "0.1",
+      "max": "1.0"
+     },
+     {
+      "property": "fdm/jsbsim/aero/qbar-psf",
+      "factor": "0.2",
+      "min": "0.0",
+      "max": "5",
+      "offset": "-0.2"
+     },
+     {
+      "property": "sim/model/door-positions/frontwin/position-norm",
+      "interpolation": {
+       "entry": [
+        {
+         "ind": "0.0",
+         "dep": "0.25"
+        },
+        {
+         "ind": "0.1",
+         "dep": "0.65"
+        },
+        {
+         "ind": "1",
+         "dep": "0.75"
+        }
+       ]
+      }
+     }
+    ],
+    "pitch": {
+     "property": "velocities/airspeed-kt",
+     "factor": "0.01",
+     "offset": "1.1"
+    },
+    "position": {
+     "x": "-2.8",
+     "y": "0.0",
+     "z": "0.8"
+    },
+    "reference-dist": "0.5",
+    "max-dist": "2"
+   },
+   "file": "fgdata_wind.wav"
+  },
+  {
+   "tag": "wind",
+   "name": "wind rear",
+   "mode": "looped",
+   "path": "Sounds/wind.wav",
+   "raw": {
+    "name": "wind rear",
+    "mode": "looped",
+    "path": "Sounds/wind.wav",
+    "property": "velocities/airspeed-kt",
+    "volume": [
+     {
+      "property": "position/altitude-ft",
+      "factor": "-0.000015",
+      "offset": "1.0",
+      "min": "0.1",
+      "max": "1.0"
+     },
+     {
+      "property": "velocities/airspeed-kt",
+      "factor": "0.01",
+      "min": "0.03",
+      "max": "5",
+      "offset": "-0.2"
+     },
+     {
+      "property": "sim/model/door-positions/rearwin/position-norm",
+      "interpolation": {
+       "entry": [
+        {
+         "ind": "0.0",
+         "dep": "0.25"
+        },
+        {
+         "ind": "0.1",
+         "dep": "0.65"
+        },
+        {
+         "ind": "1",
+         "dep": "0.75"
+        }
+       ]
+      }
+     }
+    ],
+    "pitch": {
+     "property": "velocities/airspeed-kt",
+     "factor": "0.01",
+     "offset": "1.05"
+    },
+    "position": {
+     "x": "-2",
+     "y": "0.0",
+     "z": "0.9"
+    },
+    "reference-dist": "0.5",
+    "max-dist": "2"
+   },
+   "file": "fgdata_wind.wav"
+  }
+ ],
+ "missing": []
+}

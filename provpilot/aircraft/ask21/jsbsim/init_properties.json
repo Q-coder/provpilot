@@ -1,0 +1,12 @@
+{
+ "/sim/model/livery/instruments/asi": 0,
+ "/sim/model/livery/instruments/alt": 0,
+ "/sim/model/livery/instruments/vsi": 0,
+ "/sim/model/variant": 0,
+ "/sim/model/windcompass": 0,
+ "/sim/model/instruments-light": 0,
+ "/controls/engines/engine/throttle": 1,
+ "/systems/groundhandling/rudder": 0,
+ "/systems/groundhandling/throttle": 0,
+ "/systems/groundhandling/wingholder": 0
+}

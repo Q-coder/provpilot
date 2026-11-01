@@ -50,6 +50,11 @@ namespace jsbgodot
         // streamer follows the viewport camera); returns true when that
         // happened so the caller can mirror its active camera.
         bool request_flight(double e, double n, double true_heading_deg, Camera3D *ride_camera);
+        // Start conditions for the next request_flight (Aircraft tab): height
+        // above the ground and airspeed (both 0 = on the runway), and a heading
+        // that replaces the runway heading (NaN = runway).
+        void set_start(double agl_m, double airspeed_kts, double heading_deg);
+        bool is_airborne_start() const;
         bool is_first_flight() const;
 
         // Per frame while the deferred init is pending: waits for the precise
@@ -83,6 +88,8 @@ namespace jsbgodot
         bool init_pending = false;
         bool has_target_v = false;
         double target_e = 0.0, target_n = 0.0, target_heading = 0.0;
+        double start_agl_m = 0.0, start_airspeed_kts = 0.0;
+        double start_heading_deg = NAN; // NaN = the runway heading
         int64_t init_start_msec = 0;
         int64_t init_last_busy_msec = 0;
         int64_t init_last_print_msec = 0;
