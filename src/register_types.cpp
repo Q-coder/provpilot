@@ -75,6 +75,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<EngineSound>();
 	ClassDB::register_class<TerrainElevation>();
 	ClassDB::register_class<LoadingProgress>();
+	ClassDB::register_class<VfrMapCanvas>();
 	ClassDB::register_class<VfrMap>();
 	ClassDB::register_class<InstallConfig>();
 	ClassDB::register_class<FGAnimator>();

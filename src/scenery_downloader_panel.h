@@ -2,6 +2,7 @@
 #define SCENERY_DOWNLOADER_PANEL_H
 
 #include <godot_cpp/core/defs.hpp>
+#include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/button.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/hashing_context.hpp>
@@ -17,6 +18,8 @@
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/string.hpp>
+
+#include <vector>
 
 using namespace godot;
 
@@ -94,9 +97,19 @@ namespace jsbgodot
         Ref<FileAccess> hash_file;
         Ref<HashingContext> hash_ctx;
         double hash_total = 0.0, hash_done = 0.0;
-        // tar.exe extraction
+        // tar extraction: progress = files on disk below the pack's top-level
+        // dir vs. entries in the zip, counted by a resumable directory walk
+        // (a few thousand entries per frame; a full walk of half a million
+        // files would stall the UI).
         int tar_pid = -1;
         double tar_poll_t = 0.0;
+        int tar_total = 0;                       // file entries in the zip
+        int tar_counted = 0;                     // entries seen by the current walk
+        int tar_last_count = 0;                  // result of the last complete walk
+        std::vector<Ref<DirAccess>> tar_walk;    // open directory iterators (stack)
+        bool tar_walk_active = false;
+        static constexpr int TAR_WALK_BUDGET = 3000;
+        void step_tar_count(const String &root);
         // ZIPReader extraction
         Ref<ZIPReader> zip;
         PackedStringArray zip_files;
@@ -116,7 +129,6 @@ namespace jsbgodot
         void finish_job_failed(const String &msg);
         String top_level_dir_for_pack(const String &install_root) const;
         static bool has_asset_subdir(const String &path);
-        static int count_files_under(const String &path, int limit);
         void forget_pack(const String &pack_id);
         void set_status(const String &msg, const Color &color);
         void set_job_ui_visible(bool v);

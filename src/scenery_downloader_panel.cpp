@@ -527,16 +527,20 @@ void SceneryDownloaderPanel::begin_extract()
 	// Probe the zip to record the top-level dir (the install state's "path").
 	zip.instantiate();
 	const Error open_err = zip->open(job_zip_path);
+	int zip_entry_count = 0;
 	if (open_err == OK)
 	{
 		const PackedStringArray files = zip->get_files();
 		for (int i = 0; i < files.size(); i++)
 		{
+			if (!files[i].ends_with("/"))
+			{
+				zip_entry_count++;
+			}
 			const PackedStringArray parts = files[i].split("/", false);
-			if (parts.size() > 0)
+			if (job_top_level.is_empty() && parts.size() > 0)
 			{
 				job_top_level = parts[0];
-				break;
 			}
 		}
 		zip->close();
@@ -562,6 +566,11 @@ void SceneryDownloaderPanel::begin_extract()
 			progress->set_value(0.0);
 			progress_lbl->set_text(String::utf8("Extracting via tar\xE2\x80\xA6"));
 			tar_poll_t = 0.0;
+			tar_total = zip_entry_count;
+			tar_counted = 0;
+			tar_last_count = 0;
+			tar_walk.clear();
+			tar_walk_active = false;
 			phase = PHASE_EXTRACT_TAR;
 			return;
 		}
@@ -594,11 +603,18 @@ void SceneryDownloaderPanel::step_extract_tar(double delta)
 	}
 	if (os->is_process_running(tar_pid))
 	{
+		const String root = root_edit->get_text().strip_edges();
+		step_tar_count(job_top_level.is_empty() ? root : root.path_join(job_top_level));
 		tar_poll_t += delta;
-		if (tar_poll_t >= 0.5)
+		if (tar_poll_t >= 0.25)
 		{
 			tar_poll_t = 0.0;
-			progress_lbl->set_text(String::utf8("Extracting via tar\xE2\x80\xA6 (") + String::num_int64(count_files_under(root_edit->get_text().strip_edges(), 4000)) + " files)");
+			const int done = std::max(tar_last_count, tar_counted);
+			if (tar_total > 0)
+			{
+				progress->set_value(Math::clamp(100.0 * double(done) / double(tar_total), 0.0, 99.0));
+			}
+			progress_lbl->set_text(String::utf8("Extracting via tar\xE2\x80\xA6 ") + String::num_int64(done) + " / " + String::num_int64(tar_total) + " files");
 		}
 		return;
 	}
@@ -814,41 +830,59 @@ bool SceneryDownloaderPanel::has_asset_subdir(const String &path)
 	return false;
 }
 
-// Bounded directory walk for the tar.exe progress label.
-int SceneryDownloaderPanel::count_files_under(const String &path, int limit)
+// Resumable directory walk below the pack's top-level dir: a budget of
+// entries per frame, the count published when a walk completes and the
+// next walk started, so the tar progress climbs smoothly without stalling
+// the UI on half a million files.
+void SceneryDownloaderPanel::step_tar_count(const String &root)
 {
-	std::vector<String> stack;
-	stack.push_back(path);
-	int count = 0;
-	while (!stack.empty() && count < limit)
+	if (!tar_walk_active)
 	{
-		const String cur = stack.back();
-		stack.pop_back();
-		Ref<DirAccess> d = DirAccess::open(cur);
+		Ref<DirAccess> d = DirAccess::open(root);
 		if (d.is_null())
+		{
+			return; // tar has not created the directory yet
+		}
+		d->list_dir_begin();
+		tar_walk.clear();
+		tar_walk.push_back(d);
+		tar_counted = 0;
+		tar_walk_active = true;
+	}
+	int budget = TAR_WALK_BUDGET;
+	while (!tar_walk.empty() && budget-- > 0)
+	{
+		Ref<DirAccess> d = tar_walk.back();
+		const String n = d->get_next();
+		if (n.is_empty())
+		{
+			d->list_dir_end();
+			tar_walk.pop_back();
+			continue;
+		}
+		if (n.begins_with("."))
 		{
 			continue;
 		}
-		d->list_dir_begin();
-		String n = d->get_next();
-		while (!n.is_empty() && count < limit)
+		if (d->current_is_dir())
 		{
-			if (!n.begins_with("."))
+			Ref<DirAccess> sub = DirAccess::open(d->get_current_dir().path_join(n));
+			if (sub.is_valid())
 			{
-				if (d->current_is_dir())
-				{
-					stack.push_back(cur.path_join(n));
-				}
-				else
-				{
-					count++;
-				}
+				sub->list_dir_begin();
+				tar_walk.push_back(sub);
 			}
-			n = d->get_next();
 		}
-		d->list_dir_end();
+		else
+		{
+			tar_counted++;
+		}
 	}
-	return count;
+	if (tar_walk.empty())
+	{
+		tar_last_count = tar_counted;
+		tar_walk_active = false;
+	}
 }
 
 void SceneryDownloaderPanel::forget_pack(const String &pack_id)

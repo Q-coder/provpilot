@@ -23,6 +23,9 @@ var tmp_dir := ""
 var zoom_before_key := 0
 var slew_p_before := Vector2.ZERO
 var slew_p_after := Vector2.ZERO
+# Position fed while the terrain ground map is tested (zero = AC_E / AC_N).
+var feed_override := Vector2.ZERO
+var terrain_cached_before := 0
 
 
 func _ready() -> void:
@@ -43,7 +46,23 @@ func _ready() -> void:
 ## the map (from $AC while slewing) and we verify exactly that.
 func _feed_known_position() -> void:
 	if vfr_map != null and phase != "done" and not phase.begins_with("slew"):
-		vfr_map.update_lv95(AC_E, AC_N, 250.0, false)
+		if feed_override != Vector2.ZERO:
+			vfr_map.update_lv95(feed_override.x, feed_override.y, 250.0, false)
+		else:
+			vfr_map.update_lv95(AC_E, AC_N, 250.0, false)
+
+
+## A base-tier terrain tile: 34 x 34 float32 LE, pixel (0,0) at the SE
+## corner (rows S->N, cols E->W), a slope rising to the north-west.
+func _write_terrain_tile(dir: String, e: int, n: int) -> void:
+	var b := PackedByteArray()
+	b.resize(34 * 34 * 4)
+	for row in range(34):
+		for col in range(34):
+			b.encode_float((row * 34 + col) * 4, 400.0 + row * 6.0 + col * 3.0)
+	var f := FileAccess.open(dir.path_join("tile_%d_%d.raw" % [e, n]), FileAccess.WRITE)
+	f.store_buffer(b)
+	f.close()
 
 
 func check(cond: bool, msg: String) -> void:
@@ -207,7 +226,53 @@ func _process(_delta: float) -> void:
 			var got := (p1 - p0).length()
 			check(absf(got - expected) < 0.5,
 				"map world moves with the aircraft (shift %.2f px, expected %.2f px)" % [got, expected])
-			_enter_phase("check_toggle")
+			_enter_phase("check_layout")
+
+		"check_layout":
+			# Title-bar drag = move_frame_by, corner drag = resize_frame_by; both
+			# persist to [map] of the config given to setup(). The headless
+			# parent is 64 px, below the minimum frame, so nothing clamps here.
+			var s0: Vector2 = vfr_map.get_frame_size()
+			var o0: Vector2 = vfr_map.get_frame_offset()
+			check(s0 == Vector2(320, 320), "default frame is the Medium preset (got %s)" % str(s0))
+			vfr_map.move_frame_by(Vector2(-40.0, 30.0))
+			var o1: Vector2 = vfr_map.get_frame_offset()
+			check(o1.is_equal_approx(Vector2(o0.x + 40.0, o0.y + 30.0)), "dragging the title bar left/down moves the frame (offset %s -> %s)" % [str(o0), str(o1)])
+			vfr_map.resize_frame_by(Vector2(50.0, 20.0))
+			var s1: Vector2 = vfr_map.get_frame_size()
+			var o2: Vector2 = vfr_map.get_frame_offset()
+			check(s1 == Vector2(370, 340) and absf(o2.x - (o1.x - 50.0)) < 0.01, "dragging the corner grows the frame, left edge fixed (size %s, offset %s)" % [str(s1), str(o2)])
+			var cfg := ConfigFile.new()
+			cfg.load("/tmp/vfr_map_smoke/no_cfg.cfg")
+			check(absf(float(cfg.get_value("map", "map_frame_w", 0.0)) - 370.0) < 0.01 and absf(float(cfg.get_value("map", "map_frame_top", 0.0)) - o2.y) < 0.01,
+				"frame size and position are persisted to [map]")
+			vfr_map.set_frame_size(320)
+			check(vfr_map.get_frame_size() == Vector2(320, 320), "the Settings preset puts the frame back to 320 px")
+			# Terrain ground map: no map/ tiles, synthetic 34 px terrain tiles
+			# for a block of cells far from the jpg pyramid; at the 5 km view
+			# the map renders L0 cells straight from the heightmaps.
+			var tdir := "/tmp/vfr_map_smoke/terrain"
+			DirAccess.make_dir_recursive_absolute(tdir)
+			for ni in range(1400, 1406):
+				for ei in range(2700, 2706):
+					_write_terrain_tile(tdir, ei * 1024, ni * 1024)
+			vfr_map.set_tile_paths(PackedStringArray([]))
+			vfr_map.set_terrain_paths(PackedStringArray([tdir]))
+			while vfr_map.get_zoom_index() > 0:
+				vfr_map.zoom_in()
+			feed_override = Vector2(2703.0 * 1024.0 + 512.0, 1403.0 * 1024.0 + 512.0)
+			terrain_cached_before = vfr_map.get_cached_tile_count()
+			_enter_phase("check_terrain_map")
+
+		"check_terrain_map":
+			if frame - phase_frame >= 90:
+				var got_tiles := vfr_map.get_cached_tile_count() - terrain_cached_before
+				check(got_tiles >= 9, "terrain tiles are rendered into map textures where no map/ tile exists (%d new)" % got_tiles)
+				feed_override = Vector2.ZERO
+				vfr_map.set_tile_paths(PackedStringArray([tmp_dir]))
+				while vfr_map.get_zoom_index() < 2:
+					vfr_map.zoom_out()
+				_enter_phase("check_toggle")
 
 		"check_toggle":
 			var was_enabled := vfr_map.is_map_enabled()

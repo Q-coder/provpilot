@@ -964,6 +964,7 @@ void SettingsStore::apply_scenery_sources(Node *scenery3d, Node *vegetation, Nod
     if (vfr_map != nullptr)
     {
         vfr_map->call("set_tile_paths", map_paths);
+        vfr_map->call("set_terrain_paths", terrain_paths); // base-tier ground map where no map/ tiles exist
     }
     scenery3d->set("data_paths", terrain_paths);
     scenery3d->set("orthophoto_paths", ortho_paths);

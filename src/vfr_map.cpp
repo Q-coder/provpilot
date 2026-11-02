@@ -12,12 +12,14 @@
 #include <godot_cpp/classes/input.hpp>
 #include <godot_cpp/classes/input_event_key.hpp>
 #include <godot_cpp/classes/input_event_mouse_button.hpp>
+#include <godot_cpp/classes/input_event_mouse_motion.hpp>
 #include <godot_cpp/classes/json.hpp>
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/theme.hpp>
 #include <godot_cpp/classes/theme_db.hpp>
 #include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/variant/color.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/rect2.hpp>
 
@@ -25,6 +27,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <unordered_map>
 
 using namespace godot;
@@ -240,6 +243,28 @@ void VfrMap::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_projected_px", "e", "n"), &VfrMap::get_projected_px);
     ClassDB::bind_method(D_METHOD("is_map_enabled"), &VfrMap::is_map_enabled);
     ClassDB::bind_method(D_METHOD("set_frame_size", "size_px"), &VfrMap::set_frame_size);
+    ClassDB::bind_method(D_METHOD("set_terrain_paths", "terrain_dirs"), &VfrMap::set_terrain_paths);
+    ClassDB::bind_method(D_METHOD("move_frame_by", "delta_px"), &VfrMap::move_frame_by);
+    ClassDB::bind_method(D_METHOD("resize_frame_by", "delta_px"), &VfrMap::resize_frame_by);
+    ClassDB::bind_method(D_METHOD("get_frame_size"), &VfrMap::get_frame_size);
+    ClassDB::bind_method(D_METHOD("get_frame_offset"), &VfrMap::get_frame_offset);
+    ClassDB::bind_method(D_METHOD("_on_viewport_resized"), &VfrMap::_on_viewport_resized);
+}
+
+// ── Clipped map world ───────────────────────────────────────────────────────
+
+VfrMapCanvas::VfrMapCanvas()
+{
+    set_clip_contents(true);
+    set_mouse_filter(Control::MOUSE_FILTER_IGNORE); // the frame handles the mouse
+}
+
+void VfrMapCanvas::_draw()
+{
+    if (owner != nullptr)
+    {
+        owner->draw_world(this);
+    }
 }
 
 // ── Lifecycle ───────────────────────────────────────────────────────────────
@@ -254,31 +279,106 @@ VfrMap::VfrMap()
 
 void VfrMap::_ready()
 {
+    if (canvas == nullptr)
+    {
+        canvas = memnew(VfrMapCanvas);
+        canvas->owner = this;
+        add_child(canvas);
+    }
     load_config();
     load_static_data();
     set_visible(enabled);
     _reposition();
-    queue_redraw();
+    Viewport *vp = get_viewport();
+    if (vp != nullptr && !vp->is_connected("size_changed", Callable(this, "_on_viewport_resized")))
+    {
+        vp->connect("size_changed", Callable(this, "_on_viewport_resized"));
+    }
+    request_redraw();
 }
 
-// Pin the frame to the top-right corner at its configured size.
+void VfrMap::_on_viewport_resized()
+{
+    _reposition(); // keep the frame inside the window
+}
+
+// Anchored to the parent's top-right corner: frame_right / frame_top are
+// the gaps to that corner, frame_w / frame_h the size. Clamped so the whole
+// frame stays inside the parent (the HUD covers the viewport).
 void VfrMap::_reposition()
 {
+    // A parent smaller than the minimum frame (the 64 x 64 headless window
+    // of the smoke tests, a window mid-resize) does not clamp anything.
+    const Vector2 area = get_parent_area_size();
+    frame_w = std::max(MIN_FRAME_PX, frame_w);
+    frame_h = std::max(MIN_FRAME_PX, frame_h);
+    if (area.x >= MIN_FRAME_PX && area.y >= MIN_FRAME_PX)
+    {
+        frame_w = std::min(frame_w, double(area.x));
+        frame_h = std::min(frame_h, double(area.y));
+        frame_right = std::max(0.0, std::min(frame_right, double(area.x) - frame_w));
+        frame_top = std::max(0.0, std::min(frame_top, double(area.y) - frame_h));
+    }
     set_anchors_preset(Control::PRESET_TOP_RIGHT);
-    double s = frame_size_px();
-    set_offset(Side::SIDE_LEFT, -s - 16);
-    set_offset(Side::SIDE_TOP, 16);
-    set_offset(Side::SIDE_RIGHT, -16);
-    set_offset(Side::SIDE_BOTTOM, 16 + s);
+    set_offset(Side::SIDE_LEFT, -frame_right - frame_w);
+    set_offset(Side::SIDE_TOP, frame_top);
+    set_offset(Side::SIDE_RIGHT, -frame_right);
+    set_offset(Side::SIDE_BOTTOM, frame_top + frame_h);
+    place_canvas();
 }
 
-void VfrMap::_notification(int what)
+Rect2 VfrMap::compute_map_area() const
 {
-    if (what == Control::NOTIFICATION_RESIZED)
+    return Rect2(MARGIN, TITLE_H + MARGIN / 2.0, frame_w - 2.0 * MARGIN, frame_h - TITLE_H - 1.5 * MARGIN);
+}
+
+void VfrMap::place_canvas()
+{
+    map_area_rect = compute_map_area();
+    if (canvas != nullptr)
     {
-        _reposition(); // stay pinned to the top-right corner on viewport resize
+        canvas->set_position(map_area_rect.position);
+        canvas->set_size(map_area_rect.size);
     }
 }
+
+void VfrMap::request_redraw()
+{
+    queue_redraw();
+    if (canvas != nullptr)
+    {
+        canvas->queue_redraw();
+    }
+}
+
+bool VfrMap::in_resize_grip(const Vector2 &local_px) const
+{
+    return local_px.x >= frame_w - RESIZE_GRIP_PX && local_px.y >= frame_h - RESIZE_GRIP_PX;
+}
+
+void VfrMap::move_frame_by(const Vector2 &delta_px)
+{
+    frame_right -= delta_px.x; // dragging right shrinks the gap to the right edge
+    frame_top += delta_px.y;
+    _reposition();
+    persist_layout();
+    request_redraw();
+}
+
+void VfrMap::resize_frame_by(const Vector2 &delta_px)
+{
+    // The bottom-right corner follows the mouse: the left and top edges stay.
+    const double w0 = frame_w;
+    frame_w = std::max(MIN_FRAME_PX, frame_w + delta_px.x);
+    frame_h = std::max(MIN_FRAME_PX, frame_h + delta_px.y);
+    frame_right -= frame_w - w0;
+    _reposition();
+    persist_layout();
+    request_redraw();
+}
+
+Vector2 VfrMap::get_frame_size() const { return Vector2(frame_w, frame_h); }
+Vector2 VfrMap::get_frame_offset() const { return Vector2(frame_right, frame_top); }
 
 void VfrMap::_unhandled_input(const Ref<InputEvent> &event)
 {
@@ -317,7 +417,7 @@ void VfrMap::toggle_visible()
 {
     enabled = !enabled;
     set_visible(enabled);
-    queue_redraw();
+    request_redraw();
 }
 
 void VfrMap::zoom_in()
@@ -340,16 +440,90 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
         return;
     }
 
+    // Title bar drag moves the frame, a drag from the bottom-right corner
+    // resizes it; the pointer shape announces both. Event positions are in
+    // this control's local space (the GUI router transformed them), deltas
+    // use the global position so a moving frame does not feed back.
+    InputEventMouseMotion *mm = Object::cast_to<InputEventMouseMotion>(event.ptr());
+    if (mm != nullptr)
+    {
+        if (drag_mode == DRAG_MOVE || drag_mode == DRAG_RESIZE)
+        {
+            const Vector2 d = mm->get_global_position() - drag_start_mouse;
+            if (drag_mode == DRAG_MOVE)
+            {
+                frame_right = drag_start_right - d.x;
+                frame_top = drag_start_top + d.y;
+            }
+            else
+            {
+                frame_w = std::max(MIN_FRAME_PX, drag_start_w + d.x);
+                frame_h = std::max(MIN_FRAME_PX, drag_start_h + d.y);
+                frame_right = drag_start_right - (frame_w - drag_start_w);
+            }
+            _reposition();
+            request_redraw();
+            get_viewport()->set_input_as_handled();
+            return;
+        }
+        const Vector2 lp = mm->get_position();
+        if (in_resize_grip(lp))
+        {
+            set_default_cursor_shape(Control::CURSOR_FDIAGSIZE);
+        }
+        else if (lp.y < TITLE_H)
+        {
+            set_default_cursor_shape(Control::CURSOR_MOVE);
+        }
+        else
+        {
+            set_default_cursor_shape(Control::CURSOR_ARROW);
+        }
+        return;
+    }
+
     InputEventMouseButton *btn = Object::cast_to<InputEventMouseButton>(event.ptr());
-    if (btn == nullptr || !btn->is_pressed())
+    if (btn == nullptr)
     {
         return;
     }
-    // No hit-test here: the viewport's GUI router already found this control
-    // under the pointer before calling us (VfrMap has no child controls, so
-    // _gui_input only fires when the pointer is over the frame), and it has
-    // transformed the event position into *this* control's local space — a
-    // parent-space rect would never contain it.
+    if (btn->get_button_index() == MOUSE_BUTTON_LEFT)
+    {
+        if (btn->is_pressed())
+        {
+            const Vector2 lp = btn->get_position();
+            int mode = DRAG_NONE;
+            if (in_resize_grip(lp))
+            {
+                mode = DRAG_RESIZE;
+            }
+            else if (lp.y < TITLE_H)
+            {
+                mode = DRAG_MOVE;
+            }
+            if (mode != DRAG_NONE)
+            {
+                drag_mode = mode;
+                drag_start_mouse = btn->get_global_position();
+                drag_start_right = frame_right;
+                drag_start_top = frame_top;
+                drag_start_w = frame_w;
+                drag_start_h = frame_h;
+                get_viewport()->set_input_as_handled();
+            }
+        }
+        else if (drag_mode != DRAG_NONE)
+        {
+            drag_mode = DRAG_NONE;
+            persist_layout();
+            get_viewport()->set_input_as_handled();
+        }
+        return;
+    }
+    if (!btn->is_pressed())
+    {
+        return;
+    }
     int step = 0;
     if (btn->get_button_index() == MOUSE_BUTTON_WHEEL_UP)
     {
@@ -372,8 +546,8 @@ void VfrMap::zoom_step(int step)
     if (next != zoom_index)
     {
         zoom_index = next;
-        persist_zoom();
-        queue_redraw();
+        persist_layout();
+        request_redraw();
     }
 }
 
@@ -385,15 +559,21 @@ void VfrMap::setup(const String &config_path_in)
     load_config();
     set_visible(enabled);
     _reposition();
-    queue_redraw();
+    request_redraw();
 }
 
 void VfrMap::set_tile_paths(const PackedStringArray &map_dirs)
 {
     tile_paths = map_dirs;
-    // A path change invalidates nothing (keys are grid-relative), but a new
-    // area may hold tiles we previously failed to load.
-    queue_redraw();
+    missing_cells.clear();
+    request_redraw();
+}
+
+void VfrMap::set_terrain_paths(const PackedStringArray &terrain_dirs)
+{
+    terrain_paths = terrain_dirs;
+    missing_cells.clear();
+    request_redraw();
 }
 
 void VfrMap::apply_config()
@@ -401,7 +581,7 @@ void VfrMap::apply_config()
     load_config();
     set_visible(enabled);
     _reposition();
-    queue_redraw();
+    request_redraw();
 }
 
 void VfrMap::load_config()
@@ -416,13 +596,33 @@ void VfrMap::load_config()
         return;
     }
     // Key names must match SettingsStore (settings_store.cpp), which writes [map] map_enabled
-    // / map_frame_size (zoom_index is owned by this module via persist_zoom).
+    // / map_frame_size; zoom_index and the frame layout are owned by this module (persist_layout).
     enabled = cfg->get_value("map", "map_enabled", true);
-    frame_size_idx = std::max(0, std::min(2, int(cfg->get_value("map", "map_frame_size", 1))));
+    const int idx = std::max(0, std::min(2, int(cfg->get_value("map", "map_frame_size", 1))));
+    // The Settings preset (Small / Medium / Large) wins when it changed since
+    // the last read; otherwise the size the mouse left behind stays.
+    const bool preset_changed = layout_loaded && idx != frame_size_idx;
+    frame_size_idx = idx;
+    const double w = double(cfg->get_value("map", "map_frame_w", 0.0));
+    const double h = double(cfg->get_value("map", "map_frame_h", 0.0));
+    if (!preset_changed && w >= MIN_FRAME_PX && h >= MIN_FRAME_PX)
+    {
+        frame_w = w;
+        frame_h = h;
+    }
+    else
+    {
+        frame_w = frame_h = double(FRAME_SIZES_PX[frame_size_idx]);
+    }
+    frame_right = std::max(0.0, double(cfg->get_value("map", "map_frame_right", 16.0)));
+    frame_top = std::max(0.0, double(cfg->get_value("map", "map_frame_top", 16.0)));
+    layout_loaded = true;
     zoom_index = std::max(0, std::min(4, int(cfg->get_value("map", "zoom_index", 2))));
 }
 
-void VfrMap::persist_zoom()
+// Zoom and frame layout go straight into provpilot.cfg [map]; the
+// SettingsStore rewrites only the keys it owns on a save, so these survive.
+void VfrMap::persist_layout()
 {
     if (config_path.is_empty())
     {
@@ -431,9 +631,13 @@ void VfrMap::persist_zoom()
     Ref<ConfigFile> cfg = memnew(ConfigFile);
     if (cfg->load(config_path) != OK)
     {
-        return; // no config yet — zoom resets next launch, that's fine
+        return; // no config yet — layout resets next launch, that's fine
     }
     cfg->set_value("map", "zoom_index", zoom_index);
+    cfg->set_value("map", "map_frame_w", frame_w);
+    cfg->set_value("map", "map_frame_h", frame_h);
+    cfg->set_value("map", "map_frame_right", frame_right);
+    cfg->set_value("map", "map_frame_top", frame_top);
     cfg->save(config_path);
 }
 
@@ -451,13 +655,14 @@ void VfrMap::set_frame_size(int size_px)
         }
     }
     frame_size_idx = best;
+    frame_w = frame_h = double(size_px);
     _reposition();
-    queue_redraw();
+    request_redraw();
 }
 
 double VfrMap::frame_size_px() const
 {
-    return double(FRAME_SIZES_PX[frame_size_idx]);
+    return frame_w - 2.0 * MARGIN; // the map area's width
 }
 
 int VfrMap::pick_level() const
@@ -497,7 +702,7 @@ void VfrMap::update_lv95(double e, double n, double heading_deg, bool ui_visible
     if (now - last_redraw_ms >= REDRAW_INTERVAL * 1000.0)
     {
         last_redraw_ms = now;
-        queue_redraw();
+        request_redraw();
     }
 }
 
@@ -815,18 +1020,195 @@ bool VfrMap::try_load_tile(const TileKey &key)
         img->flip_x();
         Ref<ImageTexture> tex = ImageTexture::create_from_image(img);
         load_tile_into_cache(key, tex);
+        last_load_cost = 1;
         return true;
     }
+    // No pre-rendered tile: the base tier's terrain, shaded on the fly.
+    if (!terrain_paths.is_empty())
+    {
+        const uint64_t h = cell_hash(key);
+        if (missing_cells.count(h) != 0)
+        {
+            return false;
+        }
+        const int k = std::max(1, level_cell_m(key.level) / 1024);
+        last_load_cost = k * k;
+        Ref<ImageTexture> tex;
+        if (render_terrain_tile(key, tex))
+        {
+            load_tile_into_cache(key, tex);
+            return true;
+        }
+        missing_cells.insert(h);
+    }
     return false;
+}
+
+uint64_t VfrMap::cell_hash(const TileKey &key)
+{
+    return (uint64_t(uint32_t(key.level)) << 60) ^ (uint64_t(uint32_t(key.ei)) << 30) ^ uint64_t(uint32_t(key.ni));
+}
+
+namespace
+{
+    // VFR-sectional hypsometric ramp (scripts/generate_vfr_map_tiles.py).
+    struct TintStop { double elev; float r, g, b; };
+    const TintStop TINT_STOPS[] = {
+        { -50.0, 0.82f, 0.87f, 0.93f },   // below datum: pale blue
+        { 0.0,   0.76f, 0.84f, 0.62f },   // lowland green
+        { 500.0, 0.72f, 0.80f, 0.52f },   // forest green
+        { 1000.0, 0.83f, 0.79f, 0.56f },  // alpine meadow tan
+        { 1800.0, 0.80f, 0.72f, 0.55f },  // brown scree
+        { 2500.0, 0.88f, 0.84f, 0.78f },  // rocky grey
+        { 3200.0, 0.97f, 0.97f, 0.97f },  // snow white
+    };
+    const Color C_SEA(0.60f, 0.72f, 0.86f, 1.0f);   // sea level samples (the bake stores 0.01 m)
+
+    Color tint_of(double elev)
+    {
+        if (elev < 0.05)
+        {
+            return C_SEA;
+        }
+        const int n = int(sizeof(TINT_STOPS) / sizeof(TINT_STOPS[0]));
+        if (elev >= TINT_STOPS[n - 1].elev)
+        {
+            return Color(TINT_STOPS[n - 1].r, TINT_STOPS[n - 1].g, TINT_STOPS[n - 1].b);
+        }
+        for (int i = 1; i < n; i++)
+        {
+            if (elev <= TINT_STOPS[i].elev)
+            {
+                const TintStop &a = TINT_STOPS[i - 1];
+                const TintStop &b = TINT_STOPS[i];
+                const float t = float((elev - a.elev) / (b.elev - a.elev));
+                return Color(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t);
+            }
+        }
+        return Color(TINT_STOPS[0].r, TINT_STOPS[0].g, TINT_STOPS[0].b);
+    }
+}
+
+// Render one map cell from the base tier's 34 x 34 float32 terrain tiles:
+// L0 = one tile at its native 34 samples, L3 = 8 x 8 tiles at 16 samples
+// each (every 2nd), L5 = 32 x 32 tiles at 4 samples each (every 8th). Raw
+// pixel (0,0) is the SE corner (rows S->N, cols E->W); the image is built
+// with x eastward and y southward so the texture's top-left is the cell's
+// NW corner like the pre-rendered tiles. Hillshade (light from the NW, 45°
+// up) times the hypsometric tint; samples without a tile stay transparent
+// so the frame's no-data fill shows through. 1 m add-on tiles (1024² floats)
+// are skipped — those packs carry pre-rendered map/ tiles.
+bool VfrMap::render_terrain_tile(const TileKey &key, Ref<ImageTexture> &out) const
+{
+    const int cell = level_cell_m(key.level);
+    const int K = std::max(1, cell / 1024);
+    const int P = key.level == 0 ? BASE_TILE_PX : (key.level == 1 ? 16 : 4);
+    const int stride = key.level == 0 ? 1 : (key.level == 1 ? 2 : 8);
+    const int S = K * P;
+    const float NO_DATA = -32768.0f;
+    std::vector<float> h(size_t(S) * size_t(S), NO_DATA);
+    const int64_t tile_bytes = int64_t(BASE_TILE_PX) * BASE_TILE_PX * 4;
+    bool any = false;
+    for (int ty = 0; ty < K; ty++)
+    {
+        for (int tx = 0; tx < K; tx++)
+        {
+            const long long e = (long long)key.ei * cell + (long long)tx * 1024;
+            const long long n = (long long)key.ni * cell + (long long)ty * 1024;
+            const String fname = String("tile_") + String::num_int64(e) + "_" + String::num_int64(n) + ".raw";
+            Ref<FileAccess> f;
+            for (int i = 0; i < terrain_paths.size() && f.is_null(); i++)
+            {
+                if (!terrain_paths[i].is_empty())
+                {
+                    f = FileAccess::open(String(terrain_paths[i]).path_join(fname), FileAccess::READ);
+                }
+            }
+            if (f.is_null() || f->get_length() != uint64_t(tile_bytes))
+            {
+                continue;
+            }
+            const PackedByteArray buf = f->get_buffer(tile_bytes);
+            if (buf.size() != tile_bytes)
+            {
+                continue;
+            }
+            const uint8_t *p = buf.ptr();
+            for (int sy = 0; sy < P; sy++)
+            {
+                const int row = std::min(BASE_TILE_PX - 1, sy * stride);          // from the south
+                for (int sx = 0; sx < P; sx++)
+                {
+                    const int col = BASE_TILE_PX - 1 - std::min(BASE_TILE_PX - 1, sx * stride); // col 0 = east
+                    float v;
+                    std::memcpy(&v, p + (size_t(row) * BASE_TILE_PX + col) * 4, 4);
+                    const int x = tx * P + sx;
+                    const int y = (K - 1 - ty) * P + (P - 1 - sy);
+                    h[size_t(y) * S + x] = v;
+                }
+            }
+            any = true;
+        }
+    }
+    if (!any)
+    {
+        return false;
+    }
+    const double m_per_px = double(cell) / double(S);
+    const double az = Math::deg_to_rad(315.0);
+    const double alt = Math::deg_to_rad(45.0);
+    const double lx = std::cos(alt) * std::sin(az);
+    const double ly = std::cos(alt) * std::cos(az);
+    const double lz = std::sin(alt);
+    PackedByteArray px;
+    px.resize(size_t(S) * S * 4);
+    uint8_t *o = px.ptrw();
+    auto at = [&](int x, int y, float fallback) -> double {
+        if (x < 0 || y < 0 || x >= S || y >= S)
+        {
+            return fallback;
+        }
+        const float v = h[size_t(y) * S + x];
+        return v == NO_DATA ? fallback : v;
+    };
+    for (int y = 0; y < S; y++)
+    {
+        for (int x = 0; x < S; x++)
+        {
+            uint8_t *q = o + (size_t(y) * S + x) * 4;
+            const float v = h[size_t(y) * S + x];
+            if (v == NO_DATA)
+            {
+                q[0] = q[1] = q[2] = q[3] = 0;
+                continue;
+            }
+            const double dz_de = (at(x + 1, y, v) - at(x - 1, y, v)) / (2.0 * m_per_px);
+            const double dz_dn = (at(x, y - 1, v) - at(x, y + 1, v)) / (2.0 * m_per_px);
+            const double nx = -dz_de, ny = -dz_dn, nz = 1.0;
+            const double norm = std::sqrt(nx * nx + ny * ny + nz * nz);
+            const double shade = std::max(0.0, std::min(1.0, (nx * lx + ny * ly + nz * lz) / norm));
+            const Color t = tint_of(v);
+            const double k = 0.35 + 0.65 * shade;
+            q[0] = uint8_t(std::min(255.0, t.r * k * 255.0));
+            q[1] = uint8_t(std::min(255.0, t.g * k * 255.0));
+            q[2] = uint8_t(std::min(255.0, t.b * k * 255.0));
+            q[3] = 255;
+        }
+    }
+    Ref<Image> img = Image::create_from_data(S, S, false, Image::FORMAT_RGBA8, px);
+    if (img.is_null())
+    {
+        return false;
+    }
+    out = ImageTexture::create_from_image(img);
+    return out.is_valid();
 }
 
 // ── Drawing ─────────────────────────────────────────────────────────────────
 
 void VfrMap::_draw()
 {
-    double s = frame_size_px();
-    Rect2 frame(0, 0, s, s);
-
+    const Rect2 frame(0, 0, frame_w, frame_h);
     // Frame background + border.
     draw_rect(frame, C_BG);
     draw_rect(frame, C_BORDER, false, 2.0);
@@ -834,28 +1216,45 @@ void VfrMap::_draw()
     Ref<Font> font = ThemeDB::get_singleton()->get_default_theme()->get_font("font", "Label");
 
     // Title bar: "VFR MAP" left, view width right.
-    Rect2 title(0, 0, s, TITLE_H);
+    Rect2 title(0, 0, frame_w, TITLE_H);
     draw_rect(title, C_TITLE_BG);
     if (font.is_valid())
     {
         draw_string(font, Vector2(8, 18), "VFR MAP", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, C_TITLE_TEXT);
         String width_txt = String::num_int64((int)(VIEW_WIDTHS_M[zoom_index] / 1000.0)) + " km";
         double tw = double(width_txt.length()) * 7.5; // ~px per char at size 14
-        draw_string(font, Vector2(s - 8 - tw, 18), width_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, C_TITLE_TEXT);
+        draw_string(font, Vector2(frame_w - 8 - tw, 18), width_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, C_TITLE_TEXT);
     }
 
-    // Map area (below the title bar).
-    Rect2 map_area(MARGIN, TITLE_H + MARGIN / 2.0, s - 2.0 * MARGIN, s - TITLE_H - 1.5 * MARGIN);
-    frame_center_px = map_area.get_center();
-    double view_m = VIEW_WIDTHS_M[zoom_index];
-    px_per_m = map_area.size.x / view_m;
+    // Map area (below the title bar): the clipped canvas child covers it and
+    // draws the world (draw_world) right after this.
+    place_canvas();
+    frame_center_px = map_area_rect.get_center();
+    px_per_m = map_area_rect.size.x / VIEW_WIDTHS_M[zoom_index];
 
-    if (!has_position)
+    // Resize grip: two short diagonals in the bottom-right corner.
+    for (int i = 0; i < 2; i++)
+    {
+        const double d = 5.0 + 5.0 * i;
+        draw_line(Vector2(frame_w - 3.0, frame_h - 3.0 - d), Vector2(frame_w - 3.0 - d, frame_h - 3.0), C_BORDER, 1.5, false);
+    }
+}
+
+// The map world, clipped by the canvas child to the map area. Everything is
+// in frame coordinates (frame_center_px / px_per_m come from _draw, which
+// Godot runs before the children's draw); the transform shifts them into
+// the canvas.
+void VfrMap::draw_world(CanvasItem *ci)
+{
+    if (ci == nullptr || !has_position)
     {
         return; // no aircraft position yet — just the empty frame
     }
-
-    draw_rect(map_area, C_NO_TILE); // fill under missing tiles
+    const Rect2 map_area = map_area_rect;
+    ci->draw_set_transform(-map_area.position, 0.0, Vector2(1, 1));
+    Ref<Font> font = ThemeDB::get_singleton()->get_default_theme()->get_font("font", "Label");
+    double view_m = VIEW_WIDTHS_M[zoom_index];
+    ci->draw_rect(map_area, C_NO_TILE); // fill under missing tiles
 
     // ── Rotated map world (heading-up) ────────────────────────────────────
     // Local screen axes: +x right, +y down. Map axes in meters:
@@ -893,13 +1292,14 @@ void VfrMap::_draw()
         {
             TileKey key{ei, ni, level};
             Ref<ImageTexture> tex = get_tile(ei, ni, level);
-            if (tex.is_null() && pending_loads < MAX_LOADS_PER_FRAME)
+            if (tex.is_null() && pending_loads < MAX_LOAD_COST_PER_FRAME)
             {
+                last_load_cost = 0;
                 if (try_load_tile(key))
                 {
                     tex = get_tile(ei, ni, level);
-                    pending_loads++;
                 }
+                pending_loads += std::max(1, last_load_cost);
             }
             if (tex.is_null())
             {
@@ -948,7 +1348,7 @@ void VfrMap::_draw()
                 pts.push_back(cp[i]);
                 uvs.push_back(cu[i]);
             }
-            draw_colored_polygon(pts, Color(1, 1, 1, 1), uvs, tex);
+            ci->draw_colored_polygon(pts, Color(1, 1, 1, 1), uvs, tex);
             tiles_drawn++;
         }
     }
@@ -992,7 +1392,7 @@ void VfrMap::_draw()
             Vector2 ca, cb;
             if (clip_segment_to_rect(a, b, map_area, ca, cb))
             {
-                draw_line(ca, cb, C_CANTON, 1.0, false);
+                ci->draw_line(ca, cb, C_CANTON, 1.0, false);
             }
         }
     }
@@ -1011,11 +1411,11 @@ void VfrMap::_draw()
         Color c = ap.international ? C_AIRPORT_INTL : C_AIRPORT_GA;
         if (ap.international)
         {
-            draw_rect(Rect2(sp.x - 4, sp.y - 3, 8, 6), c);
+            ci->draw_rect(Rect2(sp.x - 4, sp.y - 3, 8, 6), c);
         }
         else
         {
-            draw_arc(sp, 3.0, 0, TAU, 16, c, 1.5, false);
+            ci->draw_arc(sp, 3.0, 0, TAU, 16, c, 1.5, false);
         }
     }
 
@@ -1036,14 +1436,14 @@ void VfrMap::_draw()
     for (double r = ring_step; r <= max_ring_m * 1.05; r += ring_step)
     {
         double rr = r * px_per_m;
-        draw_arc(frame_center_px, rr, 0, TAU, 96, C_RINGS, 1.0, false);
+        ci->draw_arc(frame_center_px, rr, 0, TAU, 96, C_RINGS, 1.0, false);
         if (font.is_valid())
         {
             String lbl = (r >= 1000.0)
                 ? (String::num_int64((int)(r / 1000.0)) + " km")
                 : (String::num_int64((int)r) + " m");
             double lw = double(lbl.length()) * 6.5; // ~px per char at size 11
-            draw_string(font, frame_center_px + Vector2(-lw / 2.0, -rr - 4), lbl,
+            ci->draw_string(font, frame_center_px + Vector2(-lw / 2.0, -rr - 4), lbl,
                         HORIZONTAL_ALIGNMENT_LEFT, -1, 11, C_RING_LABEL);
         }
     }
@@ -1059,7 +1459,7 @@ void VfrMap::_draw()
         while (d < len - 14.0)
         {
             double d2 = std::min(d + seg, len - 14.0);
-            draw_line(from + Vector2(0, -(d)), from + Vector2(0, -(d2)), C_COURSE, 1.5, false);
+            ci->draw_line(from + Vector2(0, -(d)), from + Vector2(0, -(d2)), C_COURSE, 1.5, false);
             d = d2 + gap;
         }
     }
@@ -1068,16 +1468,16 @@ void VfrMap::_draw()
     {
         double bar_px = ring_step * px_per_m;
         Vector2 bl(map_area.position.x + 10, map_area.position.y + map_area.size.y - 12);
-        draw_line(bl, bl + Vector2(bar_px, 0), Color(1, 1, 1, 0.9), 2.0, false);
-        draw_line(bl, bl + Vector2(0, 5), Color(1, 1, 1, 0.9), 2.0, false);
-        draw_line(bl + Vector2(bar_px, 0), bl + Vector2(bar_px, 5), Color(1, 1, 1, 0.9), 2.0, false);
+        ci->draw_line(bl, bl + Vector2(bar_px, 0), Color(1, 1, 1, 0.9), 2.0, false);
+        ci->draw_line(bl, bl + Vector2(0, 5), Color(1, 1, 1, 0.9), 2.0, false);
+        ci->draw_line(bl + Vector2(bar_px, 0), bl + Vector2(bar_px, 5), Color(1, 1, 1, 0.9), 2.0, false);
         if (font.is_valid())
         {
             String lbl = (ring_step >= 1000.0)
                 ? (String::num_int64((int)(ring_step / 1000.0)) + " km")
                 : (String::num_int64((int)ring_step) + " m");
             double lw = double(lbl.length()) * 6.5;
-            draw_string(font, bl + Vector2(bar_px / 2.0 - lw / 2.0, -4), lbl,
+            ci->draw_string(font, bl + Vector2(bar_px / 2.0 - lw / 2.0, -4), lbl,
                         HORIZONTAL_ALIGNMENT_LEFT, -1, 11, C_RING_LABEL);
         }
     }
@@ -1101,18 +1501,18 @@ void VfrMap::_draw()
             fill.push_back(a);
             fill.push_back(bc);
             fill.push_back(bl);
-            draw_colored_polygon(fill, m.synthetic ? Color(C_ILS_FILL, 0.12) : C_ILS_FILL);
+            ci->draw_colored_polygon(fill, m.synthetic ? Color(C_ILS_FILL, 0.12) : C_ILS_FILL);
             PackedVector2Array outline;
             outline.push_back(a);
             outline.push_back(bl);
             outline.push_back(br);
             outline.push_back(a);
-            draw_polyline(outline, m.synthetic ? Color(C_ILS, 0.5) : C_ILS, 1.0, false);
-            draw_line(a, bc, m.synthetic ? Color(C_ILS, 0.5) : C_ILS, 1.0, false);
+            ci->draw_polyline(outline, m.synthetic ? Color(C_ILS, 0.5) : C_ILS, 1.0, false);
+            ci->draw_line(a, bc, m.synthetic ? Color(C_ILS, 0.5) : C_ILS, 1.0, false);
             if (font.is_valid() && zoom_index <= 2 && map_area.has_point(bc))
             {
-                draw_string(font, bc + Vector2(5, 4), m.label, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, C_LABEL_SHADOW);
-                draw_string(font, bc + Vector2(4, 3), m.label, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, C_ILS);
+                ci->draw_string(font, bc + Vector2(5, 4), m.label, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, C_LABEL_SHADOW);
+                ci->draw_string(font, bc + Vector2(4, 3), m.label, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, C_ILS);
             }
         }
     }
@@ -1137,21 +1537,21 @@ void VfrMap::_draw()
                 const double a = Math_PI / 6.0 + k * Math_PI / 3.0;
                 hex.push_back(sp + Vector2(std::cos(a), std::sin(a)) * 6.0);
             }
-            draw_polyline(hex, C_VOR, 1.5, false);
-            draw_circle(sp, 1.5, C_VOR);
+            ci->draw_polyline(hex, C_VOR, 1.5, false);
+            ci->draw_circle(sp, 1.5, C_VOR);
         }
         else if (nv.kind & NavaidsLib::KIND_NDB)
         {
-            draw_circle(sp, 1.8, C_NDB);
+            ci->draw_circle(sp, 1.8, C_NDB);
             for (int k = 0; k < 12; k++)
             {
                 const double a = k * Math_PI / 6.0;
-                draw_circle(sp + Vector2(std::cos(a), std::sin(a)) * 6.0, 0.9, C_NDB);
+                ci->draw_circle(sp + Vector2(std::cos(a), std::sin(a)) * 6.0, 0.9, C_NDB);
             }
         }
         else
         {
-            draw_rect(Rect2(sp.x - 4, sp.y - 4, 8, 8), C_VOR, false, 1.5);
+            ci->draw_rect(Rect2(sp.x - 4, sp.y - 4, 8, 8), C_VOR, false, 1.5);
         }
     }
 
@@ -1170,8 +1570,8 @@ void VfrMap::_draw()
             const String text = zoom_index <= 2 ? nv.ident + String(" ") + nv.freq : nv.ident;
             const Color c = (nv.kind & NavaidsLib::KIND_NDB) ? C_NDB : C_VOR;
             Vector2 pos(sp.x + 8, sp.y + 12);
-            draw_string(font, pos + Vector2(1, 1), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, C_LABEL_SHADOW);
-            draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, c);
+            ci->draw_string(font, pos + Vector2(1, 1), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, C_LABEL_SHADOW);
+            ci->draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, c);
         }
         for (const Airport &ap : airports)
         {
@@ -1184,8 +1584,8 @@ void VfrMap::_draw()
             double off = ap.international ? 7.0 : 6.0;
             Vector2 pos(sp.x + off, sp.y - off);
             // Shadow pass for legibility over bright terrain.
-            draw_string(font, pos + Vector2(1, 1), ap.icao, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, C_LABEL_SHADOW);
-            draw_string(font, pos, ap.icao, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, C_AIRPORT_INTL);
+            ci->draw_string(font, pos + Vector2(1, 1), ap.icao, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, C_LABEL_SHADOW);
+            ci->draw_string(font, pos, ap.icao, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, C_AIRPORT_INTL);
         }
     }
 
@@ -1195,13 +1595,13 @@ void VfrMap::_draw()
         tri.push_back(Vector2(frame_center_px.x, frame_center_px.y - 9));
         tri.push_back(Vector2(frame_center_px.x + 6, frame_center_px.y + 8));
         tri.push_back(Vector2(frame_center_px.x - 6, frame_center_px.y + 8));
-        draw_colored_polygon(tri, C_AC_BODY);
+        ci->draw_colored_polygon(tri, C_AC_BODY);
         PackedVector2Array edge;
         edge.push_back(tri[0]);
         edge.push_back(tri[1]);
         edge.push_back(tri[2]);
         edge.push_back(tri[0]);
-        draw_polyline(edge, C_AC_EDGE, 1.5, false);
+        ci->draw_polyline(edge, C_AC_EDGE, 1.5, false);
     }
 }
 
