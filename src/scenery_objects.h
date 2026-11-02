@@ -17,6 +17,7 @@
 #include <deque>
 #include <mutex>
 #include <thread>
+#include <atomic>
 #include <unordered_map>
 #include <vector>
 
@@ -58,6 +59,7 @@ namespace jsbgodot
         // building and vegetation managers below `scenery3d` / `vegetation`.
         void apply_scenery_areas(const Array &areas, Node *scenery3d, Node *vegetation);
         void _process(double delta) override;
+        void _notification(int p_what);
         void reload();
 
         int get_object_count() const;
@@ -185,6 +187,7 @@ namespace jsbgodot
                                    // elsewhere leaves ImporterMeshInstance3Ds behind
         };
         std::thread worker;
+        std::atomic<bool> worker_done{true}; // worker_main has returned
         std::mutex queue_mutex;
         std::condition_variable queue_cv;
         std::deque<String> load_queue;
@@ -192,6 +195,12 @@ namespace jsbgodot
         Dictionary pending; // path -> true while queued or parsing
         bool worker_stop = false;
         void start_worker();
+        // Stops the worker and joins it. The worker's glTF parsing makes
+        // rendering-server calls that, from another thread, wait for the main
+        // thread to flush the server's command queue; so while waiting for the
+        // worker the main thread keeps flushing it (otherwise quitting while a
+        // pack is parsing deadlocks in the destructor's join). Called at
+        // NOTIFICATION_EXIT_TREE, while the servers are still alive.
         void stop_worker();
         void worker_main();
         void collect_results();

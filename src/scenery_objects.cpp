@@ -15,6 +15,7 @@
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/geometry_instance3d.hpp>
 #include <godot_cpp/classes/time.hpp>
+#include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/classes/viewport.hpp>
@@ -22,6 +23,7 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 #include "geo.h"
@@ -94,7 +96,11 @@ void SceneryObjects::start_worker()
 	if (worker.joinable())
 		return;
 	worker_stop = false;
-	worker = std::thread([this]() { worker_main(); });
+	worker_done = false;
+	worker = std::thread([this]() {
+		worker_main();
+		worker_done = true;
+	});
 }
 
 void SceneryObjects::stop_worker()
@@ -104,8 +110,31 @@ void SceneryObjects::stop_worker()
 		worker_stop = true;
 	}
 	queue_cv.notify_all();
-	if (worker.joinable())
-		worker.join();
+	if (!worker.joinable())
+		return;
+	// The worker may be inside a rendering-server call that waits for the
+	// main thread's flush: keep flushing until it has left worker_main.
+	RenderingServer *rs = RenderingServer::get_singleton();
+	const uint64_t t0 = Time::get_singleton()->get_ticks_msec();
+	while (!worker_done)
+	{
+		if (rs != nullptr)
+			rs->force_sync();
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		if (Time::get_singleton()->get_ticks_msec() - t0 > 60000)
+		{
+			UtilityFunctions::push_warning("SceneryObjects: the pack loader did not stop within 60 s; detaching it");
+			worker.detach();
+			return;
+		}
+	}
+	worker.join();
+}
+
+void SceneryObjects::_notification(int p_what)
+{
+	if (p_what == NOTIFICATION_EXIT_TREE)
+		stop_worker();
 }
 
 // Parses one GLB at a time: buffers, images and meshes are built here (the
