@@ -648,3 +648,16 @@ MD-87 model and eye point).
 - Tests: `smoke_md80_fdm` sets the wheel back to -1 and checks the gate, the
   key sequence 0.14 / 0.36 / 0.58, two notches up from 15 = UP/MID, one more
   = slats in, and the lever click from UP/MID landing on 11.
+
+### Step 17 — NAV 2 window at start (2026-11-02, gery: "after the airplane is loaded the display shows 0.00; only when rotating one of the frequency knobs does it become accurate")
+- Cause: the bridge's `radios()` read the NAV 2 frequency with `ctl(key, 0.0)`,
+  a hard default, while the init list carries 109.55. The receiver published
+  0.0, the animator then had a value for the property, so the cockpit-state
+  seeding (which only fills properties nothing else provides) skipped it; the
+  first knob click seeded the state from `initial_value()` and the window came
+  alive. `FGBridge::ctl` now falls back to the aircraft's init list before its
+  own default, so every bridge-owned control starts from
+  `jsbsim/init_properties.json` when the list names it (NAV 1, COMM, ADF keep
+  the bridge defaults for aircraft without a list).
+- `smoke_md80_cockpit`: the NAV 2 window shows 109.55 and the receiver is tuned
+  to it before any knob is touched (+2 checks, 72 PASS).

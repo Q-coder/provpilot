@@ -266,6 +266,15 @@ func _ready() -> void:
 		print("  [diag] FGCP NAV1 window '%s' for %.2f MHz, CRS window '%s'; fgcp power %s, fgcp-digital %s, visible %s / anchor %s" % [freq_lb.text, mhz, crs_lb.text, str(fga.get_property("systems/electrical/outputs/fgcp")), str(fga.get_property("systems/lighting/fgcp-digital")), str(freq_lb.is_visible_in_tree()), str((freq_anchor as Node3D).visible)])
 		_check(freq_lb.text == "%6.2f" % mhz, "NAV 1 window shows the tuned frequency (%s)" % freq_lb.text)
 		_check(freq_lb.is_visible_in_tree(), "NAV 1 window is lit (powered FGCP, digital lighting on)")
+		# NAV 2 has not been touched: the window must show the init list's 109.55
+		# from the first frame (the bridge's hard default of 0.00 showed until
+		# a knob click seeded the state)
+		var f2_anchor: Node = mroot.find_child("fgcp__Digits_Freq2", true, false)
+		var f2_lb: Label3D = (f2_anchor.get_node_or_null("Text") as Label3D) if f2_anchor else null
+		var mhz2: float = float(ctl.value_of("instrumentation/nav[1]/frequencies/selected-mhz"))
+		print("  [diag] FGCP NAV2 window '%s', control state %.2f, receiver %.2f" % [f2_lb.text if f2_lb else "-", mhz2, root._aircraft.get_fg_bridge().get_radio_nav2().nav_frequency_mhz])
+		_check(absf(root._aircraft.get_fg_bridge().get_radio_nav2().nav_frequency_mhz - 109.55) < 0.001, "NAV 2 receiver starts on the init list's 109.55 without a knob touch")
+		_check(f2_lb != null and f2_lb.text == "109.55", "NAV 2 window shows 109.55 from the start (%s)" % (f2_lb.text if f2_lb else "-"))
 		var crsk: Node3D = _mesh_named(ctl, "fgcp__Nav1CrsKnob")
 		if crsk:
 			var c0: String = crs_lb.text

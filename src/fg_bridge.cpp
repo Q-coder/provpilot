@@ -325,10 +325,21 @@ double FGBridge::switch_default(const String &prop)
 	return d.has(prop) ? (double)d[prop] : 0.0;
 }
 
+// A control's value: the cockpit state when the switch has been touched,
+// else the aircraft's init list (jsbsim/init_properties.json: the MD-80's
+// NAV 2 starts on 109.55), else the bridge's own default.
 double FGBridge::ctl(const char *key, double def) const
 {
 	const String k(key);
-	return control_state.has(k) ? (double)control_state[k] : def;
+	if (control_state.has(k))
+	{
+		return (double)control_state[k];
+	}
+	if (init_defaults.has(k))
+	{
+		return (double)init_defaults[k];
+	}
+	return def;
 }
 
 Dictionary FGBridge::collect(Object *p_jsb, bool airborne, double night)
