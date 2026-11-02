@@ -77,6 +77,9 @@ Dictionary FGControls::get_state() const { return state; }
 void FGControls::set_state(const Dictionary &s) { state = s; }
 Callable FGControls::get_on_change() const { return on_change; }
 void FGControls::set_on_change(const Callable &c) { on_change = c; }
+Callable FGControls::get_on_module_action() const { return on_module_action; }
+void FGControls::assign_external(const String &prop, const Variant &v) { assign(prop, v); }
+void FGControls::set_on_module_action(const Callable &c) { on_module_action = c; }
 int FGControls::get_count() const { return count; }
 bool FGControls::get_debug() const { return debug; }
 
@@ -1557,6 +1560,20 @@ bool FGControls::run_shim(const String &statement, const Dictionary &ctx)
 				}
 				idx = Math::clamp(idx + (dir >= 0.0 ? 1 : -1), 0, (int)vals.size() - 1);
 				assign(prop, num(vals[idx]));
+			}
+		}
+		else if (action == "autoflight")
+		{
+			// a module action: the autoflight's FGCP handler with the call's argument
+			double arg = num(sh.get("value", 0.0));
+			if (sh.has("arg_index"))
+			{
+				const int ai = (int)num(sh["arg_index"]);
+				arg = ai < args.size() ? num(args[ai]) : 0.0;
+			}
+			if (on_module_action.is_valid())
+			{
+				on_module_action.call(String(sh.get("kind", "")), arg);
 			}
 		}
 		else if (action == "action")

@@ -7,6 +7,7 @@
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 
+#include <cmath>
 #include <deque>
 #include <vector>
 
@@ -27,10 +28,19 @@ namespace jsbgodot
     //             with <scale> <offset> <min> <max> <abs>), <gain>,
     //             <filter-time>, <samples>, <max-rate-of-change>, <u_min>,
     //             <u_max>, <enable>
+    //   <pid-controller>        FlightGear's velocity-form PID (<config>
+    //             Kp Ti Td alpha beta gamma u_min u_max, <reference>)
+    //   <pi-simple-controller>  Kp / Ki with anti-windup clamping
+    //   <predict-simple>        value + trend x <seconds>, <filter-gain>
     // with SimGear's expression (<sum> <product> <difference> <quotient>
     // <table> <min> <max> <clip> <pow> <abs> <sqrt> ... ) and condition
     // (<and> <or> <not> <equals> <less-than> ... <property>) grammars.
-    // Components of other kinds (<pid-controller>, <flipflop> ...) are
+    // Like FlightGear's AnalogComponent, a component that was disabled runs
+    // its next step as a "first time": filters and controllers start from
+    // <initialize-to> input (default) or output (the output property's
+    // current value, bumpless), a PID seeds its last output from the output
+    // property; <feedback-if-disabled> copies the output back into the input
+    // property while disabled. Components of other kinds (<flipflop> ...) are
     // listed in unsupported() and skipped. Property paths are normalised
     // like the animator's (no leading slash, no [0]); a property the
     // dictionary lacks reads 0. Outputs are written into the dictionary and
@@ -56,6 +66,10 @@ namespace jsbgodot
         int get_component_count() const;
         // Last value a rule wrote to this property (0 when none did).
         double get_value(const String &prop) const;
+        // True when an enabled rule wrote the property during the last apply().
+        bool wrote(const String &prop) const;
+        // Seeds a rule output (what a disabled rule's readers see until it runs).
+        void set_value(const String &prop, double v);
         static String norm(const String &p);
 
     protected:
@@ -77,10 +91,13 @@ namespace jsbgodot
             bool has_out = false;
             double prev_in = 0.0;
             bool prev_valid = false;
+            bool was_enabled = false;  // enabled on the last step (a disabled -> enabled step is a "first time")
+            double s1 = 0.0, s2 = 0.0, s3 = 0.0, s4 = 0.0; // controller states (PID: ep_n_1, edf_n_1, edf_n_2, u_n_1)
             std::deque<double> samples;
         };
         std::vector<Component> comps;
         Dictionary outputs;             // normalised path -> last value
+        Dictionary written;             // outputs written during the last apply()
         Dictionary input_set, output_set;
         PackedStringArray unsupported_;
         Dictionary cur;                 // the dictionary of the running apply()
@@ -99,6 +116,12 @@ namespace jsbgodot
         double input_list(const XNode &parent, const char *name, double def, bool *found = nullptr) const;
         bool enabled(const XNode &n) const;
         void run(Component &c, double dt);
+        // The component's <u_min>/<u_max> (also <min>/<max>, and inside <config>) applied to out.
+        double clamp_output(const Component &c, double out) const;
+        // Start value for a first step: <initialize-to> input (default) / output / none (NAN).
+        double init_value(const Component &c, double in) const;
+        // A controller <config> entry (number, property or expression), def when absent.
+        double config_value(const XNode &n, const char *name, double def) const;
     };
 
 } // namespace jsbgodot

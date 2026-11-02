@@ -20,6 +20,7 @@
 #include "fg_animator.h"
 #include "fg_bridge.h"
 #include "fg_controls.h"
+#include "it_autoflight.h"
 #include "fg_property_rules.h"
 #include "fg_sounds.h"
 
@@ -139,6 +140,7 @@ namespace jsbgodot
         Ref<FGControls> get_fg_controls() const;
         FGSounds *get_fg_sounds() const;
         Ref<FGPropertyRules> get_fg_property_rules() const;
+        Ref<ItAutoflight> get_autoflight() const;
         FGAnimator *get_fg_animator() const;
         AircraftLights *get_aircraft_lights() const;
         // The systems built on the model (called from resolve_nodes; public
@@ -147,6 +149,8 @@ namespace jsbgodot
         void setup_fg_animations();
         void setup_fg_sounds();
         void setup_fg_property_rules();
+        // cfg [autoflight] it_autoflight: the DFGS mode logic module (MD-80)
+        void setup_autoflight();
         // cfg [liveries] catalog: the texture properties of the chosen livery
         // (Settings > Aircraft, aircraft_<id>_livery) and the variant's own
         // texture defaults go into the control state; FGAnimator swaps the
@@ -157,6 +161,8 @@ namespace jsbgodot
         Array get_liveries() const;
         // A cockpit switch or knob changed a FlightGear property: real effects.
         void _on_fg_control(const String &prop, const Variant &value);
+        // a shim's "autoflight" action (the FGCP handlers) -> the module
+        void _on_autoflight_action(const String &kind, double arg);
 
     protected:
         Node *host = nullptr;
@@ -190,6 +196,7 @@ namespace jsbgodot
         Ref<FGControls> fg_controls;
         FGSounds *fg_sounds = nullptr;
         Ref<FGPropertyRules> fg_rules;    // cfg [jsbsim] property_rules
+        Ref<ItAutoflight> autoflight;     // cfg [autoflight] it_autoflight
         Dictionary rule_fdm_nodes;        // rule output -> the FDM has that node
         FGAnimator *fg_animator = nullptr;
         AircraftLights *aircraft_lights = nullptr;

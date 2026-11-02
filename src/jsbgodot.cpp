@@ -199,6 +199,7 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("set_default_pitch_trim", "trim"), &JSBGodot::set_default_pitch_trim);
     ClassDB::bind_method(D_METHOD("get_default_pitch_trim"), &JSBGodot::get_default_pitch_trim);
     ClassDB::bind_method(D_METHOD("get_pitch_trim"), &JSBGodot::get_pitch_trim);
+    ClassDB::bind_method(D_METHOD("set_pitch_trim", "trim"), &JSBGodot::set_pitch_trim);
     ClassDB::bind_method(D_METHOD("get_weather_wind_ned_kts", "alt_m"), &JSBGodot::get_weather_wind_ned_kts);
     ClassDB::bind_method(D_METHOD("get_weather_turbulence", "alt_m"), &JSBGodot::get_weather_turbulence);
     ClassDB::bind_method(D_METHOD("get_weather_qnh_hpa"), &JSBGodot::get_weather_qnh_hpa);
@@ -787,6 +788,7 @@ void JSBGodot::set_default_pitch_trim(double trim)
 }
 double JSBGodot::get_default_pitch_trim() const { return default_pitch_trim; }
 double JSBGodot::get_pitch_trim() const { return elevator_trim; }
+void JSBGodot::set_pitch_trim(double trim) { elevator_trim = CLAMP((float)trim, -1.0f, 1.0f); }
 
 void JSBGodot::settle_fcs(int steps)
 {

@@ -29,6 +29,7 @@
 #include "fg_controls.h"
 #include "fg_sounds.h"
 #include "fg_property_rules.h"
+#include "it_autoflight.h"
 #include "aircraft_lights.h"
 #include "airports_lib.h"
 #include "runways_lib.h"
@@ -92,6 +93,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<FGControls>();
 	ClassDB::register_class<FGSounds>();
 	ClassDB::register_class<FGPropertyRules>();
+	ClassDB::register_class<ItAutoflight>();
 	ClassDB::register_class<AircraftLights>();
 	ClassDB::register_class<AirportsLib>();
 	ClassDB::register_class<RunwaysLib>();

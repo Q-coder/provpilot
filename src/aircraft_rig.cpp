@@ -68,6 +68,8 @@ void AircraftRig::_bind_methods()
 	ClassDB::bind_method(D_METHOD("get_fg_bridge"), &AircraftRig::get_fg_bridge);
 	ClassDB::bind_method(D_METHOD("get_fg_controls"), &AircraftRig::get_fg_controls);
 	ClassDB::bind_method(D_METHOD("get_fg_property_rules"), &AircraftRig::get_fg_property_rules);
+	ClassDB::bind_method(D_METHOD("get_autoflight"), &AircraftRig::get_autoflight);
+	ClassDB::bind_method(D_METHOD("_on_autoflight_action", "kind", "arg"), &AircraftRig::_on_autoflight_action);
 	ClassDB::bind_method(D_METHOD("get_fg_sounds"), &AircraftRig::get_fg_sounds);
 	ClassDB::bind_method(D_METHOD("get_fg_animator"), &AircraftRig::get_fg_animator);
 	ClassDB::bind_method(D_METHOD("get_aircraft_lights"), &AircraftRig::get_aircraft_lights);
@@ -499,6 +501,7 @@ void AircraftRig::resolve_nodes(Object *p_jsb)
 	setup_fg_animations();
 	setup_fg_sounds();
 	setup_fg_property_rules();
+	setup_autoflight();
 	if (fg_animator != nullptr)
 	{
 		PackedStringArray keys = fg_animator->property_names();
@@ -509,6 +512,10 @@ void AircraftRig::resolve_nodes(Object *p_jsb)
 		if (fg_rules.is_valid())
 		{
 			keys.append_array(fg_rules->input_names());
+		}
+		if (autoflight.is_valid())
+		{
+			keys.append_array(autoflight->input_names());
 		}
 		fg_bridge->set_mirror_pull_keys(keys);
 		fg_bridge->set_property_aliases(fg_animator->get_aliases());
@@ -893,6 +900,29 @@ void AircraftRig::silence_sounds()
 Ref<FGBridge> AircraftRig::get_fg_bridge() const { return fg_bridge; }
 Ref<FGControls> AircraftRig::get_fg_controls() const { return fg_controls; }
 Ref<FGPropertyRules> AircraftRig::get_fg_property_rules() const { return fg_rules; }
+Ref<ItAutoflight> AircraftRig::get_autoflight() const { return autoflight; }
+
+void AircraftRig::setup_autoflight()
+{
+	autoflight.unref();
+	if (cfg.is_null() || !cfg->get_bool("autoflight", "it_autoflight", false))
+	{
+		return;
+	}
+	autoflight.instantiate();
+	autoflight->set_rules(fg_rules);
+	autoflight->set_option("auto_arm_alt", cfg->get_float("autoflight", "auto_arm_alt", 1.0));
+	autoflight->set_option("nav", cfg->get_float("autoflight", "nav", 0.0));
+	UtilityFunctions::print("Autoflight (IT-AUTOFLIGHT DFGS) enabled for '", aircraft_id, "'");
+}
+
+void AircraftRig::_on_autoflight_action(const String &kind, double arg)
+{
+	if (autoflight.is_valid() && !autoflight->panel(kind, arg))
+	{
+		UtilityFunctions::push_warning("Autoflight: unknown panel action '", kind, "'");
+	}
+}
 FGSounds *AircraftRig::get_fg_sounds() const { return fg_sounds; }
 FGAnimator *AircraftRig::get_fg_animator() const { return fg_animator; }
 AircraftLights *AircraftRig::get_aircraft_lights() const { return aircraft_lights; }
@@ -966,9 +996,16 @@ void AircraftRig::setup_fg_animations()
 	if (fg_animator->load(path, model_root))
 	{
 		UtilityFunctions::print("FlightGear animations loaded for '", aircraft_id, "': ", fg_animator->stats());
+		const String screens_rel = cfg->get_string("model", "screen_texts", "");
+		if (!screens_rel.is_empty())
+		{
+			const int made = fg_animator->load_screen_texts(AircraftConfig::resolve_aircraft_file(aircraft_id, screens_rel));
+			UtilityFunctions::print("Screen texts for '", aircraft_id, "': ", made, " labels from ", screens_rel);
+		}
 		fg_controls->set_state(Dictionary());
 		fg_seeded = false;
 		fg_controls->set_on_change(Callable(this, "_on_fg_control"));
+		fg_controls->set_on_module_action(Callable(this, "_on_autoflight_action"));
 		// cfg [model] nasal_shims: the aircraft's Nasal call -> property action table.
 		// Loaded before setup(): setup keeps only records with a binding it can
 		// run, and a shim is what makes a Nasal binding runnable. An empty path
@@ -1227,7 +1264,49 @@ void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *renderin
 	fg_bridge->set_control_state(fg_controls->get_state());
 	fg_bridge->advance_canopy(delta);
 	fg_bridge->set_frame_delta(delta);
+	if (autoflight.is_valid())
+	{
+		// last frame's autoflight state reaches the FDM mirror with this collect
+		fg_bridge->set_extra_properties(autoflight->get_published());
+	}
 	Dictionary props = fg_bridge->collect(p_jsb, airborne, night);
+	if (autoflight.is_valid())
+	{
+		// the mode logic reads the flight state and writes its inputs / outputs
+		// before the control laws (the rules) run on them
+		autoflight->update(props, delta);
+		const Dictionary pub = autoflight->get_published();
+		const Array pk = pub.keys();
+		for (int i = 0; i < pk.size(); i++)
+		{
+			props[pk[i]] = pub[pk[i]];
+		}
+		const Dictionary cw = autoflight->take_control_writes();
+		const Array ck = cw.keys();
+		for (int i = 0; i < ck.size(); i++)
+		{
+			fg_controls->assign_external(ck[i], cw[ck[i]]);
+			props[ck[i]] = cw[ck[i]];
+		}
+		if (fg_rules.is_valid())
+		{
+			const Dictionary rw = autoflight->take_rule_writes();
+			const Array rk = rw.keys();
+			for (int i = 0; i < rk.size(); i++)
+			{
+				fg_rules->set_value(rk[i], (double)rw[rk[i]]);
+			}
+		}
+		const Dictionary fw = autoflight->take_fdm_writes();
+		const Array fk = fw.keys();
+		for (int i = 0; i < fk.size(); i++)
+		{
+			if (fdm->has_property(String("/") + String(fk[i])))
+			{
+				fdm->set_property(String("/") + String(fk[i]), (double)fw[fk[i]]);
+			}
+		}
+	}
 	if (fg_rules.is_valid() && fg_rules->get_component_count() > 0)
 	{
 		fg_rules->apply(props, delta);
@@ -1242,6 +1321,21 @@ void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *renderin
 			if ((bool)rule_fdm_nodes[k] && props.has(k))
 			{
 				fdm->set_property(String("/") + k, (double)props[k]);
+			}
+		}
+		if (autoflight.is_valid())
+		{
+			autoflight->absorb(props);
+			// the servos' levers: the autotrim moves the pitch trim command, the
+			// autothrottle backdrives the thrust levers (the FDM's engines already
+			// follow systems/engines/ats-cmd-n while the A/T drives)
+			if (autoflight->is_engaged() && fg_rules->wrote("controls/flight/elevator-trim"))
+			{
+				fdm->set_pitch_trim((double)props["controls/flight/elevator-trim"]);
+			}
+			if (autoflight->is_athr_driving() && fg_rules->wrote("controls/engines/engine/throttle"))
+			{
+				fdm->set_input_throttle((float)(double)props["controls/engines/engine/throttle"]);
 			}
 		}
 	}

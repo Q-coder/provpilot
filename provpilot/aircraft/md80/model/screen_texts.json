@@ -1,0 +1,55 @@
+{
+ "_comment": "Label3D texts laid out on a screen mesh (FGAnimator::load_screen_texts): 'cells' is one list per column, top to bottom; the labels show while 'power' >= 24 V. The MD-80 FMA windows THR / ARM / ROLL / PITCH, each two lines (instrumentation/fma/*-mode-a / -b, written by the autoflight module).",
+ "screens": [
+  {
+   "node": "FMA1__fma1_screen",
+   "power": "systems/electrical/outputs/fma",
+   "color": "#ffb000",
+   "columns": 4,
+   "rows": 2,
+   "cells": [
+    [
+     "instrumentation/fma/thr-mode-a",
+     "instrumentation/fma/thr-mode-b"
+    ],
+    [
+     "instrumentation/fma/arm-mode-a",
+     "instrumentation/fma/arm-mode-b"
+    ],
+    [
+     "instrumentation/fma/roll-mode-a",
+     "instrumentation/fma/roll-mode-b"
+    ],
+    [
+     "instrumentation/fma/pitch-mode-a",
+     "instrumentation/fma/pitch-mode-b"
+    ]
+   ]
+  },
+  {
+   "node": "FMA2__fma2_screen",
+   "power": "systems/electrical/outputs/fma[1]",
+   "color": "#ffb000",
+   "columns": 4,
+   "rows": 2,
+   "cells": [
+    [
+     "instrumentation/fma/thr-mode-a",
+     "instrumentation/fma/thr-mode-b"
+    ],
+    [
+     "instrumentation/fma/arm-mode-a",
+     "instrumentation/fma/arm-mode-b"
+    ],
+    [
+     "instrumentation/fma/roll-mode-a",
+     "instrumentation/fma/roll-mode-b"
+    ],
+    [
+     "instrumentation/fma/pitch-mode-a",
+     "instrumentation/fma/pitch-mode-b"
+    ]
+   ]
+  }
+ ]
+}

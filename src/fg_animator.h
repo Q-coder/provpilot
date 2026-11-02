@@ -150,6 +150,8 @@ namespace jsbgodot
             int kind = 0;       // 0 literal, 1 number-value, 2 text-value
             String format;
             String last;
+            int power_prop = -1; // screen texts: shown while this property >= power_min
+            double power_min = 24.0;
         };
         struct MatState
         {
@@ -210,6 +212,13 @@ namespace jsbgodot
         void apply_material(Anim &a, MatState &m, bool on);
         void fixup_emissive_materials(Node *root);
         void load_texts(const Dictionary &m, const String &manifest_dir, HashMap<String, Vector<Node *>> &by_name);
+    public:
+        // cfg [model] screen_texts: a JSON file {"screens": [{"node", "cells":
+        // [[propA, propB], ...] (one list per column, top to bottom), "power",
+        // "color", "columns", "rows"}]} laying Label3Ds over a (hidden) screen
+        // mesh: the FMA windows of the MD-80. Returns the labels made.
+        int load_screen_texts(const String &json_path);
+    protected:
         void update_texts();
         static String format_text(const String &fmt, double v, const String &s, int kind);
     };

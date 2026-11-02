@@ -96,6 +96,8 @@ double FGBridge::get_sim_time_seconds() const { return sim_time_seconds; }
 void FGBridge::set_sim_time_seconds(double v) { sim_time_seconds = v; }
 Dictionary FGBridge::get_control_state() const { return control_state; }
 void FGBridge::set_control_state(const Dictionary &v) { control_state = v; }
+Dictionary FGBridge::get_extra_properties() const { return extra_props; }
+void FGBridge::set_extra_properties(const Dictionary &v) { extra_props = v; }
 double FGBridge::get_canopy_target() const { return canopy_target; }
 void FGBridge::set_canopy_target(double v) { canopy_target = v; }
 double FGBridge::get_frame_delta() const { return frame_delta; }
@@ -433,6 +435,11 @@ Dictionary FGBridge::collect(Object *p_jsb, bool airborne, double night)
 				p[ck[i]] = control_state[ck[i]];
 			}
 		}
+		const Array xk = extra_props.keys();
+		for (int i = 0; i < xk.size(); i++)
+		{
+			p[xk[i]] = extra_props[xk[i]];
+		}
 		mirror_push(jsb, p);
 		mirror_pull(jsb, p);
 		// -set file aliases: rotors/main/blade[n]/flap-deg -> /systems/fcs/aileron-l/final-deg ...
@@ -472,6 +479,13 @@ Dictionary FGBridge::collect(Object *p_jsb, bool airborne, double night)
 		if (!owned)
 		{
 			p[keys[i]] = control_state[keys[i]];
+		}
+	}
+	{
+		const Array xk = extra_props.keys();
+		for (int i = 0; i < xk.size(); i++)
+		{
+			p[xk[i]] = extra_props[xk[i]];
 		}
 	}
 	if (dc_volts <= 0.0)
@@ -784,6 +798,8 @@ void FGBridge::flight_instruments(JSBGodot *jsb, Dictionary &p, bool airborne)
 	p["instrumentation/airspeed-indicator/indicated-speed-kt"] = vc;
 	p["velocities/airspeed-kt"] = vc;
 	p["instrumentation/vertical-speed-indicator/indicated-speed-fpm"] = jsb->get_property("velocities/h-dot-fps") * 60.0;
+	p["instrumentation/gps/indicated-vertical-speed"] = jsb->get_property("velocities/h-dot-fps") * 60.0;
+	p["velocities/vertical-speed-fps"] = jsb->get_property("velocities/h-dot-fps");
 	// Altimeter: the cockpit knobs turn the Kollsman window (control state;
 	// it follows the weather's QNH until the pilot turns the knob, so the
 	// instrument reads the field elevation on the ground); the reading is the
@@ -969,6 +985,25 @@ void FGBridge::radios(JSBGodot *jsb, Dictionary &p, double lat_deg, double lon_d
 	radio_nav2->set_obs_deg(ctl("instrumentation/nav[1]/radials/selected-deg", 0.0));
 	radio_nav2->update(frame_delta, lat_deg, lon_deg, alt_m, true_heading_deg);
 	radio_nav2->write_properties(p);
+	// FlightGear navradio extras the DFGS reads: radials/target-auto-hdg-deg
+	// (the course plus an intercept angle of 3 deg per degree of needle, at
+	// most 30) and gs-rate-of-climb-fpm (the descent rate that holds the
+	// glideslope at the current ground speed)
+	const double gs_kt = jsb->get_property("velocities/vg-fps") * 0.5924838;
+	for (const char *N : {"instrumentation/nav/", "instrumentation/nav[1]/"})
+	{
+		const String n(N);
+		const double course = p.has(n + String("radials/selected-deg")) ? (double)p[n + String("radials/selected-deg")] : 0.0;
+		const double cdi = p.has(n + String("heading-needle-deflection")) ? (double)p[n + String("heading-needle-deflection")] : 0.0;
+		const double in_range = p.has(n + String("in-range")) ? (double)p[n + String("in-range")] : 0.0;
+		const double from = p.has(n + String("from-flag")) ? (double)p[n + String("from-flag")] : 0.0;
+		const double base = from > 0.5 ? Math::fposmod(course + 180.0, 360.0) : course;
+		p[n + String("radials/target-auto-hdg-deg")] = in_range > 0.5 ? Math::fposmod(base + Math::clamp(cdi * 3.0, -30.0, 30.0), 360.0) : course;
+		const double gs_ok = p.has(n + String("gs-in-range")) ? (double)p[n + String("gs-in-range")] : 0.0;
+		const double roc = gs_ok > 0.5 ? -std::tan(Math::deg_to_rad(3.0)) * gs_kt * 101.2686 : 0.0;
+		p[n + String("gs-rate-of-climb-fpm")] = roc;
+		p[n + String("gs-rate-of-climb")] = roc / 60.0;
+	}
 	if (!nav_on)
 	{
 		p["instrumentation/nav/in-range"] = 0.0;

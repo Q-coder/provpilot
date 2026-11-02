@@ -85,6 +85,13 @@ namespace jsbgodot
         void set_state(const Dictionary &s);
         Callable get_on_change() const;
         void set_on_change(const Callable &c);
+        // Shim action "autoflight": {"action": "autoflight", "kind": "hdgAdjust", "arg_index": 0}
+        // calls on_module_action(kind, argument) (the rig forwards it to the autoflight module).
+        Callable get_on_module_action() const;
+        void set_on_module_action(const Callable &c);
+        // Set one property of the cockpit state from outside (the autoflight's
+        // writes to the FGCP's own switches), reporting the change like a click.
+        void assign_external(const String &prop, const Variant &v);
         int get_count() const;
 
     protected:
@@ -98,6 +105,7 @@ namespace jsbgodot
         };
         Dictionary state;
         Callable on_change;
+        Callable on_module_action;
         Vector<Item> items;
         FGAnimator *animator = nullptr;
         Dictionary pressed; // button -> [{rec, action}] whose release / mod-up bindings are pending

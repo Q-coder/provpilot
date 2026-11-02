@@ -57,6 +57,10 @@ namespace jsbgodot
         double get_g_min() const; void set_g_min(double v);
         double get_sim_time_seconds() const; void set_sim_time_seconds(double v);
         Dictionary get_control_state() const; void set_control_state(const Dictionary &v);
+        // Properties another module owns (the autoflight's it-autoflight/*,
+        // instrumentation/fma/*): merged like the cockpit state, so they reach
+        // the FDM mirror and the animator.
+        Dictionary get_extra_properties() const; void set_extra_properties(const Dictionary &v);
         double get_canopy_target() const; void set_canopy_target(double v);
         // The frame time the receivers integrate with (set by the rig before collect()).
         double get_frame_delta() const; void set_frame_delta(double v);
@@ -111,6 +115,7 @@ namespace jsbgodot
         double g_min = 1.0;
         double sim_time_seconds = -1.0; // simulated time of day (s); < 0 = system UTC
         Dictionary control_state;     // FGControls.state, merged last
+        Dictionary extra_props;       // set_extra_properties: merged with the cockpit state
         double canopy_target = 0.0;   // canopy switch: 0 close, 1 hold, 2 open
         double kollsman_seeded = -1.0; // Kollsman value last taken from the weather
         Ref<RadioNav> radio_nav;      // NAV 1 + DME + ADF

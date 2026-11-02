@@ -23,6 +23,8 @@ void FGPropertyRules::_bind_methods()
 	ClassDB::bind_method(D_METHOD("unsupported"), &FGPropertyRules::unsupported);
 	ClassDB::bind_method(D_METHOD("get_component_count"), &FGPropertyRules::get_component_count);
 	ClassDB::bind_method(D_METHOD("get_value", "prop"), &FGPropertyRules::get_value);
+	ClassDB::bind_method(D_METHOD("set_value", "prop", "v"), &FGPropertyRules::set_value);
+	ClassDB::bind_method(D_METHOD("wrote", "prop"), &FGPropertyRules::wrote);
 }
 
 FGPropertyRules::FGPropertyRules() {}
@@ -149,7 +151,9 @@ void FGPropertyRules::collect_names(const XNode &n, bool in_output)
 	{
 		(in_output ? output_set : input_set)[norm(n.text)] = true;
 	}
-	else if ((n.name == "input" || n.name == "scale" || n.name == "offset" || n.name == "min" || n.name == "max" || n.name == "gain") &&
+	else if ((n.name == "input" || n.name == "reference" || n.name == "scale" || n.name == "offset" || n.name == "min" || n.name == "max" ||
+			n.name == "u_min" || n.name == "u_max" || n.name == "gain" || n.name == "Kp" || n.name == "Ti" || n.name == "Td" || n.name == "Ki" ||
+			n.name == "seconds" || n.name == "filter-gain" || n.name == "filter-time" || n.name == "max-rate-of-change") &&
 			n.kids.empty() && !n.text.is_empty() && !is_number(n.text))
 	{
 		input_set[norm(n.text)] = true;
@@ -208,7 +212,7 @@ int FGPropertyRules::load(const String &xml_path)
 				continue;
 			}
 		}
-		else if (k.name != "logic")
+		else if (k.name != "logic" && k.name != "pid-controller" && k.name != "pi-simple-controller" && k.name != "predict-simple")
 		{
 			if (!unsupported_.has(k.name))
 			{
@@ -649,10 +653,78 @@ bool FGPropertyRules::enabled(const XNode &n) const
 	return cond_children(*e);
 }
 
+double FGPropertyRules::config_value(const XNode &n, const char *name, double def) const
+{
+	const XNode *cfg = n.child("config");
+	const XNode *k = cfg != nullptr ? cfg->child(name) : nullptr;
+	if (k == nullptr)
+	{
+		k = n.child(name);
+	}
+	return k != nullptr ? input_value(*k) : def;
+}
+
+double FGPropertyRules::clamp_output(const Component &c, double out) const
+{
+	bool f = false;
+	for (const char *name : {"u_min", "min"})
+	{
+		const double lo = input_list(c.node, name, 0.0, &f);
+		if (f) out = std::max(out, lo);
+	}
+	for (const char *name : {"u_max", "max"})
+	{
+		const double hi = input_list(c.node, name, 0.0, &f);
+		if (f) out = std::min(out, hi);
+	}
+	if (const XNode *cfg = c.node.child("config"))
+	{
+		const double lo = input_list(*cfg, "u_min", 0.0, &f);
+		if (f) out = std::max(out, lo);
+		const double hi = input_list(*cfg, "u_max", 0.0, &f);
+		if (f) out = std::min(out, hi);
+	}
+	return out;
+}
+
+double FGPropertyRules::init_value(const Component &c, double in) const
+{
+	const XNode *it = c.node.child("initialize-to");
+	const String mode = it != nullptr ? it->text.strip_edges() : String("input");
+	if (mode == "none")
+	{
+		return NAN;
+	}
+	if (mode == "output")
+	{
+		return c.outputs.is_empty() ? in : prop(c.outputs[0]);
+	}
+	return in;
+}
+
 void FGPropertyRules::run(Component &c, double dt)
 {
-	if (!enabled(c.node))
+	const bool en = enabled(c.node);
+	const bool first = !c.has_out || !c.was_enabled;
+	c.was_enabled = en;
+	if (!en)
 	{
+		// <feedback-if-disabled>: the input property follows the output while
+		// another rule drives it (bumpless re-engagement)
+		const XNode *fb = c.node.child("feedback-if-disabled");
+		if (fb != nullptr && (fb->text == "true" || fb->text == "1") && !c.outputs.is_empty())
+		{
+			const XNode *in = c.node.child("input");
+			if (in != nullptr)
+			{
+				const XNode *p = in->child("property");
+				const String path = p != nullptr ? p->text : in->text;
+				if (!path.is_empty() && !is_number(path))
+				{
+					cur[norm(path)] = prop(c.outputs[0]);
+				}
+			}
+		}
 		return;
 	}
 	double out = c.out;
@@ -667,11 +739,104 @@ void FGPropertyRules::run(Component &c, double dt)
 		}
 		out = r ? 1.0 : 0.0;
 	}
+	else if (c.kind == "pid-controller")
+	{
+		// FlightGear PIDController (velocity form, Roy Vegard Ovesen)
+		const double y_n = input_list(c.node, "input", 0.0);
+		const double r_n = input_list(c.node, "reference", 0.0);
+		if (first)
+		{
+			c.s1 = 0.0; // ep_n_1
+			c.s2 = 0.0; // edf_n_1
+			c.s3 = 0.0; // edf_n_2
+			c.s4 = c.outputs.is_empty() ? 0.0 : prop(c.outputs[0]); // u_n_1 seeded from the output property
+		}
+		const double Ts = dt;
+		if (Ts > 1e-9)
+		{
+			const double Kp = config_value(c.node, "Kp", 0.0);
+			const double Ti = config_value(c.node, "Ti", 0.0);
+			const double Td = config_value(c.node, "Td", 0.0);
+			const double alpha = config_value(c.node, "alpha", 0.1);
+			const double beta = config_value(c.node, "beta", 1.0);
+			const double gamma = config_value(c.node, "gamma", 0.0);
+			const double ep_n = beta * r_n - y_n;
+			const double e_n = r_n - y_n;
+			const double ed_n = gamma * r_n - y_n;
+			double edf_n;
+			if (Td > 0.0)
+			{
+				const double Tf = alpha * Td;
+				edf_n = c.s2 / (Ts / Tf + 1.0) + ed_n * (Ts / Tf) / (Ts / Tf + 1.0);
+			}
+			else
+			{
+				edf_n = ed_n;
+			}
+			double delta_u_n = 0.0;
+			if (Ti > 0.0)
+			{
+				delta_u_n = Kp * ((ep_n - c.s1) + ((Ts / Ti) * e_n) + ((Td / Ts) * (edf_n - 2.0 * c.s2 + c.s3)));
+			}
+			double u_n = c.s4 + delta_u_n;
+			u_n = clamp_output(c, u_n);
+			c.s1 = ep_n;
+			c.s3 = c.s2;
+			c.s2 = edf_n;
+			c.s4 = u_n;
+			out = u_n;
+		}
+		else
+		{
+			out = c.s4;
+		}
+	}
+	else if (c.kind == "pi-simple-controller")
+	{
+		const double y_n = input_list(c.node, "input", 0.0);
+		const double r_n = input_list(c.node, "reference", 0.0);
+		if (first)
+		{
+			c.s1 = 0.0; // integral sum
+		}
+		const double Kp = config_value(c.node, "Kp", 0.0);
+		const double Ki = config_value(c.node, "Ki", 0.0);
+		const double error = r_n - y_n;
+		const double prop_comp = clamp_output(c, error * Kp);
+		c.s1 += error * Ki * dt;
+		const double raw = prop_comp + c.s1;
+		out = clamp_output(c, raw);
+		if (raw != out)
+		{
+			c.s1 = out - prop_comp; // anti-windup
+		}
+	}
+	else if (c.kind == "predict-simple")
+	{
+		const double ivalue = input_list(c.node, "input", 0.0);
+		if (first)
+		{
+			c.s1 = ivalue; // last value
+			c.s2 = 0.0;    // average trend
+		}
+		if (dt > 0.0)
+		{
+			const double seconds = config_value(c.node, "seconds", 0.0);
+			const double filter_gain = config_value(c.node, "filter-gain", 0.0);
+			const double current = (ivalue - c.s1) / dt;
+			c.s2 = dt < 1.0 ? ((1.0 - dt) * c.s2 + current * dt) : current;
+			out = clamp_output(c, ivalue + (1.0 - filter_gain) * (c.s2 * seconds) + filter_gain * (current * seconds));
+		}
+		c.s1 = ivalue;
+	}
 	else
 	{
-		const double in = input_list(c.node, "input", 0.0);
+		// FlightGear's DigitalFilter feeds input - reference to every filter type
+		const double in = input_list(c.node, "input", 0.0) - input_list(c.node, "reference", 0.0);
 		const double gain = input_list(c.node, "gain", 1.0);
 		const String &t = c.type;
+		const double init = first ? init_value(c, in) : NAN;
+		const bool seeded = first && !std::isnan(init);
 		if (t == "gain")
 		{
 			out = gain * in;
@@ -684,10 +849,10 @@ void FGPropertyRules::run(Component &c, double dt)
 		{
 			const double tf = input_list(c.node, "filter-time", 1.0);
 			const double alpha = dt > 0.0 ? 1.0 / ((tf / dt) + 1.0) : 1.0;
-			if (!c.has_out)
+			if (seeded)
 			{
-				out = in;
-				c.prev_in = in;
+				out = init;
+				c.prev_in = init;
 			}
 			else if (t == "exponential")
 			{
@@ -702,6 +867,10 @@ void FGPropertyRules::run(Component &c, double dt)
 		else if (t == "moving-average")
 		{
 			const int samples = std::max(1, (int)input_list(c.node, "samples", 1.0));
+			if (first)
+			{
+				c.samples.clear();
+			}
 			c.samples.push_back(in);
 			while ((int)c.samples.size() > samples)
 			{
@@ -714,33 +883,31 @@ void FGPropertyRules::run(Component &c, double dt)
 		else if (t == "noise-spike")
 		{
 			const double rate = input_list(c.node, "max-rate-of-change", 1.0);
-			if (!c.has_out)
+			const double from = seeded ? init : c.out;
+			if (first && !seeded && !c.has_out)
 			{
 				out = in;
 			}
 			else
 			{
 				const double step = rate * dt;
-				const double d = in - c.out;
-				out = std::abs(d) > step ? c.out + (d > 0.0 ? step : -step) : in;
+				const double d = in - from;
+				out = std::abs(d) > step ? from + (d > 0.0 ? step : -step) : in;
 			}
 		}
 		else if (t == "derivative")
 		{
 			const double tf = input_list(c.node, "filter-time", 1.0);
-			out = c.prev_valid && dt > 0.0 ? (in - c.prev_in) / dt * tf : 0.0;
+			out = !first && dt > 0.0 ? (in - c.prev_in) / dt * tf : 0.0;
 			c.prev_in = in;
 			c.prev_valid = true;
 		}
 		else if (t == "integrator")
 		{
-			out = (c.has_out ? c.out : 0.0) + in * gain * dt;
+			const double from = seeded ? init : (c.has_out ? c.out : 0.0);
+			out = from + in * gain * dt;
 		}
-		bool f = false;
-		const double lo = input_list(c.node, "u_min", 0.0, &f);
-		if (f) out = std::max(out, lo);
-		const double hi = input_list(c.node, "u_max", 0.0, &f);
-		if (f) out = std::min(out, hi);
+		out = clamp_output(c, out);
 	}
 	c.out = out;
 	c.has_out = true;
@@ -748,12 +915,17 @@ void FGPropertyRules::run(Component &c, double dt)
 	{
 		cur[c.outputs[i]] = out;
 		outputs[c.outputs[i]] = out;
+		written[c.outputs[i]] = true;
 	}
 }
+
+bool FGPropertyRules::wrote(const String &prop) const { return written.has(norm(prop)); }
+void FGPropertyRules::set_value(const String &prop, double v) { outputs[norm(prop)] = v; }
 
 void FGPropertyRules::apply(const Dictionary &props, double dt)
 {
 	cur = props;
+	written.clear();
 	// last frame's outputs for rules that read a later rule
 	const Array keys = outputs.keys();
 	for (int i = 0; i < keys.size(); i++)

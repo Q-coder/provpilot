@@ -12,6 +12,7 @@
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/label3d.hpp>
+#include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/font_file.hpp>
 #include <cstdio>
 #include <godot_cpp/variant/utility_functions.hpp>
@@ -950,6 +951,139 @@ namespace jsbgodot
         return String::utf8(buf);
     }
 
+    int FGAnimator::load_screen_texts(const String &json_path)
+    {
+        if (model_root == nullptr || json_path.is_empty() || !FileAccess::file_exists(json_path))
+            return 0;
+        Ref<FileAccess> f = FileAccess::open(json_path, FileAccess::READ);
+        if (f.is_null())
+            return 0;
+        const Variant parsed = JSON::parse_string(f->get_as_text());
+        if (parsed.get_type() != Variant::DICTIONARY)
+        {
+            UtilityFunctions::push_warning("FGAnimator: screen_texts is not a JSON object: ", json_path);
+            return 0;
+        }
+        HashMap<String, Vector<Node *>> by_name;
+        collect_nodes(model_root, by_name);
+        const Array screens = Dictionary(parsed).get("screens", Array());
+        int made = 0;
+        for (int i = 0; i < screens.size(); i++)
+        {
+            const Dictionary sc = screens[i];
+            const String node_name = sc.get("node", "");
+            MeshInstance3D *mi = nullptr;
+            if (by_name.has(node_name))
+            {
+                const Vector<Node *> &v = by_name[node_name];
+                for (int k = 0; k < v.size() && mi == nullptr; k++)
+                    mi = Object::cast_to<MeshInstance3D>(v[k]);
+            }
+            if (mi == nullptr || mi->get_mesh().is_null())
+            {
+                UtilityFunctions::push_warning("FGAnimator: screen_texts: no mesh '", node_name, "'");
+                continue;
+            }
+            Node3D *parent = Object::cast_to<Node3D>(mi->get_parent());
+            if (parent == nullptr)
+                continue;
+            const Ref<Mesh> mesh = mi->get_mesh();
+            const AABB aabb = mesh->get_aabb();
+            // the thin axis is the screen normal; of the other two, the one that
+            // points most upward in the world is the rows' axis
+            int nax = 0;
+            for (int a = 1; a < 3; a++)
+                if (aabb.size[a] < aabb.size[nax])
+                    nax = a;
+            const Transform3D gt = mi->get_global_transform();
+            int yax = -1;
+            double best = -1.0;
+            for (int a = 0; a < 3; a++)
+            {
+                if (a == nax)
+                    continue;
+                Vector3 e;
+                e[a] = 1.0;
+                const double up = std::abs(gt.basis.xform(e).normalized().y);
+                if (up > best)
+                {
+                    best = up;
+                    yax = a;
+                }
+            }
+            const int xax = 3 - nax - yax;
+            Vector3 ey;
+            ey[yax] = gt.basis.xform(Vector3(yax == 0, yax == 1, yax == 2)).y >= 0.0 ? 1.0 : -1.0;
+            // the outward normal from the first face
+            Vector3 ez;
+            ez[nax] = 1.0;
+            const Array arrays = mesh->surface_get_arrays(0);
+            if (arrays.size() > Mesh::ARRAY_INDEX)
+            {
+                const PackedVector3Array vs = arrays[Mesh::ARRAY_VERTEX];
+                const PackedInt32Array idx = arrays[Mesh::ARRAY_INDEX];
+                if (idx.size() >= 3 && vs.size() >= 3)
+                {
+                    const Vector3 n = (vs[idx[1]] - vs[idx[0]]).cross(vs[idx[2]] - vs[idx[0]]);
+                    if (n.length() > 1e-12)
+                        ez = n.normalized();
+                }
+                else if (vs.size() >= 3)
+                {
+                    const Vector3 n = (vs[1] - vs[0]).cross(vs[2] - vs[0]);
+                    if (n.length() > 1e-12)
+                        ez = n.normalized();
+                }
+            }
+            const Vector3 ex = ey.cross(ez).normalized();
+            const Basis lb_basis(ex, ey, ez);
+            const Array cells = sc.get("cells", Array());
+            const int cols = std::max(1, (int)(int64_t)sc.get("columns", cells.size() > 0 ? (int64_t)cells.size() : 1));
+            int rows = std::max(1, (int)(int64_t)sc.get("rows", 2));
+            const double width = aabb.size[xax], height = aabb.size[yax];
+            const Vector3 centre = aabb.get_center();
+            const Color color = Color::html(String(sc.get("color", "#ffb000")));
+            const int power = String(sc.get("power", "")).is_empty() ? -1 : prop_id(sc.get("power", ""));
+            const double char_m = num(sc.get("character-size", height / rows * 0.55), height / rows * 0.55);
+            for (int ci = 0; ci < cells.size() && ci < cols; ci++)
+            {
+                const Array col = cells[ci];
+                for (int ri = 0; ri < col.size() && ri < rows; ri++)
+                {
+                    Label3D *lb = memnew(Label3D);
+                    lb->set_name(String("ScreenText_") + node_name + "_" + String::num_int64(ci) + "_" + String::num_int64(ri));
+                    TextState ts;
+                    ts.kind = 2;
+                    ts.format = "%s";
+                    ts.prop = prop_id(col[ri]);
+                    ts.power_prop = power;
+                    ts.power_min = num(sc.get("power_min", 24.0), 24.0);
+                    lb->set_font_size(64);
+                    lb->set_pixel_size(char_m / 64.0);
+                    lb->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+                    lb->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
+                    lb->set_modulate(color);
+                    lb->set_draw_flag(Label3D::FLAG_SHADED, false);
+                    lb->set_draw_flag(Label3D::FLAG_DOUBLE_SIDED, false);
+                    lb->set_alpha_cut_mode(Label3D::ALPHA_CUT_DISCARD);
+                    lb->set_texture_filter(BaseMaterial3D::TEXTURE_FILTER_LINEAR_WITH_MIPMAPS);
+                    // cell centre in the mesh frame, a hair in front of the face
+                    const double cx = (ci + 0.5) / cols - 0.5;
+                    const double cy = 0.5 - (ri + 0.5) / rows;
+                    const Vector3 pos = centre + ex * (cx * width) + ey * (cy * height) + ez * 0.001;
+                    lb->set_transform(mi->get_transform() * Transform3D(lb_basis, pos));
+                    parent->add_child(lb);
+                    ts.label_id = lb->get_instance_id();
+                    text_states.push_back(ts);
+                    made++;
+                }
+            }
+        }
+        if (made > 0)
+            type_counts["screen-text"] = made;
+        return made;
+    }
+
     void FGAnimator::update_texts()
     {
         for (int i = 0; i < text_states.size(); i++)
@@ -960,6 +1094,12 @@ namespace jsbgodot
             Label3D *lb = Object::cast_to<Label3D>(ObjectDB::get_instance(ObjectID(ts.label_id)));
             if (lb == nullptr)
                 continue;
+            if (ts.power_prop >= 0)
+            {
+                const bool on = prop_values[ts.power_prop] >= ts.power_min;
+                if (lb->is_visible() != on)
+                    lb->set_visible(on);
+            }
             const double v = ts.prop >= 0 ? prop_values[ts.prop] : 0.0;
             const String str = ts.prop >= 0 ? (prop_strings[ts.prop].is_empty() ? String::num(v, 0) : prop_strings[ts.prop]) : String();
             const String out = format_text(ts.format, v, str, ts.kind);

@@ -661,3 +661,96 @@ MD-87 model and eye point).
   the bridge defaults for aircraft without a list).
 - `smoke_md80_cockpit`: the NAV 2 window shows 109.55 and the receiver is tuned
   to it before any knob is touched (+2 checks, 72 PASS).
+
+### Step 18 — the DFGS autoflight (2026-11-02, gery: "look at the Autoflight of the MD80, according to the wiki page it should be close to complete; the question is how to convert it to PVP as well")
+Three layers, converted in three parts (D6's second half and a C++ port of
+the Nasal mode logic instead of a Nasal runtime):
+- **Control laws = the package's property rules**, now complete.
+  `FGPropertyRules` runs `pid-controller` (FlightGear's velocity-form PID
+  with `<config>` Kp / Ti / Td / alpha / beta / gamma / u_min / u_max as
+  numbers, properties or expressions, `<reference>`), `pi-simple-controller`
+  (Kp / Ki with anti-windup) and `predict-simple` (`<seconds>`,
+  `<filter-gain>`), and follows AnalogComponent's semantics that the DFGS
+  files rely on: a component that was disabled runs its next step as a "first
+  time" (`<initialize-to>` input (default) / output / none; a PID seeds its
+  last output from the output property, bumpless), `<feedback-if-disabled>`
+  copies the output into the input property, `<min>`/`<max>` alias
+  `u_min`/`u_max`, and **every filter feeds input minus `<reference>`**
+  (DigitalFilter::update) — without that the roll-rate / pitch-rate stages
+  were zero and the pitch loop commanded a descent. `apply()` remembers which
+  outputs an enabled rule wrote this frame (`wrote()`), `set_value()` seeds
+  an output. `[jsbsim] property_rules` lists `jsbsim/rules/dfgs-drivers.xml`,
+  `dfgs-roll-yaw.xml`, `dfgs-pitch.xml`, `dfgs-thrust.xml` (187 components
+  with the sound rules, none skipped). The bridge publishes the inputs the
+  rules lacked: `instrumentation/gps/indicated-vertical-speed`,
+  `velocities/vertical-speed-fps`, `instrumentation/nav[n]/radials/target-auto-hdg-deg`
+  (course + 3 deg per degree of needle, at most 30) and
+  `gs-rate-of-climb-fpm` (the descent rate that holds the glideslope at the
+  ground speed); `engines/engine[n]/reverser-pos-norm` and the `systems/dfgs/*`
+  values come from the FDM through the pull keys. Their outputs reach the FDM
+  as before (`/systems/dfgs/afs/{roll,pitch,yaw}-cmd` into the FCS while
+  `afs/enabled`, `/systems/engines/ats-cmd-n` into the engines while the A/T
+  drives, the FD bars); the rig feeds two of them back into the levers: the
+  autotrim's `controls/flight/elevator-trim` into `JSBGodot::set_pitch_trim`
+  (new) while an AP is engaged, the backdriven `controls/engines/engine/throttle`
+  into the throttle input while the A/T drives (not in CLAMP), so the levers
+  follow and nothing jumps at disconnect.
+- **Mode logic = `src/it_autoflight.cpp` (`ItAutoflight`)**, a line-by-line
+  port of `Nasal/DFGS/DFGS.nas` (ITAF loop at 10 Hz, slow loop, the masters,
+  lateral / vertical mode setters, LOC / G/S capture, autoland and flare /
+  rollout texts, go-around arming, altitude arm / capture / hold with the
+  capture limits, bank limits, FGCP temporary IAS/MACH swap, auto altitude
+  re-arm), `DFGS-b.nas` (FMA strings `instrumentation/fma/*-mode-a/-b`, blink
+  windows — the texts flash at 2 Hz while a window blinks — the autothrottle
+  modes Thrust / Retard / EPR Limit / Clamp with the T/O check) and
+  `thrlim.nas` (`systems/engines/limit/active-mode` text from the TRI knob's
+  `active-mode-int`, `limitChanged`). The Nasal listeners became direct calls
+  (`input_lat` / `input_vert` / ... run the handler like a write-listener) or
+  change detection on the properties others write. It is loaded from
+  `[autoflight] it_autoflight true` (`auto_arm_alt`, `nav` = the acconfig
+  options), owns the `it-autoflight/*` inputs, outputs and texts and publishes
+  them through `FGBridge::set_extra_properties` (merged like the cockpit state
+  before the mirror push, so the FDM's `afs/enabled` follows `output/ap1|ap2`),
+  then `update()` runs between `collect()` and the rules; `absorb()` takes
+  back the inputs the driver rules sync while a mode is inactive (vs,
+  kts-flch, mach-flch; `wrote()` tells). Cockpit-owned inputs (the FGCP's
+  direct bindings: fd1, fd2, athr, bank-limit-sw) are read from the cockpit
+  state and written back through `take_control_writes()` (also the TRI
+  mode the module sets on TOGA), `take_fdm_writes()` resets the CAWS altitude
+  alert, `take_rule_writes()` seeds the rules' V/S altitude-hold reference
+  (synced only while inactive — with the wheel at 0 from the first frame it
+  would have been 0 ft). LNAV / NAV needs a flight plan: it reverts to HDG
+  HLD. The init list starts both flight directors on and `active-ap` 1 like
+  ITAF.init.
+- **Panel and FMA.** The 34 `cockpit.ApPanel.*` calls go through a new shim
+  action `autoflight` (`"kind"`: the handler, `"arg_index"`: the call's
+  argument) to `ItAutoflight::panel()`; the yoke / throttle disconnect
+  scripts match on their first statement. `[model] screen_texts`
+  (`model/screen_texts.json`, `FGAnimator::load_screen_texts`) lays Label3Ds
+  in a columns x rows grid over a screen mesh (the thin AABB axis is the
+  normal, the first face gives the side, the most upward axis the rows),
+  shown while the screen's `power` property reads >= 24 V: the two FMAs'
+  THR / ARM / ROLL / PITCH windows, 16 labels. The FGCP's HDG / SPD / ALT /
+  V/S windows and the `alt-thousands` / `alt-hundreds` strings now have
+  values.
+- Flying it: FD and A/T switches, AP ON / OFF switch, HDG knob (push = HOLD,
+  pull = SEL), ALT knob (push = cancel arm, pull = arm; auto-arm 1 s after
+  setting), pitch wheel = V/S (in IAS: the speed, in TURB: the pitch), SPD
+  knob (push = temporary IAS/MACH swap), SPD SEL / MACH SEL / EPR LIM, VOR
+  LOC / ILS / AUTO LAND, VERT SPD / IAS MACH / ALT HOLD / TURB, TOGA on the
+  throttles. The TRI knob matters: with T/O (or FLX) selected the
+  autothrottle stays in CLMP (the T/O check) — select CL / CR after the
+  take-off before expecting SPD. An airborne start begins at T/O.
+- Tests: `smoke_md80_autoflight` (airborne start: 187 components, none
+  skipped, 16 FMA labels, basic modes, AP engage and `afs/enabled`, HDG SEL
+  40 deg, altitude auto-arm, V/S 1 200 fpm, A/T SPD 250 kt, ALT CAP after
+  92 s and ALT HLD within 3 ft, magnetic heading on the bug, yoke disconnect
+  and the AP OFF warning; 23 PASS); `probe_md80_autoflight` prints the roll
+  and pitch rule chains once a second after engaging. `smoke_md80_cockpit`
+  72, `smoke_md80_fdm` 37, `smoke_md80_airborne` 11 PASS.
+- Not done: LNAV (no route manager), the NAV display's heading bug / target
+  altitude (canvas), `instrumentation.xml` / `core-rules.xml` rules (the
+  starter / cutoff hand-off stays in `_links`), the FMA's canvas-only
+  annunciators (AP / FD lights are select animations and work), the EPR
+  limit "FLX" branch, the sound set's AP OFF horn (reads
+  `it-autoflight/sound/apoff`, which the module writes — to be checked by ear).

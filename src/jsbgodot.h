@@ -278,6 +278,8 @@ namespace jsbgodot
         void set_default_pitch_trim(double trim);
         double get_default_pitch_trim() const;
         double get_pitch_trim() const;
+        // Pitch trim command set from outside (the autoflight's autotrim rule).
+        void set_pitch_trim(double trim);
         // Run the FDM a number of steps at the nominal rate and put the vehicle
         // state back to the initial conditions: the control actuators (a rate
         // limited stabilizer) reach their commands while the aircraft stays put.
