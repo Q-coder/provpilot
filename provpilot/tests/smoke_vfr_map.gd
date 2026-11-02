@@ -242,6 +242,12 @@ func _process(_delta: float) -> void:
 			var s1: Vector2 = vfr_map.get_frame_size()
 			var o2: Vector2 = vfr_map.get_frame_offset()
 			check(s1 == Vector2(370, 340) and absf(o2.x - (o1.x - 50.0)) < 0.01, "dragging the corner grows the frame, left edge fixed (size %s, offset %s)" % [str(s1), str(o2)])
+			vfr_map.resize_frame_left_by(Vector2(-30.0, 10.0))
+			var s2: Vector2 = vfr_map.get_frame_size()
+			var o3: Vector2 = vfr_map.get_frame_offset()
+			check(s2 == Vector2(400, 350) and o3.is_equal_approx(o2), "dragging the bottom-left corner grows the frame, right edge fixed (size %s, offset %s)" % [str(s2), str(o3)])
+			vfr_map.resize_frame_left_by(Vector2(30.0, -10.0))
+			check(vfr_map.get_frame_size() == Vector2(370, 340), "and back")
 			var cfg := ConfigFile.new()
 			cfg.load("/tmp/vfr_map_smoke/no_cfg.cfg")
 			check(absf(float(cfg.get_value("map", "map_frame_w", 0.0)) - 370.0) < 0.01 and absf(float(cfg.get_value("map", "map_frame_top", 0.0)) - o2.y) < 0.01,

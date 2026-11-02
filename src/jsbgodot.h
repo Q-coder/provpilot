@@ -48,6 +48,13 @@ namespace jsbgodot
         double heading_deg = 0.0;
         float flaps = 0.0f; // Flaps input (0.0 to 1.0)
         std::vector<float> flap_detents = {0.0f, 0.333f, 0.667f, 1.0f}; // lever notches ([flaps] positions)
+        // A detent that only exists while an FDM property is at or above a
+        // threshold ([flaps] gated_detent / gate_property / gate_min): the
+        // MD-80's DIAL detent is slats-only until the thumbwheel is set, so
+        // stepping skips it while the wheel is stowed.
+        int flap_gate_index = -1;
+        std::string flap_gate_property;
+        double flap_gate_min = 0.0;
         float input_mixture = 1.0f; // Mixture input (0.0 = cutoff, 1.0 = full rich)
         int input_magnetos = 3; // Magneto switch: 0=OFF, 1=R, 2=L, 3=BOTH, 4=START
         int init_starter_frames = 0; // Grace period: keep starter engaged after init
@@ -132,6 +139,11 @@ namespace jsbgodot
         void decrease_flaps();
         void set_flap_detents(const Array &positions);
         Array get_flap_detents() const;
+        void set_flap_detent_gate(int index, const String &property, double min_value);
+        bool is_flap_detent_available(int index) const;
+        // The detent reached from `from` by one notch in `dir` (+1 down,
+        // -1 up), skipping a gated detent that is unavailable; clamped.
+        int step_flap_detent(int from, int dir) const;
         void set_flaps(float value);  // Direct set (the exact lever value)
         float get_flaps() const;      // Actual kinematic position (for wing animation)
         float get_flap_cmd() const;   // Commanded position (for lever indicator)

@@ -72,6 +72,7 @@ void CockpitControls::_bind_methods()
 	ClassDB::bind_method(D_METHOD("set_mixture_value", "value", "jsb"), &CockpitControls::set_mixture_value);
 	ClassDB::bind_method(D_METHOD("set_magneto_position", "position", "jsb"), &CockpitControls::set_magneto_position);
 	ClassDB::bind_method(D_METHOD("set_flap_position", "position", "jsb"), &CockpitControls::set_flap_position);
+	ClassDB::bind_method(D_METHOD("step_flaps", "dir", "jsb"), &CockpitControls::step_flaps);
 	ClassDB::bind_method(D_METHOD("apply_throttle_visual", "throttle"), &CockpitControls::apply_throttle_visual);
 
 	ClassDB::bind_method(D_METHOD("apply_mixture_value", "jsb"), &CockpitControls::apply_mixture_value);
@@ -351,9 +352,15 @@ bool CockpitControls::handle_mouse_motion(const Vector2 &position, Object *p_jsb
 	}
 	if (dragging[LEVER_FLAP])
 	{
-		// Drag down = more flaps, up = less (vertical, like a pull-down lever)
+		// Drag down = more flaps, up = less (vertical, like a pull-down lever);
+		// a gated detent in the way is skipped in the drag direction.
 		const int steps = static_cast<int>((position.y - drag_start_px) / DRAG_PX_PER_STEP);
-		const int new_pos = Math::clamp(drag_start_pos + steps, 0, flap_last_position());
+		int new_pos = Math::clamp(drag_start_pos + steps, 0, flap_last_position());
+		JSBGodot *fdm = Object::cast_to<JSBGodot>(p_jsb);
+		if (fdm != nullptr && new_pos != drag_start_pos && !fdm->is_flap_detent_available(new_pos))
+		{
+			new_pos = fdm->step_flap_detent(new_pos, steps > 0 ? +1 : -1);
+		}
 		if (new_pos != flap_position)
 		{
 			set_flap_position(new_pos, p_jsb);
@@ -528,14 +535,7 @@ void CockpitControls::handle_flap_keys(JSBGodot *fdm)
 	flap_key_held = true;
 
 	int old_pos = flap_position;
-	if (fl_up)
-	{
-		flap_position = std::max(flap_position - 1, 0); // flaps up
-	}
-	else
-	{
-		flap_position = std::min(flap_position + 1, flap_last_position()); // flaps down
-	}
+	flap_position = step_flap_position(flap_position, fl_up ? -1 : +1, fdm);
 
 	if (flap_position != old_pos)
 	{
@@ -597,6 +597,12 @@ void CockpitControls::set_magneto_position(int position, Object *p_jsb)
 {
 	magneto_position = position;
 	apply_magneto(Object::cast_to<JSBGodot>(p_jsb));
+}
+
+void CockpitControls::step_flaps(int dir, Object *p_jsb)
+{
+	JSBGodot *fdm = Object::cast_to<JSBGodot>(p_jsb);
+	set_flap_position(step_flap_position(flap_position, dir, fdm), p_jsb);
 }
 
 void CockpitControls::set_flap_position(int position, Object *p_jsb)
@@ -862,6 +868,15 @@ String CockpitControls::flap_name(int position) const
 		return flap_names[position];
 	}
 	return "?";
+}
+
+int CockpitControls::step_flap_position(int from, int dir, JSBGodot *fdm) const
+{
+	if (fdm != nullptr)
+	{
+		return Math::clamp(fdm->step_flap_detent(from, dir), 0, flap_last_position());
+	}
+	return Math::clamp(from + (dir >= 0 ? 1 : -1), 0, flap_last_position());
 }
 
 int CockpitControls::flaps_norm_to_position(double norm) const

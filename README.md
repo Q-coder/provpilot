@@ -81,7 +81,7 @@ the same section, and **Save** writes `keyboard.cfg` next to `provpilot.cfg`
 | Slew Mode | — | Shift+Y |
 | Scenery editor (design / developer mode, docs/SCENERY_EDITOR.md) | — | F8; inside: WASD, E/Q or PgUp/PgDn, 1–9 tools, 0 pick a baked road, O objects, C curved, [ ] heights, Space top view, axis gizmo, Ctrl+S, Ctrl+B bake the tiles around; no haze while editing — tutorial in the doc |
 | VFR Map Toggle | — | N |
-| Move the VFR map frame / resize it | — | drag its title bar / drag its bottom-right corner (remembered in provpilot.cfg) |
+| Move the VFR map frame / resize it | — | drag its title bar / drag its bottom-left or bottom-right corner (remembered in provpilot.cfg) |
 | VFR Map Zoom | Wheel over map frame | − / + (=) |
 | Weather overlay / FPS counter | — | Ctrl+I / Ctrl+Shift+F |
 | Flap Lever Drag | — | Mouse drag (cockpit) |

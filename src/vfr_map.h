@@ -44,7 +44,7 @@ namespace jsbgodot
     //
     // Lives as a Control child of the HUD Control (see node_3d.tscn). All
     // logic runs in C++: input (N = toggle, wheel over the frame = zoom,
-    // title bar drag = move, bottom-right corner drag = resize), LV95
+    // title bar drag = move, bottom corner drags = resize), LV95
     // projection math (double precision), map-tile streaming with an LRU
     // cache, and every pixel via _draw(). GDScript only does a one-time
     // setup() + set_tile_paths() and calls update() once per frame.
@@ -100,10 +100,12 @@ namespace jsbgodot
         void zoom_in();
         void zoom_out();
         // Frame layout (what the title-bar / corner drags do): move by a
-        // screen delta, grow by a delta; both clamp to the parent area and
+        // screen delta, grow by a delta (the bottom-right corner follows the
+        // mouse, or the bottom-left one); all clamp to the parent area and
         // persist to provpilot.cfg [map].
         void move_frame_by(const Vector2 &delta_px);
         void resize_frame_by(const Vector2 &delta_px);
+        void resize_frame_left_by(const Vector2 &delta_px);
 
         // ── Debug / test accessors ──
         double get_heading_rad() const;
@@ -138,13 +140,16 @@ namespace jsbgodot
 
     protected:
         // ── Tunables ──
-        static constexpr int MAX_CACHE_TILES = 256;    // LRU texture cache cap
+        static constexpr int MAX_CACHE_TILES = 256;    // LRU texture cache floor (the cap follows the view, see cache_cap)
+        static constexpr int MAX_CACHE_TILES_HARD = 4096; // ... and its ceiling
+        static constexpr int MAX_TILES_PER_LEVEL = 1200; // level choice: coarser when a level needs more tiles for the view
         static constexpr double MIN_TILE_SCREEN_PX = 40.0; // level-switch threshold
         static constexpr int MAX_LOAD_COST_PER_FRAME = 128; // per redraw: a jpg tile costs 1, a terrain cell costs its tile count (1 / 64 / 1024)
         static constexpr double REDRAW_INTERVAL = 0.1; // ~10 Hz redraw throttle
+        static constexpr double PARKED_REDRAW_INTERVAL = 1.0; // ... 1 Hz while the aircraft does not move (navaid / data refreshes)
         static constexpr int MAX_TILES_PER_DRAW = 4096; // safety valve for the tile loop
         static constexpr double MIN_FRAME_PX = 200.0;  // smallest frame the corner drag allows
-        static constexpr double RESIZE_GRIP_PX = 16.0; // bottom-right corner hit zone
+        static constexpr double RESIZE_GRIP_PX = 16.0; // bottom corner hit zones
         static constexpr int BASE_TILE_PX = 34;        // base-tier terrain tile side (samples)
 
         struct LevelDef {
@@ -171,7 +176,7 @@ namespace jsbgodot
         double frame_top = 16.0;                       // gap to the parent's top edge (px)
         int zoom_index = 2;                            // VIEW_WIDTHS_M index (20 km)
 
-        enum DragMode { DRAG_NONE = 0, DRAG_MOVE = 1, DRAG_RESIZE = 2 };
+        enum DragMode { DRAG_NONE = 0, DRAG_MOVE = 1, DRAG_RESIZE = 2, DRAG_RESIZE_LEFT = 3 };
         int drag_mode = DRAG_NONE;
         Vector2 drag_start_mouse;                      // global (viewport) px
         double drag_start_right = 0.0, drag_start_top = 0.0;
@@ -183,6 +188,8 @@ namespace jsbgodot
         bool ui_visible = false;
         bool has_position = false;
         double last_redraw_ms = -1e9;
+        double drawn_e = 0.0, drawn_n = 0.0, drawn_heading_rad = 0.0; // state of the last redraw (a parked aircraft redraws nothing)
+        bool drawn_valid = false;
 
         VfrMapCanvas *canvas = nullptr;                // clipped map world
         Rect2 map_area_rect;                           // map area in frame px (below the title bar)
@@ -214,6 +221,7 @@ namespace jsbgodot
         std::unordered_set<uint64_t> missing_cells;
         static uint64_t cell_hash(const TileKey &key);
 
+        int cache_cap = MAX_CACHE_TILES;               // LRU cap: at least twice the tiles the current view needs
         int pending_loads = 0;                         // load cost spent this redraw
         int last_load_cost = 0;                        // cost of the last try_load_tile()
 
@@ -259,7 +267,8 @@ namespace jsbgodot
         void place_canvas();
         void request_redraw();
         Rect2 compute_map_area() const;
-        bool in_resize_grip(const Vector2 &local_px) const;
+        bool in_resize_grip(const Vector2 &local_px) const;      // bottom-right
+        bool in_resize_grip_left(const Vector2 &local_px) const; // bottom-left
         void zoom_step(int step);
         void persist_layout();
         void load_static_data();
@@ -270,7 +279,8 @@ namespace jsbgodot
         Ref<ImageTexture> get_tile(int ei, int ni, int level);
         bool try_load_tile(const TileKey &key);
         bool render_terrain_tile(const TileKey &key, Ref<ImageTexture> &out) const;
-        int pick_level() const;                        // 0/1/2 for current zoom
+        int pick_level() const;                        // 0/1/2 for current zoom and frame size
+        int tiles_per_axis(int level) const;           // grid cells the tile loop walks per axis at a level
         double frame_size_px() const;                  // map area width (px)
         void load_tile_into_cache(const TileKey &key, const Ref<ImageTexture> &tex);
 

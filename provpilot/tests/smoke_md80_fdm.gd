@@ -109,6 +109,32 @@ func _ready() -> void:
 		jsb.decrease_flaps()
 	_check(absf(jsb.get_flap_cmd()) < 0.01, "six steps back reach UP/RET")
 	await get_tree().create_timer(1.0).timeout
+	# thumbwheel stowed (-1): the DIAL detent would be UP/MID again, so every
+	# step path skips it (gery 2026-11-02: "to get to 11 I have to click twice")
+	st_d = root._aircraft.get_fg_controls().get_state()
+	st_d["controls/flight/dial-a-flap"] = -1.0
+	root._aircraft.get_fg_controls().set_state(st_d)
+	await get_tree().create_timer(1.0).timeout
+	_check(not jsb.is_flap_detent_available(2) and jsb.is_flap_detent_available(1), "DIAL detent unavailable while the wheel is stowed (daf %s)" % str(jsb.get_property("/controls/flight/dial-a-flap")))
+	jsb.set_flaps(0.0)
+	var seq2: Array = []
+	for i in range(3):
+		jsb.increase_flaps()
+		seq2.append(snappedf(jsb.get_flap_cmd(), 0.01))
+	_check(seq2 == [0.14, 0.36, 0.58], "stowed wheel: UP/RET -> UP/MID -> 11 -> 15 (%s)" % str(seq2))
+	jsb.decrease_flaps()
+	jsb.decrease_flaps()
+	_check(absf(jsb.get_flap_cmd() - 0.14) < 0.01, "two steps up from 15 reach UP/MID (%.2f)" % jsb.get_flap_cmd())
+	jsb.decrease_flaps()
+	_check(absf(jsb.get_flap_cmd()) < 0.01, "one more retracts the slats")
+	if cc != null:
+		cc.set_flap_position(1, jsb)
+		cc.step_flaps(1, jsb)
+		_check(cc.get_flap_position() == 3, "the cockpit lever click from UP/MID lands on 11 (notch %d)" % cc.get_flap_position())
+		cc.step_flaps(-1, jsb)
+		_check(cc.get_flap_position() == 1, "and back on UP/MID (notch %d)" % cc.get_flap_position())
+		cc.set_flap_position(0, jsb)
+	jsb.set_flaps(0.0)
 	# NAV 2: its own receiver (instrumentation/nav[1]) for the first officer's HSI
 	var st_n: Dictionary = root._aircraft.get_fg_controls().get_state()
 	st_n["instrumentation/nav[1]/frequencies/selected-mhz"] = 114.85   # KLO, in range at LSZH

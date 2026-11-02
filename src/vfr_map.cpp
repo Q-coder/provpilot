@@ -246,6 +246,7 @@ void VfrMap::_bind_methods()
     ClassDB::bind_method(D_METHOD("set_terrain_paths", "terrain_dirs"), &VfrMap::set_terrain_paths);
     ClassDB::bind_method(D_METHOD("move_frame_by", "delta_px"), &VfrMap::move_frame_by);
     ClassDB::bind_method(D_METHOD("resize_frame_by", "delta_px"), &VfrMap::resize_frame_by);
+    ClassDB::bind_method(D_METHOD("resize_frame_left_by", "delta_px"), &VfrMap::resize_frame_left_by);
     ClassDB::bind_method(D_METHOD("get_frame_size"), &VfrMap::get_frame_size);
     ClassDB::bind_method(D_METHOD("get_frame_offset"), &VfrMap::get_frame_offset);
     ClassDB::bind_method(D_METHOD("_on_viewport_resized"), &VfrMap::_on_viewport_resized);
@@ -344,6 +345,7 @@ void VfrMap::place_canvas()
 
 void VfrMap::request_redraw()
 {
+    drawn_valid = false;
     queue_redraw();
     if (canvas != nullptr)
     {
@@ -354,6 +356,11 @@ void VfrMap::request_redraw()
 bool VfrMap::in_resize_grip(const Vector2 &local_px) const
 {
     return local_px.x >= frame_w - RESIZE_GRIP_PX && local_px.y >= frame_h - RESIZE_GRIP_PX;
+}
+
+bool VfrMap::in_resize_grip_left(const Vector2 &local_px) const
+{
+    return local_px.x < RESIZE_GRIP_PX && local_px.y >= frame_h - RESIZE_GRIP_PX;
 }
 
 void VfrMap::move_frame_by(const Vector2 &delta_px)
@@ -372,6 +379,17 @@ void VfrMap::resize_frame_by(const Vector2 &delta_px)
     frame_w = std::max(MIN_FRAME_PX, frame_w + delta_px.x);
     frame_h = std::max(MIN_FRAME_PX, frame_h + delta_px.y);
     frame_right -= frame_w - w0;
+    _reposition();
+    persist_layout();
+    request_redraw();
+}
+
+void VfrMap::resize_frame_left_by(const Vector2 &delta_px)
+{
+    // The bottom-left corner follows the mouse: the right and top edges stay
+    // (frame_right is the gap to the parent's right edge, so it is untouched).
+    frame_w = std::max(MIN_FRAME_PX, frame_w - delta_px.x);
+    frame_h = std::max(MIN_FRAME_PX, frame_h + delta_px.y);
     _reposition();
     persist_layout();
     request_redraw();
@@ -447,7 +465,7 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
     InputEventMouseMotion *mm = Object::cast_to<InputEventMouseMotion>(event.ptr());
     if (mm != nullptr)
     {
-        if (drag_mode == DRAG_MOVE || drag_mode == DRAG_RESIZE)
+        if (drag_mode != DRAG_NONE)
         {
             const Vector2 d = mm->get_global_position() - drag_start_mouse;
             if (drag_mode == DRAG_MOVE)
@@ -455,11 +473,17 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
                 frame_right = drag_start_right - d.x;
                 frame_top = drag_start_top + d.y;
             }
-            else
+            else if (drag_mode == DRAG_RESIZE)
             {
                 frame_w = std::max(MIN_FRAME_PX, drag_start_w + d.x);
                 frame_h = std::max(MIN_FRAME_PX, drag_start_h + d.y);
                 frame_right = drag_start_right - (frame_w - drag_start_w);
+            }
+            else // DRAG_RESIZE_LEFT: the right edge stays
+            {
+                frame_w = std::max(MIN_FRAME_PX, drag_start_w - d.x);
+                frame_h = std::max(MIN_FRAME_PX, drag_start_h + d.y);
+                frame_right = drag_start_right;
             }
             _reposition();
             request_redraw();
@@ -470,6 +494,10 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
         if (in_resize_grip(lp))
         {
             set_default_cursor_shape(Control::CURSOR_FDIAGSIZE);
+        }
+        else if (in_resize_grip_left(lp))
+        {
+            set_default_cursor_shape(Control::CURSOR_BDIAGSIZE);
         }
         else if (lp.y < TITLE_H)
         {
@@ -496,6 +524,10 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
             if (in_resize_grip(lp))
             {
                 mode = DRAG_RESIZE;
+            }
+            else if (in_resize_grip_left(lp))
+            {
+                mode = DRAG_RESIZE_LEFT;
             }
             else if (lp.y < TITLE_H)
             {
@@ -665,16 +697,29 @@ double VfrMap::frame_size_px() const
     return frame_w - 2.0 * MARGIN; // the map area's width
 }
 
+int VfrMap::tiles_per_axis(int level) const
+{
+    // Mirrors the tile loop in draw_world: the view's half diagonal plus a
+    // half-cell margin on each side, in cells; +2 for the partial cells at
+    // both ends (independent of where the aircraft sits in its cell, so the
+    // level choice does not flap while flying).
+    const int cell = level_cell_m(level);
+    const double extent = VIEW_WIDTHS_M[zoom_index] * 0.75 + cell * 0.5;
+    return int(2.0 * extent / cell) + 2;
+}
+
 int VfrMap::pick_level() const
 {
     // Finest level whose tiles still render at >= MIN_TILE_SCREEN_PX on
-    // screen. Wider views switch to coarser levels so the tile count (and
-    // cache pressure) stays bounded instead of loading hundreds of
-    // sub-pixel tiles.
+    // screen AND whose grid over the view stays under MAX_TILES_PER_LEVEL
+    // (a frame resized to half the screen at 20 km would otherwise walk a
+    // thousand 1 km cells per redraw). Wider views and bigger frames switch
+    // to coarser levels so the tile count (and cache pressure) stays bounded.
     double ppm = frame_size_px() / VIEW_WIDTHS_M[zoom_index];
     for (int i = 0; i < 3; i++)
     {
-        if (LEVELS[i].cell_m * ppm >= MIN_TILE_SCREEN_PX)
+        const int n = tiles_per_axis(i);
+        if (LEVELS[i].cell_m * ppm >= MIN_TILE_SCREEN_PX && n * n <= MAX_TILES_PER_LEVEL)
         {
             return i;
         }
@@ -697,12 +742,23 @@ void VfrMap::update_lv95(double e, double n, double heading_deg, bool ui_visible
     heading_rad = Math::deg_to_rad(heading_deg);
     has_position = true;
 
-    // Throttle redraws to ~10 Hz; the map only needs to track smoothly.
+    // Throttle redraws to ~10 Hz; the map only needs to track smoothly. A
+    // parked aircraft (same position and heading as the last redraw, within
+    // a tenth of a pixel / a tenth of a degree) redraws nothing: the canvas
+    // keeps its last command list. Zoom, layout and data changes call
+    // request_redraw() themselves, which also resets drawn_valid.
     double now = double(Time::get_singleton()->get_ticks_msec());
     if (now - last_redraw_ms >= REDRAW_INTERVAL * 1000.0)
     {
-        last_redraw_ms = now;
-        request_redraw();
+        const double eps_m = 0.1 / std::max(px_per_m, 1e-9);
+        const bool same = drawn_valid && std::abs(e - drawn_e) < eps_m && std::abs(n - drawn_n) < eps_m &&
+                          std::abs(heading_rad - drawn_heading_rad) < Math::deg_to_rad(0.1) &&
+                          now - last_redraw_ms < PARKED_REDRAW_INTERVAL * 1000.0;
+        if (!same)
+        {
+            last_redraw_ms = now;
+            request_redraw();
+        }
     }
 }
 
@@ -955,7 +1011,7 @@ void VfrMap::load_tile_into_cache(const TileKey &key, const Ref<ImageTexture> &t
     // Evict least-recently-used entries over the cap. The back of the LRU
     // list is always the victim's index slot (iterators are stable until
     // pop), so match by iterator first, key as fallback.
-    while (cache_lru.size() >= size_t(MAX_CACHE_TILES))
+    while (cache_lru.size() >= size_t(cache_cap) && !cache_lru.empty())
     {
         TileEntry victim = cache_lru.back();
         std::list<TileEntry>::iterator victim_it = std::prev(cache_lru.end());
@@ -1232,11 +1288,12 @@ void VfrMap::_draw()
     frame_center_px = map_area_rect.get_center();
     px_per_m = map_area_rect.size.x / VIEW_WIDTHS_M[zoom_index];
 
-    // Resize grip: two short diagonals in the bottom-right corner.
+    // Resize grips: two short diagonals in each bottom corner.
     for (int i = 0; i < 2; i++)
     {
         const double d = 5.0 + 5.0 * i;
         draw_line(Vector2(frame_w - 3.0, frame_h - 3.0 - d), Vector2(frame_w - 3.0 - d, frame_h - 3.0), C_BORDER, 1.5, false);
+        draw_line(Vector2(3.0, frame_h - 3.0 - d), Vector2(3.0 + d, frame_h - 3.0), C_BORDER, 1.5, false);
     }
 }
 
@@ -1284,6 +1341,19 @@ void VfrMap::draw_world(CanvasItem *ci)
     int ni_min = int(std::floor((ac_n - extent) / (double)cell));
     int ni_max = int(std::floor((ac_n + extent) / (double)cell));
 
+    // The LRU cap follows the view: a frame resized to half the screen at
+    // 10 km needs ~300 L0 tiles at once; a fixed 256 made every redraw evict
+    // tiles it was about to draw again (black cells flickering in and out,
+    // steady holes, and a reload storm that cost frame rate).
+    {
+        const int n_tiles = (ei_max - ei_min + 1) * (ni_max - ni_min + 1);
+        cache_cap = std::max(MAX_CACHE_TILES, std::min(MAX_CACHE_TILES_HARD, 2 * n_tiles));
+    }
+    drawn_e = ac_e;
+    drawn_n = ac_n;
+    drawn_heading_rad = heading_rad;
+    drawn_valid = true;
+
     int tiles_drawn = 0;
     pending_loads = 0;
     for (int ni = ni_min; ni <= ni_max && tiles_drawn < MAX_TILES_PER_DRAW; ni++)
@@ -1292,14 +1362,21 @@ void VfrMap::draw_world(CanvasItem *ci)
         {
             TileKey key{ei, ni, level};
             Ref<ImageTexture> tex = get_tile(ei, ni, level);
-            if (tex.is_null() && pending_loads < MAX_LOAD_COST_PER_FRAME)
+            if (tex.is_null())
             {
-                last_load_cost = 0;
-                if (try_load_tile(key))
+                if (pending_loads < MAX_LOAD_COST_PER_FRAME)
                 {
-                    tex = get_tile(ei, ni, level);
+                    last_load_cost = 0;
+                    if (try_load_tile(key))
+                    {
+                        tex = get_tile(ei, ni, level);
+                    }
+                    pending_loads += std::max(1, last_load_cost);
                 }
-                pending_loads += std::max(1, last_load_cost);
+                else
+                {
+                    drawn_valid = false; // budget spent with tiles still to try: redraw next tick even when parked
+                }
             }
             if (tex.is_null())
             {

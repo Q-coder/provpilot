@@ -631,3 +631,20 @@ fallback without a flight, then a flight per variant: FDM tanks / arm
 factor, shared sounds, livery catalogs, the SAS fuselage swap and restore on
 the MD-81, the Aircraft tab's option applying and storing a choice, the
 MD-87 model and eye point).
+
+### Step 16 — the DIAL detent while the wheel is stowed (2026-11-02, gery: "from all up one click extends the slats, but to get to 11 I have to click twice; the same going up")
+- The lever table reads the DIAL detent (0.25) as UP/MID while the
+  thumbwheel is stowed (`/controls/flight/dial-a-flap` -1, `dial-a-flap-pos`
+  0), so one notch out of the seven looked like nothing happened in both
+  directions. New generic `[flaps] gated_detent <index>`, `gate_property`,
+  `gate_min`: `JSBGodot::set_flap_detent_gate` marks a detent as available
+  only while the FDM property is at or above the threshold, and
+  `step_flap_detent(from, dir)` is now the single stepping function behind
+  the keys, the joystick buttons (`increase_flaps` / `decrease_flaps`), the
+  cockpit lever click (`provpilot/flaps-step` -> `CockpitControls::step_flaps`)
+  and the lever drag (a gated notch in the way is skipped in the drag
+  direction). The MD-80 gates DIAL on the wheel >= 1: stowed, the lever walks
+  UP/RET, UP/MID, 11, 15, 28, 40; once dialled, DIAL is back in the sequence.
+- Tests: `smoke_md80_fdm` sets the wheel back to -1 and checks the gate, the
+  key sequence 0.14 / 0.36 / 0.58, two notches up from 15 = UP/MID, one more
+  = slats in, and the lever click from UP/MID landing on 11.

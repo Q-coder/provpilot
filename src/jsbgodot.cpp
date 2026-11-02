@@ -144,6 +144,9 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("set_flaps", "value"), &JSBGodot::set_flaps);
     ClassDB::bind_method(D_METHOD("set_flap_detents", "positions"), &JSBGodot::set_flap_detents);
     ClassDB::bind_method(D_METHOD("get_flap_detents"), &JSBGodot::get_flap_detents);
+    ClassDB::bind_method(D_METHOD("set_flap_detent_gate", "index", "property", "min_value"), &JSBGodot::set_flap_detent_gate);
+    ClassDB::bind_method(D_METHOD("is_flap_detent_available", "index"), &JSBGodot::is_flap_detent_available);
+    ClassDB::bind_method(D_METHOD("step_flap_detent", "from", "dir"), &JSBGodot::step_flap_detent);
     ClassDB::bind_method(D_METHOD("get_flaps"), &JSBGodot::get_flaps);
     ClassDB::bind_method(D_METHOD("get_flap_cmd"), &JSBGodot::get_flap_cmd);
     ClassDB::bind_method(D_METHOD("set_gear_down", "down"), &JSBGodot::set_gear_down);
@@ -403,20 +406,46 @@ static int nearest_detent(const std::vector<float> &d, float v)
     return best;
 }
 
+void JSBGodot::set_flap_detent_gate(int index, const String &property, double min_value)
+{
+    flap_gate_index = index;
+    flap_gate_property = std::string(property.utf8().get_data());
+    flap_gate_min = min_value;
+}
+
+bool JSBGodot::is_flap_detent_available(int index) const
+{
+    if (index != flap_gate_index || flap_gate_property.empty()) {
+        return true;
+    }
+    if (!FDMExec || !FDMExec->GetPropertyManager()->HasNode(flap_gate_property)) {
+        return true; // no FDM / no such node: never hide a detent
+    }
+    return FDMExec->GetPropertyValue(flap_gate_property) >= flap_gate_min;
+}
+
+int JSBGodot::step_flap_detent(int from, int dir) const
+{
+    const int last = (int)flap_detents.size() - 1;
+    const int step = dir >= 0 ? 1 : -1;
+    int i = CLAMP(from, 0, last) + step;
+    while (i >= 0 && i <= last && !is_flap_detent_available(i)) {
+        i += step;
+    }
+    if (i < 0 || i > last) {
+        return CLAMP(from, 0, last); // nothing further in that direction
+    }
+    return i;
+}
+
 void JSBGodot::increase_flaps()
 {
-    const int i = nearest_detent(flap_detents, flaps);
-    if (i + 1 < (int)flap_detents.size()) {
-        flaps = flap_detents[i + 1];
-    }
+    flaps = flap_detents[step_flap_detent(nearest_detent(flap_detents, flaps), +1)];
 }
 
 void JSBGodot::decrease_flaps()
 {
-    const int i = nearest_detent(flap_detents, flaps);
-    if (i > 0) {
-        flaps = flap_detents[i - 1];
-    }
+    flaps = flap_detents[step_flap_detent(nearest_detent(flap_detents, flaps), -1)];
 }
 
 void JSBGodot::set_flaps(float value)

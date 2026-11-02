@@ -131,6 +131,9 @@ namespace jsbgodot
         void set_mixture_value(double value, Object *jsb);
         void set_magneto_position(int position, Object *jsb);
         void set_flap_position(int position, Object *jsb);
+        // One notch from the current position (+1 down / -1 up) through the
+        // FDM's detents (the cockpit lever click action, provpilot/flaps-step).
+        void step_flaps(int dir, Object *jsb);
         // Throttle has no C++ state (its value lives in JSBSim); this only
         // drives the lever visual during a drag.
         void apply_throttle_visual(double throttle);
@@ -224,6 +227,10 @@ namespace jsbgodot
 
         // JSBSim flap-pos-norm (0.0-1.0) -> lever notch index (0-3).
         int flaps_norm_to_position(double norm) const; // nearest detent
+        // One notch from `from` in `dir` (+1 down / -1 up) through the FDM's
+        // detent list (a gated detent, e.g. the MD-80's DIAL while the
+        // thumbwheel is stowed, is skipped); plain +-1 without an FDM.
+        int step_flap_position(int from, int dir, JSBGodot *fdm) const;
         int flap_last_position() const { return int(flap_positions.size()) - 1; }
         String flap_name(int position) const;
     };

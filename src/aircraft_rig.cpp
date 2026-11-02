@@ -618,6 +618,16 @@ void AircraftRig::resolve_levers(Object *p_jsb)
 	if (JSBGodot *fdm = Object::cast_to<JSBGodot>(p_jsb))
 	{
 		fdm->set_flap_detents(cc->get_flap_positions()); // the keys / joystick step the cfg detents
+		if (cfg.is_valid())
+		{
+			// [flaps] gated_detent: a notch that only exists while gate_property >= gate_min
+			// (the MD-80's DIAL detent is UP/MID again while the thumbwheel is stowed)
+			const int gated = (int)cfg->get_float("flaps", "gated_detent", -1.0);
+			if (gated >= 0)
+			{
+				fdm->set_flap_detent_gate(gated, cfg->get_string("flaps", "gate_property", ""), cfg->get_float("flaps", "gate_min", 1.0));
+			}
+		}
 	}
 	cc->register_levers(mixture, throttle, magneto, flap); // captures base transforms
 	cc->create_pick_bodies();
@@ -1631,7 +1641,7 @@ void AircraftRig::_on_fg_control(const String &prop, const Variant &value)
 		state.erase(prop);
 		if (fdm != nullptr && cockpit_controls.is_valid())
 		{
-			cockpit_controls->set_flap_position(cockpit_controls->get_flap_position() + (v >= 0.0 ? 1 : -1), fdm);
+			cockpit_controls->step_flaps(v >= 0.0 ? 1 : -1, fdm);
 		}
 	}
 	else if (prop == "provpilot/speedbrake")
