@@ -6,6 +6,9 @@
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/input.hpp>
+#include <godot_cpp/classes/input_event_joypad_button.hpp>
+#include <godot_cpp/classes/input_event_joypad_motion.hpp>
+#include <godot_cpp/classes/input_map.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/window.hpp>
 #include <godot_cpp/classes/global_constants.hpp>
@@ -54,6 +57,8 @@ static const struct { const char *id; const char *label; } BUTTON_ACTIONS[] = {
 	{"look_right", "Look right"},
 	{"look_up", "Look up"},
 	{"look_down", "Look down"},
+	{"view_closer", "Camera: Zoom in / closer"},
+	{"view_farther", "Camera: Zoom out / farther"},
 	{"drive_handbrake", "Vehicle: Handbrake"},
 };
 
@@ -69,6 +74,8 @@ void JoystickBindings::_bind_methods()
 	ClassDB::bind_method(D_METHOD("get_axis", "action"), &JoystickBindings::get_axis);
 	ClassDB::bind_method(D_METHOD("get_bound_axis", "action"), &JoystickBindings::get_bound_axis);
 	ClassDB::bind_method(D_METHOD("get_button", "action"), &JoystickBindings::get_button);
+	ClassDB::bind_method(D_METHOD("is_button_just_pressed", "action"), &JoystickBindings::is_button_just_pressed);
+	ClassDB::bind_static_method("JoystickBindings", D_METHOD("disable_ui_joypad_navigation"), &JoystickBindings::disable_ui_joypad_navigation);
 	ClassDB::bind_method(D_METHOD("detect_active_axis", "threshold"), &JoystickBindings::detect_active_axis, DEFVAL(0.5));
 	ClassDB::bind_method(D_METHOD("detect_active_button"), &JoystickBindings::detect_active_button);
 	ClassDB::bind_method(D_METHOD("save"), &JoystickBindings::save);
@@ -99,6 +106,62 @@ void JoystickBindings::_ready()
 	}
 	apply_defaults();
 	load();
+	disable_ui_joypad_navigation();
+	set_process(true);
+}
+
+void JoystickBindings::disable_ui_joypad_navigation()
+{
+	InputMap *im = InputMap::get_singleton();
+	if (im == nullptr)
+	{
+		return;
+	}
+	const TypedArray<StringName> actions = im->get_actions();
+	int removed = 0;
+	for (int i = 0; i < actions.size(); i++)
+	{
+		const StringName action = actions[i];
+		if (!String(action).begins_with("ui_"))
+		{
+			continue;
+		}
+		const TypedArray<InputEvent> events = im->action_get_events(action);
+		for (int k = 0; k < events.size(); k++)
+		{
+			const Ref<InputEvent> ev = events[k];
+			if (ev.is_null())
+			{
+				continue;
+			}
+			if (Object::cast_to<InputEventJoypadButton>(ev.ptr()) != nullptr || Object::cast_to<InputEventJoypadMotion>(ev.ptr()) != nullptr)
+			{
+				im->action_erase_event(action, ev);
+				removed++;
+			}
+		}
+	}
+	if (removed > 0)
+	{
+		UtilityFunctions::print("JoystickConfig: ", removed, " joypad events removed from the ui_* actions (menus are mouse / keyboard only)");
+	}
+}
+
+void JoystickBindings::_process(double)
+{
+	// Autoloads process before the main scene, so the edge computed here
+	// is what node_3d.gd and the C++ modules read during this frame.
+	button_prev = button_now.duplicate();
+	const Array actions = button_bindings.keys();
+	for (int i = 0; i < actions.size(); i++)
+	{
+		button_now[actions[i]] = get_button(actions[i]);
+	}
+}
+
+bool JoystickBindings::is_button_just_pressed(const String &action) const
+{
+	return bool(button_now.get(action, false)) && !bool(button_prev.get(action, false));
 }
 
 Dictionary JoystickBindings::get_axis_bindings() const { return axis_bindings; }
@@ -176,17 +239,22 @@ void JoystickBindings::apply_defaults()
 		d["button"] = button;
 		button_bindings[String(action)] = d;
 	};
-	btn("flip_camera", JOY_BUTTON_Y);
+	// Conflict-free on an Xbox-layout pad (F310 / F710 in X mode, Xbox,
+	// PlayStation): face buttons A brakes, B camera, X / Y trim; shoulders
+	// flaps; D-pad looks. The zoom buttons are unbound (Page Up / Down).
+	btn("flip_camera", JOY_BUTTON_B);
 	btn("slew_toggle", -1);
 	btn("flaps_up", JOY_BUTTON_RIGHT_SHOULDER);
 	btn("flaps_down", JOY_BUTTON_LEFT_SHOULDER);
-	btn("trim_up", JOY_BUTTON_DPAD_UP);
-	btn("trim_down", JOY_BUTTON_DPAD_DOWN);
+	btn("trim_up", JOY_BUTTON_Y);
+	btn("trim_down", JOY_BUTTON_X);
 	btn("brakes", JOY_BUTTON_A);
 	btn("look_left", JOY_BUTTON_DPAD_LEFT);
 	btn("look_right", JOY_BUTTON_DPAD_RIGHT);
 	btn("look_up", JOY_BUTTON_DPAD_UP);
 	btn("look_down", JOY_BUTTON_DPAD_DOWN);
+	btn("view_closer", -1);
+	btn("view_farther", -1);
 	btn("drive_handbrake", JOY_BUTTON_A);
 }
 

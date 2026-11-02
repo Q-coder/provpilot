@@ -186,6 +186,7 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("set_mac_reference", "le_x_in", "mac_in"), &JSBGodot::set_mac_reference);
     ClassDB::bind_method(D_METHOD("set_gear_transit", "seconds"), &JSBGodot::set_gear_transit);
     ClassDB::bind_method(D_METHOD("apply_joystick", "roll", "pitch", "yaw", "throttle", "throttle_absolute", "brakes_axis", "brakes_button"), &JSBGodot::apply_joystick);
+    ClassDB::bind_method(D_METHOD("set_trim_buttons", "up", "down"), &JSBGodot::set_trim_buttons);
     ClassDB::bind_method(D_METHOD("get_cg_info"), &JSBGodot::get_cg_info);
     ClassDB::bind_method(D_METHOD("get_pitch_deg"), &JSBGodot::get_pitch_deg);
     ClassDB::bind_method(D_METHOD("get_roll_deg"), &JSBGodot::get_roll_deg);
@@ -1391,45 +1392,15 @@ void JSBGodot::_input(const Ref<InputEvent> event)
             trigger_left_value = value;
         }
     }
-    else if (event->is_class("InputEventJoypadButton"))
-    {
-        Ref<InputEventJoypadButton> button_event = event;
-        int button = button_event->get_button_index();
-        bool pressed = button_event->is_pressed();
-        
-        // Track trim button held states
-        if (button == JOY_BUTTON_Y) // Y button - Trim nose up
-        {
-            trim_up_held = pressed;
-        }
-        else if (button == JOY_BUTTON_X) // X button - Trim nose down
-        {
-            trim_down_held = pressed;
-        }
-        
-        // Handle button press events (single action)
-        if (pressed)
-        {
-            if (button == JOY_BUTTON_A) // A button
-            {
-                increase_flaps();
-            }
-            else if (button == JOY_BUTTON_B) // B button
-            {
-                decrease_flaps();
-            }
-            else if (button == JOY_BUTTON_START) // Start
-            {
-                set_process(true);
-                printf("Process started (gamepad)\n");
-            }
-            else if (button == JOY_BUTTON_BACK) // Back/Select
-            {
-                set_process(false);
-                printf("Process ended (gamepad)\n");
-            }
-        }
-    }
+    // Pad buttons (flaps, trim, camera, brakes) go by Settings > Joystick:
+    // node_3d.gd polls JoystickConfig each frame (set_trim_buttons, the
+    // flap steps); nothing is hard-wired to a button index here any more.
+}
+
+void JSBGodot::set_trim_buttons(bool up, bool down)
+{
+    trim_up_held = up;
+    trim_down_held = down;
 }
 
 void JSBGodot::_process(double delta)

@@ -68,7 +68,7 @@ the same section, and **Save** writes `keyboard.cfg` next to `provpilot.cfg`
 | Rudder | Right Stick X | Y (left) / X (right) |
 | Throttle Up / Down (fine) | Right / Left Trigger | P / O |
 | Throttle Up / Down (step) | — | T / Shift+T |
-| Flaps Down / Up | D-pad Down / Up | F / Shift+F |
+| Flaps Down / Up | LB / RB (left / right shoulder) | F / Shift+F |
 | Mixture Richer / Leaner | — | M / Shift+M |
 | Magneto Clockwise / Counter-CW | — | I / Shift+I |
 | Landing gear | — | G |
@@ -76,14 +76,15 @@ the same section, and **Save** writes `keyboard.cfg` next to `provpilot.cfg`
 | Wheel brakes on / off (parking brake set at every flight start) | A Button | . / , |
 | Nose-wheel steering range (A-10) | — | Ctrl+W |
 | Landing / taxi lights | — | L |
-| Start / stop the flight model | Start / Back | R / E |
-| Trim Up / Down | Y / X Button | — |
-| Slew Mode | — | Shift+Y |
+| Start / stop the flight model | — | R / E |
+| Trim Up / Down (hold) | Y / X Button | — |
+| Slew Mode | — (bindable: Slew toggle) | Shift+Y |
 | Scenery editor (design / developer mode, docs/SCENERY_EDITOR.md) | — | F8; inside: WASD, E/Q or PgUp/PgDn, 1–9 tools, 0 pick a baked road, O objects, C curved, [ ] heights, Space top view, axis gizmo, Ctrl+S, Ctrl+B bake the tiles around; no haze while editing — tutorial in the doc |
 | VFR Map Toggle | — | N |
 | Move the VFR map frame / resize it | — | drag its title bar / drag its bottom-left or bottom-right corner (remembered in provpilot.cfg) |
 | VFR Map Zoom | Wheel over map frame | − / + (=) |
 | Weather overlay / FPS counter | — | Ctrl+I / Ctrl+Shift+F |
+| Fullscreen / windowed (also sets Graphics > Fullscreen) | — | Alt+Enter |
 | Flap Lever Drag | — | Mouse drag (cockpit) |
 | Skip the intro flight | — | Space |
 | Return to Welcome | — | Escape |
@@ -91,13 +92,13 @@ the same section, and **Save** writes `keyboard.cfg` next to `provpilot.cfg`
 ### Camera Controls
 | Control | Gamepad | Keyboard |
 |---------|---------|----------|
-| Switch Camera (Cockpit/Orbit/Chase) | Select / Back | C |
+| Switch Camera (Cockpit/Orbit/Chase) | B Button | C |
 | Switch Camera the other way (Cockpit/Chase/Orbit) | — | Shift+C |
 | Pan the view (cockpit head, orbit, chase) | — | hold the right mouse button + mouse |
-| Head Look (Cockpit) | D-pad | Arrow Keys |
-| Orbit/Chase Camera Adjust | D-pad | Arrow Keys |
-| Zoom In (orbit/chase distance; cockpit field of view) | L1 (Left Shoulder) | Page Up |
-| Zoom Out | R1 (Right Shoulder) | Page Down |
+| Head Look (Cockpit) | D-pad (or the Camera: Look X / Y axes) | Arrow Keys |
+| Orbit/Chase Camera Adjust | D-pad (or the Camera: Look X / Y axes) | Arrow Keys |
+| Zoom In (orbit/chase distance; cockpit field of view) | — (bindable: Camera: Zoom in) | Page Up |
+| Zoom Out | — (bindable: Camera: Zoom out) | Page Down |
 | Look around (cockpit) | — | hold Space + mouse |
 | Zoom cockpit view | — | hold Space + mouse wheel |
 | Move the eye point (cockpit): left / right / up / down | — | Ctrl + Arrow Keys |
@@ -139,7 +140,11 @@ for now.
 
 ### Joystick / Gamepad Configuration
 
-Open the **Settings** screen from the welcome menu and scroll to the **Joystick** section. For every joystick action (slew strafe / forward / yaw / vertical, plus reserved flight & camera bindings):
+Every pad input goes through **Settings → Joystick**: the flight, slew, vehicle and camera-look axes, and the buttons (flaps, trim, brakes, camera, zoom, slew toggle, handbrake). Nothing is hard-wired to a button or axis number, so a pad that reports its hat or sticks differently (a Logitech F710 in D mode on Windows, for example) is fixed by re-detecting the affected rows. The gamepad never moves the focus in the menus: Godot's built-in pad navigation of the UI is switched off, so **Detect** only sees the stick or button you move.
+
+The defaults are an Xbox layout: left stick roll / pitch, right stick X rudder, triggers throttle, A brakes, B camera, Y / X trim, shoulders flaps, D-pad look. If your `provpilot.cfg` still carries an older layout (trim on the D-pad, camera on Y), **Restore Defaults** on the Joystick tab brings it in line.
+
+For every joystick action:
 
 1. Click **Detect** and move the desired axis (or press the desired button). The axis index is captured automatically — no need to know controller index numbers.
 2. The blue bar shows the **raw** axis value; the green bar shows the **calibrated** result that gameplay code receives.

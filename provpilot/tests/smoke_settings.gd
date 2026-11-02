@@ -226,6 +226,33 @@ func _test_screen() -> void:
 	# GDScript panels mounted as tabs.
 	check(_find_first(screen, "SceneryDownloaderPanel") != null or _find_script(screen, "scenery_downloader.gd") != null, "Downloads tab hosts scenery_downloader.gd")
 	check(_find_first(screen, "JoystickSettingsPanel") != null, "Joystick tab hosts the JoystickSettingsPanel")
+	# Settings > Joystick is the only pad input path: the catalog carries the
+	# camera zoom buttons, the defaults share no button between flight actions,
+	# and the ui_* actions carry no joypad events (a pad must not move the
+	# focus while Detect waits for it).
+	var button_ids: Array = []
+	for e in JoystickBindings.get_button_actions():
+		button_ids.append(e["id"])
+	check(button_ids.has("view_closer") and button_ids.has("view_farther") and button_ids.has("slew_toggle"), "button catalog has the camera zoom and slew toggle actions")
+	var jc := JoystickBindings.new()
+	jc.reset_to_defaults()
+	var used := {}
+	var clash := ""
+	for action in ["flip_camera", "flaps_up", "flaps_down", "trim_up", "trim_down", "brakes", "look_left", "look_right", "look_up", "look_down", "view_closer", "view_farther"]:
+		var b: int = int(jc.get_button_bindings()[action]["button"])
+		if b >= 0 and used.has(b):
+			clash += "%s/%s " % [used[b], action]
+		if b >= 0:
+			used[b] = action
+	check(clash.is_empty(), "default pad buttons are conflict-free among the flight actions (%s)" % clash)
+	jc.free()
+	JoystickBindings.disable_ui_joypad_navigation()
+	var pad_events := 0
+	for ev in InputMap.action_get_events("ui_left") + InputMap.action_get_events("ui_accept") + InputMap.action_get_events("ui_down"):
+		if ev is InputEventJoypadButton or ev is InputEventJoypadMotion:
+			pad_events += 1
+	check(pad_events == 0, "ui_left / ui_down / ui_accept carry no joypad events (%d)" % pad_events)
+	check(KeyBindings.label("fullscreen_toggle") == "Alt+Enter", "Alt+Enter is the fullscreen toggle (%s)" % KeyBindings.label("fullscreen_toggle"))
 	check(_find_first(screen, "KeyboardSettingsPanel") != null, "Keyboard tab hosts the KeyboardSettingsPanel")
 
 	# store -> UI (refresh) -> store (commit) round trip on a slider.

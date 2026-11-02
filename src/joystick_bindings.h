@@ -52,6 +52,10 @@ namespace jsbgodot
         int get_bound_axis(const String &action) const;
         static double apply_calibration(double raw, const Dictionary &b);
         bool get_button(const String &action) const;
+        // True on the first frame a button action is held (edge-detected in
+        // _process, so every consumer in the same frame sees it).
+        bool is_button_just_pressed(const String &action) const;
+        void _process(double delta) override;
         // The axis that moved farthest from 0 (>= threshold), or -1.
         int detect_active_axis(double threshold = 0.5) const;
         // The first pressed button, or -1.
@@ -68,8 +72,15 @@ namespace jsbgodot
         Dictionary axis_bindings;
         Dictionary button_bindings;
         int device_id = -1; // -1 = first connected pad
+        Dictionary button_now;   // action -> pressed this frame
+        Dictionary button_prev;  // ... and the frame before
 
         void apply_defaults();
+        // Godot's built-in ui_* actions carry D-pad / left-stick / A-button
+        // events: a pad moved the focus in the settings screen while Detect
+        // waited for exactly that movement. The menus are mouse and keyboard
+        // driven, so those joypad events are removed from the input map.
+        static void disable_ui_joypad_navigation();
         void load();
         Node *install_root() const;
     };

@@ -1,10 +1,14 @@
 #include "key_bindings.h"
+#include "joystick_bindings.h"
 #include "camera_rig.h"
 #include "geo_frame.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/classes/input.hpp>
+#include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/scene_tree.hpp>
+#include <godot_cpp/classes/window.hpp>
 
 #include <cmath>
 
@@ -277,6 +281,57 @@ void CameraRig::update(double delta, int joy_device)
 
 // Pilot head look using hat switch or D-pad. Composes the head rotation on top
 // of the captured cockpit base transform (reset every frame, then re-apply).
+namespace
+{
+	// Settings > Joystick (the JoystickConfig autoload); null in a scene
+	// without it (unit smokes).
+	JoystickBindings *joy_cfg()
+	{
+		SceneTree *tree = Object::cast_to<SceneTree>(Engine::get_singleton()->get_main_loop());
+		if (tree == nullptr || tree->get_root() == nullptr)
+		{
+			return nullptr;
+		}
+		return Object::cast_to<JoystickBindings>(tree->get_root()->get_node_or_null(NodePath("JoystickConfig")));
+	}
+
+	bool joy_button(const char *action)
+	{
+		JoystickBindings *cfg = joy_cfg();
+		return cfg != nullptr && cfg->get_button(action);
+	}
+
+	// The pad's look input through the bindings: the look_x / look_y axes
+	// when bound (stick right = x +1, stick forward = up), else the look_*
+	// buttons as -1 / 0 / +1. up is +1 for "look / orbit / height up".
+	void joy_look(double &x, double &up)
+	{
+		x = 0.0;
+		up = 0.0;
+		JoystickBindings *cfg = joy_cfg();
+		if (cfg == nullptr)
+		{
+			return;
+		}
+		if (cfg->get_bound_axis("look_x") >= 0)
+		{
+			x = cfg->get_axis("look_x");
+		}
+		else
+		{
+			x = (cfg->get_button("look_right") ? 1.0 : 0.0) - (cfg->get_button("look_left") ? 1.0 : 0.0);
+		}
+		if (cfg->get_bound_axis("look_y") >= 0)
+		{
+			up = -cfg->get_axis("look_y"); // Godot: stick forward = negative
+		}
+		else
+		{
+			up = (cfg->get_button("look_up") ? 1.0 : 0.0) - (cfg->get_button("look_down") ? 1.0 : 0.0);
+		}
+	}
+} // namespace
+
 void CameraRig::update_head_look(double delta, int joy_device)
 {
 	// Only apply head look when using the cockpit camera (Camera1); a
@@ -286,49 +341,13 @@ void CameraRig::update_head_look(double delta, int joy_device)
 		return;
 	}
 
-	Input *input = Input::get_singleton();
+	(void)joy_device; // the bindings know the active pad
 	double look_x = 0.0;
-	double look_y = 0.0;
+	double look_up = 0.0;
+	joy_look(look_x, look_up); // Settings > Joystick: look_x / look_y axes or the look_* buttons
+	double look_y = -look_up;  // head pitch: negative = up
 
-	// Try hat switch axes first (DirectInput hat: axis 6 = X, axis 7 = Y on
-	// most joysticks).
-	if (joy_device >= 0)
-	{
-		double hx = input->get_joy_axis(joy_device, (JoyAxis)6);
-		double hy = input->get_joy_axis(joy_device, (JoyAxis)7);
-		if (std::abs(hx) >= 0.5)
-		{
-			look_x = (hx > 0.0) ? 1.0 : -1.0;
-		}
-		if (std::abs(hy) >= 0.5)
-		{
-			look_y = (hy > 0.0) ? 1.0 : -1.0;
-		}
-	}
-
-	// If no hat axis input, check D-pad buttons.
-	if (std::abs(look_x) < 0.1 && std::abs(look_y) < 0.1)
-	{
-		int d = (joy_device >= 0) ? joy_device : 0;
-		if (input->is_joy_button_pressed(d, JOY_BUTTON_DPAD_LEFT))
-		{
-			look_x = -1.0;
-		}
-		else if (input->is_joy_button_pressed(d, JOY_BUTTON_DPAD_RIGHT))
-		{
-			look_x = 1.0;
-		}
-		if (input->is_joy_button_pressed(d, JOY_BUTTON_DPAD_UP))
-		{
-			look_y = -1.0; // Up on D-pad = look up (negative pitch)
-		}
-		else if (input->is_joy_button_pressed(d, JOY_BUTTON_DPAD_DOWN))
-		{
-			look_y = 1.0;  // Down on D-pad = look down (positive pitch)
-		}
-	}
-
-	// Also support keyboard arrows for testing.
+	// Keyboard arrows (Settings > Keyboard).
 	if (KeyBindings::pressed("view_left"))
 	{
 		look_x = -1.0;
@@ -419,14 +438,13 @@ void CameraRig::update_head_look(double delta, int joy_device)
 	camera1->rotate_y(Math::deg_to_rad(-head_yaw));                           // Yaw (left/right)
 	camera1->rotate_object_local(Vector3(1, 0, 0), Math::deg_to_rad(-head_pitch)); // Pitch (up/down)
 
-	// Zoom: the same inputs as the external cameras (L1/R1, Page Up/Down)
-	// narrow / widen the field of view.
+	// Zoom: the same inputs as the external cameras (view_closer / view_farther
+	// pad buttons, Page Up / Down) narrow / widen the field of view.
 	double zoom_in = 0.0;
 	double zoom_out = 0.0;
-	int dz = (joy_device >= 0) ? joy_device : 0;
-	if (input->is_joy_button_pressed(dz, JOY_BUTTON_LEFT_SHOULDER) || KeyBindings::pressed("view_closer"))
+	if (joy_button("view_closer") || KeyBindings::pressed("view_closer"))
 		zoom_in = 1.0;
-	if (input->is_joy_button_pressed(dz, JOY_BUTTON_RIGHT_SHOULDER) || KeyBindings::pressed("view_farther"))
+	if (joy_button("view_farther") || KeyBindings::pressed("view_farther"))
 		zoom_out = 1.0;
 	if (zoom_in > 0.0 || zoom_out > 0.0)
 	{
@@ -445,48 +463,12 @@ void CameraRig::update_orbit(double delta, int joy_device)
 		return;
 	}
 
-	Input *input = Input::get_singleton();
+	(void)joy_device;
 	double look_x = 0.0;
-	double look_y = 0.0;
+	double look_y = 0.0; // positive = elevation up
+	joy_look(look_x, look_y); // Settings > Joystick
 
-	// Hat switch axes (DirectInput: axis 6 = X, axis 7 = Y).
-	if (joy_device >= 0)
-	{
-		double hx = input->get_joy_axis(joy_device, (JoyAxis)6);
-		double hy = input->get_joy_axis(joy_device, (JoyAxis)7);
-		if (std::abs(hx) >= 0.5)
-		{
-			look_x = (hx > 0.0) ? 1.0 : -1.0;
-		}
-		if (std::abs(hy) >= 0.5)
-		{
-			look_y = -((hy > 0.0) ? 1.0 : -1.0); // hat up = positive elevation
-		}
-	}
-
-	// Check D-pad buttons (fallback / gamepads).
-	if (std::abs(look_x) < 0.1 && std::abs(look_y) < 0.1)
-	{
-		int d = (joy_device >= 0) ? joy_device : 0;
-		if (input->is_joy_button_pressed(d, JOY_BUTTON_DPAD_LEFT))
-		{
-			look_x = -1.0;
-		}
-		else if (input->is_joy_button_pressed(d, JOY_BUTTON_DPAD_RIGHT))
-		{
-			look_x = 1.0;
-		}
-		if (input->is_joy_button_pressed(d, JOY_BUTTON_DPAD_UP))
-		{
-			look_y = 1.0; // Up = increase elevation
-		}
-		else if (input->is_joy_button_pressed(d, JOY_BUTTON_DPAD_DOWN))
-		{
-			look_y = -1.0;
-		}
-	}
-
-	// Also support keyboard arrows for testing.
+	// Keyboard arrows (Settings > Keyboard).
 	if (KeyBindings::pressed("view_left"))
 	{
 		look_x = -1.0;
@@ -525,15 +507,14 @@ void CameraRig::update_orbit(double delta, int joy_device)
 	// Clamp pitch to limits.
 	orbit_pitch = Math::clamp(orbit_pitch, orbit_pitch_min, orbit_pitch_max);
 
-	// Handle zoom - L1/R1 (shoulder buttons) or Page Up/Page Down.
+	// Zoom: the view_closer / view_farther pad buttons or Page Up / Down.
 	double zoom_in = 0.0;
 	double zoom_out = 0.0;
-	int dz = (joy_device >= 0) ? joy_device : 0;
-	if (input->is_joy_button_pressed(dz, JOY_BUTTON_LEFT_SHOULDER))
+	if (joy_button("view_closer"))
 	{
 		zoom_in = 1.0;
 	}
-	if (input->is_joy_button_pressed(dz, JOY_BUTTON_RIGHT_SHOULDER))
+	if (joy_button("view_farther"))
 	{
 		zoom_out = 1.0;
 	}
@@ -571,9 +552,8 @@ void CameraRig::update_chase(double delta, int joy_device)
 		return;
 	}
 
-	Input *input = Input::get_singleton();
+	(void)joy_device;
 	Vector3 aircraft_pos = ac_node->get_global_position();
-	int d2 = (joy_device >= 0) ? joy_device : 0;
 
 	// Get the aircraft's forward direction projected onto the horizontal plane.
 	Vector3 up = geo::up_at(aircraft_pos);
@@ -589,14 +569,14 @@ void CameraRig::update_chase(double delta, int joy_device)
 		forward = geo::wun_basis(g.lat, g.lon).get_column(2); // north if degenerate
 	}
 
-	// Handle zoom - same controls as orbit camera.
+	// Zoom: the same controls as the orbit camera.
 	double zoom_in = 0.0;
 	double zoom_out = 0.0;
-	if (input->is_joy_button_pressed(d2, JOY_BUTTON_LEFT_SHOULDER))
+	if (joy_button("view_closer"))
 	{
 		zoom_in = 1.0;
 	}
-	if (input->is_joy_button_pressed(d2, JOY_BUTTON_RIGHT_SHOULDER))
+	if (joy_button("view_farther"))
 	{
 		zoom_out = 1.0;
 	}
@@ -612,34 +592,22 @@ void CameraRig::update_chase(double delta, int joy_device)
 	chase_distance += zoom_out * orbit_zoom_speed * delta;
 	chase_distance = Math::clamp(chase_distance, orbit_distance_min, orbit_distance_max);
 
-	// Hat switch axes for chase yaw (horizontal) and height (vertical).
+	// The pad's look input (Settings > Joystick) turns the chase camera
+	// (horizontal) and raises / lowers it (vertical); arrow keys do the same.
 	double hat_x = 0.0;
 	double hat_y = 0.0;
-	if (joy_device >= 0)
-	{
-		double hx = input->get_joy_axis(joy_device, (JoyAxis)6);
-		double hy = input->get_joy_axis(joy_device, (JoyAxis)7);
-		if (std::abs(hx) >= 0.5)
-		{
-			hat_x = (hx > 0.0) ? 1.0 : -1.0;
-		}
-		if (std::abs(hy) >= 0.5)
-		{
-			hat_y = -((hy > 0.0) ? 1.0 : -1.0); // hat up = height up
-		}
-	}
+	joy_look(hat_x, hat_y);
 
-	// Handle height adjust with D-pad up/down or arrow keys.
 	double height_delta = 0.0;
 	if (hat_y != 0.0)
 	{
 		height_delta = hat_y;
 	}
-	else if (input->is_joy_button_pressed(d2, JOY_BUTTON_DPAD_UP) || KeyBindings::pressed("view_up"))
+	else if (KeyBindings::pressed("view_up"))
 	{
 		height_delta = 1.0;
 	}
-	else if (input->is_joy_button_pressed(d2, JOY_BUTTON_DPAD_DOWN) || KeyBindings::pressed("view_down"))
+	else if (KeyBindings::pressed("view_down"))
 	{
 		height_delta = -1.0;
 	}
@@ -650,17 +618,16 @@ void CameraRig::update_chase(double delta, int joy_device)
 	}
 	chase_height = Math::clamp(chase_height, 0.5, 20.0);
 
-	// Handle yaw offset with D-pad left/right or arrow keys.
 	double yaw_delta = 0.0;
 	if (hat_x != 0.0)
 	{
 		yaw_delta = hat_x;
 	}
-	else if (input->is_joy_button_pressed(d2, JOY_BUTTON_DPAD_LEFT) || KeyBindings::pressed("view_left"))
+	else if (KeyBindings::pressed("view_left"))
 	{
 		yaw_delta = -1.0;
 	}
-	else if (input->is_joy_button_pressed(d2, JOY_BUTTON_DPAD_RIGHT) || KeyBindings::pressed("view_right"))
+	else if (KeyBindings::pressed("view_right"))
 	{
 		yaw_delta = 1.0;
 	}

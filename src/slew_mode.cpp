@@ -26,6 +26,7 @@ void SlewMode::_bind_methods()
 	ClassDB::bind_method(D_METHOD("set_pm_label", "pm_label"), &SlewMode::set_pm_label);
 	ClassDB::bind_method(D_METHOD("update", "delta", "jsb_node", "axis_strafe", "axis_forward", "axis_yaw", "axis_vertical", "terrain_height_at_ac", "joy_device"), &SlewMode::update);
 	ClassDB::bind_method(D_METHOD("is_enabled"), &SlewMode::is_enabled);
+	ClassDB::bind_method(D_METHOD("request_toggle"), &SlewMode::request_toggle);
 	ClassDB::bind_method(D_METHOD("get_preserved_airspeed_kts"), &SlewMode::get_preserved_airspeed_kts);
 	ClassDB::bind_method(D_METHOD("note_external_exit"), &SlewMode::note_external_exit);
 }
@@ -105,8 +106,14 @@ bool SlewMode::update(double delta, Object *p_jsb, double axis_strafe, double ax
 	last_terrain_height = terrain_height_at_ac;
 	JSBGodot *fdm = Object::cast_to<JSBGodot>(p_jsb);
 
-	// Toggle slew mode (Settings > Keyboard, slew_toggle; debounced against key repeat).
-	if (KeyBindings::pressed("slew_toggle"))
+	// Toggle slew mode (Settings > Keyboard slew_toggle, debounced against
+	// key repeat; or the pad button of the same name via request_toggle()).
+	if (toggle_requested)
+	{
+		toggle_requested = false;
+		toggle(fdm, joy_device);
+	}
+	else if (KeyBindings::pressed("slew_toggle"))
 	{
 		if (!key_held)
 		{

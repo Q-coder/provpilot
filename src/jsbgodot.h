@@ -42,8 +42,8 @@ namespace jsbgodot
         bool brake_button = false; // "Hold brakes" button
         float trigger_left_value = 0.0f;   // LT trigger value for throttle decrease
         float trigger_right_value = 0.0f;  // RT trigger value for throttle increase
-        bool trim_up_held = false;   // Y button held for trim up
-        bool trim_down_held = false; // X button held for trim down
+        bool trim_up_held = false;   // trim_up button held (set_trim_buttons)
+        bool trim_down_held = false; // trim_down button held
         double altitude_ft = 0.0;
         double heading_deg = 0.0;
         float flaps = 0.0f; // Flaps input (0.0 to 1.0)
@@ -237,6 +237,8 @@ namespace jsbgodot
         void set_gear_transit(double seconds);
         // Settings > Joystick axes, once per frame from node_3d.gd (NAN = unbound axis).
         void apply_joystick(double roll, double pitch, double yaw, double throttle, bool throttle_absolute, double brakes_axis, bool brakes_button);
+        // The held trim buttons (Settings > Joystick trim_up / trim_down), polled each frame.
+        void set_trim_buttons(bool up, bool down);
         // Centre of gravity: {cg_x_in, cg_y_in, cg_z_in, weight_lbs, mac_ft, aero_rp_x_in, pct_mac}
         // pct_mac estimates the aerodynamic centre at 25 % MAC (LEMAC = rp - 0.25 * MAC).
         Dictionary get_cg_info() const;

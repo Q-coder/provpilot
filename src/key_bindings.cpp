@@ -223,6 +223,7 @@ namespace
 		{"hud_cycle", "flight", "Cycle the HUD", "H", ""},
 		{"weather_overlay", "flight", "Weather overlay", "Ctrl+I", ""},
 		{"fps_toggle", "flight", "FPS counter", "Ctrl+Shift+F", ""},
+		{"fullscreen_toggle", "flight", "Fullscreen / windowed", "Alt+Enter", ""},
 		{"map_toggle", "flight", "VFR map", "N", ""},
 		{"map_zoom_in", "flight", "VFR map zoom in", "=", "Shift+="},
 		{"map_zoom_out", "flight", "VFR map zoom out", "-", ""},

@@ -87,6 +87,7 @@ namespace jsbgodot
         double yaw_deadzone = 0.1;
 
         bool enabled = false;
+        bool toggle_requested = false; // request_toggle() until the next update()
         bool key_held = false;
         double pre_slew_airspeed_kts = 0.0;
 
@@ -107,6 +108,10 @@ namespace jsbgodot
         double last_terrain_height = 0.0;
 
         void toggle(JSBGodot *fdm, int joy_device);
+
+    public:
+        // The Settings > Joystick slew_toggle button: toggles on the next update().
+        void request_toggle() { toggle_requested = true; }
         void handle_movement(double delta, double ax_strafe, double ax_forward,
                              double ax_yaw, double ax_vertical, double terrain_h);
         static String format_swiss_coord(double value);

@@ -203,6 +203,10 @@ func _create_settings_screen() -> void:
 	_settings = _settings_screen.get_store()
 	_wire_aircraft_settings_panel()
 	_settings_screen.closed.connect(_on_settings_closed)
+	# Exported builds start in the saved window mode; editor runs and the
+	# probes keep their window (Alt+Enter or Settings switch any time).
+	if not OS.has_feature("editor") and DisplayServer.get_name() != "headless":
+		_set_fullscreen(bool(_settings.get_setting("fullscreen")), false)
 	_clouds = CloudLayers.new()
 	_clouds.name = "CloudLayers"
 	add_child(_clouds)
@@ -252,6 +256,8 @@ func _setup_sky_atmosphere() -> void:
 # ── Per frame ──────────────────────────────────────────────────────────────
 
 func _process(delta: float) -> void:
+	if KeyBindings.just_pressed("fullscreen_toggle"):   # Alt+Enter, also over the menus
+		_set_fullscreen(not _is_fullscreen(), true)
 	_spawn.process_deferred_init()   # first flight: JSBSim onto the streamed terrain
 	_sky.update(delta, get_viewport())
 	_check_camera_sanity()
@@ -314,10 +320,11 @@ func _process(delta: float) -> void:
 		JoystickConfig.get_axis("slew_strafe"), JoystickConfig.get_axis("slew_forward"),
 		JoystickConfig.get_axis("slew_yaw"), JoystickConfig.get_axis("slew_vertical"),
 		_world.terrain_elevation_below(_ac.global_position), JoystickConfig.get_active_device())
-	if KeyBindings.just_pressed("camera_flip"):   # Settings > Keyboard
+	if KeyBindings.just_pressed("camera_flip") or JoystickConfig.is_button_just_pressed("flip_camera"):   # Settings > Keyboard / Joystick
 		flip_camera()
 	elif KeyBindings.just_pressed("camera_flip_back"):   # Shift+C: the other way round
 		flip_camera(true)
+	_poll_joystick_buttons()
 	_camera_rig.update(delta, JoystickConfig.get_active_device())
 	if slewing:
 		return
@@ -333,6 +340,42 @@ func _process(delta: float) -> void:
 	_aircraft.update(jsb_node, delta, _engine_volume_pct())
 	_spawn.update_terrain_elevation()
 	_hud.update(jsb_node)
+
+
+## Settings > Joystick buttons (edge-detected by JoystickConfig each frame):
+## slew toggle, flap notches through the FDM's detent list, and the held trim
+## buttons. The camera looks / zooms read the bindings in CameraRig, the
+## brakes go with the flight axes (apply_joystick), the handbrake with the
+## vehicle axes.
+func _poll_joystick_buttons() -> void:
+	if JoystickConfig.get_active_device() < 0:
+		return
+	if JoystickConfig.is_button_just_pressed("slew_toggle"):
+		_slew_mode.request_toggle()
+	if jsb_node == null or _slew_mode.is_enabled():
+		return
+	if JoystickConfig.is_button_just_pressed("flaps_down"):
+		jsb_node.increase_flaps()   # more flaps = the lever down a notch
+	if JoystickConfig.is_button_just_pressed("flaps_up"):
+		jsb_node.decrease_flaps()
+	jsb_node.set_trim_buttons(JoystickConfig.get_button("trim_up"), JoystickConfig.get_button("trim_down"))
+
+
+## Window mode. The Graphics > Fullscreen setting applies when an exported
+## build starts and whenever Settings is saved; Alt+Enter toggles it any time
+## and writes the setting back, so the next start matches what you see.
+func _is_fullscreen() -> bool:
+	var mode := DisplayServer.window_get_mode()
+	return mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+
+
+func _set_fullscreen(on: bool, persist: bool) -> void:
+	if on != _is_fullscreen():
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if on else DisplayServer.WINDOW_MODE_WINDOWED)
+		print("Window: ", "fullscreen" if on else "windowed")
+	if persist and _settings and bool(_settings.get_setting("fullscreen")) != on:
+		_settings.set_setting("fullscreen", on)
+		_settings.save()
 
 
 ## Settings > Joystick flight axes into the FDM (docs/MD80_FLIGHTGEAR_PORT.md
@@ -645,6 +688,8 @@ func _on_welcome_scenery_setup_requested(path: String) -> void:
 func _on_settings_closed() -> void:
 	if _settings_screen:
 		_settings_screen.hide_settings()
+	if DisplayServer.get_name() != "headless":
+		_set_fullscreen(bool(_settings.get_setting("fullscreen")), false)
 	_apply_tree_density()
 	_apply_scenery_sources()
 	_vfr_map.apply_config()
