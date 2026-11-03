@@ -109,6 +109,7 @@ namespace jsbgodot
         Vector<Item> items;
         FGAnimator *animator = nullptr;
         Dictionary pressed; // button -> [{rec, action}] whose release / mod-up bindings are pending
+        bool click_shift = false; // Shift held for the click being handled (devices/status/keyboard/shift)
         // Nasal shims (docs/MD80_FLIGHTGEAR_PORT.md D5): aircraft/<id>/.../nasal_shims.json
         // maps a Nasal call head ("core.Sound.switch1(") to a property action
         // (pulse / assign / set / adjust / toggle / swap / cycle / action).
@@ -144,6 +145,7 @@ namespace jsbgodot
         void run(const Array &bindings, const Dictionary &rec, const Dictionary &ctx);
         bool cond_ok(const Variant &condition) const;
         void nasal(const String &script, const Dictionary &ctx);
+        bool nasal_if(const String &script, const Dictionary &ctx);
         void nasal_action(const String &kind, const Array &args, const Dictionary &ctx);
         static double num(const Variant &v, double def = 0.0);
     };

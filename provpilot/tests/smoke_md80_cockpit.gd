@@ -286,6 +286,40 @@ func _ready() -> void:
 	var fl_anchor: Node = mroot.find_child("fuel__left-lbs", true, false)
 	var fl_lb: Label3D = (fl_anchor.get_node_or_null("Text") as Label3D) if fl_anchor else null
 	_check(fl_lb != null and fl_lb.is_visible_in_tree() and fl_lb.text.strip_edges() != "" and float(fl_lb.text) > 100.0, "fuel quantity indicator shows the left main tank (%s lb)" % (fl_lb.text if fl_lb else "-"))
+	# FGCP ALT knob (2026-11-03, gery: "I cannot set the altitude on the fgcp alt"): the
+	# wheel binding is a Nasal if / else on the knob's push state (thousands, hundreds
+	# while pushed) with a Shift variant; both must reach the autoflight's altAdjust
+	var af = root._aircraft.get_autoflight()
+	var altk: Node3D = _part_for(ctl, "ApPanel.altAdjust")
+	_check(altk != null, "FGCP ALT knob clickable")
+	if altk and af:
+		var a0: float = float(af.get_value("it-autoflight/input/alt"))
+		_press(ctl, cam, altk, MOUSE_BUTTON_WHEEL_UP)
+		await get_tree().create_timer(0.2).timeout
+		var a1: float = float(af.get_value("it-autoflight/input/alt"))
+		_check(absf(a1 - (a0 + 1000.0)) < 0.5, "ALT knob wheel up: +1000 ft (%.0f -> %.0f)" % [a0, a1])
+		var px_a: Vector2 = cam.unproject_position(altk.global_transform * (altk as MeshInstance3D).get_aabb().get_center())
+		ctl.click(cam, px_a, MOUSE_BUTTON_WHEEL_UP, true, true)
+		ctl.click(cam, px_a, MOUSE_BUTTON_WHEEL_UP, false, true)
+		await get_tree().create_timer(0.2).timeout
+		var a2: float = float(af.get_value("it-autoflight/input/alt"))
+		_check(absf(a2 - (a1 + 100.0)) < 0.5, "Shift + wheel up: +100 ft (%.0f -> %.0f)" % [a1, a2])
+		_press(ctl, cam, altk, MOUSE_BUTTON_WHEEL_DOWN)
+		await get_tree().create_timer(0.2).timeout
+		_check(absf(float(af.get_value("it-autoflight/input/alt")) - (a2 - 1000.0)) < 0.5, "ALT knob wheel down: -1000 ft")
+	# TOGA buttons on the thrust levers (2026-11-03, gery: "the take-off mode button on the
+	# throttle levers do not work"): on the ground with flaps >= 5 the DFGS goes to T/O; the
+	# handler reads the flap angle as fdm/jsbsim/fcs/flap-pos-deg, which the mirror pull
+	# must map to the JSBSim property
+	var toga: Node3D = _part_for(ctl, "ApPanel.toga")
+	_check(toga != null, "TOGA button clickable")
+	if toga and af:
+		jsb.set_flaps(0.36)
+		await get_tree().create_timer(6.0).timeout
+		var took_t: bool = _press(ctl, cam, toga, MOUSE_BUTTON_LEFT)
+		await get_tree().create_timer(0.5).timeout
+		print("  [diag] TOGA: took %s, flaps %.1f deg, lat %d vert %d text %s, FMA %s/%s" % [str(took_t), jsb.get_property("fcs/flap-pos-deg"), af.get_lat_mode(), af.get_vert_mode(), str(af.get_value("it-autoflight/text/lat")), str(af.get_value("instrumentation/fma/roll-mode-a")), str(af.get_value("instrumentation/fma/roll-mode-b"))])
+		_check(took_t and af.get_lat_mode() == 5 and af.get_vert_mode() == 7 and str(af.get_value("it-autoflight/text/lat")) == "T/O", "TOGA on the ground with flaps 11: DFGS T/O mode (FMA TAK OFF)")
 	if _fails.is_empty():
 		print("smoke_md80_cockpit: OK")
 		get_tree().quit(0)

@@ -1624,14 +1624,18 @@ void AircraftRig::_on_fg_control(const String &prop, const Variant &value)
 			UtilityFunctions::print("Parking brake: ", on ? "SET" : "RELEASED");
 		}
 	}
-	else if (prop == "controls/engines/engine/throttle")
+	else if (prop == "controls/engines/engine/throttle" || (prop.begins_with("controls/engines/engine[") && prop.ends_with("/throttle")))
 	{
-		// a throttle lever dragged with the mouse (the glider's airbrake lever
-		// in FlightGear: 1 = brakes in, 0 = fully out)
+		// a thrust lever dragged with the mouse (the glider's airbrake lever
+		// in FlightGear: 1 = brakes in, 0 = fully out). Either lever of a twin
+		// moves the one throttle input, so both engines follow; the lever's
+		// state entry goes, the next drag starts from the FDM's live value
 		if (fdm != nullptr)
 		{
 			fdm->set_input_throttle((float)Math::clamp(v, 0.0, 1.0));
 		}
+		Dictionary state = fg_controls->get_state();
+		state.erase(prop);
 	}
 	else if (prop == "controls/flight/spoilers")
 	{

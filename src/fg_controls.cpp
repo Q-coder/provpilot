@@ -60,6 +60,7 @@ void FGControls::_bind_methods()
 	ClassDB::bind_method(D_METHOD("debug_box_count"), &FGControls::debug_box_count);
 	ClassDB::bind_method(D_METHOD("get_state"), &FGControls::get_state);
 	ClassDB::bind_method(D_METHOD("set_state", "state"), &FGControls::set_state);
+	ClassDB::bind_method(D_METHOD("assign_external", "prop", "value"), &FGControls::assign_external);
 	ClassDB::bind_method(D_METHOD("get_on_change"), &FGControls::get_on_change);
 	ClassDB::bind_method(D_METHOD("set_on_change", "callable"), &FGControls::set_on_change);
 	ClassDB::bind_method(D_METHOD("get_count"), &FGControls::get_count);
@@ -323,7 +324,13 @@ bool FGControls::nasal_actionable(const String &script) const
 	const PackedStringArray stmts = s.split(";", false);
 	for (int i = 0; i < stmts.size(); i++)
 	{
-		const String st = stmts[i].strip_edges();
+		String st = stmts[i].strip_edges();
+		// a call inside an if / else block ("if (getprop(...) == -1) {\n call(1)")
+		const int brace = st.rfind("{");
+		if (brace >= 0)
+		{
+			st = st.substr(brace + 1).strip_edges();
+		}
 		for (int j = 0; j < shims.size(); j++)
 		{
 			if (shims[j].get_type() != Variant::DICTIONARY)
@@ -710,6 +717,7 @@ bool FGControls::click(Camera3D *camera, const Vector2 &screen_pos, int button, 
 		return false;
 	}
 	Array ran;
+	click_shift = shift; // bindings conditioned on devices/status/keyboard/shift
 	press_item(items[i].recs, button, shift, ran);
 	if (ran.is_empty())
 	{
@@ -1038,6 +1046,10 @@ double FGControls::num(const Variant &v, double def)
 double FGControls::value_of(const String &prop) const
 {
 	const String key = norm(prop);
+	if (key == "devices/status/keyboard/shift")
+	{
+		return click_shift ? 1.0 : 0.0; // FlightGear's modifier state: the Shift of the click being handled
+	}
 	if (state.has(key))
 	{
 		return num(state[key]);
@@ -1592,9 +1604,65 @@ bool FGControls::run_shim(const String &statement, const Dictionary &ctx)
 	return false;
 }
 
+// Nasal's `if (getprop("P") <op> V) { A } else { B }` (the MD-80's ALT knob
+// steps hundreds while the knob is held pushed, thousands otherwise): the
+// condition against the current value, then the chosen block as a script.
+bool FGControls::nasal_if(const String &s, const Dictionary &ctx)
+{
+	if (!s.begins_with("if"))
+	{
+		return false;
+	}
+	Ref<RegEx> re = memnew(RegEx);
+	re->compile("(?s)^if\\s*\\(\\s*getprop\\(\\s*\"([^\"]+)\"\\s*\\)\\s*(==|!=|>=|<=|>|<)\\s*(-?[0-9.]+)\\s*\\)\\s*\\{(.*?)\\}\\s*(?:else\\s*\\{(.*)\\})?\\s*$");
+	Ref<RegExMatch> m = re->search(s);
+	if (m.is_null())
+	{
+		return false;
+	}
+	const double v = value_of(m->get_string(1));
+	const double ref = m->get_string(3).to_float();
+	const String op = m->get_string(2);
+	bool ok;
+	if (op == "==")
+	{
+		ok = Math::is_equal_approx(v, ref);
+	}
+	else if (op == "!=")
+	{
+		ok = !Math::is_equal_approx(v, ref);
+	}
+	else if (op == ">=")
+	{
+		ok = v >= ref;
+	}
+	else if (op == "<=")
+	{
+		ok = v <= ref;
+	}
+	else if (op == ">")
+	{
+		ok = v > ref;
+	}
+	else
+	{
+		ok = v < ref;
+	}
+	const String branch = (ok ? m->get_string(4) : m->get_string(5)).strip_edges();
+	if (!branch.is_empty())
+	{
+		nasal(branch, ctx);
+	}
+	return true;
+}
+
 void FGControls::nasal(const String &script, const Dictionary &ctx)
 {
 	const String s = script.strip_edges();
+	if (nasal_if(s, ctx))
+	{
+		return;
+	}
 	// the aircraft's shim table first, statement by statement
 	if (!shims.is_empty())
 	{

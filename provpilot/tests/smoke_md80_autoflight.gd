@@ -140,6 +140,28 @@ func _ready() -> void:
 	await get_tree().create_timer(0.5).timeout
 	_check(not af.is_engaged() and jsb.get_property("/systems/dfgs/afs/enabled") < 0.5, "AP disconnects from the yoke button")
 	_check(float(af.get_value("it-autoflight/sound/apoff")) > 0.5, "AP OFF warning sounds")
+	# the thrust levers (2026-11-03, gery: "the right engine keeps going into idle in
+	# autothrottle mode; once clicked on the left throttle handle the right one does not
+	# move any more"): either lever dragged moves the one throttle input, both engines
+	# follow, and no lever pins its engine through the control state afterwards
+	af.panel("atDisc", 0.0)
+	await get_tree().create_timer(0.5).timeout
+	fgc.assign_external("controls/engines/engine[1]/throttle", 0.3)
+	await get_tree().create_timer(1.5).timeout
+	var tp1: float = jsb.get_property("/systems/engines/control-1/throttle-pos")
+	var tp2: float = jsb.get_property("/systems/engines/control-2/throttle-pos")
+	print("  [diag] right lever to 0.30: throttle-pos %.3f / %.3f, input %.3f" % [tp1, tp2, jsb.get_input_throttle()])
+	_check(absf(tp1 - 0.3) < 0.03 and absf(tp2 - 0.3) < 0.03, "right lever dragged: both engines follow (%.2f / %.2f)" % [tp1, tp2])
+	fgc.assign_external("controls/engines/engine/throttle", 0.8)
+	await get_tree().create_timer(1.5).timeout
+	tp1 = jsb.get_property("/systems/engines/control-1/throttle-pos")
+	tp2 = jsb.get_property("/systems/engines/control-2/throttle-pos")
+	_check(absf(tp1 - 0.8) < 0.03 and absf(tp2 - 0.8) < 0.03, "left lever dragged after the right: both engines follow (%.2f / %.2f)" % [tp1, tp2])
+	var pinned: Array = []
+	for k in fgc.get_state().keys():
+		if String(k).begins_with("controls/engines/engine") and String(k).ends_with("/throttle"):
+			pinned.append(k)
+	_check(pinned.is_empty(), "no thrust lever left in the control state (%s)" % str(pinned))
 	_finish()
 
 func _finish() -> void:

@@ -182,8 +182,19 @@ int FGBridge::get_mirror_pulled() const { return mirror_pulled; }
 // FlightGear-side paths are absolute in the FDM's tree ("/controls/..."):
 // standalone JSBSim keeps its own properties under fdm/jsbsim and resolves
 // a leading slash from the root, which is where the systems' references go.
+// FlightGear's own name for a JSBSim property, "fdm/jsbsim/<path>" (the
+// DFGS rules read fdm/jsbsim/aero/beta-deg, the autoflight the flap angle),
+// is the bare JSBSim-relative path here.
 static String fg_path(const String &key)
 {
+	if (key.begins_with("/fdm/jsbsim/"))
+	{
+		return key.substr(12);
+	}
+	if (key.begins_with("fdm/jsbsim/"))
+	{
+		return key.substr(11);
+	}
 	return key.begins_with("/") ? key : String("/") + key;
 }
 
@@ -468,13 +479,21 @@ Dictionary FGBridge::collect(Object *p_jsb, bool airborne, double night)
 	const Array keys = control_state.keys();
 	for (int i = 0; i < keys.size(); i++)
 	{
+		const String key = keys[i];
 		bool owned = false;
 		for (const char *k : FDM_OWNED)
 		{
-			if (String(keys[i]) == k && p.has(k))
+			if (key == k && p.has(k))
 			{
 				owned = true;
 			}
+		}
+		// every thrust lever (controls/engines/engine[n]/throttle): the levers
+		// move together on the one throttle input, so a lever dragged once must
+		// not pin its engine to that value afterwards
+		if (key.begins_with("controls/engines/engine") && key.ends_with("/throttle") && p.has(key))
+		{
+			owned = true;
 		}
 		if (!owned)
 		{

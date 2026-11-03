@@ -754,3 +754,49 @@ the Nasal mode logic instead of a Nasal runtime):
   annunciators (AP / FD lights are select animations and work), the EPR
   limit "FLX" branch, the sound set's AP OFF horn (reads
   `it-autoflight/sound/apoff`, which the module writes — to be checked by ear).
+
+### Step 19 — thrust levers, TOGA, ALT knob (2026-11-03, gery: "the right engine keeps going into idle in autothrottle mode; once clicked on the left throttle handle the right one does not move any more; the take-off mode button on the throttle levers do not work; I cannot set the altitude on the fgcp alt")
+
+- Thrust levers. The model's two levers are two knobs on
+  `controls/engines/engine[0]/throttle` and `engine[1]/throttle`; PVP has one
+  throttle input (keys, joystick, levers) that commands every engine. The left
+  lever (normalised `engine/throttle`) was FDM-owned in the bridge and reached
+  the FDM through the rig; the right lever's value stayed in the control state
+  and overrode the published value of `engine[1]/throttle` every frame, so
+  after one drag engine 2 was pinned to that value: it no longer followed the
+  left lever or the keys, and whenever the autothrottle was not driving (A/T
+  off, CLMP with the TRI at T/O) it fell back to the stale lever — idle if
+  the lever had last been dragged there. The A/T itself was symmetric
+  (`probe_md80_athr`: both chains identical for 30 s in SPD). Now every
+  `controls/engines/engine[n]/throttle` is FDM-owned in the bridge, the rig's
+  `_on_fg_control` moves the throttle input for any of them and erases the
+  lever's state entry, so the next drag starts from the FDM's live value.
+  Both levers move together, as the one axis does.
+- TOGA. `cockpit.ApPanel.toga()` reached the module, but `takeoff_go_around`
+  reads the flap angle as `fdm/jsbsim/fcs/flap-pos-deg`, FlightGear's name for
+  a JSBSim property; the mirror pull looked for `/fdm/jsbsim/...` in the
+  standalone FDM, which has no such node, so the flap read 0 and neither the
+  T/O (flaps ≥ 5 on the ground) nor the G/A branch (flaps ≥ 26) could fire.
+  `fg_path` now maps `fdm/jsbsim/<p>` to the bare JSBSim path `<p>`. The same
+  fix feeds the yaw damper's `fdm/jsbsim/aero/beta-deg` / `beta-rad` inputs in
+  `dfgs-roll-yaw.xml` (previously 0) and the module's `aero/alpha-deg-damped`.
+- ALT knob. The wheel bindings are a Nasal `if (getprop(".../alt-translate")
+  == -1) { altAdjust(1); } else { altAdjust(10); }` plus a Shift variant
+  conditioned on `devices/status/keyboard/shift`. The shim matcher split the
+  script at `;` and prefix-matched each piece, so the call inside the `if`
+  block never matched; the Shift property was unknown (0), so the Shift
+  binding never ran either. FGControls now evaluates `if (getprop("P") <op>
+  V) { A } else { B }` against the current value (`nasal_if`) and runs the
+  chosen block, `nasal_actionable` sees calls inside blocks, and
+  `devices/status/keyboard/shift` reads the Shift of the click being handled
+  (`click_shift`). Wheel = ±1 000 ft (±100 below 1 000), Shift + wheel or the
+  wheel while the knob is held pushed = ±100; left click pushes (disarm),
+  right click pulls (arm).
+- Tests: `smoke_md80_autoflight` +3 (right lever, then left lever: both
+  `control-n/throttle-pos` follow; no lever key left in the control state),
+  `smoke_md80_cockpit` +5 (ALT knob wheel ±1 000, Shift +100; TOGA click with
+  flaps 11 on the ground → lat 5 / vert 7, text T/O, FMA TAK OFF). Probes
+  `probe_md80_athr` (A/T chain of both engines, lever assigns) and
+  `probe_md80_fgcp` (ground clicks on TogaL and the ALT knob through the
+  cockpit camera — `root.camera1`, the exterior camera is beyond the 4 m hit
+  range).
