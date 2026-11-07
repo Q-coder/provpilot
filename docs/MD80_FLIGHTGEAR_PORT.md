@@ -829,3 +829,27 @@ the Nasal mode logic instead of a Nasal runtime):
   and `probe_md80_fma_shot` (a cockpit screenshot after the airborne start)
   were the diagnosis.
 
+### Step 21 — HDG SEL turn direction, FMA face (2026-11-07, gery: "hdg hld at 360, heading 360, knob to 90: it turns left; amber = loaded, green = active; the FMA should have the segmented LED font; the ALT loading mode only shows ALT, it should show 060 for 6000 ft")
+
+- Heading error. `dfgs-drivers.xml`'s "Heading Error Deg" filter wraps its
+  output with `<period><min>-180</min><max>180</max></period>`; the rules
+  engine ignored the element, so a bug 90 deg clockwise of a 360 heading was
+  an error of -270 — a left turn. `FGPropertyRules::run` now wraps every
+  component's output into its `<period>` (eight filters in the drivers file
+  use it). Check: bug 200 deg clockwise → error -160 (left).
+- FMA face. `fma.svg` draws the four windows in the 16-segment
+  `Std16Seg.ttf` at 93.5 px on 90 px rows, THR / ROLL / PITCH in green
+  `#2dff2d`, ARM in amber `#ff880a`; `fma.nas` shows the THR window only with
+  the autothrottle on, the other three with an autopilot or that side's
+  flight director on, blanks a window at 1 Hz while its blink flag is set,
+  and (acconfig `armed-alt-as-fl`, the default) writes the armed altitude as
+  a flight level into ARM line 2. `screen_texts.json` gained `font` (a TTF
+  next to it), `font_scale` (em height in rows, 1.0 here), `colors`,
+  `show` and `blink` per column; `ItAutoflight::fma_alt_arm` writes "060"
+  for 6 000 ft and `fma_loop` follows the ALT knob while armed.
+- Checks in `smoke_md80_autoflight` (32 PASS): heading error +40 / -160,
+  the ARM window's flight level, the 16-segment font on all 16 labels, 4
+  amber + 12 green, THR blank with the autothrottle off. Screenshot via
+  `probe_md80_fma_shot` (AP engaged, 6 000 ft armed): blank THR, amber 060,
+  green HDG HLD / ALT HLD.
+

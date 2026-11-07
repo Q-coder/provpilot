@@ -1545,6 +1545,8 @@ void ItAutoflight::fma_loop()
 	}
 	else blink_active[0] = false;
 	for (int w = 1; w < 4; w++) blink_active[w] = now <= blink_time[w] + 5.0;
+	// the armed altitude follows the ALT knob while armed (the G/A arm texts own the window then)
+	if (go_around == 0 && b(IN("alt-armed")) && !alt_arm_str.is_empty() && fl_string() != alt_arm_str) fma_alt_arm();
 	const int vert = (int)g(OUT("vert"));
 	if (vert != 4 && vert != 7 && !inb("position/wow")) spd_low = in("instrumentation/airspeed-indicator/indicated-speed-kt") <= in("systems/dfgs/speeds/vmin-90-percent");
 	else spd_low = false;
@@ -1647,7 +1649,18 @@ void ItAutoflight::fma_arm()
 	else { ss(FMA("arm-mode-a"), ""); fma_alt_arm(); }
 }
 
-void ItAutoflight::fma_alt_arm() { ss(FMA("arm-mode-b"), b(IN("alt-armed")) ? "ALT" : ""); }
+// The ARM window shows the armed altitude as a flight level (fma.nas with
+// acconfig armed-alt-as-fl, the MD-80's default): 6 000 ft reads "060".
+String ItAutoflight::fl_string() const
+{
+	return String::num_int64((int64_t)std::lround(g(IN("alt")) / 100.0)).pad_zeros(3);
+}
+
+void ItAutoflight::fma_alt_arm()
+{
+	alt_arm_str = b(IN("alt-armed")) ? fl_string() : String();
+	ss(FMA("arm-mode-b"), alt_arm_str);
+}
 
 void ItAutoflight::fma_thr()
 {

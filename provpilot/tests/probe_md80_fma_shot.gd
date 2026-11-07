@@ -31,6 +31,14 @@ func _ready() -> void:
 	rig.set_mode(0)
 	rig.set_cockpit_enabled(true)
 	root.camera1.current = true
+	# engage AP 1 and arm 6 000 ft so the ARM window shows a flight level
+	var af = root._aircraft.get_autoflight()
+	if af != null:
+		af.panel("apSwitch", 0.0)
+		for i in range(4):
+			af.panel("altAdjust", -10.0)
+		await get_tree().create_timer(2.0).timeout
+		print("  [diag] FMA thr %s/%s arm %s/%s roll %s/%s pitch %s/%s" % [str(af.get_value("instrumentation/fma/thr-mode-a")), str(af.get_value("instrumentation/fma/thr-mode-b")), str(af.get_value("instrumentation/fma/arm-mode-a")), str(af.get_value("instrumentation/fma/arm-mode-b")), str(af.get_value("instrumentation/fma/roll-mode-a")), str(af.get_value("instrumentation/fma/roll-mode-b")), str(af.get_value("instrumentation/fma/pitch-mode-a")), str(af.get_value("instrumentation/fma/pitch-mode-b"))])
 	rig.set_head_look(yaw, pitch)
 	for i in range(zoom):
 		rig.mouse_zoom(1)

@@ -909,6 +909,21 @@ void FGPropertyRules::run(Component &c, double dt)
 		}
 		out = clamp_output(c, out);
 	}
+	// <period><min>-180</min><max>180</max></period>: FlightGear wraps the
+	// output into the period (a heading error of -270 is +90, a right turn).
+	if (const XNode *per = c.node.child("period"))
+	{
+		bool fl = false, fh = false;
+		const double lo = input_list(*per, "min", 0.0, &fl);
+		const double hi = input_list(*per, "max", 0.0, &fh);
+		const double phase = hi - lo;
+		if (fl && fh && phase > 0.0 && std::isfinite(out))
+		{
+			out = lo + std::fmod(out - lo, phase);
+			if (out < lo) out += phase;
+			if (out >= hi) out -= phase;
+		}
+	}
 	c.out = out;
 	c.has_out = true;
 	for (int i = 0; i < c.outputs.size(); i++)

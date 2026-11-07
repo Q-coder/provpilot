@@ -1,10 +1,9 @@
 {
- "_comment": "Label3D texts laid out on a screen mesh (FGAnimator::load_screen_texts): 'cells' is one list per column, top to bottom; the labels show while 'power' >= 24 V. The MD-80 FMA windows THR / ARM / ROLL / PITCH, each two lines (instrumentation/fma/*-mode-a / -b, written by the autoflight module).",
+ "_comment": "Label3D texts laid out on a screen mesh (FGAnimator::load_screen_texts): 'cells' is one list per column, top to bottom; the labels show while 'power' >= 24 V, a column while any of its 'show' properties is true, and blank at 1 Hz while its 'blink' property is true; 'font' is a TTF next to this file, 'colors' one per column. The MD-80 FMA windows THR / ARM / ROLL / PITCH, each two lines (instrumentation/fma/*-mode-a / -b, written by the autoflight module): green active modes, amber armed ones, the 16-segment face of fma.svg; THR shows with the autothrottle on, the others with an autopilot or this side's flight director on (fma.nas).",
  "screens": [
   {
    "node": "FMA1__fma1_screen",
    "power": "systems/electrical/outputs/fma",
-   "color": "#ffb000",
    "columns": 4,
    "rows": 2,
    "cells": [
@@ -24,12 +23,45 @@
      "instrumentation/fma/pitch-mode-a",
      "instrumentation/fma/pitch-mode-b"
     ]
-   ]
+   ],
+   "font": "fonts/Std16Seg.ttf",
+   "colors": [
+    "#2dff2d",
+    "#ff880a",
+    "#2dff2d",
+    "#2dff2d"
+   ],
+   "show": [
+    [
+     "it-autoflight/output/athr"
+    ],
+    [
+     "it-autoflight/output/ap1",
+     "it-autoflight/output/ap2",
+     "it-autoflight/output/fd1"
+    ],
+    [
+     "it-autoflight/output/ap1",
+     "it-autoflight/output/ap2",
+     "it-autoflight/output/fd1"
+    ],
+    [
+     "it-autoflight/output/ap1",
+     "it-autoflight/output/ap2",
+     "it-autoflight/output/fd1"
+    ]
+   ],
+   "blink": [
+    "instrumentation/fma/blink-0",
+    "instrumentation/fma/blink-1",
+    "instrumentation/fma/blink-2",
+    "instrumentation/fma/blink-3"
+   ],
+   "font_scale": 1.0
   },
   {
    "node": "FMA2__fma2_screen",
    "power": "systems/electrical/outputs/fma[1]",
-   "color": "#ffb000",
    "columns": 4,
    "rows": 2,
    "cells": [
@@ -49,7 +81,41 @@
      "instrumentation/fma/pitch-mode-a",
      "instrumentation/fma/pitch-mode-b"
     ]
-   ]
+   ],
+   "font": "fonts/Std16Seg.ttf",
+   "colors": [
+    "#2dff2d",
+    "#ff880a",
+    "#2dff2d",
+    "#2dff2d"
+   ],
+   "show": [
+    [
+     "it-autoflight/output/athr"
+    ],
+    [
+     "it-autoflight/output/ap1",
+     "it-autoflight/output/ap2",
+     "it-autoflight/output/fd2"
+    ],
+    [
+     "it-autoflight/output/ap1",
+     "it-autoflight/output/ap2",
+     "it-autoflight/output/fd2"
+    ],
+    [
+     "it-autoflight/output/ap1",
+     "it-autoflight/output/ap2",
+     "it-autoflight/output/fd2"
+    ]
+   ],
+   "blink": [
+    "instrumentation/fma/blink-0",
+    "instrumentation/fma/blink-1",
+    "instrumentation/fma/blink-2",
+    "instrumentation/fma/blink-3"
+   ],
+   "font_scale": 1.0
   }
  ]
 }

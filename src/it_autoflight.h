@@ -83,6 +83,8 @@ namespace jsbgodot
         double blink_time[4] = {-5.0, -5.0, -5.0, -5.0};
         bool blink_active[4] = {false, false, false, false};
         bool spd_low = false, retard = false;
+        String alt_arm_str; // the ARM window's armed altitude ("060" for 6 000 ft), refreshed by fma_loop
+        String fl_string() const;
         int tri_mode = 0;
         String thrlim_last = "T/O";
         int thrlim_prev_int = -99;

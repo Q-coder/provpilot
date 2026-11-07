@@ -14,6 +14,7 @@
 #include <godot_cpp/classes/label3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/font_file.hpp>
+#include <godot_cpp/classes/time.hpp>
 #include <cstdio>
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/core/math.hpp>
@@ -1066,11 +1067,39 @@ namespace jsbgodot
             const int cols = std::max(1, (int)(int64_t)sc.get("columns", cells.size() > 0 ? (int64_t)cells.size() : 1));
             int rows = std::max(1, (int)(int64_t)sc.get("rows", 2));
             const Color color = Color::html(String(sc.get("color", "#ffb000")));
+            const Array colors = sc.get("colors", Array()); // per column, over "color"
+            const Array shows = sc.get("show", Array());    // per column: properties, any true shows the window
+            const Array blinks = sc.get("blink", Array());  // per column: a property, true = 1 Hz blink
             const int power = String(sc.get("power", "")).is_empty() ? -1 : prop_id(sc.get("power", ""));
-            const double char_m = num(sc.get("character-size", height / rows * 0.55), height / rows * 0.55);
+            // glyph em height: "character-size" in metres, else "font_scale" x the
+            // row height (0.55 for a text face; fma.svg draws its 16-segment face
+            // at 1.04 rows, the segments only fill about half the em)
+            const double font_scale = num(sc.get("font_scale", 0.55), 0.55);
+            const double char_m = num(sc.get("character-size", height / rows * font_scale), height / rows * font_scale);
+            // "font": a TTF next to the JSON (the MD-80 FMA's 16-segment face), cached per path
+            Ref<Font> font;
+            const String font_rel = sc.get("font", "");
+            if (!font_rel.is_empty())
+            {
+                const String font_path = json_path.get_base_dir().path_join(font_rel);
+                if (!fonts.has(font_path))
+                {
+                    Ref<FontFile> ff;
+                    ff.instantiate();
+                    if (ff->load_dynamic_font(font_path) == OK)
+                        fonts[font_path] = ff;
+                    else
+                    {
+                        UtilityFunctions::push_warning("FGAnimator: screen_texts: font not loaded: ", font_path);
+                        fonts[font_path] = Ref<Font>();
+                    }
+                }
+                font = fonts[font_path];
+            }
             for (int ci = 0; ci < cells.size() && ci < cols; ci++)
             {
                 const Array col = cells[ci];
+                const Color col_color = ci < colors.size() ? Color::html(String(colors[ci])) : color;
                 for (int ri = 0; ri < col.size() && ri < rows; ri++)
                 {
                     Label3D *lb = memnew(Label3D);
@@ -1081,11 +1110,21 @@ namespace jsbgodot
                     ts.prop = prop_id(col[ri]);
                     ts.power_prop = power;
                     ts.power_min = num(sc.get("power_min", 24.0), 24.0);
-                    lb->set_font_size(64);
-                    lb->set_pixel_size(char_m / 64.0);
+                    if (ci < shows.size())
+                    {
+                        const Array sp = shows[ci];
+                        for (int k = 0; k < sp.size(); k++)
+                            ts.show_props.push_back(prop_id(sp[k]));
+                    }
+                    if (ci < blinks.size() && !String(blinks[ci]).is_empty())
+                        ts.blink_prop = prop_id(blinks[ci]);
+                    if (font.is_valid())
+                        lb->set_font(font);
+                    lb->set_font_size(96); // rasterised at 96 px: crisp when the pilot leans in
+                    lb->set_pixel_size(char_m / 96.0);
                     lb->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
                     lb->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
-                    lb->set_modulate(color);
+                    lb->set_modulate(col_color);
                     lb->set_draw_flag(Label3D::FLAG_SHADED, false);
                     lb->set_draw_flag(Label3D::FLAG_DOUBLE_SIDED, false);
                     lb->set_alpha_cut_mode(Label3D::ALPHA_CUT_DISCARD);
@@ -1119,7 +1158,15 @@ namespace jsbgodot
                 continue;
             if (ts.power_prop >= 0)
             {
-                const bool on = prop_values[ts.power_prop] >= ts.power_min;
+                bool on = prop_values[ts.power_prop] >= ts.power_min;
+                if (on && !ts.show_props.is_empty())
+                {
+                    on = false;
+                    for (int k = 0; k < ts.show_props.size() && !on; k++)
+                        on = prop_values[ts.show_props[k]] >= 0.5;
+                }
+                if (on && ts.blink_prop >= 0 && prop_values[ts.blink_prop] >= 0.5)
+                    on = (Time::get_singleton()->get_ticks_msec() % 1000) >= 500; // 1 Hz, as fma.nas blanks the window
                 if (lb->is_visible() != on)
                     lb->set_visible(on);
             }

@@ -73,9 +73,29 @@ func _ready() -> void:
 			facing += 1
 		if lb.text == "0":
 			zero_windows += 1
-	_check(labels.size() == 16 and lit == 16, "every FMA label is lit (%d of %d)" % [lit, labels.size()])
+	_check(labels.size() == 16 and lit == 12, "every FMA label outside the THR window is lit, THR blank with the autothrottle off (%d of %d)" % [lit, labels.size()])
 	_check(facing == 16, "every FMA label faces the cockpit camera (%d of %d)" % [facing, labels.size()])
 	_check(zero_windows == 0, "empty FMA windows show nothing, not 0 (%d show 0)" % zero_windows)
+	# fma.svg: 16-segment face, green active windows, amber ARM window; the THR
+	# window only with the autothrottle on (fma.nas), the others with AP / FD
+	var seg_font := 0
+	var amber_arm := 0
+	var green_other := 0
+	var thr_hidden := 0
+	for lb in labels:
+		if lb.font != null and lb.font.resource_path.get_file() == "" and lb.font is FontFile:
+			seg_font += 1
+		var nm: String = lb.name
+		var col := int(nm.split("_")[-2])
+		if col == 1 and lb.modulate.is_equal_approx(Color.html("#ff880a")):
+			amber_arm += 1
+		elif col != 1 and lb.modulate.is_equal_approx(Color.html("#2dff2d")):
+			green_other += 1
+		if col == 0 and not lb.is_visible_in_tree():
+			thr_hidden += 1
+	_check(seg_font == 16, "FMA labels use the 16-segment TTF (%d of 16)" % seg_font)
+	_check(amber_arm == 4 and green_other == 12, "ARM window amber, THR / ROLL / PITCH green (%d amber, %d green)" % [amber_arm, green_other])
+	_check(not bool(af.get_value("it-autoflight/output/athr")) and thr_hidden == 4, "THR window blank while the autothrottle is off (%d of 4 hidden)" % thr_hidden)
 	print("  [diag] start: lat text %s vert text %s, FMA roll %s/%s pitch %s/%s thr %s/%s arm %s/%s, TRI mode %s (%s), fgcp %.0f V, ap1-avail %s athr-avail %s" % [
 		str(af.get_value("it-autoflight/text/lat")), str(af.get_value("it-autoflight/text/vert")),
 		str(af.get_value("instrumentation/fma/roll-mode-a")), str(af.get_value("instrumentation/fma/roll-mode-b")),
@@ -107,6 +127,22 @@ func _ready() -> void:
 	af.panel("hdgPull", 0.0)
 	await get_tree().create_timer(0.5).timeout
 	_check(af.get_lat_mode() == 0 and str(af.get_value("instrumentation/fma/roll-mode-b")) == "SEL", "HDG SEL from the pulled heading knob (bug %s)" % str(af.get_value("it-autoflight/input/hdg")))
+	# the heading error wraps (<period> -180..180): a bug 195 deg clockwise is a
+	# 165 deg left turn, not a right one (gery: 360 -> 090 turned left)
+	var hdg_chk: float = fposmod(jsb.get_property("attitude/psi-deg"), 360.0)
+	var err: float = float(rules.get_value("/it-autoflight/internal/heading-error-deg"))
+	print("  [diag] heading error with the bug %s and heading %.1f: %.1f" % [str(af.get_value("it-autoflight/input/hdg")), hdg_chk, err])
+	_check(absf(err - 40.0) < 6.0, "heading error is +40 for a bug 40 deg right (%.1f)" % err)
+	for i in range(16):
+		af.panel("hdgAdjust", 10.0)   # 160 deg further clockwise: 200 deg right = 160 deg left
+	await get_tree().create_timer(0.3).timeout
+	err = float(rules.get_value("/it-autoflight/internal/heading-error-deg"))
+	var wrapped_expected: float = fposmod(float(af.get_value("it-autoflight/input/hdg")) - fposmod(jsb.get_property("attitude/psi-deg"), 360.0) + 180.0, 360.0) - 180.0
+	print("  [diag] heading error with the bug %s: %.1f (expected %.1f)" % [str(af.get_value("it-autoflight/input/hdg")), err, wrapped_expected])
+	_check(err < -120.0 and absf(err - wrapped_expected) < 6.0, "heading error wraps to a left turn for a bug 200 deg clockwise (%.1f)" % err)
+	for i in range(16):
+		af.panel("hdgAdjust", -10.0)
+	await get_tree().create_timer(0.3).timeout
 	# climb 1500 ft in V/S with the altitude armed
 	var alt0: float = jsb.get_property("/instrumentation/altimeter/indicated-altitude-ft")
 	var target_alt: float = roundf((alt0 + 1500.0) / 100.0) * 100.0
@@ -121,7 +157,8 @@ func _ready() -> void:
 		af.panel("vsAdjust", 1.0)
 	await get_tree().create_timer(2.5).timeout
 	print("  [diag] climb: alt bug %s armed %s, V/S bug %s, vert mode %d text %s, FMA arm %s/%s pitch %s/%s, IVSI %.0f" % [str(af.get_value("it-autoflight/input/alt")), str(af.get_value("it-autoflight/input/alt-armed")), str(af.get_value("it-autoflight/input/vs")), af.get_vert_mode(), str(af.get_value("it-autoflight/text/vert")), str(af.get_value("instrumentation/fma/arm-mode-a")), str(af.get_value("instrumentation/fma/arm-mode-b")), str(af.get_value("instrumentation/fma/pitch-mode-a")), str(af.get_value("instrumentation/fma/pitch-mode-b")), jsb.get_property("/it-autoflight/internal/vert-speed-fpm")])
-	_check(float(af.get_value("it-autoflight/input/alt-armed")) > 0.5 and str(af.get_value("instrumentation/fma/arm-mode-b")) == "ALT", "altitude arms itself a second after the knob (FMA ARM ALT)")
+	var fl_str := "%03d" % int(roundf(float(af.get_value("it-autoflight/input/alt")) / 100.0))
+	_check(float(af.get_value("it-autoflight/input/alt-armed")) > 0.5 and str(af.get_value("instrumentation/fma/arm-mode-b")) == fl_str, "altitude arms itself a second after the knob (FMA ARM shows the flight level %s, got %s)" % [fl_str, str(af.get_value("instrumentation/fma/arm-mode-b"))])
 	_check(af.get_vert_mode() == 1 and absf(float(af.get_value("it-autoflight/input/vs")) - 1200.0) < 1.0, "V/S 1200 fpm from the pitch wheel")
 	# autothrottle: the A/T switch (a cockpit toggle) and SPD SEL at 250 kt
 	var fgc = rig.get_fg_controls()

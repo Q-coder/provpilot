@@ -152,6 +152,8 @@ namespace jsbgodot
             String last;
             int power_prop = -1; // screen texts: shown while this property >= power_min
             double power_min = 24.0;
+            Vector<int> show_props; // screen texts: shown while any of these is true (empty = always)
+            int blink_prop = -1;    // screen texts: 1 Hz blink while this property is true
         };
         struct MatState
         {
