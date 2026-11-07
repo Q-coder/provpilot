@@ -331,6 +331,8 @@ void RadioNav::update_ils(double delta)
 		{
 			const double eps = Math::rad_to_deg(std::atan2(dh, d_gs));
 			gs_ok = true;
+			gs_direct = eps;
+			gs_path = s.gs_deg;
 			gs_target = Math::clamp((s.gs_deg - eps) * 5.0, -3.5, 3.5);
 		}
 		if (s.has_dme)
@@ -402,6 +404,8 @@ void RadioNav::write_properties(Dictionary &p) const
 	p[N + String("gs-needle-deflection")] = gs_ok ? gs : 0.0;
 	p[N + String("gs-needle-deflection-norm")] = gs_ok ? gs / 3.5 : 0.0;
 	p[N + String("gs-in-range")] = gs_ok ? 1.0 : 0.0;
+	p[N + String("gs-direct-deg")] = gs_ok ? gs_direct : 0.0;  // FlightGear navradio: the aircraft's angle above the GS site
+	p[N + String("gs-target-deg")] = gs_ok ? gs_path : 0.0;    // the site's path angle (LSZH 28: 3.3)
 	p[N + String("has-gs")] = loc_mode ? 1.0 : 0.0;
 	p[N + String("nav-loc")] = loc_mode ? 1.0 : 0.0;
 	p[N + String("ils-runway")] = ils_runway();

@@ -84,6 +84,10 @@ namespace jsbgodot
         bool is_vehicle() const;
         String get_vehicle_kind() const;
         Dictionary get_vehicle_params() const;
+        // The last frame's FlightGear-side property dictionary (bridge, receivers,
+        // autoflight, rules), for probes and tests: a key like
+        // "instrumentation/nav/gs-rate-of-climb-fpm", null when absent.
+        Variant get_fg_property(const String &key) const;
         void hide_model_nodes(Node *root);
         // Flips mesh normals under `root` per cfg [model] flip_normals /
         // flip_normals_prefix (the C172P .blend import bakes them inverted).
@@ -197,7 +201,8 @@ namespace jsbgodot
         FGSounds *fg_sounds = nullptr;
         Ref<FGPropertyRules> fg_rules;    // cfg [jsbsim] property_rules
         Ref<ItAutoflight> autoflight;     // cfg [autoflight] it_autoflight
-        Dictionary rule_fdm_nodes;        // rule output -> the FDM has that node
+        Dictionary rule_fdm_nodes;
+        Dictionary last_fg_props; // see get_fg_property()        // rule output -> the FDM has that node
         FGAnimator *fg_animator = nullptr;
         AircraftLights *aircraft_lights = nullptr;
         bool fg_seeded = false;

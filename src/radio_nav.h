@@ -102,6 +102,7 @@ namespace jsbgodot
         const Ils *ils = nullptr;
         bool loc_mode = false;
         double gs = 0.0, gs_target = 0.0;     // glide slope needle (lagged)
+        double gs_direct = 0.0, gs_path = 0.0; // the aircraft's elevation angle from the GS site, the published path angle
         bool gs_ok = false;
         int nav_khz_tuned = -1;
         double nav_rescan = 0.0;

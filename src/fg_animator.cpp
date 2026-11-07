@@ -523,6 +523,19 @@ namespace jsbgodot
                 list.push_back(copy);
             }
         }
+        // named groups: records with a <name> and no type; keyed the way the
+        // builder names the group's node (model__Name_with_dots_as_underscores)
+        HashMap<String, Array> groups;
+        for (int i = 0; i < list.size(); i++)
+        {
+            const Dictionary rec = list[i];
+            const Dictionary raw = rec.get("raw", Dictionary());
+            const String gtype = rec.get("type", "");
+            if (!raw.has("name") || !(gtype.is_empty() || gtype == "none"))
+                continue;
+            const String key = String(rec.get("model", "")) + "__" + String(raw["name"]).replace(".", "_");
+            groups[key] = rec.get("objects", Array());
+        }
         for (int i = 0; i < list.size(); i++)
         {
             Dictionary rec = list[i];
@@ -569,9 +582,24 @@ namespace jsbgodot
             // in the other copies of the same file
             const bool exact = bool(rec.get("exact", false));
             Vector<Node *> targets;
+            // a FlightGear named group (<animation><name>G</name><object-name>...)
+            // nested in another group's object list arrives as the group's
+            // node name (the manifest leaves it unresolved): expand it to its
+            // members, recursively (the FGCP's Digits > Digits.Fgcp > 17 windows)
+            Vector<String> names;
             for (int j = 0; j < objs.size(); j++)
+                names.push_back(objs[j]);
+            for (int j = 0; j < names.size() && j < 4096; j++)
             {
-                String nm = objs[j];
+                const String nm = names[j];
+                if (!by_name.has(nm) && groups.has(nm))
+                {
+                    const Array members = groups[nm];
+                    for (int k = 0; k < members.size(); k++)
+                        if (!names.has(members[k]))
+                            names.push_back(members[k]);
+                    continue;
+                }
                 if (by_name.has(nm))
                 {
                     const Vector<Node *> &v = by_name[nm];

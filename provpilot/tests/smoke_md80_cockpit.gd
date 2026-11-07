@@ -320,6 +320,45 @@ func _ready() -> void:
 		await get_tree().create_timer(0.5).timeout
 		print("  [diag] TOGA: took %s, flaps %.1f deg, lat %d vert %d text %s, FMA %s/%s" % [str(took_t), jsb.get_property("fcs/flap-pos-deg"), af.get_lat_mode(), af.get_vert_mode(), str(af.get_value("it-autoflight/text/lat")), str(af.get_value("instrumentation/fma/roll-mode-a")), str(af.get_value("instrumentation/fma/roll-mode-b"))])
 		_check(took_t and af.get_lat_mode() == 5 and af.get_vert_mode() == 7 and str(af.get_value("it-autoflight/text/lat")) == "T/O", "TOGA on the ground with flaps 11: DFGS T/O mode (FMA TAK OFF)")
+	# FGCP windows: the SPD / HDG / V/S / ALT digits sit in the nested named
+	# group Digits > Digits.Fgcp (the manifest leaves the inner group
+	# unresolved), so they must take the same material animation as the
+	# NAV / CRS digits: amber (1, 0.6, 0) times the digital dimmer.
+	var fgc_d = root._aircraft.get_fg_controls()
+	var lbl := {}
+	for nm in ["fgcp__Digits_Ias", "fgcp__Digits_Hdg", "fgcp__Digits_Freq1", "fgcp__Digits_Crs1"]:
+		var anchors := root.find_children(nm, "", true, false)
+		for a in anchors:
+			for c in a.get_children():
+				if c is Label3D and not lbl.has(nm):
+					lbl[nm] = c
+	_check(lbl.size() == 4, "FGCP digit labels found under their anchors (%d of 4)" % lbl.size())
+	if lbl.size() == 4:
+		var amber := Color(1.0, 0.6, 0.0)
+		var same := true
+		for nm in lbl:
+			if not (lbl[nm] as Label3D).modulate.is_equal_approx(amber):
+				same = false
+				print("  [diag] %s modulate %s" % [nm, str((lbl[nm] as Label3D).modulate)])
+		_check(same, "SPD / HDG windows share the NAV / CRS amber (1, 0.6, 0) at full brightness")
+		fgc_d.assign_external("controls/lighting/fgcp-digital", 0.3)
+		fgc_d.assign_external("controls/lighting/fgcp-panel", 0.8)
+		await get_tree().create_timer(2.0).timeout
+		var dimmed := true
+		for nm in lbl:
+			var m: Color = (lbl[nm] as Label3D).modulate
+			if absf(m.r - 0.3) > 0.03 or absf(m.g - 0.18) > 0.03:
+				dimmed = false
+				print("  [diag] %s dimmed modulate %s" % [nm, str(m)])
+		_check(dimmed, "the digital dimmer at 0.3 dims every FGCP window to 0.3 x amber")
+		var plate_lit := false
+		for mi in root.find_children("fgcp__FGCPLabels", "MeshInstance3D", true, false):
+			var mat = mi.get_active_material(0)
+			if mat is BaseMaterial3D and mat.emission_enabled and absf(mat.emission.r - 0.8) < 0.05:
+				plate_lit = true
+		_check(plate_lit, "the panel dimmer at 0.8 lights the FGCP backplate labels (emission 0.8 x (1, 0.6, 0.3))")
+		fgc_d.assign_external("controls/lighting/fgcp-digital", 1.0)
+		fgc_d.assign_external("controls/lighting/fgcp-panel", 0.0)
 	if _fails.is_empty():
 		print("smoke_md80_cockpit: OK")
 		get_tree().quit(0)

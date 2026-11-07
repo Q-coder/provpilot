@@ -1006,9 +1006,10 @@ void FGBridge::radios(JSBGodot *jsb, Dictionary &p, double lat_deg, double lon_d
 	radio_nav2->write_properties(p);
 	// FlightGear navradio extras the DFGS reads: radials/target-auto-hdg-deg
 	// (the course plus an intercept angle of 3 deg per degree of needle, at
-	// most 30) and gs-rate-of-climb-fpm (the descent rate that holds the
-	// glideslope at the current ground speed)
-	const double gs_kt = jsb->get_property("velocities/vg-fps") * 0.5924838;
+	// most 30) and gs-rate-of-climb-fpm, navradio.cxx's rate for intercepting
+	// the glideslope: the path angle steepened by ten times the angular error
+	// (a fixed 3 deg descent here let a 3.3 deg beam and every gust walk away)
+	const double vg_fpm = jsb->get_property("velocities/vg-fps") * 60.0;
 	for (const char *N : {"instrumentation/nav/", "instrumentation/nav[1]/"})
 	{
 		const String n(N);
@@ -1019,7 +1020,15 @@ void FGBridge::radios(JSBGodot *jsb, Dictionary &p, double lat_deg, double lon_d
 		const double base = from > 0.5 ? Math::fposmod(course + 180.0, 360.0) : course;
 		p[n + String("radials/target-auto-hdg-deg")] = in_range > 0.5 ? Math::fposmod(base + Math::clamp(cdi * 3.0, -30.0, 30.0), 360.0) : course;
 		const double gs_ok = p.has(n + String("gs-in-range")) ? (double)p[n + String("gs-in-range")] : 0.0;
-		const double roc = gs_ok > 0.5 ? -std::tan(Math::deg_to_rad(3.0)) * gs_kt * 101.2686 : 0.0;
+		double roc = 0.0;
+		if (gs_ok > 0.5)
+		{
+			const double direct = p.has(n + String("gs-direct-deg")) ? (double)p[n + String("gs-direct-deg")] : 3.0;
+			const double target = p.has(n + String("gs-target-deg")) ? (double)p[n + String("gs-target-deg")] : 3.0;
+			const double gs_diff = target - direct;                 // positive: below the beam
+			const double des_angle = Math::clamp(direct - 10.0 * gs_diff, -15.0, 15.0);
+			roc = -std::sin(Math::deg_to_rad(des_angle)) * vg_fpm; // ft/min, negative = descend
+		}
 		p[n + String("gs-rate-of-climb-fpm")] = roc;
 		p[n + String("gs-rate-of-climb")] = roc / 60.0;
 	}

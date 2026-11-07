@@ -853,3 +853,35 @@ the Nasal mode logic instead of a Nasal runtime):
   `probe_md80_fma_shot` (AP engaged, 6 000 ft armed): blank THR, amber 060,
   green HDG HLD / ALT HLD.
 
+### Step 22 — FGCP window colour and dimmers, glideslope tracking (2026-11-07, gery: "the Speed, HDG, VS and ALT LEDs should have the same amber as the VHF NAV and CRS LEDs; the dimmers for the fgcp LED and backplates do not work; on my ILS approach to LSZH 28 the autopilot started to strongly deviate from the glide slope")
+
+- Named groups. `fgcp.xml` declares `<animation><name>Digits.Fgcp</name>`
+  (the 17 SPD / HDG / V/S / ALT / pitch-mode windows) and nests it in the
+  `Digits` group with the NAV / CRS windows; the material animation (amber
+  1 / 0.6 / 0 times `systems/lighting/fgcp-digital`) and the power select
+  target `Digits`. The builder resolves one level and leaves
+  `fgcp__Digits_Fgcp` unresolved, so those windows kept Label3D's white and
+  ignored the dimmer. `FGAnimator::load` now expands a group's node name to
+  its members recursively (records of type `none` with a `name`).
+- Dimmers. The chain itself worked (`probe_md80_dimmer`,
+  `probe_md80_knobs`): the knobs are clickable, right click / wheel up adds
+  0.05 per step (FlightGear's factor), the controls reach the FDM's
+  `systems/lighting/*` switches and the emission factors. The digital knob
+  starts at 1.0 (turn it down to see it), the panel knob at 0: the backplate
+  labels glow at night (`probe_md80_fgcp_shot ... night`).
+- Glideslope. The bridge fed the DFGS a `gs-rate-of-climb-fpm` of a fixed
+  3 deg descent at the ground speed; LSZH 28 (IZW) is a 3.3 deg path and
+  nothing pulled the aircraft back to the beam. `navradio.cxx`'s rate is
+  ported: the receiver publishes `gs-direct-deg` (the aircraft's angle from
+  the GS site) and `gs-target-deg` (the site's path), the bridge flies
+  `-sin(direct - 10 x (target - direct)) x ground speed`. The DFGS's own
+  clamp of -1500 fpm stays (FlightGear's): at 250 kt a 3.3 deg path needs
+  more and the needle walks away, so slow down before capture.
+- Tests: `smoke_md80_ils` (new: 7 nm out under the beam at 160 kt, gear and
+  flaps, AP + A/T + ILS; capture within 30 s, needle within 0.15 norm from
+  capture + 40 s to 150 ft, localizer within 0.4, path 3.3 published),
+  `smoke_md80_cockpit` + 4 (window colour, digital and panel dimmers).
+  Probes `probe_md80_ils`, `probe_md80_dimmer`, `probe_md80_knobs`,
+  `probe_md80_fgcp_shot`. `AircraftRig.get_fg_property(key)` exposes the
+  frame's FlightGear-side dictionary to tests.
+

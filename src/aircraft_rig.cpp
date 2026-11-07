@@ -53,6 +53,7 @@ void AircraftRig::_bind_methods()
 	ClassDB::bind_method(D_METHOD("is_vehicle"), &AircraftRig::is_vehicle);
 	ClassDB::bind_method(D_METHOD("get_vehicle_kind"), &AircraftRig::get_vehicle_kind);
 	ClassDB::bind_method(D_METHOD("get_vehicle_params"), &AircraftRig::get_vehicle_params);
+	ClassDB::bind_method(D_METHOD("get_fg_property", "key"), &AircraftRig::get_fg_property);
 	ClassDB::bind_method(D_METHOD("resolve_nodes", "jsb"), &AircraftRig::resolve_nodes);
 	ClassDB::bind_method(D_METHOD("apply_camera_config"), &AircraftRig::apply_camera_config);
 	ClassDB::bind_method(D_METHOD("apply_nose_steer_range", "jsb"), &AircraftRig::apply_nose_steer_range);
@@ -298,6 +299,12 @@ String AircraftRig::get_vehicle_kind() const
 }
 
 // The [vehicle] section as DriveMode::configure wants it.
+Variant AircraftRig::get_fg_property(const String &key) const
+{
+	const String k = key.begins_with("/") ? key.substr(1) : key;
+	return last_fg_props.has(k) ? last_fg_props[k] : Variant();
+}
+
 Dictionary AircraftRig::get_vehicle_params() const
 {
 	Dictionary d;
@@ -1398,6 +1405,7 @@ void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *renderin
 		const String over = fg_controls->hover_name(pick_camera, host->get_viewport()->get_mouse_position());
 		Input::get_singleton()->set_default_cursor_shape(over.is_empty() ? Input::CURSOR_ARROW : Input::CURSOR_POINTING_HAND);
 	}
+	last_fg_props = props;
 }
 
 // cfg [jsbsim] init_properties: a JSON file {"property": value, ...} of FDM
