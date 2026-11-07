@@ -1010,6 +1010,13 @@ void FGBridge::radios(JSBGodot *jsb, Dictionary &p, double lat_deg, double lon_d
 	// the glideslope: the path angle steepened by ten times the angular error
 	// (a fixed 3 deg descent here let a 3.3 deg beam and every gust walk away)
 	const double vg_fpm = jsb->get_property("velocities/vg-fps") * 60.0;
+	// Ground track (true and magnetic; the heading while the aircraft stands):
+	// the DFGS drift angle, and FlightGear's cross-track heading error below
+	const double hdg_true_now = Math::fposmod((double)jsb->get_property("attitude/psi-deg"), 360.0);
+	const double track_true = vg_fpm > 100.0 ? Math::fposmod(Math::rad_to_deg((double)jsb->get_property("flight-path/psi-gt-rad")), 360.0) : hdg_true_now;
+	p["orientation/track-deg"] = track_true;
+	p["orientation/track-magnetic-deg"] = Math::fposmod(track_true - magvar_deg, 360.0);
+	const double xtrack_hdg_err = Math::fposmod(track_true - hdg_true_now + 180.0, 360.0) - 180.0;
 	for (const char *N : {"instrumentation/nav/", "instrumentation/nav[1]/"})
 	{
 		const String n(N);
@@ -1017,8 +1024,14 @@ void FGBridge::radios(JSBGodot *jsb, Dictionary &p, double lat_deg, double lon_d
 		const double cdi = p.has(n + String("heading-needle-deflection")) ? (double)p[n + String("heading-needle-deflection")] : 0.0;
 		const double in_range = p.has(n + String("in-range")) ? (double)p[n + String("in-range")] : 0.0;
 		const double from = p.has(n + String("from-flag")) ? (double)p[n + String("from-flag")] : 0.0;
-		const double base = from > 0.5 ? Math::fposmod(course + 180.0, 360.0) : course;
-		p[n + String("radials/target-auto-hdg-deg")] = in_range > 0.5 ? Math::fposmod(base + Math::clamp(cdi * 3.0, -30.0, 30.0), 360.0) : course;
+		// navradio.cxx: target radial TRUE (the DFGS subtracts the true heading;
+		// a magnetic base left the needle a third of the variation off centre),
+		// plus 3 deg per unit of needle, minus the crab (track - heading), so a
+		// crosswind holds the centreline with a centred needle
+		const double course_true = Math::fposmod(course + magvar_deg, 360.0);
+		const double base = from > 0.5 ? Math::fposmod(course_true + 180.0, 360.0) : course_true;
+		p[n + String("radials/target-radial-true-deg")] = course_true;
+		p[n + String("radials/target-auto-hdg-deg")] = in_range > 0.5 ? Math::fposmod(base + Math::clamp(cdi * 3.0, -30.0, 30.0) - xtrack_hdg_err, 360.0) : course_true;
 		const double gs_ok = p.has(n + String("gs-in-range")) ? (double)p[n + String("gs-in-range")] : 0.0;
 		double roc = 0.0;
 		if (gs_ok > 0.5)

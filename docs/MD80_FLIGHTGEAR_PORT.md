@@ -885,3 +885,27 @@ the Nasal mode logic instead of a Nasal runtime):
   `probe_md80_fgcp_shot`. `AircraftRig.get_fg_property(key)` exposes the
   frame's FlightGear-side dictionary to tests.
 
+### Step 23 — the ATS after touchdown (2026-11-07, gery: "when the autothrottle has moved the throttles to idle it should turn itself off, the solenoid switch goes down; unsure whether the AP main mode should switch off after the rollout stop")
+
+- FlightGear's DFGS keeps the ATS in RETD after touchdown and drops it
+  (silently) when a thrust reverser deploys — `athr-avail` goes false in
+  `dfgs-drivers.xml` — or when the pilot presses the throttle disconnect.
+  ProvPilot has no reverser control, so the switch stayed up for good. The
+  port now lets the ATS go once it is in RETD with both main gears down and
+  both levers at the idle limit: `kill_athr_silent()`, no THROTTLE warning,
+  the AUTO THROT solenoid drops (`it-autoflight/input/athr` 0).
+- The autopilots stay engaged through ROLLOUT until the pilot disconnects,
+  as in FlightGear and the manual (ROLLOUT is a mode of the engaged AP);
+  nothing switches them off at a standstill.
+- `smoke_md80_ils` now continues through AUTO LAND: FLARE, touchdown,
+  ROLLOUT, APs still engaged, ATS off within 20 s of touchdown.- Found on the way: the localizer needle sat a steady 0.11 norm off centre on
+  every approach, outside the flare's `canAutoland` gate of 0.1 — the bridge
+  built `radials/target-auto-hdg-deg` from the magnetic course while the
+  DFGS subtracts the true heading (a third of the variation as a needle
+  offset), and `/orientation/track-magnetic-deg` did not exist, so the
+  drift-angle driver read 87 deg. `navradio.cxx`'s formula is ported: true
+  target radial + 3 deg per unit of needle - (track - heading); the bridge
+  publishes `orientation/track-deg` / `track-magnetic-deg` from JSBSim's
+  `flight-path/psi-gt-rad`. The smoke now sees ALIGN, FLARE, touchdown and
+  ROLLOUT with the needle at 0.02 (8 PASS).
+

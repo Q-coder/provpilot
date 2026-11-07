@@ -130,6 +130,7 @@ PackedStringArray ItAutoflight::input_names() const
 		"systems/engines/control-2/ats-max", "systems/acconfig/autoconfig-running", "systems/caws/apoff/horn-silence-enabled",
 		"systems/caws/logic/altitude-alert", "position/wow", "it-autoflight/input/fd1", "it-autoflight/input/fd2", "it-autoflight/input/athr",
 		"it-autoflight/input/bank-limit-sw", "it-autoflight/input/ap1-avail", "it-autoflight/input/ap2-avail", "it-autoflight/input/athr-avail",
+		"systems/engines/control-1/throttle-pos", "systems/engines/control-2/throttle-pos",
 	};
 	PackedStringArray out;
 	for (const char *n : names) out.push_back(n);
@@ -1724,6 +1725,20 @@ void ItAutoflight::athr_loop()
 	{
 		s(OUT("thr-mode"), 1);
 		fma_thr();
+	}
+	// Landed in RETD with the levers at idle: the ATS lets go (silently, as
+	// FlightGear's model does when a reverser deploys) and the AUTO THROT
+	// solenoid switch drops. FlightGear keeps it in RETD until reverse is
+	// pulled; ProvPilot has no reverser control, so the retard is the end of
+	// its job (gery, 2026-11-07).
+	if (b(OUT("athr")) && tm == 1 && inb("gear/gear[1]/wow") && inb("gear/gear[2]/wow"))
+	{
+		const double idle = in("systems/engines/limit/idle-norm") + 0.02;
+		if (in("systems/engines/control-1/throttle-pos") <= idle && in("systems/engines/control-2/throttle-pos") <= idle)
+		{
+			kill_athr_silent();
+			fma_thr();
+		}
 	}
 }
 
