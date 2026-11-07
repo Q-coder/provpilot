@@ -254,6 +254,32 @@ func _test_screen() -> void:
 	check(pad_events == 0, "ui_left / ui_down / ui_accept carry no joypad events (%d)" % pad_events)
 	check(KeyBindings.label("fullscreen_toggle") == "Alt+Enter", "Alt+Enter is the fullscreen toggle (%s)" % KeyBindings.label("fullscreen_toggle"))
 	check(_find_first(screen, "KeyboardSettingsPanel") != null, "Keyboard tab hosts the KeyboardSettingsPanel")
+	# Joystick rows pick the pad input from a named list whose first entry,
+	# None (id -1), leaves the action unassigned: more actions than buttons.
+	var jpanel := _find_first(screen, "JoystickSettingsPanel")
+	var button_picker: OptionButton = jpanel.find_child("ButtonPick_flip_camera", true, false) if jpanel else null
+	var axis_picker: OptionButton = jpanel.find_child("AxisPick_flight_roll", true, false) if jpanel else null
+	var pickers: Array = []
+	if jpanel != null:
+		_collect(jpanel, "OptionButton", pickers)
+	print("  [diag] joystick pickers: %d OptionButtons, button picker %s (%d items), axis picker %s (%d items)" % [pickers.size(), str(button_picker != null), button_picker.get_item_count() if button_picker else -1, str(axis_picker != null), axis_picker.get_item_count() if axis_picker else -1])
+	check(button_picker != null and button_picker.get_item_text(0) == "None" and int(button_picker.get_item_metadata(0)) == -1, "button rows offer None (unassigned)")
+	check(axis_picker != null and axis_picker.get_item_text(0) == "None" and int(axis_picker.get_item_metadata(0)) == -1, "axis rows offer None (unassigned)")
+	if button_picker != null:
+		var jcfg = get_node_or_null("/root/JoystickConfig")
+		var before: int = int(jcfg.get_button_bindings()["flip_camera"]["button"]) if jcfg else -2
+		button_picker.select(0)
+		button_picker.item_selected.emit(0)
+		check(jcfg != null and int(jcfg.get_button_bindings()["flip_camera"]["button"]) == -1, "picking None unbinds flip_camera (was %d)" % before)
+		check(jcfg != null and not jcfg.get_button("flip_camera"), "an unassigned button action never reads pressed")
+		if jcfg and before >= 0:
+			var item := -1
+			for i in range(button_picker.get_item_count()):
+				if int(button_picker.get_item_metadata(i)) == before:
+					item = i
+			button_picker.select(item)
+			button_picker.item_selected.emit(item)
+			check(int(jcfg.get_button_bindings()["flip_camera"]["button"]) == before, "picking the button again rebinds it")
 
 	# store -> UI (refresh) -> store (commit) round trip on a slider.
 	store.set_setting("master_volume", 45)

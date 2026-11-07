@@ -90,6 +90,7 @@ namespace jsbgodot
         prop_values.push_back(0.0);
         prop_strings.push_back(String());
         prop_set.push_back(false);
+        prop_is_string.push_back(false);
         return id;
     }
 
@@ -989,38 +990,25 @@ namespace jsbgodot
                 continue;
             const Ref<Mesh> mesh = mi->get_mesh();
             const AABB aabb = mesh->get_aabb();
-            // the thin axis is the screen normal; of the other two, the one that
-            // points most upward in the world is the rows' axis
-            int nax = 0;
-            for (int a = 1; a < 3; a++)
-                if (aabb.size[a] < aabb.size[nax])
-                    nax = a;
             const Transform3D gt = mi->get_global_transform();
-            int yax = -1;
-            double best = -1.0;
-            for (int a = 0; a < 3; a++)
-            {
-                if (a == nax)
-                    continue;
-                Vector3 e;
-                e[a] = 1.0;
-                const double up = std::abs(gt.basis.xform(e).normalized().y);
-                if (up > best)
-                {
-                    best = up;
-                    yax = a;
-                }
-            }
-            const int xax = 3 - nax - yax;
-            Vector3 ey;
-            ey[yax] = gt.basis.xform(Vector3(yax == 0, yax == 1, yax == 2)).y >= 0.0 ? 1.0 : -1.0;
-            // the outward normal from the first face
+            // The screen normal from the first face; its sign from the model:
+            // a Label3D draws its +z side only, so ez must point out of the
+            // panel towards the crew. The winding is not reliable (the MD-80's
+            // FMA quads face into the glareshield), the model's +x (aft) is;
+            // a screen with no aft component at all keeps the face's direction.
             Vector3 ez;
-            ez[nax] = 1.0;
+            {
+                int nax = 0;
+                for (int a = 1; a < 3; a++)
+                    if (aabb.size[a] < aabb.size[nax])
+                        nax = a;
+                ez[nax] = 1.0;
+            }
+            PackedVector3Array vs;
             const Array arrays = mesh->surface_get_arrays(0);
             if (arrays.size() > Mesh::ARRAY_INDEX)
             {
-                const PackedVector3Array vs = arrays[Mesh::ARRAY_VERTEX];
+                vs = arrays[Mesh::ARRAY_VERTEX];
                 const PackedInt32Array idx = arrays[Mesh::ARRAY_INDEX];
                 if (idx.size() >= 3 && vs.size() >= 3)
                 {
@@ -1035,13 +1023,48 @@ namespace jsbgodot
                         ez = n.normalized();
                 }
             }
+            // The model's frame, not the world's: the scene is ECEF, so the
+            // world's +y is nowhere near "up" over the aircraft.
+            Node3D *root3d = Object::cast_to<Node3D>(model_root);
+            const Basis root_basis = root3d != nullptr ? root3d->get_global_transform().basis : Basis();
+            const Vector3 aft = root_basis.get_column(0).normalized();
+            const Vector3 up = root_basis.get_column(1).normalized();
+            if (gt.basis.xform(ez).dot(aft) < 0.0)
+                ez = -ez;
+            // Rows run along the model's up projected into the screen plane
+            // (the mesh's own axes need not follow the screen's edges), the
+            // baseline across; the screen's extent is measured along both.
+            Vector3 ey = gt.basis.inverse().xform(up);
+            ey = ey - ez * ey.dot(ez);
+            if (ey.length() < 1e-6)
+                ey = Vector3(0, 1, 0) - ez * ez.y;
+            ey.normalize();
             const Vector3 ex = ey.cross(ez).normalized();
             const Basis lb_basis(ex, ey, ez);
+            const Vector3 centre = aabb.get_center();
+            double width = 0.0, height = 0.0;
+            if (vs.size() >= 3)
+            {
+                double x0 = 1e30, x1 = -1e30, y0 = 1e30, y1 = -1e30;
+                for (int k = 0; k < vs.size(); k++)
+                {
+                    const Vector3 d = vs[k] - centre;
+                    x0 = std::min(x0, (double)d.dot(ex));
+                    x1 = std::max(x1, (double)d.dot(ex));
+                    y0 = std::min(y0, (double)d.dot(ey));
+                    y1 = std::max(y1, (double)d.dot(ey));
+                }
+                width = x1 - x0;
+                height = y1 - y0;
+            }
+            else
+            {
+                width = aabb.get_longest_axis_size();
+                height = aabb.get_shortest_axis_size();
+            }
             const Array cells = sc.get("cells", Array());
             const int cols = std::max(1, (int)(int64_t)sc.get("columns", cells.size() > 0 ? (int64_t)cells.size() : 1));
             int rows = std::max(1, (int)(int64_t)sc.get("rows", 2));
-            const double width = aabb.size[xax], height = aabb.size[yax];
-            const Vector3 centre = aabb.get_center();
             const Color color = Color::html(String(sc.get("color", "#ffb000")));
             const int power = String(sc.get("power", "")).is_empty() ? -1 : prop_id(sc.get("power", ""));
             const double char_m = num(sc.get("character-size", height / rows * 0.55), height / rows * 0.55);
@@ -1101,7 +1124,10 @@ namespace jsbgodot
                     lb->set_visible(on);
             }
             const double v = ts.prop >= 0 ? prop_values[ts.prop] : 0.0;
-            const String str = ts.prop >= 0 ? (prop_strings[ts.prop].is_empty() ? String::num(v, 0) : prop_strings[ts.prop]) : String();
+            // A screen window shows a string property as it is: an empty mode
+            // string (or one never written) is an empty window, not "0".
+            const bool verbatim = ts.kind == 2 && ts.prop >= 0 && (prop_is_string[ts.prop] || !prop_set[ts.prop]);
+            const String str = ts.prop >= 0 ? (prop_strings[ts.prop].is_empty() && !verbatim ? String::num(v, 0) : prop_strings[ts.prop]) : String();
             const String out = format_text(ts.format, v, str, ts.kind);
             if (out != ts.last)
             {
@@ -1119,6 +1145,7 @@ namespace jsbgodot
         if (id < 0)
             return;
         prop_set.write[id] = true;
+        prop_is_string.write[id] = value.get_type() == Variant::STRING;
         if (value.get_type() == Variant::STRING)
         {
             String s = value;

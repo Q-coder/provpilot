@@ -39,8 +39,11 @@ namespace jsbgodot
 
         void _on_detect_axis(const String &action);
         void _on_detect_button(const String &action);
-        void _on_axis_index_changed(double value, const String &action);
-        void _on_button_index_changed(double value, const String &action);
+        // The axis / button pickers: an OptionButton of named pad inputs,
+        // "None" (id -1) leaves the action unassigned — there are more actions
+        // than a pad has buttons.
+        void _on_axis_selected(int idx, const String &action);
+        void _on_button_selected(int idx, const String &action);
         void _on_invert_toggled(bool pressed, const String &action);
         void _on_deadzone_changed(double value, const String &action);
         void _on_curve_selected(int idx, const String &action);
@@ -49,7 +52,7 @@ namespace jsbgodot
     protected:
         struct AxisRow
         {
-            SpinBox *spin = nullptr;
+            OptionButton *opt = nullptr;
             Button *detect_btn = nullptr;
             ProgressBar *raw_bar = nullptr;
             ProgressBar *cal_bar = nullptr;
@@ -59,7 +62,7 @@ namespace jsbgodot
         };
         struct ButtonRow
         {
-            SpinBox *spin = nullptr;
+            OptionButton *opt = nullptr;
             Button *detect_btn = nullptr;
             Label *pressed_lbl = nullptr;
         };
@@ -73,6 +76,13 @@ namespace jsbgodot
         JoystickBindings *config() const;
         void build_ui();
         void build_axis_row(const String &action_id, const String &label_text);
+        static void fill_axis_options(OptionButton *opt);
+        static void fill_button_options(OptionButton *opt);
+        // Select the item with this id, adding "Axis / Button N" for an index
+        // the list does not name (a pad with more inputs than SDL names).
+        static void select_id(OptionButton *opt, int id, const char *generic);
+        // The pad index an item of a picker stands for (its metadata; -1 = None).
+        static int picked_index(OptionButton *opt, int item);
         void build_button_row(const String &action_id, const String &label_text);
         void refresh_from_config();
         void poll_axis_detection();

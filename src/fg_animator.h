@@ -178,6 +178,7 @@ namespace jsbgodot
         Vector<double> prop_values;
         Vector<String> prop_strings;
         Vector<bool> prop_set;
+        Vector<bool> prop_is_string; // last set from a String (an empty one shows as "", not 0)
         Dictionary type_counts;
         int skipped = 0;
         Node *model_root = nullptr;

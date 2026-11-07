@@ -146,6 +146,7 @@ func _ready() -> void:
 	_world.set_streaming(false)
 	jsb_node.set_ground_query(Callable(_world, "ground_height_geodetic"))
 	_vfr_map.setup(InstallRoot.get_config_path())
+	_vfr_map.enabled_changed.connect(_on_vfr_map_enabled_changed)
 
 	# Flight-side modules.
 	_slew_mode.register_nodes(_ac, $Control/BottomRow/Label, $Control/BottomRow/Label2, $Control/BottomRow/Label3,
@@ -683,6 +684,14 @@ func _on_welcome_scenery_setup_requested(path: String) -> void:
 	_settings.save()   # the next launch skips the wizard
 	_apply_scenery_sources()
 	print("First-run setup complete: applied scenery library from %s" % path)
+
+
+## N toggled the map frame: Settings > Map ("Show Map Frame") and the next
+## Save follow it, so closing the settings or continuing a flight keeps the
+## frame as the pilot left it.
+func _on_vfr_map_enabled_changed(on: bool) -> void:
+	if _settings:
+		_settings.set_setting("map_enabled", on)
 
 
 func _on_settings_closed() -> void:

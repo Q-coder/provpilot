@@ -9,11 +9,16 @@ labels, and canton borders — all rotating with the aircraft heading.
 
 | Action | Input |
 |--------|-------|
-| Show / hide map | `N` (anywhere, works while hidden) |
+| Show / hide map | `N` (anywhere, works while hidden; remembered — Continue Flight, closing the settings screen and the next launch keep the frame as you left it) |
 | Zoom in / out | Mouse wheel over the frame, or `−` / `+` (`=` also zooms in; on Swiss layouts `+` is Shift+1) (5 → 10 → 20 → 40 → 80 km view width) |
 
 Settings → **VFR Map**: enable/disable and frame size (Small 240 px / Medium
-320 px / Large 400 px). The zoom level is persisted automatically.
+320 px / Large 400 px). The zoom level is persisted automatically. "Show Map
+Frame" and the `N` key are the same flag: the toggle writes `[map]
+map_enabled` with the layout and the host mirrors it into the SettingsStore
+(`enabled_changed` signal), so the checkbox shows the live state and
+`apply_config()` after the settings screen does not bring a hidden frame
+back.
 
 ## Tile Data
 
@@ -93,7 +98,8 @@ python scripts/generate_vfr_map_tiles.py --terrain-dir .../CH/terrain \
 
 The GDScript side is intentionally tiny: a one-time `setup()` with the config
 path, `set_tile_paths()` from `_apply_scenery_sources()` (the `map/` subdir of
-each enabled scenery area), `apply_config()` after a settings save, and one
+each enabled scenery area), `apply_config()` after a settings save, the
+`enabled_changed` signal into `SettingsStore.set_setting("map_enabled")`, and one
 `WorldScenery.feed_vfr_map(ecef_pos, true_heading, ui_up)` call per frame
 (ECEF → LV95 + grid heading, then `update_lv95`).
 

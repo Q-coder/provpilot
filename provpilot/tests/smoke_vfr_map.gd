@@ -285,6 +285,15 @@ func _process(_delta: float) -> void:
 			vfr_map.toggle_visible()
 			check(vfr_map.is_map_enabled() == (not was_enabled), "toggle_visible flips the enabled flag")
 			check(vfr_map.visible == vfr_map.is_map_enabled(), "frame visibility follows the enabled flag")
+			# The toggle is remembered: the SettingsStore (Settings > Map, the next
+			# Save) and provpilot.cfg [map] follow it, so apply_config() after the
+			# settings screen and Continue Flight keep the frame as it was.
+			check(app._settings != null and bool(app._settings.get_setting("map_enabled")) == vfr_map.is_map_enabled(), "SettingsStore map_enabled follows the toggle")
+			var cfg_after := ConfigFile.new()
+			cfg_after.load("/tmp/vfr_map_smoke/no_cfg.cfg")   # the map's config file here (setup() above)
+			check(bool(cfg_after.get_value("map", "map_enabled", not vfr_map.is_map_enabled())) == vfr_map.is_map_enabled(), "the map's config [map] map_enabled follows the toggle")
+			vfr_map.apply_config()
+			check(vfr_map.is_map_enabled() == (not was_enabled), "apply_config() (settings closed) keeps the toggled state")
 			vfr_map.toggle_visible()
 			_enter_phase("check_keys")
 

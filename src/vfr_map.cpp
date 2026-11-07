@@ -237,6 +237,9 @@ void VfrMap::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_zoom_index"), &VfrMap::get_zoom_index);
     ClassDB::bind_method(D_METHOD("get_view_width_m"), &VfrMap::get_view_width_m);
     ClassDB::bind_method(D_METHOD("toggle_visible"), &VfrMap::toggle_visible);
+    // The map key (N) flipped the frame: the host mirrors it into the
+    // SettingsStore so Settings > Map and the next Save show the same state.
+    ADD_SIGNAL(MethodInfo("enabled_changed", PropertyInfo(Variant::BOOL, "enabled")));
     ClassDB::bind_method(D_METHOD("zoom_in"), &VfrMap::zoom_in);
     ClassDB::bind_method(D_METHOD("zoom_out"), &VfrMap::zoom_out);
     ClassDB::bind_method(D_METHOD("get_heading_rad"), &VfrMap::get_heading_rad);
@@ -431,10 +434,15 @@ void VfrMap::_unhandled_input(const Ref<InputEvent> &event)
     }
 }
 
+// N in flight. The state persists with the layout ([map] map_enabled, the
+// key Settings > Map writes) so apply_config() after the settings screen, or
+// the next launch, brings the frame back as the pilot left it.
 void VfrMap::toggle_visible()
 {
     enabled = !enabled;
     set_visible(enabled);
+    persist_layout();
+    emit_signal("enabled_changed", enabled);
     request_redraw();
 }
 
@@ -665,6 +673,7 @@ void VfrMap::persist_layout()
     {
         return; // no config yet — layout resets next launch, that's fine
     }
+    cfg->set_value("map", "map_enabled", enabled);
     cfg->set_value("map", "zoom_index", zoom_index);
     cfg->set_value("map", "map_frame_w", frame_w);
     cfg->set_value("map", "map_frame_h", frame_h);

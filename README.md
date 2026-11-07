@@ -48,7 +48,7 @@ Originally based on [chunky/jsbgodot](https://github.com/chunky/jsbgodot/tree/ma
 - **Deferred Scenery Loading**: Scenery3D starts streaming only after the user clicks Fly — instant startup
 - **HUD**: Airspeed, altitude, vertical speed, heading, throttle, Swiss/WGS84 coordinates, tuned NAV / ADF stations
 - **Radio navigation**: VOR / DME / NDB receivers (C++ `RadioNav`) over the OurAirports navaid catalog (901 stations across the nine regions), ILS localizer / glide slope / DME for 422 airports (real approaches from FlightGear's nav.dat, synthetic ones on every other paved runway of 1500 m or more, aligned with the drawn runways), magnetic headings from the WMM2025 model, Cessna 172 VOR / ADF gauges with KX 165 and KR 87 radios, navaids on the VFR map — see [docs/RADIO_NAVIGATION.md](docs/RADIO_NAVIGATION.md)
-- **VFR Map Frame**: Heading-up in-game map inset (C++ `VfrMap` module) with cartographic hillshade terrain, range rings, airport symbols/ICAO labels, and canton borders — toggle with N, zoom with the wheel; see [docs/VFR_MAP.md](docs/VFR_MAP.md)
+- **VFR Map Frame**: Heading-up in-game map inset (C++ `VfrMap` module) with cartographic hillshade terrain, range rings, airport symbols/ICAO labels, and canton borders — toggle with N (remembered: Continue Flight, the settings screen and the next launch keep the frame as you left it), zoom with the wheel; see [docs/VFR_MAP.md](docs/VFR_MAP.md)
 
 ## Controls
 
@@ -146,7 +146,7 @@ The defaults are an Xbox layout: left stick roll / pitch, right stick X rudder, 
 
 For every joystick action:
 
-1. Click **Detect** and move the desired axis (or press the desired button). The axis index is captured automatically — no need to know controller index numbers.
+1. Click **Detect** and move the desired axis (or press the desired button), or pick it by name from the row's list (A / Cross, LB / L1, D-pad up, Left stick X, …). **None** leaves the action unassigned — a pad has fewer buttons than there are actions, so bind the ones you use.
 2. The blue bar shows the **raw** axis value; the green bar shows the **calibrated** result that gameplay code receives.
 3. With the stick at rest, click **Ctr**. Push to one extreme, click **Min** (or **Max**). The captured raw values define the symmetric `[-1, 1]` mapping — half‑axes work fine, just leave one endpoint equal to center.
 4. Tick **Inv** if the direction is reversed. Adjust the deadzone slider so the calibrated bar reads exactly 0 at rest. Pick a response curve (Linear / Squared / Cubed) for analog sensitivity.

@@ -28,8 +28,8 @@ void JoystickSettingsPanel::_bind_methods()
 	ClassDB::bind_method(D_METHOD("refresh"), &JoystickSettingsPanel::refresh);
 	ClassDB::bind_method(D_METHOD("_on_detect_axis", "action"), &JoystickSettingsPanel::_on_detect_axis);
 	ClassDB::bind_method(D_METHOD("_on_detect_button", "action"), &JoystickSettingsPanel::_on_detect_button);
-	ClassDB::bind_method(D_METHOD("_on_axis_index_changed", "value", "action"), &JoystickSettingsPanel::_on_axis_index_changed);
-	ClassDB::bind_method(D_METHOD("_on_button_index_changed", "value", "action"), &JoystickSettingsPanel::_on_button_index_changed);
+	ClassDB::bind_method(D_METHOD("_on_axis_selected", "idx", "action"), &JoystickSettingsPanel::_on_axis_selected);
+	ClassDB::bind_method(D_METHOD("_on_button_selected", "idx", "action"), &JoystickSettingsPanel::_on_button_selected);
 	ClassDB::bind_method(D_METHOD("_on_invert_toggled", "pressed", "action"), &JoystickSettingsPanel::_on_invert_toggled);
 	ClassDB::bind_method(D_METHOD("_on_deadzone_changed", "value", "action"), &JoystickSettingsPanel::_on_deadzone_changed);
 	ClassDB::bind_method(D_METHOD("_on_curve_selected", "idx", "action"), &JoystickSettingsPanel::_on_curve_selected);
@@ -82,7 +82,7 @@ void JoystickSettingsPanel::build_ui()
 	device_status = styled_label("", FONT_SM, LABEL_COLOR);
 	device_status->set_name("DeviceStatus");
 	dev_hbox->add_child(device_status);
-	Label *help = styled_label(String::utf8("  \xE2\x80\xA2 Click Detect, then move the desired axis or press the desired button.\n  \xE2\x80\xA2 Min/Center/Max capture the current raw value. Invert flips the direction."), FONT_SM, Color(0.55, 0.6, 0.65));
+	Label *help = styled_label(String::utf8("  \xE2\x80\xA2 Click Detect, then move the desired axis or press the desired button, or pick it from the list.\n  \xE2\x80\xA2 None leaves an action unassigned (a pad has fewer buttons than there are actions).\n  \xE2\x80\xA2 Min/Center/Max capture the current raw value. Invert flips the direction."), FONT_SM, Color(0.55, 0.6, 0.65));
 	add_child(help);
 	add_child(styled_label("Axes", FONT_MD, SECTION_COLOR));
 	const Array axes = JoystickBindings::get_axis_actions();
@@ -134,12 +134,12 @@ void JoystickSettingsPanel::build_axis_row(const String &action_id, const String
 	lbl->set_custom_minimum_size(Vector2(220, 0));
 	row->add_child(lbl);
 	AxisRow r;
-	r.spin = memnew(SpinBox);
-	r.spin->set_min(-1);
-	r.spin->set_max((int)JOY_AXIS_MAX - 1);
-	r.spin->set_step(1);
-	r.spin->set_custom_minimum_size(Vector2(70, 32));
-	row->add_child(r.spin);
+	r.opt = memnew(OptionButton);
+	r.opt->set_name("AxisPick_" + action_id);
+	fill_axis_options(r.opt);
+	r.opt->set_custom_minimum_size(Vector2(150, 32));
+	r.opt->connect("item_selected", Callable(this, "_on_axis_selected").bind(action_id));
+	row->add_child(r.opt);
 	r.detect_btn = small_button("Detect", 80);
 	r.detect_btn->connect("pressed", Callable(this, "_on_detect_axis").bind(action_id));
 	row->add_child(r.detect_btn);
@@ -176,7 +176,6 @@ void JoystickSettingsPanel::build_axis_row(const String &action_id, const String
 	r.curve_opt->set_custom_minimum_size(Vector2(110, 32));
 	r.curve_opt->connect("item_selected", Callable(this, "_on_curve_selected").bind(action_id));
 	row->add_child(r.curve_opt);
-	r.spin->connect("value_changed", Callable(this, "_on_axis_index_changed").bind(action_id));
 	axis_rows[action_id] = r;
 }
 
@@ -189,13 +188,12 @@ void JoystickSettingsPanel::build_button_row(const String &action_id, const Stri
 	lbl->set_custom_minimum_size(Vector2(220, 0));
 	row->add_child(lbl);
 	ButtonRow r;
-	r.spin = memnew(SpinBox);
-	r.spin->set_min(-1);
-	r.spin->set_max((int)JOY_BUTTON_MAX - 1);
-	r.spin->set_step(1);
-	r.spin->set_custom_minimum_size(Vector2(70, 32));
-	r.spin->connect("value_changed", Callable(this, "_on_button_index_changed").bind(action_id));
-	row->add_child(r.spin);
+	r.opt = memnew(OptionButton);
+	r.opt->set_name("ButtonPick_" + action_id);
+	fill_button_options(r.opt);
+	r.opt->set_custom_minimum_size(Vector2(190, 32));
+	r.opt->connect("item_selected", Callable(this, "_on_button_selected").bind(action_id));
+	row->add_child(r.opt);
 	r.detect_btn = small_button("Detect", 80);
 	r.detect_btn->connect("pressed", Callable(this, "_on_detect_button").bind(action_id));
 	row->add_child(r.detect_btn);
@@ -219,7 +217,7 @@ void JoystickSettingsPanel::refresh_from_config()
 	for (const KeyValue<String, AxisRow> &kv : axis_rows)
 	{
 		const Dictionary b = axes.get(kv.key, Dictionary());
-		kv.value.spin->set_value_no_signal((int)b.get("axis", -1));
+		select_id(kv.value.opt, (int)b.get("axis", -1), "Axis");
 		kv.value.invert->set_pressed_no_signal((bool)b.get("invert", false));
 		kv.value.dz_slider->set_value_no_signal((double)b.get("deadzone", 0.15));
 		kv.value.curve_opt->select((int)b.get("curve", 0));
@@ -228,7 +226,7 @@ void JoystickSettingsPanel::refresh_from_config()
 	for (const KeyValue<String, ButtonRow> &kv : button_rows)
 	{
 		const Dictionary b = buttons.get(kv.key, Dictionary());
-		kv.value.spin->set_value_no_signal((int)b.get("button", -1));
+		select_id(kv.value.opt, (int)b.get("button", -1), "Button");
 	}
 }
 
@@ -360,14 +358,76 @@ void JoystickSettingsPanel::_on_detect_button(const String &action)
 	button_rows[action].detect_btn->set_text(String::utf8("\xE2\x80\xA6press"));
 }
 
-void JoystickSettingsPanel::_on_axis_index_changed(double value, const String &action)
+void JoystickSettingsPanel::_on_axis_selected(int idx, const String &action)
 {
-	assign_axis(action, (int)value);
+	assign_axis(action, picked_index(axis_rows[action].opt, idx));
 }
 
-void JoystickSettingsPanel::_on_button_index_changed(double value, const String &action)
+void JoystickSettingsPanel::_on_button_selected(int idx, const String &action)
 {
-	assign_button(action, (int)value);
+	assign_button(action, picked_index(button_rows[action].opt, idx));
+}
+
+// SDL's standard gamepad layout, as Godot numbers it.
+static const char *const AXIS_NAMES[] = {"Left stick X", "Left stick Y", "Right stick X", "Right stick Y", "Left trigger", "Right trigger"};
+static const char *const BUTTON_NAMES[] = {"A / Cross", "B / Circle", "X / Square", "Y / Triangle", "Back / Select", "Guide / Home", "Start",
+		"Left stick press", "Right stick press", "LB / L1", "RB / R1", "D-pad up", "D-pad down", "D-pad left", "D-pad right",
+		"Misc 1", "Paddle 1", "Paddle 2", "Paddle 3", "Paddle 4", "Touchpad"};
+
+// The pad index rides in the item metadata: OptionButton ids must be >= 0
+// (-1 means "assign one"), and None is -1.
+static void add_pick(OptionButton *opt, const String &text, int index)
+{
+	opt->add_item(text);
+	opt->set_item_metadata(opt->get_item_count() - 1, index);
+}
+
+static int pick_item(OptionButton *opt, int index)
+{
+	for (int i = 0; i < opt->get_item_count(); i++)
+	{
+		if ((int)opt->get_item_metadata(i) == index)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+int JoystickSettingsPanel::picked_index(OptionButton *opt, int item)
+{
+	return item >= 0 && item < opt->get_item_count() ? (int)opt->get_item_metadata(item) : -1;
+}
+
+void JoystickSettingsPanel::fill_axis_options(OptionButton *opt)
+{
+	add_pick(opt, "None", -1);
+	for (int i = 0; i < (int)(sizeof(AXIS_NAMES) / sizeof(AXIS_NAMES[0])); i++)
+	{
+		add_pick(opt, String::num_int64(i) + "  " + AXIS_NAMES[i], i);
+	}
+}
+
+void JoystickSettingsPanel::fill_button_options(OptionButton *opt)
+{
+	add_pick(opt, "None", -1);
+	for (int i = 0; i < (int)(sizeof(BUTTON_NAMES) / sizeof(BUTTON_NAMES[0])); i++)
+	{
+		add_pick(opt, String::num_int64(i) + "  " + BUTTON_NAMES[i], i);
+	}
+}
+
+void JoystickSettingsPanel::select_id(OptionButton *opt, int id, const char *generic)
+{
+	if (id < 0)
+	{
+		id = -1;
+	}
+	if (pick_item(opt, id) < 0)
+	{
+		add_pick(opt, String::num_int64(id) + "  " + generic + " " + String::num_int64(id), id);
+	}
+	opt->select(pick_item(opt, id));
 }
 
 static void update_axis_binding(JoystickBindings *cfg, const String &action, const char *key, const Variant &value)
@@ -427,7 +487,7 @@ void JoystickSettingsPanel::assign_axis(const String &action, int axis_idx)
 	Dictionary b = axes.get(action, JoystickBindings::axis_default(axis_idx, false));
 	b["axis"] = axis_idx;
 	axes[action] = b;
-	axis_rows[action].spin->set_value_no_signal(axis_idx);
+	select_id(axis_rows[action].opt, axis_idx, "Axis");
 }
 
 void JoystickSettingsPanel::assign_button(const String &action, int button_idx)
@@ -441,7 +501,7 @@ void JoystickSettingsPanel::assign_button(const String &action, int button_idx)
 	Dictionary b;
 	b["button"] = button_idx;
 	buttons[action] = b;
-	button_rows[action].spin->set_value_no_signal(button_idx);
+	select_id(button_rows[action].opt, button_idx, "Button");
 }
 
 } // namespace jsbgodot

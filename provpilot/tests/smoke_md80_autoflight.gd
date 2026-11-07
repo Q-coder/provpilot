@@ -58,6 +58,24 @@ func _ready() -> void:
 	var st: Dictionary = fga.stats()
 	var types: Dictionary = st.get("types", {})
 	_check(int(types.get("screen-text", 0)) == 16, "FMA windows laid out as screen texts (%d labels)" % int(types.get("screen-text", 0)))
+	# The labels are lit (DC radio buses), face the crew (Label3D draws its +z
+	# side only; the screen quads' winding points into the glareshield) and
+	# an empty mode string is an empty window, not "0".
+	var cam: Camera3D = root.camera1
+	var lit := 0
+	var facing := 0
+	var zero_windows := 0
+	var labels := root.find_children("ScreenText_*", "Label3D", true, false)
+	for lb in labels:
+		if lb.is_visible_in_tree():
+			lit += 1
+		if lb.global_transform.basis.z.dot((cam.global_position - lb.global_position).normalized()) > 0.3:
+			facing += 1
+		if lb.text == "0":
+			zero_windows += 1
+	_check(labels.size() == 16 and lit == 16, "every FMA label is lit (%d of %d)" % [lit, labels.size()])
+	_check(facing == 16, "every FMA label faces the cockpit camera (%d of %d)" % [facing, labels.size()])
+	_check(zero_windows == 0, "empty FMA windows show nothing, not 0 (%d show 0)" % zero_windows)
 	print("  [diag] start: lat text %s vert text %s, FMA roll %s/%s pitch %s/%s thr %s/%s arm %s/%s, TRI mode %s (%s), fgcp %.0f V, ap1-avail %s athr-avail %s" % [
 		str(af.get_value("it-autoflight/text/lat")), str(af.get_value("it-autoflight/text/vert")),
 		str(af.get_value("instrumentation/fma/roll-mode-a")), str(af.get_value("instrumentation/fma/roll-mode-b")),

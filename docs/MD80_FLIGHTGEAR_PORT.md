@@ -800,3 +800,32 @@ the Nasal mode logic instead of a Nasal runtime):
   `probe_md80_fgcp` (ground clicks on TogaL and the ALT knob through the
   cockpit camera — `root.camera1`, the exterior camera is beyond the 4 m hit
   range).
+
+### Step 20 — the FMA shows nothing (2026-11-07, gery: "look at the FMA currently it's not showing anything")
+
+- The 16 screen-text labels were there, lit (the DC radio buses read 28 V in
+  the air and on the ground) and had their mode strings — and rendered
+  nothing: `load_screen_texts` took the label normal from the first face's
+  winding, and the FMA screen quads face into the glareshield. A Label3D
+  draws its +z side only, so every window faced away from the crew and was
+  back-face culled. The normal is now flipped to the model's +x (aft)
+  half-space when the face points forward; a screen that faces aft keeps its
+  own direction.
+- With the labels visible the text ran vertically at four times its size:
+  the rows' axis was "the mesh axis that points most upward in the world",
+  and the world is ECEF — over Zurich the world's +y is nowhere near up. The
+  rows now follow the model root's +y projected into the screen plane, the
+  baseline is across, and the screen's width / height are the vertex extents
+  along those two directions (the mesh's own axes need not follow the
+  screen's edges).
+- An empty mode string (`thr-mode-b` with nothing armed) was rendered as
+  "0": `update_texts` formatted the numeric value whenever the string was
+  empty. The animator now remembers that a property was last set from a
+  String (`prop_is_string`), and a screen window shows such a property — or
+  one never written — verbatim.
+- Checks in `smoke_md80_autoflight` (27 PASS): every label visible in the
+  tree, every label's +z within 72° of the cockpit camera, no window shows
+  "0". Probes `probe_md80_fma` (headless: power, animator and label state)
+  and `probe_md80_fma_shot` (a cockpit screenshot after the airborne start)
+  were the diagnosis.
+
