@@ -978,6 +978,11 @@ void SettingsStore::apply_scenery_sources(Node *scenery3d, Node *vegetation, Nod
     }
     scenery3d->set("water_paths", water_paths);
     scenery3d->set("road_paths", road_paths);
+    if (_has_property(scenery3d, "landcover_paths"))
+    {
+        // The forest polygons paint the ground where no orthophoto is (design §14.6).
+        scenery3d->set("landcover_paths", vegetation_paths);
+    }
     if (vegetation != nullptr)
     {
         vegetation->set("vegetation_paths", vegetation_paths);

@@ -2419,6 +2419,56 @@ Open:
 SRTM measures the canopy in forests, so the ground under a forest is
 already tree-height high — a later land-cover pass could lower it.
 
+### 14.6 Forests to the horizon — land cover in the ground texture (2026-11-08)
+
+gery: "even in relatively low altitude the forests end quickly. How can we
+make recognizable forests to the visible horizon without losing fps?" The
+tree cards reach 8 km (§14.3); beyond, a tile without an orthophoto is a
+flat `(0.45, 0.55, 0.35)` green, so a wood ends where the cards end.
+
+Decision: no new data and no new geometry — the forest polygons we already
+ship (`forest_E_N.bin`, FOR1, §14.4) are painted into the ground texture of
+every tile that has no orthophoto, by the tile manager's worker as the tile
+loads. The shared parser lives in `s3d_forest_file.h/.cpp` (vegetation
+manager and tile manager both use it) together with the rasteriser:
+
+- `Scenery3D.landcover_paths` (→ `S3DTileManager.landcover_paths`): the
+  vegetation dirs; the host passes the library's vegetation paths in
+  `apply_scenery_sources`, next to `orthophoto_paths`.
+- Regular tiles: when no orthophoto JPEG opens (or the one that does is
+  < 10 % real pixels, which used to drop the tile), the first forest file
+  that parses is rasterised at 128 px (8 m/px, 48 KB) into the existing
+  pre-decoded `ortho_rgb` path, so the texture reaches the material through
+  the orthophoto code. A square without a forest file keeps the shared
+  material, whose albedo equals the raster's base colour (115, 140, 89).
+- Far chunks (8 × 8 squares, out to 200 km): every sub-tile without a mip3
+  JPEG that has terrain is painted at 16 px per square (base colour when the
+  square has no forest file), so the no-data fill of the chunk composite
+  cannot smear a neighbour's pixels across it.
+- Raster: scanline even-odd fill over all rings of a polygon (holes stay
+  base), orthophoto orientation (column 0 = east edge, row 0 = south edge),
+  forest greens by kind — broadleaf (58, 92, 44), conifer (40, 70, 42),
+  mixed (48, 80, 42) — with ±7 of per-pixel noise; corridors are cleared to
+  base when the raster has ≥ 64 px so a road through a wood keeps its gap as
+  the cards do.
+
+Measured (Tösstal, C172 at 3 000 ft, density 2, base Switzerland build,
+no orthophotos): 78 fps (74–80 before), the woods under the cards match the
+cards, and the dark patches continue over the far chunks until the haze
+takes the contrast. Headless, 40 s over the same spot: 81 of 81 regular
+tiles and 789 of 789 chunks textured; chunk throughput unchanged within the
+noise (813 chunks without land cover in the same time, two instances
+running). Tests: `tests/smoke_landcover.tscn` (16 checks: colours, hole,
+corridor gap, orientation, forest area in pixels, 16 px raster, missing
+file, a Scenery3D tile with the texture and a plain neighbour without);
+`tests/probe_landcover_chunks.gd` (-s; counts textured tiles and chunks over
+real data and saves one texture of each).
+
+Open: the base colour is a single green for fields, towns and rock alike —
+OSM `landuse` (residential, farmland, water, glacier) could join the raster
+as further kinds with the same code path; SRTM canopy height under forests
+(§14.4) still open.
+
 ### 14.5 Clouds from BlenderKit — weighed 2026-11-08
 
 gery found free volumetric clouds on BlenderKit ("Cumulus Cloud -
