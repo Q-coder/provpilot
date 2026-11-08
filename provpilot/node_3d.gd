@@ -328,6 +328,7 @@ func _process(delta: float) -> void:
 	elif KeyBindings.just_pressed("camera_flip_back"):   # Shift+C: the other way round
 		flip_camera(true)
 	_poll_joystick_buttons()
+	_poll_tree_wind(delta)
 	_camera_rig.update(delta, JoystickConfig.get_active_device())
 	if slewing:
 		return
@@ -381,6 +382,17 @@ func _set_fullscreen(on: bool, persist: bool) -> void:
 	if persist and _settings and bool(_settings.get_setting("fullscreen")) != on:
 		_settings.set_setting("fullscreen", on)
 		_settings.save()
+
+
+## The forest's sway follows the weather's wind (design §14): the FDM's wind
+## magnitude into the vegetation manager a few times a second, none in calm air.
+var _tree_wind_t := 0.0
+func _poll_tree_wind(delta: float) -> void:
+	_tree_wind_t += delta
+	if _tree_wind_t < 0.5 or jsb_node == null or not is_instance_valid(vegetation_node):
+		return
+	_tree_wind_t = 0.0
+	vegetation_node.set_wind_speed_mps(jsb_node.get_property("atmosphere/wind-mag-fps") * 0.3048)
 
 
 ## Settings > Joystick flight axes into the FDM (docs/MD80_FLIGHTGEAR_PORT.md

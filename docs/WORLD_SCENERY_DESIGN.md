@@ -2291,6 +2291,13 @@ Order: 2 + 3 first with a placeholder atlas rendered from the existing tree
   far counts, ranges, shared material, altitude mix, heights, snapping,
   density). Settings > Graphics > Tree density keeps its five steps.
 
+Test flight 2026-11-08 (gery): the trees swayed in calm air and the canopy
+card read as a pale disc, "a foreign part". Fixes: the sway amplitude is the
+weather's wind (`set_wind_speed_mps`, node_3d.gd polls the FDM's
+`atmosphere/wind-mag-fps` twice a second; zero in calm air), the canopy
+card's mean luminance is matched to the side card at bake time (0.9 ×) and
+it fades in only on steep views (view elevation 0.5-0.8).
+
 Open: BlenderKit species (CC0 / royalty-free pines, spruce, birch) through
 the same bake; forests outside Switzerland from OSM polygons (step 4);
 SRTM measures the canopy in forests, so the ground under a forest is

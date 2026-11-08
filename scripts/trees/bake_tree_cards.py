@@ -181,8 +181,23 @@ for col, sp in enumerate(species):
     render(scene, (cx, lo.y - extent * 2, lo.z + extent / 2), (math.radians(90), 0, 0), extent, side_png)
     # top: straight down
     render(scene, (cx, cy, hi.z + extent * 2), (0, 0, 0), extent, top_png)
-    atlas[0:PX, col * PX:(col + 1) * PX] = load_rgba(side_png)
-    atlas[PX:2 * PX, col * PX:(col + 1) * PX] = load_rgba(top_png)
+    side = load_rgba(side_png)
+    top = load_rgba(top_png)
+    # The canopy card must read as part of the same tree: match its mean
+    # luminance to the side card's (the top view catches the full sun and came
+    # out a pale disc over the forest, gery 2026-11-08), a touch darker since
+    # the crown's top is seen against sunlit cards' edges.
+    def mean_lum(img):
+        a = img[..., 3] > 0.5
+        rgb = img[..., :3][a]
+        return float((rgb @ np.array([0.2126, 0.7152, 0.0722])).mean()) if len(rgb) else 1.0
+    ls, lt = mean_lum(side), mean_lum(top)
+    if lt > 1e-3:
+        top = top.copy()
+        top[..., :3] = np.clip(top[..., :3] * (0.9 * ls / lt), 0.0, 1.0)
+    atlas[0:PX, col * PX:(col + 1) * PX] = side
+    atlas[PX:2 * PX, col * PX:(col + 1) * PX] = top
+    print(f"  {sp['name']}: side luminance {ls:.3f}, top {lt:.3f} -> scaled to {0.9 * ls:.3f}")
     crown_ratio = round(float(max(size.x, size.y) / size.z), 3) if size.z > 0 else sp.get("crown_ratio", 0.6)
     meta.append({"name": sp["name"], "conifer": bool(sp.get("conifer", False)),
                  "height_m": sp.get("height_m", 20), "crown_ratio": crown_ratio,

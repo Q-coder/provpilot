@@ -140,6 +140,7 @@ namespace jsbgodot
         String config_path;
 
         static Table *active();
+        static godot::PackedStringArray split_chords(const godot::String &value);
         static Table *installed;
         static bool mods_known;
         static bool mod_shift, mod_ctrl, mod_alt;

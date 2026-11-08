@@ -795,6 +795,33 @@ void KeyBindings::save()
 		UtilityFunctions::print("KeyBindings: saved ", path);
 }
 
+// The file writes two keys as "Q, PageUp". The comma key itself ("," for the
+// brakes, "Shift+," in the editor) must survive that: a lone comma chord is
+// one key, "," + ", " + "PageUp" is two, and a hand-written "Q,PageUp"
+// without the space still reads (gery 2026-11-08: the brakes_off key came
+// back unbound on every start, so the Cessna and the PC-7 never left the
+// parking brake).
+PackedStringArray KeyBindings::split_chords(const String &value)
+{
+	PackedStringArray out;
+	const String s = value.strip_edges();
+	if (s.is_empty())
+		return out;
+	if (s.contains(", "))
+	{
+		const PackedStringArray parts = s.split(", ", false);
+		for (int i = 0; i < parts.size(); i++)
+			out.push_back(parts[i]);
+		return out;
+	}
+	if (s == "," || s.ends_with("+,"))
+	{
+		out.push_back(s);
+		return out;
+	}
+	return s.split(",", false);
+}
+
 void KeyBindings::load()
 {
 	reset_to_defaults();
@@ -816,9 +843,23 @@ void KeyBindings::load()
 		if (!cf->has_section_key(a.section, String(a.id)))
 			continue;
 		const String v = cf->get_value(a.section, String(a.id), "");
-		const PackedStringArray parts = v.split(",", false);
+		const PackedStringArray parts = split_chords(v);
 		for (int i = 0; i < SLOTS; i++)
 			a.keys[i] = i < parts.size() ? KeyChord::parse(parts[i]) : KeyChord();
+		// Files saved by builds before 2026-11-08 lost every comma key: the
+		// loader split "," into nothing and the next save wrote it back empty.
+		// An empty entry whose default is the comma key takes the default again.
+		bool comma_default = false;
+		for (int i = 0; i < SLOTS; i++)
+			comma_default = comma_default || (a.defaults[i].is_bound() && a.defaults[i].key == KEY_COMMA);
+		// ("Shift+," came back as a bare "Shift" the same way.)
+		const bool broken = parts.is_empty() || (parts.size() == 1 && is_modifier_key(KeyChord::parse(parts[0]).key) && !is_modifier_key(a.defaults[0].key));
+		if (broken && comma_default)
+		{
+			for (int i = 0; i < SLOTS; i++)
+				a.keys[i] = a.defaults[i];
+			UtilityFunctions::print("KeyBindings: ", String(a.id), " was stored empty; its comma key is back (", a.keys[0].to_string(), ")");
+		}
 		stored[ai] = true;
 		n++;
 	}
