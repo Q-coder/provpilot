@@ -167,6 +167,7 @@ class Collector(osmium.SimpleHandler):
             if geom is None or geom.is_empty:
                 self.n_invalid += 1
                 return
+        if cover is not None:
             self.n_cover += 1
             min_part = 100.0
         else:
