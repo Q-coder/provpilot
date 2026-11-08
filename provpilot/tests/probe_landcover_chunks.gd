@@ -43,7 +43,11 @@ func _init() -> void:
 		if not (t is S3DTile) or t.mesh == null:
 			continue
 		var mat: Material = t.mesh.surface_get_material(0)
-		var tex: Texture2D = mat.get_texture(BaseMaterial3D.TEXTURE_ALBEDO) if mat is StandardMaterial3D else null
+		var tex: Texture2D = null
+		if mat is StandardMaterial3D:
+			tex = mat.get_texture(BaseMaterial3D.TEXTURE_ALBEDO)
+		elif mat is ShaderMaterial:
+			tex = mat.get_shader_parameter("albedo_tex")
 		var is_chunk: bool = t.tile_size > 1024
 		if is_chunk:
 			chunks += 1

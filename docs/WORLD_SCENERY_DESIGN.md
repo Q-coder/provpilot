@@ -2464,6 +2464,24 @@ file, a Scenery3D tile with the texture and a plain neighbour without);
 `tests/probe_landcover_chunks.gd` (-s; counts textured tiles and chunks over
 real data and saves one texture of each).
 
+Chunk under tile (gery, ENGM, same evening): "some kind of z-fighting in a
+few rare places close to ENGM; when I get closer it stops". The crop showed
+64 m stair-stepped dark blocks around woods: a far chunk straddling the
+close ring (kept while any of its squares lies outside the ring, dropped
+once all are inside — hence "stops when closer") surfaces through a
+LOD-reduced individual tile that bridges a ravine, and since this change its
+land-cover texture is dark where the tile's is. The 30 m sink cannot cover
+every bridged ravine, so the geometry is left alone and the chunk is culled
+instead: chunks draw with `shaders/chunk.gdshader` (ShaderMaterial, albedo
+texture or base colour, mipmaps on the composite); every chunk straddling
+the ring gets a mask of the squares whose individual tile is drawn
+(`update_chunk_cover`, an R8 image of the ring rebuilt when the resident
+geometry or the camera square changes) and discards its fragments there.
+A chunk painted from land cover is also kept whatever its share of "real"
+pixels (a coastal chunk with three squares of land is land, not an
+orthophoto gap). `smoke_landcover` grew to 23 checks (masked material,
+mask marks the drawn tiles and not the empty square, chunk_base).
+
 Open: the base colour is a single green for fields, towns and rock alike —
 OSM `landuse` (residential, farmland, water, glacier) could join the raster
 as further kinds with the same code path; SRTM canopy height under forests

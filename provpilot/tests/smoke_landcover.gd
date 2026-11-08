@@ -160,6 +160,32 @@ func _ready() -> void:
 		var tex_b: Texture2D = mat_b.get_texture(BaseMaterial3D.TEXTURE_ALBEDO) if mat_b is StandardMaterial3D else null
 		_check(tex_a != null and tex_a.get_width() == 128, "the forest square's tile carries a 128 px land-cover texture")
 		_check(tex_b == null, "the square without a forest file keeps the shared ground material")
+	# the far chunk under the two tiles: a masked shader material that discards
+	# its fragments where an individual tile is drawn
+	var tm_node: Node = null
+	for child in sc.get_children():
+		if child.get_class() == "S3DTileManager":
+			tm_node = child
+	var chunk: Node = null
+	waited = 0.0
+	while waited < 20.0 and chunk == null:
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+		for t in tm_node.get_children():
+			if t is S3DTile and t.tile_size > 1024 and t.mesh != null:
+				chunk = t
+	_check(chunk != null, "a far chunk is resident under the close ring")
+	if chunk != null:
+		var cmat: Material = chunk.mesh.surface_get_material(0)
+		_check(cmat is ShaderMaterial, "the chunk draws with the masked chunk shader")
+		if cmat is ShaderMaterial:
+			var rect: Vector4 = cmat.get_shader_parameter("cover_rect")
+			_check(rect.z > 0.0, "the straddling chunk carries the cover mask (%s)" % rect)
+			var base: Vector2 = cmat.get_shader_parameter("chunk_base")
+			_check(int(base.x) == (TILE_E / 1024 / 8) * 8 and int(base.y) == (TILE_N / 1024 / 8) * 8, "chunk_base is the chunk's south-west square (%s)" % base)
+		_check(tm_node.chunk_cover_covers(TILE_E / 1024, TILE_N / 1024) and tm_node.chunk_cover_covers(TILE_E / 1024 + 1, TILE_N / 1024), "both drawn tiles are marked in the cover mask")
+		_check(not tm_node.chunk_cover_covers(TILE_E / 1024 + 2, TILE_N / 1024), "a square without a tile is not marked")
+		_check(tm_node.get_masked_chunk_count() >= 1, "at least one chunk is masked (%d)" % tm_node.get_masked_chunk_count())
 	if _fails.is_empty():
 		print("smoke_landcover: OK")
 		get_tree().quit(0)
