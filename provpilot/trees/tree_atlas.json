@@ -1,0 +1,34 @@
+{
+ "_comment": "Tree card atlas: columns = species, upper half side view, lower half top view (scripts/trees/bake_tree_cards.py).",
+ "card_px": 256,
+ "species": [
+  {
+   "name": "beech",
+   "conifer": false,
+   "height_m": 24,
+   "crown_ratio": 0.831,
+   "source": "tree_lod2.glb"
+  },
+  {
+   "name": "oak",
+   "conifer": false,
+   "height_m": 20,
+   "crown_ratio": 0.512,
+   "source": "Tree_lowpoly.glb"
+  },
+  {
+   "name": "spruce",
+   "conifer": true,
+   "height_m": 30,
+   "crown_ratio": 0.382,
+   "source": "procedural:spruce"
+  },
+  {
+   "name": "pine",
+   "conifer": true,
+   "height_m": 24,
+   "crown_ratio": 0.457,
+   "source": "procedural:pine"
+  }
+ ]
+}

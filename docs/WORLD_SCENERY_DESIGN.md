@@ -2193,6 +2193,109 @@ archives in the bake (they are also a smaller base pack), then the
 cache-or-fetch layer and far-file support in the streamer, then the
 manifest and the UI.
 
+## 14. Forests — analysis and plan 2026-11-08
+
+gery: "the tree I used in the SwissTopo scenery drags down FPS radically. But
+most even low spec computers running flight simulators get trees and forests
+quite right, with good FPS. See if you can find a good way to integrate
+forests in PVP."
+
+### 14.1 What the measurements say
+
+| Item | Today | Note |
+|---|---|---|
+| Tree mesh `Tree_lowpoly.glb` | **24 302 triangles**, 3.5 MB PNG, two opaque materials | a game tree is 300-1 500 near, 2-8 as a billboard |
+| `tree_lod2.glb` | 22 179 triangles, four textures | not a LOD of the first, same cost |
+| swissTLM3D placement | 1 tree / 25 m² of forest (`--forest-spacing 5`) | 76 M trees for CH, 9 161 tiles, 1.7 GB; median 7 000 trees per km² tile, max 25 867 |
+| Runtime (`S3DVegetationManager`) | one MultiMesh per 1 km tile, load radius 1.5 km, density 0.5, no LOD, no visibility range, shadows off | 9-16 tiles × ~7 000 × 0.5 × 24 302 tris ≈ **0.7-1.2 billion triangles** in view |
+
+That last line is the whole problem: a thousand times the budget of a
+flight-sim forest, not a GPU weakness. X-Plane draws a forest tree as two
+crossed quads (4 triangles) from a species atlas, FlightGear's random
+vegetation as 2-3 quads, MSFS as a few cards with a top cap, all of them
+thinned with distance and faded out between 5 and 15 km. Low-spec machines
+cope because a forest of 100 000 trees is then 400 000-800 000 triangles,
+alpha-tested (no sorting), one draw per tile.
+
+### 14.2 Plan
+
+1. **Tree cards instead of meshes.** The manager builds its own ArrayMesh:
+   three vertical quads at 60° plus one horizontal canopy quad (8
+   triangles). A species atlas (`trees/tree_atlas.png`, columns = species,
+   rows = side view / top view) is rendered in **Blender headless** from
+   detailed tree models (`scripts/trees/bake_tree_cards.py`: orthographic
+   side and top renders with transparent film, 256 px per card, assembled
+   into the atlas + `tree_atlas.json` with heights and crown ratios).
+   Sources: the existing 24 k tree and BlenderKit free models (`cc_zero`
+   / `royalty_free`: Pine Tree Double, Pine Tree Monterey, White Willow,
+   Yellow Birch, …) — a rendered card is a derivative we may ship. Three or
+   four species to start: spruce / fir, beech / oak, pine, birch.
+2. **Shader `shaders/tree.gdshader`**: alpha scissor (no transparency
+   sorting), two-sided, species column and a colour / scale variation from
+   `INSTANCE_CUSTOM`, the top quad fades in as the view angle steepens so
+   the cross is never seen from above, a dither fade at the far edge, a
+   little wind sway. One shared material (Metal limit, §12.6).
+3. **Thinning with distance, in the manager**: per tile two instances —
+   *near* (every kept tree, `visibility_range` 0-2.5 km) and *far* (every
+   fourth tree at 1.6× crown, 2.5-8 km, fade). Both built once from the
+   same records, so a tile costs no more to load than today. Load radius
+   becomes 8 km (the far ring is cheap: a 1 km² forest tile at 1 750
+   trees × 8 triangles = 14 k). Settings > Graphics "Tree density" keeps
+   its five steps and gains the far radius.
+4. **Species and height from the data**: swissTLM3D gives height; species
+   from the `Wald` / `Gebuesch` / `Gehoelz` classes and altitude (conifers
+   above 1 200 m) at extraction. Other regions: `build_world_forests.py`
+   fills OSM `landuse=forest` / `natural=wood` polygons at a base-tier
+   spacing (1 tree / 60 m², conifer / broadleaf by `leaf_type`) into the
+   same `vegetation_E_N.bin` files, per pack like the roads (§13.9).
+5. **Measure, not guess**: `tests/probe_forest_fps.gd` loads the Zürich
+   Oberland tiles (dense forest), renders 10 s from 1 000 ft and prints
+   frame time, triangles and draw calls; target ≥ 60 fps on this machine
+   with "High", and a screenshot from the cockpit, from 3 000 ft and from
+   above (the top cap).
+
+Order: 2 + 3 first with a placeholder atlas rendered from the existing tree
+(the FPS fix), then the Blender bake with real species, then 4.
+
+### 14.3 Built 2026-11-08 — steps 1-3 and the atlas bake
+
+- `S3DVegetationManager` (scenery3d submodule) gained **card mode**
+  (`card_mode`, `atlas_path`, `atlas_meta_path`, `near_range_m` 2 500,
+  `far_range_m` 8 000, `far_fraction` 0.25, `far_scale` 1.6,
+  `snap_to_terrain`): the 8-triangle card mesh is built in code, one shared
+  `ShaderMaterial` on `addons/scenery3d/shaders/tree.gdshader`, species from
+  `trees/tree_atlas.json`, conifers by altitude (`pick_species`: 25 % at
+  700 m rising to 97 % at 1 350 m), per tile a near and a far
+  `MultiMeshInstance3D` with visibility ranges, at most three tiles built per
+  frame, the load radius follows the far range. `tile_stats(e, n)` exposes
+  CPU-side counts for tests (the headless renderer keeps no instance data).
+- **Terrain snapping.** The SwissTopo records carry a 1 m DEM ground height;
+  on the SRTM base tier most trees sat metres under the surface and forests
+  looked like scattered bushes. The host hands the manager Scenery3D's
+  `S3DElevationDB`; every tree takes the drawn terrain's height, and a tile
+  built before its terrain arrived is rebuilt when the database's epoch moves.
+- **Atlas**: `scripts/trees/bake_tree_cards.py` (Blender 5.2 headless, Eevee,
+  transparent film, orthographic side + top renders, numpy alpha dilation
+  so mips never darken) from `scripts/trees/species.json` →
+  `provpilot/trees/tree_atlas.png` (1024 × 512, VRAM compressed, mipmaps)
+  + `tree_atlas.json`. First set: beech and oak from the two SwissTopo GLBs,
+  spruce and pine as procedural cone stacks (placeholders until BlenderKit
+  species are rendered).
+- **Measured** (`tests/probe_forest_fps.gd`, C172 at 1 000 ft over the
+  Tösstal, Tree density High = 0.75, real renderer, this M-series Mac):
+  **99.8 fps**, 244 vegetation tiles active, 7.3 M primitives and 2 400
+  draw calls per frame, 1.2 GB video memory. The old path put about a
+  billion triangles in the same view. Top view shows canopy discs, no
+  crosses; the chase view a closed canopy following the forest outlines.
+- Tests: `tests/smoke_vegetation.tscn` (15 checks: mesh, species, near /
+  far counts, ranges, shared material, altitude mix, heights, snapping,
+  density). Settings > Graphics > Tree density keeps its five steps.
+
+Open: BlenderKit species (CC0 / royalty-free pines, spruce, birch) through
+the same bake; forests outside Switzerland from OSM polygons (step 4);
+SRTM measures the canopy in forests, so the ground under a forest is
+already tree-height high — a later land-cover pass could lower it.
+
 ## See also
 
 - [gerys_plan.md](gerys_plan.md) — the plan this subtask serves

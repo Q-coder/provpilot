@@ -10,6 +10,10 @@ extends S3DVegetationManager
 
 
 func _ready() -> void:
+	if card_mode:
+		# docs/WORLD_SCENERY_DESIGN.md §14: the manager builds its own card
+		# mesh and material from trees/tree_atlas.png; no tree GLB is loaded.
+		return
 	if tree_mesh == null:
 		if not tree_scene_path.is_empty():
 			var loaded := _load_mesh_from_scene_path(tree_scene_path)

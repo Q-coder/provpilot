@@ -154,6 +154,13 @@ scale_jitter = 0.15
 height_to_mesh_unit = 0.06
 mesh_pitch_deg = 90.0
 density_fraction = 0.5
+card_mode = true
+atlas_path = "res://trees/tree_atlas.png"
+atlas_meta_path = "res://trees/tree_atlas.json"
+near_range_m = 2500.0
+far_range_m = 8000.0
+far_fraction = 0.25
+far_scale = 1.6
 script = ExtResource("veg_setup")
 tree_scene_path = "res://Tree_lowpoly.glb"
 

@@ -142,6 +142,8 @@ func _ready() -> void:
 	# the welcome screen is up (FlightSpawn turns it on at the destination).
 	_setup_world3d_globe()
 	_world.register_nodes(self, _ac, scenery3d_node, globe_node, vegetation_node)
+	if vegetation_node != null and scenery3d_node != null:
+		vegetation_node.set_elevation_db(scenery3d_node.get_elevation_db())   # trees stand on the drawn terrain (§14)
 	_world.set_vfr_map(_vfr_map)
 	_world.set_streaming(false)
 	jsb_node.set_ground_query(Callable(_world, "ground_height_geodetic"))

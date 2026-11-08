@@ -1,0 +1,10 @@
+{
+ "_comment": "Species of the tree card atlas (docs/WORLD_SCENERY_DESIGN.md §14). source: a .glb/.blend path or procedural:<kind>. Rendered by bake_tree_cards.py into provpilot/trees/tree_atlas.png (+ .json).",
+ "card_px": 256,
+ "species": [
+  {"name": "beech", "source": "/Users/gery/provpilot/online_scenery/Switzerland/trees/tree_lod2.glb", "conifer": false, "height_m": 24, "crown_ratio": 0.75},
+  {"name": "oak", "source": "/Users/gery/provpilot/online_scenery/Switzerland/trees/Tree_lowpoly.glb", "conifer": false, "height_m": 20, "crown_ratio": 0.8},
+  {"name": "spruce", "source": "procedural:spruce", "conifer": true, "height_m": 30, "crown_ratio": 0.35},
+  {"name": "pine", "source": "procedural:pine", "conifer": true, "height_m": 24, "crown_ratio": 0.5}
+ ]
+}
