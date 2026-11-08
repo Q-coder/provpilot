@@ -2350,7 +2350,32 @@ forest's far range); roads and water keep draping on the fine layer only.
 A tile waits for terrain only while its own terrain tile is absent
 (`pending_tile_count`, 0 of 240 in the Tösstal probe).
 
-Open: forests outside Switzerland from OSM polygons (step 4);
+### 14.4 Forests from OpenStreetMap and clear roads (2026-11-08, step 4)
+
+gery: "continue with step 2 [the other regions]; generally try to keep roads
+clear of trees, even inside forests." Per-tree files do not scale (CH is
+1.7 GB; Germany would be 15 GB in a base pack), so the other regions get
+**polygons, filled at load time**: `scripts/build_world_forests.py --region
+<id>` streams the Geofabrik PBF (pyosmium, system python3) and writes per
+1 km square `vegetation/forest_E_N.bin` (format FOR1: forest polygons from
+`landuse=forest` / `natural=wood` with the leaf type → broadleaf / conifer /
+mixed and a density of 1 tree / 36 m², plus **corridors** = road and rail
+centre lines with a half width per class, motorway 16 m … track 3 m, rail
+5 m) for the squares that have a terrain tile. A few KB per square:
+Switzerland's corridors are 7 KB a square, Austria's forests ≈ 20 000
+squares. `S3DVegetationManager` fills the polygons on its worker thread
+(jittered grid at the spacing, deterministic per square, holes honoured,
+`species_hint` from the leaf type) and drops every tree within a corridor's
+half width + 1 m. The corridors of every forest file of a square also thin
+the **surveyed** `vegetation_E_N.bin` trees of that square, across packs, so
+the SwissTopo forests clear their roads too (`--roads-only` bake for the
+Swiss base pack); where a surveyed tile exists the polygon fill stands
+down (surveyed data wins). Tests: `tests/smoke_forest_tiles.tscn` (fill
+count against the polygon area, no tree in a hole or a corridor, leaf type
+→ species group, surveyed tile thinned by the corridor, forest file standing
+down) and the Tösstal probe at 600 ft (roads clear through the Bauma forest).
+
+Open:
 SRTM measures the canopy in forests, so the ground under a forest is
 already tree-height high — a later land-cover pass could lower it.
 

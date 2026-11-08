@@ -38,7 +38,10 @@ func _ready() -> void:
 	root._cancel_intro_zoom()
 	root._welcome_screen.visible = false
 	var veg = root.vegetation_node
-	veg.vegetation_paths = PackedStringArray([veg_dir])
+	var paths: PackedStringArray = veg.vegetation_paths   # keep the library's dirs (corridor files of the base packs)
+	if not paths.has(veg_dir):
+		paths.append(veg_dir)
+	veg.vegetation_paths = paths
 	root._settings.apply_tree_density(veg)
 	print("[forest] card_mode %s, species %d, density idx %d -> fraction %.2f, near %.0f m, far %.0f m" % [str(veg.card_mode), veg.get_species_count(), density, veg.density_fraction, veg.near_range_m, veg.far_range_m])
 	await get_tree().create_timer(12.0).timeout   # tiles stream in
