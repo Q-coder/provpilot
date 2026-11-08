@@ -55,7 +55,7 @@ func _ready() -> void:
 		prims += Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
 		calls += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
 	var fps := frames / t
-	print("[forest] %d vegetation tiles active (%d before the measurement)" % [veg.get_active_tile_count(), tiles_before])
+	print("[forest] %d vegetation tiles active (%d before the measurement), %d still waiting for terrain heights" % [veg.get_active_tile_count(), tiles_before, veg.pending_tile_count()])
 	print("[forest] %.1f fps over %.1f s, %.1f M primitives / frame, %.0f draw calls / frame, %.0f MB video memory" % [fps, t, prims / frames / 1e6, calls / frames, Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0])
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png(out.path_join("forest_cockpit.png"))

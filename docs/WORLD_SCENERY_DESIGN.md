@@ -2335,6 +2335,21 @@ texture that renders black. The atlas has seven species: beech and oak
 (the spruce column), Grand Fir, Pine Tree (all royalty-free, authors in the
 JSON). Conifers = species 4-6 in `pick_species`.
 
+**The rectangle around the aircraft** (gery 2026-11-08: "trees pop up from
+out of nowhere, especially on low passes"): the tile manager fed the
+elevation database only for tiles inside the fine-LOD box
+(`LOD_DISCARD_THRESHOLD`, to bound the 4 MB heightmaps of the detail
+packs). Outside the box a forest tile stood on its record heights, often
+under the SRTM surface, and as the box swept over it the tile snapped up:
+buried trees appearing along a rectangle. `S3DElevationDB` now has a
+**coarse layer**: every loaded terrain tile leaves a ≤ 65 px copy
+(`load_coarse_tile`, 4 KB; 289 tiles ≈ 5 MB) for as long as it is loaded,
+`get_elevation_grid_any` / `has_any_tile` read fine-else-coarse. The
+vegetation snaps from that layer out to the terrain radius (8 tiles, the
+forest's far range); roads and water keep draping on the fine layer only.
+A tile waits for terrain only while its own terrain tile is absent
+(`pending_tile_count`, 0 of 240 in the Tösstal probe).
+
 Open: forests outside Switzerland from OSM polygons (step 4);
 SRTM measures the canopy in forests, so the ground under a forest is
 already tree-height high — a later land-cover pass could lower it.

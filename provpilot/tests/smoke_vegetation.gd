@@ -40,6 +40,8 @@ func _write_tile(path: String, count: int) -> void:
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(TMP + "/vegetation")
+	for f in DirAccess.get_files_at(TMP + "/vegetation"):   # a clean scratch dir: no tile from an earlier run
+		DirAccess.remove_absolute(TMP + "/vegetation/" + f)
 	_write_tile("%s/vegetation/vegetation_%d_%d.bin" % [TMP, TILE_E, TILE_N], 4000)
 	var veg := S3DVegetationManager.new()
 	veg.frame_mode = 0
@@ -119,7 +121,8 @@ func _ready() -> void:
 	db.set_origin_north(TILE_N + 512.0)
 	var img := Image.create(33, 33, false, Image.FORMAT_RF)
 	img.fill(Color(777.0, 0, 0, 1))
-	db.load_tile(int(floor((TILE_E + 512.0) / 1024.0)), int(floor((TILE_N + 512.0) / 1024.0)), img)
+	# the coarse layer (every loaded terrain tile leaves a <= 65 px copy) is enough for the trees
+	db.load_coarse_tile(int(floor((TILE_E + 512.0) / 1024.0)), int(floor((TILE_N + 512.0) / 1024.0)), img)
 	veg.set_elevation_db(db)
 	veg.snap_to_terrain = true   # drops the tiles; they rebuild on the terrain
 	waited = 0.0
@@ -130,7 +133,10 @@ func _ready() -> void:
 		st2 = veg.tile_stats(TILE_E, TILE_N)
 		if st2.get("near", 0) > 0 and int(st2.get("snapped", 0)) > 0:
 			break
-	_check(int(st2.get("snapped", 0)) == 4000 and absf(float(st2.get("ground_min", 0.0)) - 777.0) < 0.01 and absf(float(st2.get("ground_max", 0.0)) - 777.0) < 0.01, "every tree snaps to the terrain height (%d snapped, ground %.1f .. %.1f m)" % [int(st2.get("snapped", 0)), float(st2.get("ground_min", 0.0)), float(st2.get("ground_max", 0.0))])
+	_check(int(st2.get("snapped", 0)) == 4000 and absf(float(st2.get("ground_min", 0.0)) - 777.0) < 0.01 and absf(float(st2.get("ground_max", 0.0)) - 777.0) < 0.01, "every tree snaps to the terrain height from the coarse layer (%d snapped, ground %.1f .. %.1f m)" % [int(st2.get("snapped", 0)), float(st2.get("ground_min", 0.0)), float(st2.get("ground_max", 0.0))])
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(veg.pending_tile_count() == 0 and not bool(st2.get("snap_pending", true)), "no tile left waiting for terrain (pending %d, tile snap_pending %s, active %d)" % [veg.pending_tile_count(), str(st2.get("snap_pending")), veg.get_active_tile_count()])
 	# density: Medium = 0.5 keeps about half
 	veg.density_fraction = 0.5
 	waited = 0.0
