@@ -1729,8 +1729,8 @@ void ItAutoflight::athr_loop()
 	// Landed in RETD with the levers at idle: the ATS lets go (silently, as
 	// FlightGear's model does when a reverser deploys) and the AUTO THROT
 	// solenoid switch drops. FlightGear keeps it in RETD until reverse is
-	// pulled; ProvPilot has no reverser control, so the retard is the end of
-	// its job (gery, 2026-11-07).
+	// pulled; here the retard is the end of its job (gery, 2026-11-07), and
+	// a reverser deploying (the R key) drops it through athr-avail as well.
 	if (b(OUT("athr")) && tm == 1 && inb("gear/gear[1]/wow") && inb("gear/gear[2]/wow"))
 	{
 		const double idle = in("systems/engines/limit/idle-norm") + 0.02;

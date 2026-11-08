@@ -69,6 +69,8 @@ func _ready() -> void:
 		af.panel("spdAdjust", -10.0)   # SPD SEL syncs the bug to the IAS: wind it down to 160
 	af.panel("ils", 0.0)
 	af.panel("autoLand", 0.0)   # AUTO LAND: flare, rollout
+	# reverse thrust in the air: FlightGear's toggleRevThrust only stows and idles
+	_check(rig.toggle_reverse_thrust(jsb) and jsb.get_property("/systems/engines/reverse-1/engage") < 0.5 and not rig.is_reverse_engaged(), "airborne, the reverse toggle refuses (FlightGear: on the ground with the levers at idle only)")
 	var t := 0.0
 	var captured_at := -1.0
 	var tracked := 0
@@ -84,6 +86,11 @@ func _ready() -> void:
 	var saw_rollout := false
 	var ap_on_rollout := false
 	var min_gs := 1e9
+	var rev_at := -1.0
+	var rev_pos := 0.0
+	var rev_thrust := 0.0
+	var gs_at_rev := 0.0
+	var gs_end := 0.0
 	while t < 330.0:
 		await get_tree().create_timer(2.0).timeout
 		t += 2.0
@@ -120,7 +127,20 @@ func _ready() -> void:
 			ats_off_at = t
 			print("  [diag] ATS off at t+%.0f (%.0f s after touchdown): levers %.3f / %.3f, idle-norm %.3f, input athr %s, thr FMA %s/%s" % [t, t - touchdown_at, jsb.get_property("/systems/engines/control-1/throttle-pos"), jsb.get_property("/systems/engines/control-2/throttle-pos"), jsb.get_property("/systems/engines/limit/idle-norm"), str(fgc.value_of("it-autoflight/input/athr")), str(af.get_value("instrumentation/fma/thr-mode-a")), str(af.get_value("instrumentation/fma/thr-mode-b"))])
 		if touchdown_at >= 0.0:
-			min_gs = minf(min_gs, jsb.get_property("velocities/groundspeed-kt"))
+			min_gs = minf(min_gs, jsb.get_property("velocities/vg-fps") * 0.592484)
+			gs_end = jsb.get_property("velocities/vg-fps") * 0.592484
+			if ats_off_at >= 0.0 and rev_at < 0.0 and t >= ats_off_at + 2.0:
+				# the R key: reversers out, then the throttle axis commands reverse power
+				rig.toggle_reverse_thrust(jsb)
+				jsb.set_input_throttle(1.0)
+				rev_at = t
+				gs_at_rev = gs_end
+				print("  [diag] reverse selected at t+%.0f, gs %.0f kt, engage %s" % [t, gs_at_rev, str(jsb.get_property("/systems/engines/reverse-1/engage"))])
+			if rev_at >= 0.0:
+				rev_pos = maxf(rev_pos, jsb.get_property("/engines/engine[0]/reverser-pos-norm"))
+				rev_thrust = minf(rev_thrust, jsb.get_property("propulsion/engine[0]/thrust-lbs"))
+				if int(t) % 10 == 0:
+					print("  [diag] t+%3.0f reverse: buckets %.2f / %.2f, thrust %6.0f / %6.0f lbs, n1 %.0f, throttle-fdm %.2f, gs %.0f" % [t, jsb.get_property("/engines/engine[0]/reverser-pos-norm"), jsb.get_property("/engines/engine[1]/reverser-pos-norm"), jsb.get_property("propulsion/engine[0]/thrust-lbs"), jsb.get_property("propulsion/engine[1]/thrust-lbs"), jsb.get_property("/engines/engine[0]/n1-actual"), jsb.get_property("/systems/engines/control-1/throttle-fdm"), gs_end])
 			if t >= touchdown_at + 40.0:
 				break
 		if agl >= 150.0 and not af.is_engaged():
@@ -131,6 +151,12 @@ func _ready() -> void:
 	_check(ats_off_at >= 0.0 and ats_off_at - touchdown_at <= 20.0 and float(fgc.value_of("it-autoflight/input/athr")) < 0.5, "the ATS lets go once it has retarded the levers to idle on the ground, the AUTO THROT switch drops (%.0f s after touchdown)" % (ats_off_at - touchdown_at))
 	_check(tracked >= 20 and off_beam == 0, "glideslope needle within 0.15 norm from capture + 40 s down to 150 ft (%d samples, worst %.2f, %d off)" % [tracked, worst, off_beam])
 	_check(tracked >= 20 and loc_worst < 0.1, "localizer needle centred on final, inside the flare's 0.1 gate (worst %.2f)" % loc_worst)
+	_check(rev_at >= 0.0 and rev_pos >= 0.99, "the R key on the ground at idle deploys the reversers (buckets %.2f)" % rev_pos)
+	_check(rev_thrust < -2000.0, "with the throttle up the engines pull backwards (thrust %.0f lbs)" % rev_thrust)
+	_check(rev_at >= 0.0 and gs_end < gs_at_rev - 30.0, "the aircraft slows under reverse (%.0f -> %.0f kt)" % [gs_at_rev, gs_end])
+	rig.toggle_reverse_thrust(jsb)
+	await get_tree().create_timer(1.0).timeout
+	_check(jsb.get_property("/systems/engines/reverse-1/engage") < 0.5 and jsb.get_property("/systems/engines/reverse-2/engage") < 0.5 and jsb.get_input_throttle() < 0.01 and not rig.is_reverse_engaged(), "the key again stows the reversers and idles the levers")
 	_check(absf(P.call("it-autoflight/internal/drift-angle-deg")) < 5.0, "the DFGS drift angle is a real track - heading difference (%.2f deg)" % P.call("it-autoflight/internal/drift-angle-deg"))
 	_check(absf(P.call("instrumentation/nav/gs-target-deg") - 3.3) < 0.01, "the receiver publishes the site's 3.3 deg path (gs-target-deg %.2f)" % P.call("instrumentation/nav/gs-target-deg"))
 	if _fails.is_empty():

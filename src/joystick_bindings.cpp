@@ -53,6 +53,7 @@ static const struct { const char *id; const char *label; } BUTTON_ACTIONS[] = {
 	{"trim_up", "Pitch trim up"},
 	{"trim_down", "Pitch trim down"},
 	{"brakes", "Hold brakes"},
+	{"reverse_toggle", "Reverse thrust on / off"},
 	{"look_left", "Look left"},
 	{"look_right", "Look right"},
 	{"look_up", "Look up"},
@@ -249,6 +250,7 @@ void JoystickBindings::apply_defaults()
 	btn("trim_up", JOY_BUTTON_Y);
 	btn("trim_down", JOY_BUTTON_X);
 	btn("brakes", JOY_BUTTON_A);
+	btn("reverse_toggle", -1);
 	btn("look_left", JOY_BUTTON_DPAD_LEFT);
 	btn("look_right", JOY_BUTTON_DPAD_RIGHT);
 	btn("look_up", JOY_BUTTON_DPAD_UP);

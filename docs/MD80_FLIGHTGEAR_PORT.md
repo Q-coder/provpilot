@@ -145,7 +145,7 @@ values.
 - Flap lever: the FDM reads `controls/flight/flaps` (lever 0..0.91) which
   the mirror derives from `fcs/flap-cmd-norm` with the cfg detents; the
   FDM's own `fcs/flap-pos-deg` drives the surfaces. Check in flight.
-- Thrust reversers, autobrake, pushback, ground services: not wired.
+- Autobrake, pushback, ground services: not wired. Thrust reversers: step 25.
 
 ### Step 3 — check flight fixes (2026-10-31, gery's first flight)
 Reported: fans and gear doors on wrong pivots and "detached" parts, no
@@ -917,3 +917,11 @@ FlightGear's pick on `LGLever` binds the press to `controls.gearDownSmart(1)` an
 - `nasal_shims.json`: `controls.gearDownSmart(` → action kind `gear_smart`; `controls.gearDown(` stays `gear_cmd`.
 - `FGControls::nasal_action`: `gear_cmd` follows the sign of the argument (positive lowers, negative raises, zero changes nothing); `gear_smart` toggles through `provpilot/gear-toggle` on a non-zero argument and ignores the release.
 - `smoke_md80_cockpit`: pressing the handle moves the gear command, releasing the button leaves it, a second click moves it back (86 PASS). `smoke_a10_controls` (its own gear-toggle pick) 26 PASS.
+
+### Step 25 — thrust reversers (2026-11-08, gery: "a button to toggle between normal and reverse thrust; the throttle handles on the gamepad then increase and decrease reverse thrust; ideally t or r")
+
+FlightGear's MD-80 has no reverser lever of its own either: the DEL key calls `systems.toggleRevThrust()`, which flips `/systems/engines/reverse-N/engage` for both engines when a main gear is on the ground and `/systems/engines/throttle-compare-max` (the most forward lever) is at idle, and otherwise stows them and idles the levers. The JSBSim `Reversers` channel (Systems/md-80-*-engine-thrlim.xml) does the rest: the flag swings the buckets (`reverser-pos-norm`, 0.5/s with hydraulic pressure, π rad into `propulsion/engine[n]/reverser-angle-rad` so the direct thruster's thrust goes negative), the throttle input is read through a 0..0.72 table as reverse power, `control-N/throttle-pos` reads 0 (no forward thrust) and the DFGS's `athr-avail` drops at the first centimetre of bucket travel, which the ported ATS already honoured. The port needed only the toggle:
+
+- `AircraftRig::toggle_reverse_thrust(jsb)` (bound; `is_reverse_engaged`) ports `toggleRevThrust`: the flags come from the cfg `[engines] reverse_engage_props` (one FDM property per engine), the idle test from `reverse_lever_max_prop` (the throttle input when absent), the ground test from the FDM's `gear/wow`. Aircraft without the cfg entries return false.
+- Keyboard: `reverse_toggle` on **R** ("Reverse thrust (on the ground, levers at idle)"); the flight-model start moved to **Shift+R**. `KeyBindings::load` migrates: an action absent from `keyboard.cfg` keeps its default key, and a stored action of the same section that still sits on that key only because it used to be its own default moves on to its current default (a deliberate rebinding stays). Gamepad: button action `reverse_toggle` ("Reverse thrust on / off"), unbound by default, dispatched in `node_3d.gd` next to the flap buttons.
+- `smoke_md80_ils`: the toggle refuses in the air; after the ATS lets go on the rollout the toggle deploys the buckets (1.00 within 8 s), the throttle input at 1 pulls about 7 400 lb per engine backwards at N1 80, the aircraft slows, and the toggle again stows them with the levers idled. `smoke_keyboard`: the migration (fdm_start R → Shift+R when reverse_toggle is new; J stays J).

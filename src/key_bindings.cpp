@@ -1,5 +1,7 @@
 #include "key_bindings.h"
 
+#include <vector>
+
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/classes/config_file.hpp>
 #include <godot_cpp/classes/engine.hpp>
@@ -198,11 +200,12 @@ namespace
 		{"flaps_up", "flight", "Flaps up a notch", "Shift+F", ""},
 		{"gear_toggle", "flight", "Landing gear", "G", ""},
 		{"speedbrake_toggle", "flight", "Speed brakes", "B", ""},
+		{"reverse_toggle", "flight", "Reverse thrust (on the ground, levers at idle)", "R", ""},
 		{"brakes_on", "flight", "Wheel brakes on", ".", ""},
 		{"brakes_off", "flight", "Wheel brakes off", ",", ""},
 		{"nose_steer_toggle", "flight", "Nose-wheel steering range", "Ctrl+W", ""},
 		{"landing_lights", "flight", "Landing / taxi lights", "L", ""},
-		{"fdm_start", "flight", "Start the flight model", "R", ""},
+		{"fdm_start", "flight", "Start the flight model", "Shift+R", ""},
 		{"fdm_stop", "flight", "Stop the flight model", "E", ""},
 		{"camera_flip", "flight", "Next camera (cockpit / orbit / chase)", "C", ""},
 		{"camera_flip_back", "flight", "Previous camera (cockpit / chase / orbit)", "Shift+C", ""},
@@ -806,15 +809,55 @@ void KeyBindings::load()
 		return;
 	}
 	int n = 0;
-	for (Action &a : table.actions)
+	std::vector<bool> stored(table.actions.size(), false);
+	for (size_t ai = 0; ai < table.actions.size(); ai++)
 	{
+		Action &a = table.actions[ai];
 		if (!cf->has_section_key(a.section, String(a.id)))
 			continue;
 		const String v = cf->get_value(a.section, String(a.id), "");
 		const PackedStringArray parts = v.split(",", false);
 		for (int i = 0; i < SLOTS; i++)
 			a.keys[i] = i < parts.size() ? KeyChord::parse(parts[i]) : KeyChord();
+		stored[ai] = true;
 		n++;
+	}
+	// An action the file does not know yet (added since the file was written)
+	// keeps its default key. When a stored action of the same section still
+	// sits on that key because the key used to be ITS default (the file
+	// documents every key, so an untouched action is stored too), that action
+	// moves on to its current default: the catalog's new layout wins over a
+	// stale default, a deliberate rebinding stays.
+	for (size_t ai = 0; ai < table.actions.size(); ai++)
+	{
+		const Action &fresh = table.actions[ai];
+		if (stored[ai] || fresh.shared)
+			continue;
+		for (int fi = 0; fi < SLOTS; fi++)
+		{
+			if (!fresh.keys[fi].is_bound())
+				continue;
+			for (size_t bi = 0; bi < table.actions.size(); bi++)
+			{
+				Action &b = table.actions[bi];
+				if (bi == ai || !stored[bi] || b.shared || b.section != fresh.section)
+					continue;
+				bool on_default = true;
+				for (int i = 0; i < SLOTS; i++)
+					on_default = on_default && b.keys[i] == b.defaults[i];
+				if (on_default)
+					continue;
+				for (int i = 0; i < SLOTS; i++)
+				{
+					if (!(b.keys[i] == fresh.keys[fi]))
+						continue;
+					for (int j = 0; j < SLOTS; j++)
+						b.keys[j] = b.defaults[j];
+					UtilityFunctions::print("KeyBindings: ", String(fresh.id), " is new on ", fresh.keys[fi].to_string(), "; ", String(b.id), " moves to its default ", b.keys[0].to_string());
+					break;
+				}
+			}
+		}
 	}
 	table.rebuild_modifiers();
 	UtilityFunctions::print("KeyBindings: ", n, " actions from ", path);

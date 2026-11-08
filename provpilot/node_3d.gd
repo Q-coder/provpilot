@@ -359,6 +359,8 @@ func _poll_joystick_buttons() -> void:
 		jsb_node.increase_flaps()   # more flaps = the lever down a notch
 	if JoystickConfig.is_button_just_pressed("flaps_up"):
 		jsb_node.decrease_flaps()
+	if JoystickConfig.is_button_just_pressed("reverse_toggle"):
+		_aircraft.toggle_reverse_thrust(jsb_node)   # Settings > Joystick; the R key does the same
 	jsb_node.set_trim_buttons(JoystickConfig.get_button("trim_up"), JoystickConfig.get_button("trim_down"))
 
 

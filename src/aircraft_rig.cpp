@@ -63,6 +63,8 @@ void AircraftRig::_bind_methods()
 	ClassDB::bind_method(D_METHOD("update", "jsb", "delta", "user_volume_pct"), &AircraftRig::update);
 	ClassDB::bind_method(D_METHOD("update_systems", "jsb", "delta", "rendering_cam", "pick_camera", "night", "sim_time_seconds", "sounds_active", "user_volume_pct"), &AircraftRig::update_systems);
 	ClassDB::bind_method(D_METHOD("poll_keys", "jsb"), &AircraftRig::poll_keys);
+	ClassDB::bind_method(D_METHOD("toggle_reverse_thrust", "jsb"), &AircraftRig::toggle_reverse_thrust);
+	ClassDB::bind_method(D_METHOD("is_reverse_engaged"), &AircraftRig::is_reverse_engaged);
 	ClassDB::bind_method(D_METHOD("set_parking_brake_at_start", "jsb"), &AircraftRig::set_parking_brake_at_start);
 	ClassDB::bind_method(D_METHOD("get_parking_brake"), &AircraftRig::get_parking_brake);
 	ClassDB::bind_method(D_METHOD("set_parking_brake", "on"), &AircraftRig::set_parking_brake);
@@ -144,6 +146,11 @@ bool AircraftRig::load_config(const String &p_aircraft_id)
 	cockpit_controls->set_gear_retractable(gear_retractable);
 	cs->set_gear_retract_seconds(cfg->get_float("gear", "retract_seconds", 4.0));
 	gear_anim_name = cfg->get_string("gear", "animation", "");
+
+	// Thrust reversers (the MD-80's JSBSim systems: flags the throttle input is read through).
+	reverse_engage_props = cfg->get_string_array("engines", "reverse_engage_props", Array());
+	reverse_lever_prop = cfg->get_string("engines", "reverse_lever_max_prop", "");
+	reverse_engaged = false;
 
 	// Flap detents (cockpit lever notches).
 	const Array positions = cfg->get_float_array("flaps", "positions", Array());
@@ -1547,6 +1554,19 @@ void AircraftRig::poll_keys(Object *p_jsb)
 	{
 		speedbrake_key_held = false;
 	}
+	// Reverse thrust (Settings > Keyboard reverse_toggle; the pad button goes the same way)
+	if (KeyBindings::pressed("reverse_toggle"))
+	{
+		if (!reverse_key_held)
+		{
+			reverse_key_held = true;
+			toggle_reverse_thrust(fdm);
+		}
+	}
+	else
+	{
+		reverse_key_held = false;
+	}
 	// Landing / taxi lights
 	if (KeyBindings::pressed("landing_lights"))
 	{
@@ -1583,6 +1603,49 @@ void AircraftRig::poll_keys(Object *p_jsb)
 		landing_key_held = false;
 	}
 }
+
+// FlightGear's systems.toggleRevThrust() (MD-80 engines.nas): with a main
+// gear on the ground and both levers at idle the reversers toggle (stowing
+// them also idles the levers); airborne or with power on, the call only
+// stows them and idles the levers. The FDM's Reversers channel swings the
+// buckets from the flags and turns the throttle input into reverse power,
+// the DFGS's athr-avail drops when a bucket moves (the ATS lets go).
+bool AircraftRig::toggle_reverse_thrust(Object *p_jsb)
+{
+	JSBGodot *fdm = Object::cast_to<JSBGodot>(p_jsb);
+	if (fdm == nullptr || reverse_engage_props.is_empty())
+	{
+		return false;
+	}
+	bool engaged = false;
+	for (int i = 0; i < reverse_engage_props.size(); i++)
+	{
+		engaged = engaged || fdm->get_property(String(reverse_engage_props[i])) > 0.5;
+	}
+	const double lever = reverse_lever_prop.is_empty() ? fdm->get_input_throttle() : fdm->get_property(reverse_lever_prop);
+	const bool may_toggle = fdm->get_weight_on_wheels() && lever <= 0.05;
+	const bool next = may_toggle && !engaged;
+	if (!next)
+	{
+		fdm->set_input_throttle(0.0f);
+	}
+	for (int i = 0; i < reverse_engage_props.size(); i++)
+	{
+		fdm->set_property(String(reverse_engage_props[i]), next ? 1.0 : 0.0);
+	}
+	if (next != engaged)
+	{
+		UtilityFunctions::print("Reverse thrust: ", next ? "ENGAGED (the throttle commands reverse power)" : "STOWED");
+	}
+	else if (!may_toggle && !engaged)
+	{
+		UtilityFunctions::print("Reverse thrust: only on the ground with the levers at idle");
+	}
+	reverse_engaged = next;
+	return true;
+}
+
+bool AircraftRig::is_reverse_engaged() const { return reverse_engaged; }
 
 void AircraftRig::set_parking_brake_at_start(Object *p_jsb)
 {

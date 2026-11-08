@@ -130,6 +130,12 @@ namespace jsbgodot
         // Flight keys while flying: Shift+Ctrl+M cockpit hotspots, B speed
         // brakes (fcs/speedbrake-cmd-norm), L landing / taxi lights.
         void poll_keys(Object *jsb);
+        // Thrust reversers (cfg [engines] reverse_engage_props): FlightGear's
+        // toggleRevThrust: on the ground with the levers at idle the flags flip
+        // and the throttle inputs command reverse power; anywhere else the
+        // call stows them and idles the levers. False when the aircraft has none.
+        bool toggle_reverse_thrust(Object *jsb);
+        bool is_reverse_engaged() const;
         // Every flight starts with the parking brake set (release with ",",
         // set again with "." or the cockpit handle).
         void set_parking_brake_at_start(Object *jsb);
@@ -215,6 +221,10 @@ namespace jsbgodot
         bool speedbrake_out = false;
         bool hotspot_key_held = false;
         bool speedbrake_key_held = false;
+        bool reverse_key_held = false;
+        Array reverse_engage_props;      // [engines] reverse_engage_props: the FDM flags, one per engine
+        String reverse_lever_prop;       // [engines] reverse_lever_max_prop: the most forward lever (idle check)
+        bool reverse_engaged = false;
         bool landing_key_held = false;
         Array landing_props, flood_props, landing_switch_props; // [lights] *_props (see setup)
         double landing_switch_on = 1.0, landing_switch_off = 0.0;
