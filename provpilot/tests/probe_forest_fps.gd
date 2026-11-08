@@ -4,28 +4,33 @@ extends Node
 ## tiles of the online scenery, airborne at 1 000 ft. Prints frame time,
 ## primitives and draw calls averaged over a few seconds, saves screenshots
 ## from the cockpit, from the chase camera and straight down.
-## Run (real renderer): godot/bin/godot.macos.editor.double.arm64 --path provpilot res://tests/probe_forest_fps.tscn -- <out_dir> [veg_dir] [density 0-4]
-const E := 2707800.0
-const N := 1246400.0
+## Run (real renderer): godot/bin/godot.macos.editor.double.arm64 --path provpilot res://tests/probe_forest_fps.tscn -- <out_dir> [veg_dir] [density 0-4] [E N heading agl_ft]
+## Default: the Tösstal forests (Zürich Oberland); e.g. 2674500 1186500 160 2500 for Engelberg and the tree line.
+const E_DEFAULT := 2707800.0
+const N_DEFAULT := 1246400.0
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	var out: String = args[0] if args.size() > 0 else "/tmp"
 	var veg_dir: String = args[1] if args.size() > 1 else "/Users/gery/provpilot/online_scenery/Switzerland/vegetation"
 	var density: int = int(args[2]) if args.size() > 2 else 3
+	var E: float = float(args[3]) if args.size() > 3 else E_DEFAULT
+	var N: float = float(args[4]) if args.size() > 4 else N_DEFAULT
+	var heading: float = float(args[5]) if args.size() > 5 else 40.0
+	var agl_ft: float = float(args[6]) if args.size() > 6 else 1000.0
 	DirAccess.make_dir_recursive_absolute(out)
 	get_window().size = Vector2i(1600, 1000)
 	var root: Node = (load("res://node_3d.tscn") as PackedScene).instantiate()
 	add_child(root)
 	await get_tree().create_timer(3.0).timeout
-	root._settings.get_settings()["aircraft_c172p_start_agl_ft"] = 1000.0
+	root._settings.get_settings()["aircraft_c172p_start_agl_ft"] = agl_ft
 	root._settings.get_settings()["aircraft_c172p_start_speed_kt"] = 100.0
-	root._settings.get_settings()["aircraft_c172p_start_heading_deg"] = 40.0
+	root._settings.get_settings()["aircraft_c172p_start_heading_deg"] = heading
 	root._settings.get_settings()["tree_density"] = density
 	root._settings.get_settings()["weather_layers"] = []
 	root._settings.get_settings()["live_weather"] = false
 	root._push_weather_settings()
-	root._on_welcome_flight_requested("c172p", E, N, 40.0)
+	root._on_welcome_flight_requested("c172p", E, N, heading)
 	var waited := 0.0
 	while not root.terrain_initialized and waited < 60.0:
 		await get_tree().create_timer(0.5).timeout

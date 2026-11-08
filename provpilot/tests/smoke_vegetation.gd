@@ -32,7 +32,7 @@ func _write_tile(path: String, count: int) -> void:
 	for i in range(count):
 		f.store_float(rng.randf_range(0.0, 1024.0))   # dx
 		f.store_float(rng.randf_range(0.0, 1024.0))   # dz
-		f.store_float(500.0 + 900.0 * float(i) / float(count))   # ground_z: 500 .. 1400 m (beech country to spruce)
+		f.store_float(500.0 + 1700.0 * float(i) / float(count))   # ground_z: 500 .. 2200 m (beech country to the tree line)
 		f.store_float(rng.randf_range(8.0, 30.0))     # height
 		f.store_float(rng.randf_range(0.0, TAU))      # yaw
 		f.store_float(rng.randf_range(2.0, 6.0))      # crown radius
@@ -104,7 +104,8 @@ func _ready() -> void:
 		var ht: int = st.get("high_total", 1)
 		_check(lt > 100 and ht > 100 and float(lc) / lt < 0.4 and float(hc) / ht > 0.8, "conifers take over with altitude (below 700 m: %d of %d, above 1 300 m: %d of %d)" % [lc, lt, hc, ht])
 		_check(absf(float(st.get("far_height_ratio", 0.0)) - 1.6) < 0.01, "far trees are 1.6 x the near height (%.2f)" % float(st.get("far_height_ratio", 0.0)))
-		_check(float(st.get("min_height", 0.0)) >= 8.0 * 0.79 and float(st.get("max_height", 0.0)) <= 30.0 * 1.21, "card heights are the records' tree heights with the jitter (%.1f .. %.1f m)" % [float(st.get("min_height", 0.0)), float(st.get("max_height", 0.0))])
+		_check(float(st.get("max_height", 0.0)) <= 30.0 * 1.21 and float(st.get("low_mean_height", 0.0)) > 16.0 and float(st.get("low_mean_height", 0.0)) < 22.0, "card heights below 700 m are the records' tree heights (mean %.1f m, max %.1f m)" % [float(st.get("low_mean_height", 0.0)), float(st.get("max_height", 0.0))])
+		_check(int(st.get("alpine_total", 0)) > 200 and float(st.get("alpine_mean_height", 0.0)) < 0.65 * float(st.get("low_mean_height", 0.0)), "trees above 1 900 m shrink towards the tree line (mean %.1f m vs %.1f m below 700 m, %d trees)" % [float(st.get("alpine_mean_height", 0.0)), float(st.get("low_mean_height", 0.0)), int(st.get("alpine_total", 0))])
 	# terrain snapping: with the host's elevation database the trees stand on
 	# the drawn terrain (a flat 777 m tile here), not on the records' ground height
 	var db := S3DElevationDB.new()

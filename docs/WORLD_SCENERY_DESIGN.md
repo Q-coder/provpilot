@@ -2298,6 +2298,18 @@ weather's wind (`set_wind_speed_mps`, node_3d.gd polls the FDM's
 card's mean luminance is matched to the side card at bake time (0.9 ×) and
 it fades in only on steep views (view elevation 0.5-0.8).
 
+Tree line (gery: "I cannot check if the trees get smaller in the mountains
+and if the tree border is respected"): the swissTLM3D forest polygons end at
+the tree line by themselves (records taper from 1 800 m, none above 2 300 m;
+the pastures above stay bare), but the extraction gave every tree the same
+22 ± 4 m. The manager now scales the height by an altitude factor, 1.0 to
+1 300 m falling to 0.45 at 2 300 m (about 11 m at 2 000 m), and the card
+scales uniformly: the species' crown width is already in the square atlas
+image, scaling the card to the record's crown radius squeezed every tree to
+60 % of its drawn width. Probe over Engelberg towards the Titlis
+(`probe_forest_fps.gd -- <out> <veg> 3 2674500 1186500 160 2500`): forest
+to the tree line, small trees on the upper slopes, bare alps above.
+
 Open: BlenderKit species (CC0 / royalty-free pines, spruce, birch) through
 the same bake; forests outside Switzerland from OSM polygons (step 4);
 SRTM measures the canopy in forests, so the ground under a forest is
