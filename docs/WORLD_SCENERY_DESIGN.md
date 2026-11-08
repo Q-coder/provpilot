@@ -2499,6 +2499,53 @@ sprites came out flatter than the asset's thumbnail and a sprite layer is
 flat when flown through. Decision (gery): improve the raymarch (§10.2 rework)
 and keep the Cycles renders as the visual reference.
 
+### 14.7 Land cover from OpenStreetMap — fields, towns, water (2026-11-08)
+
+gery, with an OSM map and a satellite view of Drøbak–Vestby side by side:
+"I'm a bit worried that adding areas from OSM could make the scenery look
+very generic." Agreed, and the design follows the satellite image, not the
+map: OSM polygons decide *where* a class is, position-hashed patterns decide
+*what it looks like*. No flat tints.
+
+Data: `build_world_forests.py` now also collects land-cover areas into the
+same FOR1 files (kinds 4 water, 5 farmland, 6 grass / meadow / scrub / parks,
+7 built-up, 8 industrial, 9 bare rock / quarry, 10 glacier, 11 sand / beach;
+tag tables LANDUSE_KIND / NATURAL_KIND / LEISURE_KIND), simplified to 2 m,
+minimum areas per class. Only kinds 0-2 get trees (`fill_polygons` skips the
+rest). The Drøbak–ENGM test window: 23 555 land-cover areas next to 8 411
+forests, 6 KB per square (was ~5), so a region grows by about a quarter.
+
+Raster (`s3d_forest_file.cpp`, `lc_kind_rgb`): everything is a hash of the
+world position, so the pattern is identical at every resolution (256 px for
+the close LODs, 128 px further out, 16 px per square on the chunks) and
+continuous across squares.
+- Farmland: parcels 150 × 240 m in an orientation per 4 km block, every
+  boundary shifted by up to a third of a cell and the rows staggered per
+  column; three crop groups (greens, straw, soil) with 55 % of the parcels
+  of a 1.2 km block sharing its dominant group, per-parcel brightness,
+  faint furrows and boundary lines.
+- Built-up: a 70 m street grid in the block's orientation, roofs (tile,
+  grey, dark), gardens and yards as a 10 m speckle, desaturated.
+- Industrial: 40 m roof blocks in greys on a 120 m service grid.
+- Grass a softer green with 60 m mottling; rock grey, glacier white-blue,
+  sand beige, water a flat dark blue-grey.
+- Paint order: the wide classes, then forests, water last. Main roads
+  (half width ≥ 5.5 m: tertiary and up) as faint grey lines blended 60 %
+  into the ground; lanes, tracks and railways are not drawn — the first
+  attempt drew every lane and turned Vestby into a street map.
+
+Measured (Vestby, C172 at 3 000 ft, test bake): 73 fps, the same as
+forests alone. Tests: `smoke_landcover` 27 checks (lake colour, parcel
+mosaic ≥ 3 shades, town speckle, faint road, lake orientation),
+`smoke_forest_tiles` (a lake polygon gets no trees). A full rebake of the
+nine regions runs in the background (CH installed as well); colours and
+patterns are runtime, so tuning never needs a rebake.
+
+Open: the sea (coastline, not a polygon) is still plain terrain, so the
+Oslofjord reads as land; detail textures in a tile shader (furrows, roofs)
+for the low passes; landmark objects from BlenderKit placed by OSM tags
+(church towers, masts, silos, wind turbines).
+
 ## See also
 
 - [gerys_plan.md](gerys_plan.md) — the plan this subtask serves

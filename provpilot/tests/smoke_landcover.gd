@@ -35,12 +35,13 @@ func _poly_header(f: FileAccess, kind: int, density: float, height: float, rings
 
 ## A 400 x 400 m conifer square (100..500) with a 100 x 100 m hole (200..300), a
 ## 200 x 200 m broadleaf square (600..800), a road corridor along x = 150, half
-## width 6 m — the forest smoke's square.
+## width 6 m — the forest smoke's square — plus land cover: a lake (600..800 x
+## 100..300), farmland (100..500 x 600..1000) and a town (600..1000 x 350..550).
 func _write_forest(path: String, e: int, n: int) -> void:
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_buffer("FOR1".to_ascii_buffer())
 	f.store_32(1)
-	f.store_32(3)
+	f.store_32(6)
 	f.store_32(0)
 	f.store_double(float(e))
 	f.store_double(float(n))
@@ -51,6 +52,12 @@ func _write_forest(path: String, e: int, n: int) -> void:
 	_ring(f, [Vector2(600, 600), Vector2(800, 600), Vector2(800, 800), Vector2(600, 800), Vector2(600, 600)])
 	_poly_header(f, 3, 6.0, 0.0, 1)
 	_ring(f, [Vector2(150, 0), Vector2(150, 1024)])
+	_poly_header(f, 4, 0.0, 0.0, 1)
+	_ring(f, [Vector2(600, 100), Vector2(800, 100), Vector2(800, 300), Vector2(600, 300), Vector2(600, 100)])
+	_poly_header(f, 5, 0.0, 0.0, 1)
+	_ring(f, [Vector2(100, 600), Vector2(500, 600), Vector2(500, 1000), Vector2(100, 1000), Vector2(100, 600)])
+	_poly_header(f, 7, 0.0, 0.0, 1)
+	_ring(f, [Vector2(600, 350), Vector2(1000, 350), Vector2(1000, 550), Vector2(600, 550), Vector2(600, 350)])
 	f.close()
 
 ## A flat 34 px terrain tile at 600 m (the base tier's resolution).
@@ -100,11 +107,30 @@ func _ready() -> void:
 		_check(broad.g > conifer.g, "broadleaf is the lighter, conifer the darker green")
 		_check(_is_base(_px(img, 250.0, 250.0)), "the polygon's hole stays base colour")
 		_check(_is_base(_px(img, 1000.0, 1000.0)) and _is_base(_px(img, 50.0, 50.0)), "ground outside the polygons is base colour")
-		_check(_is_base(_px(img, 150.0, 400.0)), "the road corridor through the wood is cleared")
+		var road := _px(img, 150.0, 400.0)
+		_check(road.r - conifer.r > 0.1 and absf(road.r - road.g) < 0.08, "the road corridor through the wood is a faint grey line blended into the ground (%s)" % road)
+		var water := _px(img, 700.0, 200.0)
+		_check(water.b > water.g and water.g > water.r and water.b < 0.5, "the lake is a dark blue-grey (%s)" % water)
+		var shades := {}
+		for i in range(20):
+			var c := _px(img, 120.0 + i * 19.0, 620.0 + (i * 7) % 380)
+			shades[Color8(int(c.r8 / 12) * 12, int(c.g8 / 12) * 12, int(c.b8 / 12) * 12)] = true
+		_check(shades.size() >= 3, "farmland is a mosaic of parcels, not one tint (%d shades in 20 samples)" % shades.size())
+		var town_sum := Color(0, 0, 0)
+		var town_dark := 0
+		for i in range(40):
+			var c := _px(img, 610.0 + (i * 37) % 380, 360.0 + (i * 13) % 180)
+			town_sum += c
+			if c.r < 0.5 and c.g < 0.5:
+				town_dark += 1
+		town_sum /= 40.0
+		_check(absf(town_sum.r - town_sum.g) < 0.12 and town_dark >= 4, "the town is a grey-brown speckle of roofs and gardens (mean %s, %d dark of 40)" % [town_sum, town_dark])
 		_check(_is_forest(_px(img, 180.0, 400.0)), "the wood stands 30 m beside the road")
 		# orientation: the broadleaf square (NE quarter) lies at low columns (east) and high rows (north)
 		var ne := img.get_pixel(127 - int(floor(700.0 / 8.0)), int(floor(700.0 / 8.0)))
 		var sw := img.get_pixel(127 - int(floor(50.0 / 8.0)), int(floor(50.0 / 8.0)))
+		var ne_w := img.get_pixel(127 - int(floor(700.0 / 8.0)), int(floor(200.0 / 8.0)))
+		_check(ne_w.b > ne_w.g, "orientation: the lake lies at low columns (east) and low rows (south)")
 		_check(_is_forest(ne) and _is_base(sw), "orthophoto orientation: column 0 is the east edge, row 0 the south edge")
 		var forest_px := 0
 		for row in range(128):
@@ -112,7 +138,7 @@ func _ready() -> void:
 				if _is_forest(img.get_pixel(col, row)):
 					forest_px += 1
 		# (160 000 - 10 000 - 400 x 14) + 40 000 m2 / 64 m2 per px = 2 881
-		_check(forest_px > 2700 and forest_px < 3050, "forest area in pixels matches the polygons (%d px, 2 881 expected)" % forest_px)
+		_check(forest_px > 2700 and forest_px < 3050, "forest area in pixels matches the polygons (%d px, 2 881 expected; fields, town and lake not counted)" % forest_px)
 	var small: Image = tm.landcover_image(fpath, 16)
 	_check(small != null and small.get_width() == 16, "16 px raster for a far chunk sub-tile")
 	if small != null:
@@ -158,7 +184,7 @@ func _ready() -> void:
 		var mat_b: Material = tile_b.mesh.surface_get_material(0) if tile_b.mesh != null else null
 		var tex_a: Texture2D = mat_a.get_texture(BaseMaterial3D.TEXTURE_ALBEDO) if mat_a is StandardMaterial3D else null
 		var tex_b: Texture2D = mat_b.get_texture(BaseMaterial3D.TEXTURE_ALBEDO) if mat_b is StandardMaterial3D else null
-		_check(tex_a != null and tex_a.get_width() == 128, "the forest square's tile carries a 128 px land-cover texture")
+		_check(tex_a != null and (tex_a.get_width() == 128 or tex_a.get_width() == 256), "the forest square's tile carries a land-cover texture (%d px)" % (tex_a.get_width() if tex_a != null else 0))
 		_check(tex_b == null, "the square without a forest file keeps the shared ground material")
 	# the far chunk under the two tiles: a masked shader material that discards
 	# its fragments where an individual tile is drawn

@@ -30,6 +30,12 @@ func _ready() -> void:
 	root._settings.get_settings()["weather_layers"] = []
 	root._settings.get_settings()["live_weather"] = false
 	root._push_weather_settings()
+	# the probe's vegetation dir also paints the ground (land cover), before any tile is requested
+	if root.scenery3d_node != null and "landcover_paths" in root.scenery3d_node:
+		var lc: PackedStringArray = root.scenery3d_node.landcover_paths
+		if not lc.has(veg_dir):
+			lc.insert(0, veg_dir)
+			root.scenery3d_node.landcover_paths = lc
 	root._on_welcome_flight_requested("c172p", E, N, heading)
 	var waited := 0.0
 	while not root.terrain_initialized and waited < 60.0:

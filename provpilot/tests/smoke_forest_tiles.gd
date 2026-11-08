@@ -33,12 +33,13 @@ func _poly_header(f: FileAccess, kind: int, density: float, height: float, rings
 
 ## forest_E_N.bin: a 400 x 400 m conifer square (100..500) with a 100 x 100 m hole
 ## (200..300), a 200 x 200 m broadleaf square (600..800), a road corridor along
-## x = 150 from z = 0 to 1024, half width 6 m.
+## x = 150 from z = 0 to 1024, half width 6 m, and a lake (land cover kind 4,
+## 600..800 x 100..300) that must get no trees.
 func _write_forest(path: String, e: int, n: int, with_forest: bool) -> void:
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_buffer("FOR1".to_ascii_buffer())
 	f.store_32(1)
-	f.store_32(3 if with_forest else 1)
+	f.store_32(4 if with_forest else 1)
 	f.store_32(0)
 	f.store_double(float(e))
 	f.store_double(float(n))
@@ -48,6 +49,8 @@ func _write_forest(path: String, e: int, n: int, with_forest: bool) -> void:
 		_ring(f, [Vector2(200, 200), Vector2(300, 200), Vector2(300, 300), Vector2(200, 300), Vector2(200, 200)])
 		_poly_header(f, 0, 1.0 / 36.0, 20.0, 1)
 		_ring(f, [Vector2(600, 600), Vector2(800, 600), Vector2(800, 800), Vector2(600, 800), Vector2(600, 600)])
+		_poly_header(f, 4, 0.0, 0.0, 1)   # a lake: land cover, no trees
+		_ring(f, [Vector2(600, 100), Vector2(800, 100), Vector2(800, 300), Vector2(600, 300), Vector2(600, 100)])
 	_poly_header(f, 3, 6.0, 0.0, 1)
 	_ring(f, [Vector2(150, 0), Vector2(150, 1024)])
 	f.close()

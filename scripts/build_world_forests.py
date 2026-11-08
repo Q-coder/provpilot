@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Forests for the base tier from OpenStreetMap (docs/WORLD_SCENERY_DESIGN.md §14.2
-step 4): per 1024 m LV95 tile a `vegetation/forest_E_N.bin` with the forest
-polygons (landuse=forest, natural=wood; leaf_type -> broadleaf / conifer /
-mixed) and the road and railway corridors (centre line + half width) no tree
-may stand in. S3DVegetationManager fills the polygons with trees at load
-time (a few KB per tile instead of 24 bytes per tree) and applies the
+"""Forests and land cover for the base tier from OpenStreetMap (docs/WORLD_SCENERY_DESIGN.md
+§14.2 step 4, §14.6, §14.7): per 1024 m LV95 tile a `vegetation/forest_E_N.bin`
+with the forest polygons (landuse=forest, natural=wood; leaf_type -> broadleaf /
+conifer / mixed), the road and railway corridors (centre line + half width) no
+tree may stand in, and the land-cover polygons (water, farmland, grass, built-up,
+industrial, rock, glacier, sand) the tile manager paints into the ground texture
+where no orthophoto is. S3DVegetationManager fills the forest polygons with trees
+at load time (a few KB per tile instead of 24 bytes per tree) and applies the
 corridors to the surveyed vegetation_E_N.bin trees of the same square too.
 
   python3 scripts/build_world_forests.py --region switzerland-base --roads-only --install /Users/gery/provpilot/scenery/Switzerland
@@ -16,8 +18,11 @@ the region's build dir are written (--all-squares to ignore that).
 
 File (little-endian): "FOR1", u32 1, u32 polygon count, u32 0, f64 tile
 east, f64 tile north; polygon: u8 kind (0 broadleaf, 1 conifer, 2 mixed,
-3 corridor), u8[3], f32 density trees/m2 (corridor: half width m), f32 mean
-height m, u32 ring count; ring: u32 n, n x (f32 dx, f32 dz) from the SW corner.
+3 corridor, 4 water, 5 farmland, 6 grass / meadow / scrub, 7 built-up,
+8 industrial, 9 bare rock, 10 glacier, 11 sand), u8[3], f32 density trees/m2
+(corridor: half width m; land cover: 0), f32 mean height m, u32 ring count;
+ring: u32 n, n x (f32 dx, f32 dz) from the SW corner. Land-cover polygons are
+simplified to 2 m before clipping (the raster is 4-8 m per pixel).
 """
 import argparse
 import json
@@ -51,7 +56,40 @@ ROAD_HALF = {"motorway": 16.0, "trunk": 11.0, "primary": 8.0, "secondary": 7.0, 
              "motorway_link": 7.0, "trunk_link": 6.0, "primary_link": 5.5, "secondary_link": 5.0, "tertiary_link": 5.0,
              "residential": 5.0, "unclassified": 5.0, "living_street": 4.0, "service": 3.5, "track": 3.0}
 RAIL_HALF = 5.0
+# land-cover kinds (4+) by OSM tag, painted by the tile manager (s3d_forest_file.cpp)
+K_WATER, K_FARM, K_GRASS, K_URBAN, K_INDUSTRIAL, K_ROCK, K_GLACIER, K_SAND = 4, 5, 6, 7, 8, 9, 10, 11
+LANDUSE_KIND = {"farmland": K_FARM, "orchard": K_FARM, "vineyard": K_FARM, "plant_nursery": K_FARM, "greenhouse_horticulture": K_FARM,
+                "meadow": K_GRASS, "grass": K_GRASS, "village_green": K_GRASS, "recreation_ground": K_GRASS, "cemetery": K_GRASS,
+                "allotments": K_GRASS, "flowerbed": K_GRASS,
+                "residential": K_URBAN, "retail": K_URBAN, "commercial": K_URBAN, "farmyard": K_URBAN, "garages": K_URBAN,
+                "education": K_URBAN, "religious": K_URBAN, "institutional": K_URBAN,
+                "industrial": K_INDUSTRIAL, "railway": K_INDUSTRIAL, "port": K_INDUSTRIAL, "depot": K_INDUSTRIAL,
+                "quarry": K_ROCK, "landfill": K_ROCK, "brownfield": K_ROCK, "construction": K_ROCK,
+                "reservoir": K_WATER, "basin": K_WATER, "salt_pond": K_WATER, "aquaculture": K_WATER}
+NATURAL_KIND = {"water": K_WATER, "wetland": K_GRASS, "grassland": K_GRASS, "heath": K_GRASS, "scrub": K_GRASS, "fell": K_GRASS,
+                "tundra": K_GRASS, "bare_rock": K_ROCK, "scree": K_ROCK, "shingle": K_ROCK, "cliff": K_ROCK,
+                "glacier": K_GLACIER, "sand": K_SAND, "beach": K_SAND, "mud": K_SAND}
+LEISURE_KIND = {"park": K_GRASS, "golf_course": K_GRASS, "pitch": K_GRASS, "garden": K_GRASS, "sports_centre": K_GRASS,
+                "stadium": K_URBAN}
+MIN_AREA = {K_WATER: 400.0, K_FARM: 2000.0, K_GRASS: 2000.0, K_URBAN: 2000.0, K_INDUSTRIAL: 2000.0,
+            K_ROCK: 4000.0, K_GLACIER: 4000.0, K_SAND: 1000.0}
+SIMPLIFY_M = 2.0
 TO_LV95 = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2056", always_xy=True)
+
+
+def landcover_kind(tags):
+    """The land-cover kind (4+) of an OSM area, or None."""
+    if "landuse" in tags and tags["landuse"] in LANDUSE_KIND:
+        return LANDUSE_KIND[tags["landuse"]]
+    if "natural" in tags and tags["natural"] in NATURAL_KIND:
+        return NATURAL_KIND[tags["natural"]]
+    if tags.get("waterway") in ("riverbank", "dock", "canal") or tags.get("water") is not None and tags.get("natural") == "water":
+        return K_WATER
+    if "leisure" in tags and tags["leisure"] in LEISURE_KIND:
+        return LEISURE_KIND[tags["leisure"]]
+    if tags.get("amenity") in ("school", "university", "hospital", "college") or tags.get("aeroway") == "aerodrome":
+        return K_URBAN
+    return None
 
 
 def leaf_kind(tags):
@@ -75,8 +113,8 @@ class Collector(osmium.SimpleHandler):
         super().__init__()
         self.bbox = bbox            # (e0, n0, e1, n1) or None
         self.roads_only = roads_only
-        self.tiles = defaultdict(lambda: {"forest": [], "corridor": []})
-        self.n_forest = self.n_ways = 0
+        self.tiles = defaultdict(lambda: {"forest": [], "corridor": [], "cover": []})
+        self.n_forest = self.n_ways = self.n_cover = 0
         self.wkb = osmium.geom.WKBFactory()
 
     def _tile_range(self, geom):
@@ -89,7 +127,9 @@ class Collector(osmium.SimpleHandler):
         if self.roads_only:
             return
         tags = a.tags
-        if tags.get("landuse") != "forest" and tags.get("natural") != "wood":
+        is_forest = tags.get("landuse") == "forest" or tags.get("natural") == "wood"
+        cover = None if is_forest else landcover_kind(tags)
+        if not is_forest and cover is None:
             return
         try:
             from shapely import wkb as shp_wkb
@@ -102,8 +142,17 @@ class Collector(osmium.SimpleHandler):
         rng = self._tile_range(geom)
         if rng is None:
             return
-        kind = leaf_kind(tags)
-        self.n_forest += 1
+        if cover is not None:
+            geom = geom.simplify(SIMPLIFY_M, preserve_topology=True)
+            if geom.is_empty or geom.area < MIN_AREA[cover]:
+                return
+            self.n_cover += 1
+            min_part = 100.0
+        else:
+            self.n_forest += 1
+            min_part = 50.0
+        kind = cover if cover is not None else leaf_kind(tags)
+        bucket = "cover" if cover is not None else "forest"
         for te in rng[0]:
             for tn in rng[1]:
                 cell = box(te * TILE, tn * TILE, (te + 1) * TILE, (tn + 1) * TILE)
@@ -112,10 +161,10 @@ class Collector(osmium.SimpleHandler):
                     continue
                 polys = [part] if part.geom_type == "Polygon" else [g for g in getattr(part, "geoms", []) if g.geom_type == "Polygon"]
                 for poly in polys:
-                    if poly.area < 50.0:
+                    if poly.area < min_part:
                         continue
                     rings = [list(poly.exterior.coords)] + [list(r.coords) for r in poly.interiors]
-                    self.tiles[(te, tn)]["forest"].append((kind, rings))
+                    self.tiles[(te, tn)][bucket].append((kind, rings))
 
     def way(self, w):
         tags = w.tags
@@ -154,6 +203,8 @@ class Collector(osmium.SimpleHandler):
 def write_tile(path: Path, te: int, tn: int, data):
     e0, n0 = te * TILE, tn * TILE
     polys = []
+    for kind, rings in data["cover"]:
+        polys.append((kind, 0.0, 0.0, rings))
     for kind, rings in data["forest"]:
         polys.append((kind, DENSITY, HEIGHT_M[kind], rings))
     for half, coords in data["corridor"]:
@@ -244,12 +295,12 @@ def main() -> int:
     print(f"=== forests {args.region}: {pbf} ===")
     col = Collector(tuple(args.bbox) if args.bbox else None, args.roads_only)
     col.apply_file(str(pbf), locations=True, idx="flex_mem")
-    print(f"  {col.n_forest} forest areas, {col.n_ways} corridor ways in {time.time() - t0:.0f} s; {len(col.tiles)} squares touched")
+    print(f"  {col.n_forest} forest areas, {col.n_cover} land-cover areas, {col.n_ways} corridor ways in {time.time() - t0:.0f} s; {len(col.tiles)} squares touched")
     written = trees_est = 0
     for (te, tn), data in sorted(col.tiles.items()):
         if squares is not None and (te, tn) not in squares:
             continue
-        if not data["forest"] and not data["corridor"]:
+        if not data["forest"] and not data["corridor"] and not data["cover"]:
             continue
         write_tile(veg_dir / f"forest_{te * TILE}_{tn * TILE}.bin", te, tn, data)
         written += 1
