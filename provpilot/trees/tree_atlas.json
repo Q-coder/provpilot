@@ -17,18 +17,59 @@
    "source": "Tree_lowpoly.glb"
   },
   {
+   "name": "maple",
+   "conifer": false,
+   "height_m": 16,
+   "crown_ratio": 0.786,
+   "source": "714f57d9-097c-425d-91c0-47ff154ba94b.glb",
+   "model": "Maple tree",
+   "author": "3DAssets Kit",
+   "license": "royalty_free",
+   "url": "https://www.blenderkit.com/asset-gallery-detail/714f57d9-097c-425d-91c0-47ff154ba94b/"
+  },
+  {
+   "name": "birch",
+   "conifer": false,
+   "height_m": 18,
+   "crown_ratio": 0.546,
+   "source": "c0187218-d025-4e88-bc9f-4d54abe3269c.glb",
+   "model": "Birch Tree lowpoly",
+   "author": "Alexander Novgorodtsev",
+   "license": "royalty_free",
+   "url": "https://www.blenderkit.com/asset-gallery-detail/c0187218-d025-4e88-bc9f-4d54abe3269c/"
+  },
+  {
    "name": "spruce",
    "conifer": true,
-   "height_m": 30,
-   "crown_ratio": 0.382,
-   "source": "procedural:spruce"
+   "height_m": 28,
+   "crown_ratio": 0.494,
+   "source": "61faa48a-786a-427f-a318-5242f98447bb.glb",
+   "model": "Tree Dougles Fir",
+   "author": "REAL SCANS",
+   "license": "royalty_free",
+   "url": "https://www.blenderkit.com/asset-gallery-detail/61faa48a-786a-427f-a318-5242f98447bb/"
+  },
+  {
+   "name": "fir",
+   "conifer": true,
+   "height_m": 24,
+   "crown_ratio": 0.708,
+   "source": "89409ff4-ba59-44c1-b482-4da17ed3f718.glb",
+   "model": "Grand Fir (8m)",
+   "author": "Andrei Petrukovich",
+   "license": "royalty_free",
+   "url": "https://www.blenderkit.com/asset-gallery-detail/89409ff4-ba59-44c1-b482-4da17ed3f718/"
   },
   {
    "name": "pine",
    "conifer": true,
    "height_m": 24,
-   "crown_ratio": 0.457,
-   "source": "procedural:pine"
+   "crown_ratio": 0.569,
+   "source": "c4ffb721-0007-40f4-8015-57be5816f786.glb",
+   "model": "Pine Tree",
+   "author": "Andrei Petrukovich",
+   "license": "royalty_free",
+   "url": "https://www.blenderkit.com/asset-gallery-detail/c4ffb721-0007-40f4-8015-57be5816f786/"
   }
  ]
 }

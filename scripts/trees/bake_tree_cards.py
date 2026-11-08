@@ -4,7 +4,10 @@
 Run headless:
   /Applications/Blender.app/Contents/MacOS/Blender -b -P scripts/trees/bake_tree_cards.py -- scripts/trees/species.json provpilot/trees
 
-Per species: import the source (glb / blend) or build a procedural conifer,
+Per species: import the source (glb / blend, or `blenderkit:<assetBaseId>`:
+the free model's glTF is fetched anonymously from BlenderKit's API into
+<cache_root>/blenderkit_trees/, licence and author recorded in the atlas
+JSON) or build a procedural conifer,
 render an orthographic side view and a top view with a transparent film
 (Eevee, card_px square each), and write the atlas PNG (columns = species,
 upper row side views, lower row top views) plus tree_atlas.json with the
@@ -17,9 +20,59 @@ import sys
 import tempfile
 from pathlib import Path
 
+import urllib.parse
+import urllib.request
+import uuid
+
 import bpy
 import numpy as np
 from mathutils import Vector
+
+def _cache_root():
+    """scripts/world_regions.json cache_root, like the other scenery scripts."""
+    reg = Path(__file__).resolve().parent.parent / "world_regions.json"
+    try:
+        return Path(json.loads(reg.read_text()).get("cache_root", "/Volumes/Data1/scenery_in_world"))
+    except Exception:
+        return Path("/Volumes/Data1/scenery_in_world")
+
+
+CACHE = _cache_root() / "blenderkit_trees"
+BK_API = "https://www.blenderkit.com/api/v1"
+UA = {"User-Agent": "provpilot bake_tree_cards.py"}
+
+
+def bk_get(url):
+    with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=180) as r:
+        return r.read()
+
+
+def fetch_blenderkit(asset_base_id):
+    """The free model's glTF from BlenderKit (anonymous: free assets need no
+    account, only a scene id). Returns (path, meta) with name, author, licence."""
+    CACHE.mkdir(parents=True, exist_ok=True)
+    meta_path = CACHE / f"{asset_base_id}.json"
+    glb_path = CACHE / f"{asset_base_id}.glb"
+    if glb_path.exists() and meta_path.exists():
+        return glb_path, json.loads(meta_path.read_text())
+    q = urllib.parse.quote(f"asset_base_id:{asset_base_id}")
+    results = json.loads(bk_get(f"{BK_API}/search/?query={q}&page_size=5")).get("results", [])
+    if not results:
+        raise SystemExit(f"BlenderKit: no asset {asset_base_id}")
+    r = results[0]
+    files = {f["fileType"]: f["downloadUrl"] for f in r.get("files", []) if f.get("downloadUrl")}
+    url = files.get("gltf") or files.get("gltf_godot")
+    if not url:
+        raise SystemExit(f"BlenderKit: {r['name']} has no glTF file ({sorted(files)})")
+    info = json.loads(bk_get(url + "?scene_uuid=" + str(uuid.uuid4())))
+    data = bk_get(info["filePath"])
+    glb_path.write_bytes(data)
+    meta = {"name": r.get("name"), "author": (r.get("author") or {}).get("fullName") or (r.get("author") or {}).get("firstName"),
+            "license": r.get("license"), "asset_base_id": asset_base_id, "url": f"https://www.blenderkit.com/asset-gallery-detail/{asset_base_id}/",
+            "face_count": (r.get("dictParameters") or {}).get("faceCount")}
+    meta_path.write_text(json.dumps(meta, indent=1))
+    print(f"  fetched {r['name']} ({meta['license']}, {len(data) // 1024} KB) -> {glb_path}")
+    return glb_path, meta
 
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 SPEC = Path(argv[0]) if argv else Path("scripts/trees/species.json")
@@ -169,6 +222,10 @@ meta = []
 for col, sp in enumerate(species):
     scene = clear_scene()
     src = sp["source"]
+    bk_meta = None
+    if src.startswith("blenderkit:"):
+        path, bk_meta = fetch_blenderkit(src.split(":", 1)[1])
+        src = str(path)
     objs = procedural(src.split(":", 1)[1]) if src.startswith("procedural:") else import_source(src)
     lo, hi = bounds(objs)
     size = hi - lo
@@ -192,6 +249,9 @@ for col, sp in enumerate(species):
         rgb = img[..., :3][a]
         return float((rgb @ np.array([0.2126, 0.7152, 0.0722])).mean()) if len(rgb) else 1.0
     ls, lt = mean_lum(side), mean_lum(top)
+    cover = float((side[..., 3] > 0.5).mean())
+    if cover < 0.04 or ls < 0.1 or ls > 0.7:
+        print(f"  WARNING {sp['name']}: side card covers {cover * 100:.1f} % at luminance {ls:.2f} - missing foliage or texture? check the model")
     if lt > 1e-3:
         top = top.copy()
         top[..., :3] = np.clip(top[..., :3] * (0.9 * ls / lt), 0.0, 1.0)
@@ -199,9 +259,15 @@ for col, sp in enumerate(species):
     atlas[PX:2 * PX, col * PX:(col + 1) * PX] = top
     print(f"  {sp['name']}: side luminance {ls:.3f}, top {lt:.3f} -> scaled to {0.9 * ls:.3f}")
     crown_ratio = round(float(max(size.x, size.y) / size.z), 3) if size.z > 0 else sp.get("crown_ratio", 0.6)
-    meta.append({"name": sp["name"], "conifer": bool(sp.get("conifer", False)),
-                 "height_m": sp.get("height_m", 20), "crown_ratio": crown_ratio,
-                 "source": os.path.basename(src)})
+    entry = {"name": sp["name"], "conifer": bool(sp.get("conifer", False)),
+             "height_m": sp.get("height_m", 20), "crown_ratio": crown_ratio,
+             "source": os.path.basename(src)}
+    if bk_meta:
+        entry["model"] = bk_meta["name"]
+        entry["author"] = bk_meta["author"]
+        entry["license"] = bk_meta["license"]
+        entry["url"] = bk_meta["url"]
+    meta.append(entry)
     print(f"  {sp['name']}: {src} size {size.x:.1f} x {size.y:.1f} x {size.z:.1f} m, crown/height {crown_ratio}")
 
 def dilate_rgb(img, passes=8):

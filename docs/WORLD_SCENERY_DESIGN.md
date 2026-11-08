@@ -2321,8 +2321,21 @@ shader crossfades them per tree by complementary dither
 re-snapped tile is rebuilt in place, the old nodes freed in the frame the
 new ones land.
 
-Open: BlenderKit species (CC0 / royalty-free pines, spruce, birch) through
-the same bake; forests outside Switzerland from OSM polygons (step 4);
+**Species from BlenderKit (2026-11-08).** `bake_tree_cards.py` resolves a
+`blenderkit:<assetBaseId>` source itself: the search API gives the free
+model's glTF download URL, a GET with a fresh `scene_uuid` (no account
+needed for free assets, the addon does the same) returns the file URL,
+cached in `<cache_root>/blenderkit_trees/`; model name, author and licence
+go into `tree_atlas.json`. Three first picks failed in a way the bake now
+warns about (card coverage < 4 % or luminance outside 0.1-0.7): a pine
+whose needles were particle instances the glTF export dropped, a birch
+whose main material lost its base-colour texture, a maple with a baked
+texture that renders black. The atlas has seven species: beech and oak
+(the SwissTopo GLBs), Maple tree, Birch Tree lowpoly, Tree Dougles Fir
+(the spruce column), Grand Fir, Pine Tree (all royalty-free, authors in the
+JSON). Conifers = species 4-6 in `pick_species`.
+
+Open: forests outside Switzerland from OSM polygons (step 4);
 SRTM measures the canopy in forests, so the ground under a forest is
 already tree-height high — a later land-cover pass could lower it.
 

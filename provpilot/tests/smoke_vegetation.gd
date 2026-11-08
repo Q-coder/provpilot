@@ -2,7 +2,7 @@ extends Node
 ## Forest card mode of S3DVegetationManager (docs/WORLD_SCENERY_DESIGN.md §14):
 ## a synthetic vegetation tile (the swissTLM3D .bin format) in a scratch dir,
 ## the manager in the flat frame, a camera on the tile. Checks: the card mesh
-## is 8 triangles, four species from trees/tree_atlas.json, a near set with
+## is 8 triangles, the species of trees/tree_atlas.json, a near set with
 ## every kept tree and a far set with a quarter of them, enlarged, the
 ## visibility ranges, the species / variation in the custom data, and the
 ## tree density setting still thinning the sets.
@@ -68,7 +68,7 @@ func _ready() -> void:
 			if c.r > 0.5:
 				tops += 1
 		_check(tops == 4, "the canopy quad is marked in COLOR.r (%d of %d vertices)" % [tops, cols.size()])
-	_check(veg.get_species_count() == 4, "four species from trees/tree_atlas.json (%d)" % veg.get_species_count())
+	_check(veg.get_species_count() == 7, "seven species from trees/tree_atlas.json (%d)" % veg.get_species_count())
 	var waited := 0.0
 	var counts: PackedInt32Array = []
 	while waited < 20.0:
@@ -99,8 +99,11 @@ func _ready() -> void:
 		# the headless renderer keeps no instance buffers: the manager's CPU-side statistics
 		var st: Dictionary = veg.tile_stats(TILE_E, TILE_N)
 		var sc: PackedInt32Array = st.get("species", PackedInt32Array())
-		var all_four := sc.size() == 4 and sc[0] > 0 and sc[1] > 0 and sc[2] > 0 and sc[3] > 0
-		_check(all_four, "all four species appear (%s)" % str(sc))
+		var all_seen := sc.size() == 7
+		for c in sc:
+			if c <= 0:
+				all_seen = false
+		_check(all_seen, "all seven species appear (%s)" % str(sc))
 		var lc: int = st.get("low_conifers", 0)
 		var lt: int = st.get("low_total", 1)
 		var hc: int = st.get("high_conifers", 0)

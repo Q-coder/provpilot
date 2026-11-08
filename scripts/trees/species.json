@@ -1,10 +1,53 @@
 {
- "_comment": "Species of the tree card atlas (docs/WORLD_SCENERY_DESIGN.md §14). source: a .glb/.blend path or procedural:<kind>. Rendered by bake_tree_cards.py into provpilot/trees/tree_atlas.png (+ .json).",
+ "_comment": "Species of the tree card atlas (docs/WORLD_SCENERY_DESIGN.md \u00a714). source: a .glb/.blend path, blenderkit:<assetBaseId> (free model fetched into the scenery cache, licence recorded in tree_atlas.json) or procedural:<kind>. Rendered by bake_tree_cards.py into provpilot/trees/tree_atlas.png (+ .json).",
  "card_px": 256,
  "species": [
-  {"name": "beech", "source": "/Users/gery/provpilot/online_scenery/Switzerland/trees/tree_lod2.glb", "conifer": false, "height_m": 24, "crown_ratio": 0.75},
-  {"name": "oak", "source": "/Users/gery/provpilot/online_scenery/Switzerland/trees/Tree_lowpoly.glb", "conifer": false, "height_m": 20, "crown_ratio": 0.8},
-  {"name": "spruce", "source": "procedural:spruce", "conifer": true, "height_m": 30, "crown_ratio": 0.35},
-  {"name": "pine", "source": "procedural:pine", "conifer": true, "height_m": 24, "crown_ratio": 0.5}
+  {
+   "name": "beech",
+   "source": "/Users/gery/provpilot/online_scenery/Switzerland/trees/tree_lod2.glb",
+   "conifer": false,
+   "height_m": 24
+  },
+  {
+   "name": "oak",
+   "source": "/Users/gery/provpilot/online_scenery/Switzerland/trees/Tree_lowpoly.glb",
+   "conifer": false,
+   "height_m": 20
+  },
+  {
+   "name": "maple",
+   "source": "blenderkit:714f57d9-097c-425d-91c0-47ff154ba94b",
+   "conifer": false,
+   "height_m": 16,
+   "_model": "Maple tree (royalty free)"
+  },
+  {
+   "name": "birch",
+   "source": "blenderkit:c0187218-d025-4e88-bc9f-4d54abe3269c",
+   "conifer": false,
+   "height_m": 18,
+   "_model": "Birch Tree lowpoly (royalty free)"
+  },
+  {
+   "name": "spruce",
+   "source": "blenderkit:61faa48a-786a-427f-a318-5242f98447bb",
+   "conifer": true,
+   "height_m": 28,
+   "_model": "Tree Dougles Fir (royalty free): spruce-like silhouette"
+  },
+  {
+   "name": "fir",
+   "source": "blenderkit:89409ff4-ba59-44c1-b482-4da17ed3f718",
+   "conifer": true,
+   "height_m": 24,
+   "_model": "Grand Fir (royalty free)"
+  },
+  {
+   "name": "pine",
+   "source": "blenderkit:c4ffb721-0007-40f4-8015-57be5816f786",
+   "conifer": true,
+   "height_m": 24,
+   "_model": "Pine Tree (royalty free)"
+  }
  ]
 }
