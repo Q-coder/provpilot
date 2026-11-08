@@ -1032,6 +1032,30 @@ now assigns `render_priority` per frame — the layer farthest from the
 camera altitude draws first, the nearest last (layers on opposite sides of
 the camera never overlap on screen).
 
+**Rework 2026-11-08** (gery: "the clouds do not look nice"; the BlenderKit
+volumetric cumulus was weighed as a sprite source and set aside, see §14.5):
+- Shape texture = the Horizon Zero Dawn recipe (`CloudLayers::make_shape_noise`,
+  96³ RGBA8): R = perlin FBM carved by a worley FBM
+  (`remap(perlin, fbm - 1, 1, 0, 1)`) and **histogram-equalised** to a uniform
+  0..1, so the shader's threshold `1 - coverage` covers exactly the oktas
+  fraction (the old Perlin-only field with a guessed stretch gave an
+  overcast at 5/8); G / B / A = inverted worley at 4 / 8 / 16 cells. Detail
+  = three inverted worley octaves (32³), eroding the edges (wispy at the
+  base, billowy toward the top) and modulating the body.
+- A **coverage field** (`macro_scale` 32 km, the shape noise sampled at a
+  fixed height) so cumuli gather in clumps with clear gaps instead of one
+  blob at the threshold; stratus stays uniform.
+- Lighting: six-sample light march with a growing step, Beer-Lambert ×
+  powder (Schneider), a two-lobe Henyey-Greenstein phase (forward 0.72 for
+  the silver lining, 0.3 of a back lobe), ambient graded from base to top
+  and a little ground bounce under thin bases.
+- Steps: `clamp(segment / steps, thickness / 40, thickness / 4)`, up to 4 ×
+  steps iterations, full-step start jitter; the quality presets are 28 /
+  44 / 72. Grazing rays toward the horizon used to take km steps and
+  smeared every cloud into horizontal streaks; a faint rest remains.
+- Probe: `PROBE_WEATHER_JSON='{"layers":[...]}'` (a dictionary with
+  `layers`, not a bare list) with `PROBE_LOOK="pitch:18"` for the bases.
+
 ### 10.1 How it maps onto JSBSim
 
 JSBSim has no layered atmosphere: the host sets *one* wind vector and one
@@ -2382,6 +2406,18 @@ down) and the Tösstal probe at 600 ft (roads clear through the Bauma forest).
 Open:
 SRTM measures the canopy in forests, so the ground under a forest is
 already tree-height high — a later land-cover pass could lower it.
+
+### 14.5 Clouds from BlenderKit — weighed 2026-11-08
+
+gery found free volumetric clouds on BlenderKit ("Cumulus Cloud -
+randomizing", royalty-free, a Cycles procedural volume on a box). Godot
+cannot run a Cycles volume; the only use would be baked sprites. The bake
+works (`scratchpad` test: 25 s per 512 px sprite on the GPU once
+`volume_bounces` is raised from Cycles' default 0, which is the difference
+between a grey blob and a white cloud; AgX for the roll-off), but the
+sprites came out flatter than the asset's thumbnail and a sprite layer is
+flat when flown through. Decision (gery): improve the raymarch (§10.2 rework)
+and keep the Cycles renders as the visual reference.
 
 ## See also
 

@@ -26,8 +26,10 @@ uniform vec2 wind_offset = vec2(0.0);          // metres (animated drift)
 // be sampled at a world-fixed position: world_offset = (-E, N) of the frame
 // origin in LV95 metres (x = west, z = north), or the clouds follow the aircraft.
 uniform vec2 world_offset = vec2(0.0);
-uniform float shape_scale = 6000.0;            // metres per noise period
-uniform float detail_scale = 900.0;
+uniform float shape_scale = 7000.0;            // metres per shape-noise period
+uniform float detail_scale = 700.0;            // metres per detail period
+uniform float macro_scale = 32000.0;           // metres per coverage-field period: cumuli come in clumps and gaps
+uniform float sigma_ext = 0.02;                // extinction per metre at density 1
 uniform float density_scale = 1.0;
 uniform int steps = 40;
 uniform float max_distance = 60000.0;
@@ -71,43 +73,71 @@ float height_profile(float hf) {
 	} else if (cloud_type == 4) {   // cumulonimbus: tall, dense, wider top
 		return smoothstep(0.0, 0.05, hf) * (1.0 - smoothstep(0.8, 1.0, hf));
 	}
-	return smoothstep(0.0, 0.12, hf) * (1.0 - smoothstep(0.45, 1.0, hf));  // cumulus
+	return smoothstep(0.0, 0.08, hf) * (1.0 - smoothstep(0.4, 1.0, hf));   // cumulus: sharp flat base, domed top
 }
 
+// The coverage field: a low-frequency sample of the shape noise over the
+// map, so cumuli gather in clumps with gaps between (a uniform threshold
+// made one continuous blob at 5/8). Stratus stays uniform.
+float local_coverage(vec3 q) {
+	float cov = clamp(coverage, 0.0, 1.0);
+	if (cloud_type == 2) return cov;
+	float macro = texture(shape_noise, vec3(q.x, 3737.0, q.z) / macro_scale).r;
+	// below the mean field the clouds thin out and vanish, above it they thicken
+	return clamp(cov * remap(macro, 0.3, 0.75, 0.2, 1.6), 0.0, 1.0);
+}
+
+// Schneider / Horizon: perlin-worley base carved by the worley FBM, the
+// height profile, the coverage remap (which also thins the cloud at low
+// coverage), then edge erosion by the detail worley.
 float density_at(vec3 p, vec3 c, bool with_detail) {
 	float h = height_of(p, c);
 	float hf = (h - base_m) / max(top_m - base_m, 1.0);
 	if (hf <= 0.0 || hf >= 1.0) return 0.0;
-	vec3 q = vec3(p.x + world_offset.x + wind_offset.x, h * 1.5, p.z + world_offset.y + wind_offset.y);
-	// Perlin FBM sits in ~0.3..0.7: stretch it to the full range first.
-	float n = texture(shape_noise, q / shape_scale).r;
-	float shape = smoothstep(0.32, 0.70, n);
-	// Coverage = fraction of the noise range that counts as cloud; the
-	// threshold rises with height for the puffy types so tops round off.
-	float cov = clamp(coverage, 0.0, 1.0);
-	float lift = (cloud_type == 2) ? 0.0 : ((cloud_type == 4) ? 0.15 : 0.35);
-	float d = remap(shape, (1.0 - cov) + hf * lift, 1.0, 0.0, 1.0);
-	d *= height_profile(hf);
+	vec3 q = vec3(p.x + world_offset.x + wind_offset.x, h, p.z + world_offset.y + wind_offset.y);
+	float cov = local_coverage(q);
+	if (cov <= 0.005) return 0.0;
+	// R is the equalised perlin-worley base (uniform 0..1), so the coverage
+	// threshold below covers exactly its fraction of the volume.
+	vec4 low = texture(shape_noise, q / shape_scale);
+	float shape = low.r * height_profile(hf);
+	// the threshold rises with height for the puffy types: domed tops over a flat base
+	float lift = (cloud_type == 2) ? 0.0 : ((cloud_type == 4) ? 0.1 : 0.3);
+	float d = remap(shape, (1.0 - cov) + hf * lift * (1.0 - cov), 1.0, 0.0, 1.0) * cov;
 	if (d <= 0.0) return 0.0;
 	if (with_detail) {
-		float detail = texture(detail_noise, q / detail_scale).r;
-		// Erode the edges with the fine worley noise, more toward the top.
-		float erode = mix(detail, 1.0 - detail, clamp(hf * 2.0, 0.0, 1.0));
-		d = remap(d, erode * 0.45, 1.0, 0.0, 1.0);
+		vec3 hi = texture(detail_noise, q / detail_scale).rgb;
+		float hfbm = hi.r * 0.625 + hi.g * 0.25 + hi.b * 0.125;
+		// wispy near the base, billowy toward the top; the body keeps some of
+		// the worley cells too (a smooth slab otherwise)
+		float erode = mix(hfbm, 1.0 - hfbm, clamp(hf * 8.0, 0.0, 1.0));
+		d = remap(d, erode * 0.5, 1.0, 0.0, 1.0);
+		d *= 0.75 + 0.25 * hfbm;
 	}
 	return clamp(d, 0.0, 1.0) * density_scale;
 }
 
-float light_march(vec3 p, vec3 c, float sigma) {
-	// Short march toward the sun for self-shadowing.
-	float dl = (top_m - base_m) * 0.3;
+// Optical depth toward the sun: six samples, the step growing so the march
+// reaches through a thick layer (cone-like).
+float light_depth(vec3 p, vec3 c) {
+	float thick = top_m - base_m;
+	float dl = thick * 0.08;
 	float od = 0.0;
-	for (int i = 0; i < 3; i++) {
+	for (int i = 0; i < 6; i++) {
 		p += sun_dir * dl;
-		od += density_at(p, c, false) * dl;
+		od += density_at(p, c, i < 3) * dl;
+		dl *= 1.5;
 	}
-	// Beer-Lambert with a floor so shadowed bases keep some multiple scattering.
-	return max(exp(-od * sigma * 0.5), 0.15);
+	return od;
+}
+
+// how much of the base is open to the ground: thin where the light depth is small
+float beer_floor(float ld) {
+	return 0.25 + 0.75 * exp(-ld * 0.5);
+}
+
+float hg(float mu, float g) {
+	return (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * mu, 1.5);   // x 4 pi: isotropic = 1
 }
 
 void vertex() {
@@ -152,23 +182,32 @@ vec4 march(vec3 ro, vec3 rd, vec2 screen_uv, mat4 inv_proj) {
 	// tenth of the layer thickness — a ray straight through a 1 km layer
 	// needs ~10 samples, not 32; oblique rays toward the horizon keep the
 	// full count. The loop stops at t1 either way.
+	// Step length: the segment split into `steps`, never finer than 1/40 of
+	// the thickness, never coarser than a third of it (a grazing ray toward
+	// the horizon spans tens of km: coarse steps there smeared every cloud
+	// into horizontal streaks). The loop may run up to 3 x steps to reach t1.
 	int n = max(steps, 8);
-	float min_step = (top_m - base_m) / 24.0;
-	float ds = max((t1 - t0) / float(n), min_step);
+	float thick = top_m - base_m;
+	float min_step = thick / 40.0;
+	float ds = clamp((t1 - t0) / float(n), min_step, thick / 4.0);
+	int n_max = n * 4;
 	// Jitter the start to hide banding.
 	// Interleaved gradient noise: finer-grained than a sin hash, less visible
 	// as dither at close range.
 	vec2 px = screen_uv * vec2(1920.0, 1080.0);
 	float jitter = fract(52.9829189 * fract(0.06711056 * px.x + 0.00583715 * px.y));
-	float t = t0 + ds * jitter * 0.75;
+	float t = t0 + ds * jitter;
 
-	float sigma = 0.012;                     // extinction per metre at density 1
+	float sigma = sigma_ext;
+	float mu = dot(rd, sun_dir);
+	// two-lobe phase: strong forward peak (silver lining) + a little back scatter
+	float phase = mix(hg(mu, 0.72), hg(mu, -0.2), 0.3);
 	float trans = 1.0;
 	vec3 col = vec3(0.0);
 	float t_weight = 0.0;
 	float t_sum = 0.0;
 	int empty_run = 0;
-	for (int i = 0; i < n; i++) {
+	for (int i = 0; i < n_max; i++) {
 		if (t > t1) break;
 		vec3 p = ro + rd * t;
 		// Cheap shape-only probe first; step twice as far through empty air
@@ -179,20 +218,32 @@ vec4 march(vec3 ro, vec3 rd, vec2 screen_uv, mat4 inv_proj) {
 			t += (empty_run > 2) ? ds * 2.0 : ds;
 			continue;
 		}
+		if (empty_run > 2) {
+			// back up half a coarse step so the edge is not missed
+			t -= ds;
+			empty_run = 0;
+			continue;
+		}
 		empty_run = 0;
 		d = density_at(p, c, true);
 		if (d > 0.001) {
 			float od = d * sigma * ds;
 			float a = 1.0 - exp(-od);
 			float hf = (height_of(p, c) - base_m) / max(top_m - base_m, 1.0);
-			float lt = (debug_mode == 3) ? 1.0 : light_march(p, c, sigma);
-			float powder = 1.0 - exp(-od * 2.0);
-			// Henyey-Greenstein forward scattering toward the sun.
-			float mu = dot(rd, sun_dir);
-			float g = 0.3;
-			float hg = (1.0 - g * g) / (4.0 * 3.14159265 * pow(1.0 + g * g - 2.0 * g * mu, 1.5));
-			vec3 sun = sun_color * sun_energy * lt * (0.5 + 2.5 * hg) * mix(0.6, 1.0, powder);
-			vec3 amb = ambient_color * ambient_energy * mix(0.45, 1.0, hf);
+			// Beer-Lambert toward the sun with the powder term (Schneider):
+			// dark creases where the light has not scattered yet, bright
+			// sunlit domes. A floor keeps the undersides from going black:
+			// multiple scattering the march does not model.
+			float ld = (debug_mode == 3) ? 0.0 : light_depth(p, c) * sigma;
+			float beer = exp(-ld);
+			float powder = 1.0 - exp(-ld * 2.0);
+			float lt = max(beer * mix(1.0, powder, 0.5) * 1.6, 0.06);
+			vec3 sun = sun_color * sun_energy * lt * (0.45 + 0.55 * phase);
+			// ambient: sky light from above, graded to the base, plus a little
+			// ground bounce under the base; thin wisps let more through.
+			float sky_amb = mix(0.4, 1.0, hf) * mix(1.0, 0.65, clamp(d, 0.0, 1.0));
+			vec3 ground_bounce = vec3(0.07, 0.075, 0.07) * (1.0 - hf);
+			vec3 amb = ambient_color * ambient_energy * sky_amb + sun_color * sun_energy * ground_bounce * beer_floor(ld);
 			col += trans * a * (sun + amb);
 			t_sum += trans * a * t;
 			t_weight += trans * a;

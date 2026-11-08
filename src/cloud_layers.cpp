@@ -6,9 +6,13 @@
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/fast_noise_lite.hpp>
+#include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/classes/image_texture3d.hpp>
+#include <godot_cpp/variant/typed_array.hpp>
 #include <godot_cpp/classes/geometry_instance3d.hpp>
 #include <godot_cpp/classes/plane_mesh.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -22,7 +26,7 @@ using namespace godot;
 namespace jsbgodot
 {
 
-static const int STEPS_BY_QUALITY[4] = {0, 20, 32, 56}; // 0 = off
+static const int STEPS_BY_QUALITY[4] = {0, 28, 44, 72}; // 0 = off
 
 void CloudLayers::_bind_methods()
 {
@@ -77,6 +81,115 @@ Ref<NoiseTexture3D> CloudLayers::make_noise3d(int size, int type, int octaves, i
 	return t;
 }
 
+// Seamless 3D noise slices as float arrays (the Noise API hands back L8
+// images; the skirt tiles them).
+static std::vector<float> noise_volume(const Ref<FastNoiseLite> &n, int size, bool invert)
+{
+	std::vector<float> v((size_t)size * size * size, 0.0f);
+	TypedArray<Ref<Image>> slices = n->get_seamless_image_3d(size, size, size, invert, 0.1, true);
+	for (int z = 0; z < size && z < slices.size(); z++)
+	{
+		Ref<Image> img = slices[z];
+		if (img.is_null()) continue;
+		for (int y = 0; y < size; y++)
+			for (int x = 0; x < size; x++)
+				v[((size_t)z * size + y) * size + x] = img->get_pixel(x, y).r;
+	}
+	return v;
+}
+
+static Ref<FastNoiseLite> worley(double frequency, int seed)
+{
+	Ref<FastNoiseLite> n = memnew(FastNoiseLite);
+	n->set_noise_type(FastNoiseLite::TYPE_CELLULAR);
+	n->set_cellular_distance_function(FastNoiseLite::DISTANCE_EUCLIDEAN);
+	n->set_cellular_return_type(FastNoiseLite::RETURN_DISTANCE);
+	n->set_cellular_jitter(1.0);
+	n->set_fractal_type(FastNoiseLite::FRACTAL_NONE);
+	n->set_frequency(frequency);
+	n->set_seed(seed);
+	return n;
+}
+
+static float remapf(float v, float lo, float hi, float nlo, float nhi)
+{
+	return nlo + (CLAMP(v, lo, hi) - lo) / MAX(hi - lo, 1e-5f) * (nhi - nlo);
+}
+
+// The Horizon Zero Dawn / Schneider shape texture: R = perlin FBM eroded
+// by a worley FBM ("perlin-worley": billowy cells with soft perlin
+// interiors), G / B / A = inverted worley at rising frequencies, the FBM the
+// shader uses to carve the shape. Inverted worley = bright cells, dark edges.
+Ref<Texture3D> CloudLayers::make_shape_noise(int size)
+{
+	Ref<FastNoiseLite> perlin = memnew(FastNoiseLite);
+	perlin->set_noise_type(FastNoiseLite::TYPE_PERLIN);
+	perlin->set_fractal_type(FastNoiseLite::FRACTAL_FBM);
+	perlin->set_fractal_octaves(4);
+	perlin->set_frequency(3.0 / size);
+	perlin->set_seed(11);
+	const std::vector<float> p = noise_volume(perlin, size, false);
+	const std::vector<float> w0 = noise_volume(worley(4.0 / size, 21), size, true);
+	const std::vector<float> w1 = noise_volume(worley(8.0 / size, 22), size, true);
+	const std::vector<float> w2 = noise_volume(worley(16.0 / size, 23), size, true);
+	// R = the perlin-worley base, histogram-equalised to a uniform 0..1: the
+	// shader's threshold (1 - coverage) then covers exactly the coverage
+	// fraction of the volume, so 4/8 means half the sky.
+	std::vector<float> base(p.size());
+	for (size_t i = 0; i < p.size(); i++)
+	{
+		const float fbm = w0[i] * 0.625f + w1[i] * 0.25f + w2[i] * 0.125f;
+		base[i] = remapf(p[i], fbm - 1.0f, 1.0f, 0.0f, 1.0f);
+	}
+	std::vector<float> sorted(base);
+	std::sort(sorted.begin(), sorted.end());
+	auto equalised = [&](float v) {
+		const size_t k = std::lower_bound(sorted.begin(), sorted.end(), v) - sorted.begin();
+		return (float)k / (float)(sorted.size() - 1);
+	};
+	TypedArray<Ref<Image>> slices;
+	for (int z = 0; z < size; z++)
+	{
+		Ref<Image> img = Image::create_empty(size, size, false, Image::FORMAT_RGBA8);
+		for (int y = 0; y < size; y++)
+		{
+			for (int x = 0; x < size; x++)
+			{
+				const size_t i = ((size_t)z * size + y) * size + x;
+				img->set_pixel(x, y, Color(equalised(base[i]), w0[i], w1[i], w2[i]));
+			}
+		}
+		slices.push_back(img);
+	}
+	UtilityFunctions::print("CloudLayers: shape noise ", size, "^3 built (perlin-worley base equalised; raw p50 ", sorted[sorted.size() / 2], ")");
+	Ref<ImageTexture3D> t = memnew(ImageTexture3D);
+	t->create(Image::FORMAT_RGBA8, size, size, size, false, slices);
+	return t;
+}
+
+// Three inverted worley octaves for the edge erosion.
+Ref<Texture3D> CloudLayers::make_detail_noise(int size)
+{
+	const std::vector<float> w0 = noise_volume(worley(3.0 / size, 31), size, true);
+	const std::vector<float> w1 = noise_volume(worley(6.0 / size, 32), size, true);
+	const std::vector<float> w2 = noise_volume(worley(12.0 / size, 33), size, true);
+	TypedArray<Ref<Image>> slices;
+	for (int z = 0; z < size; z++)
+	{
+		Ref<Image> img = Image::create_empty(size, size, false, Image::FORMAT_RGBA8);
+		for (int y = 0; y < size; y++)
+			for (int x = 0; x < size; x++)
+			{
+				const size_t i = ((size_t)z * size + y) * size + x;
+				img->set_pixel(x, y, Color(w0[i], w1[i], w2[i], 1.0f));
+			}
+		slices.push_back(img);
+	}
+	Ref<ImageTexture3D> t = memnew(ImageTexture3D);
+	t->create(Image::FORMAT_RGBA8, size, size, size, false, slices);
+	return t;
+}
+
 void CloudLayers::_ready()
 {
 	if (Engine::get_singleton()->is_editor_hint())
@@ -85,8 +198,8 @@ void CloudLayers::_ready()
 	}
 	volume_shader = ResourceLoader::get_singleton()->load("res://shaders/cloud_layer.gdshader");
 	sheet_shader = ResourceLoader::get_singleton()->load("res://shaders/cloud_sheet.gdshader");
-	shape_noise = make_noise3d(64, FastNoiseLite::TYPE_PERLIN, 3, 1);
-	detail_noise = make_noise3d(32, FastNoiseLite::TYPE_CELLULAR, 2, 7);
+	shape_noise = make_shape_noise(96);
+	detail_noise = make_detail_noise(32);
 	sheet_noise = memnew(NoiseTexture2D);
 	sheet_noise->set_width(256);
 	sheet_noise->set_height(256);

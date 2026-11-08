@@ -7,6 +7,8 @@
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/noise_texture2d.hpp>
 #include <godot_cpp/classes/noise_texture3d.hpp>
+#include <godot_cpp/classes/image_texture3d.hpp>
+#include <godot_cpp/classes/texture3d.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/variant/array.hpp>
@@ -55,8 +57,10 @@ namespace jsbgodot
         static constexpr double PLANET_RADIUS = 6371000.0;
 
         int quality = 2;
-        Ref<NoiseTexture3D> shape_noise;
-        Ref<NoiseTexture3D> detail_noise;
+        // Perlin-Worley shape (R) + worley FBM octaves (G, B, A) and a worley
+        // detail (RGB) texture, built once in _ready (design §10.2 / §10.3).
+        Ref<Texture3D> shape_noise;
+        Ref<Texture3D> detail_noise;
         Ref<NoiseTexture2D> sheet_noise;
         Ref<Shader> volume_shader;
         Ref<Shader> sheet_shader;
@@ -67,6 +71,8 @@ namespace jsbgodot
         Vector<double> mids;     // layer mid altitude per mesh (draw order)
 
         static Ref<NoiseTexture3D> make_noise3d(int size, int type, int octaves, int seed);
+        static Ref<Texture3D> make_shape_noise(int size);
+        static Ref<Texture3D> make_detail_noise(int size);
         void apply_draw_order(double cam_alt);
         void apply_quality();
     };
