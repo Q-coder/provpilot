@@ -359,6 +359,26 @@ func _ready() -> void:
 		_check(plate_lit, "the panel dimmer at 0.8 lights the FGCP backplate labels (emission 0.8 x (1, 0.6, 0.3))")
 		fgc_d.assign_external("controls/lighting/fgcp-digital", 1.0)
 		fgc_d.assign_external("controls/lighting/fgcp-panel", 0.0)
+	# the gear handle: FlightGear binds press = gearDownSmart(1), release =
+	# gearDownSmart(0); the release must not move the gear back (step 24)
+	var lg: Node3D = _mesh_named(ctl, "MD-80-cockpit__LGLever")
+	_check(lg != null, "gear handle LGLever is clickable")
+	if lg != null:
+		var cmd0: float = jsb.get_gear_cmd()
+		var lpx: Vector2 = cam.unproject_position(lg.global_transform * (lg as MeshInstance3D).get_aabb().get_center())
+		ctl.click(cam, lpx, MOUSE_BUTTON_LEFT, true, false)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var cmd_held: float = jsb.get_gear_cmd()
+		_check(absf(cmd_held - cmd0) > 0.5, "pressing the gear handle moves the gear command (%.0f -> %.0f)" % [cmd0, cmd_held])
+		ctl.click(cam, lpx, MOUSE_BUTTON_LEFT, false, false)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		_check(absf(jsb.get_gear_cmd() - cmd_held) < 0.5, "releasing the button leaves the gear command where it is (%.0f)" % jsb.get_gear_cmd())
+		_press(ctl, cam, lg, MOUSE_BUTTON_LEFT)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		_check(absf(jsb.get_gear_cmd() - cmd0) < 0.5, "a second click moves the handle back (%.0f)" % jsb.get_gear_cmd())
 	if _fails.is_empty():
 		print("smoke_md80_cockpit: OK")
 		get_tree().quit(0)

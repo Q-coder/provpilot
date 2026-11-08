@@ -909,3 +909,11 @@ the Nasal mode logic instead of a Nasal runtime):
   `flight-path/psi-gt-rad`. The smoke now sees ALIGN, FLARE, touchdown and
   ROLLOUT with the needle at 0.02 (8 PASS).
 
+
+### Step 24 — the gear handle springs back (2026-11-08, gery: "when airborne I lower the gear by clicking the handle; the gear comes down only while I hold the button, on release the handle goes up again; the G key works")
+
+FlightGear's pick on `LGLever` binds the press to `controls.gearDownSmart(1)` and the release (`mod-up`) to `controls.gearDownSmart(0)`. The MD-80's `aircraft.nas` treats the argument as a direction: non-zero moves the lever to the other position, zero (the release) does nothing (`controls.gearDown(0)` is a no-op). The shim table mapped both calls onto `gear_cmd` with the argument as the position, so the release raised the gear again.
+
+- `nasal_shims.json`: `controls.gearDownSmart(` → action kind `gear_smart`; `controls.gearDown(` stays `gear_cmd`.
+- `FGControls::nasal_action`: `gear_cmd` follows the sign of the argument (positive lowers, negative raises, zero changes nothing); `gear_smart` toggles through `provpilot/gear-toggle` on a non-zero argument and ignores the release.
+- `smoke_md80_cockpit`: pressing the handle moves the gear command, releasing the button leaves it, a second click moves it back (86 PASS). `smoke_a10_controls` (its own gear-toggle pick) 26 PASS.

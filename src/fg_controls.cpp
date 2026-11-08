@@ -1590,7 +1590,7 @@ bool FGControls::run_shim(const String &statement, const Dictionary &ctx)
 		}
 		else if (action == "action")
 		{
-			// a ProvPilot action (gear_cmd, flaps_step, speedbrake, gear_toggle ...)
+			// a ProvPilot action (gear_cmd, gear_smart, flaps_step, speedbrake, gear_toggle ...)
 			Array a = args;
 			if (sh.has("value"))
 			{
@@ -1764,8 +1764,26 @@ void FGControls::nasal_action(const String &kind, const Array &args, const Dicti
 	}
 	else if (kind == "gear_cmd")
 	{
-		// gear handle with a position: 1 = down, 0 = up (the rig moves the FDM gear)
-		assign("provpilot/gear-cmd", a0 > 0.5 ? 1.0 : 0.0);
+		// FlightGear's controls.gearDown(d): d > 0 lowers, d < 0 raises, d == 0 is
+		// the pick's mod-up (the button release) and must change nothing (the
+		// MD-80 handle: press = gearDownSmart(1), release = gearDownSmart(0)).
+		if (a0 > 0.5)
+		{
+			assign("provpilot/gear-cmd", 1.0);
+		}
+		else if (a0 < -0.5)
+		{
+			assign("provpilot/gear-cmd", 0.0);
+		}
+	}
+	else if (kind == "gear_smart")
+	{
+		// the MD-80's controls.gearDownSmart(d): d != 0 moves the handle to the
+		// other position (down when up, up when down), d == 0 is the release.
+		if (a0 > 0.5 || a0 < -0.5)
+		{
+			assign("provpilot/gear-toggle", 1.0);
+		}
 	}
 	else if (kind == "flaps_step")
 	{
