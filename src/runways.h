@@ -141,6 +141,7 @@ namespace jsbgodot
             Vector2 p0, u, r;           // LV95 pavement end 0, unit along, unit right
             double length = 0, half_w = 0, h0 = 0, h1 = 0, disp0 = 0, disp1 = 0;
             bool lit = false;
+            double glide_deg[2] = {3.0, 3.0}; // PAPI approach slope per end (the ILS glide path when the end has one)
             Vector2 axis_local;         // along direction in the airport frame (x, z)
             double z_at(double t) const { return h0 + (h1 - h0) * t / length; }
         };
@@ -187,7 +188,10 @@ namespace jsbgodot
         static const RwyGeo *nearest_geo(const Vector2 &q, const Vector<RwyGeo> &geos);
         static void gen_taxiway_lights(Lights &L, const Array &taxiways, const Transform3D &inv, const Dictionary &classes);
         static void add_osm_lights(Lights &L, const Dictionary &ap, const Transform3D &inv, const Dictionary &classes, const Vector<RwyGeo> &geos);
-        MeshInstance3D *build_lights(const Dictionary &ap, const Transform3D &frame);
+        MeshInstance3D *build_lights(const String &icao, const Dictionary &ap, const Transform3D &frame);
+        // The approach slope a runway end's PAPI is set to: the ILS glide path of
+        // that end (NavaidsLib catalog, LSZH 28 = 3.3 deg) or 3.0 deg.
+        static double papi_glide_deg(const String &icao, const String &end_ident);
         static Node3D *load_model(const String &path);
         static Transform3D frame_at(double lat, double lon, double h);
     };

@@ -21,6 +21,7 @@
 
 #include "geo.h"
 #include "geo_frame.h"
+#include "navaids_lib.h"
 #include "runways_lib.h"
 
 using namespace godot;
@@ -46,6 +47,7 @@ void Runways::_bind_methods()
 	ClassDB::bind_method(D_METHOD("get_light_material"), &Runways::get_light_material);
 	ClassDB::bind_method(D_METHOD("built_count"), &Runways::built_count);
 	ClassDB::bind_method(D_METHOD("get_airport_node", "icao"), &Runways::get_airport_node);
+	ClassDB::bind_static_method("Runways", D_METHOD("papi_glide_deg", "icao", "end_ident"), &Runways::papi_glide_deg);
 	ClassDB::bind_method(D_METHOD("surface_lift_at", "world_pos"), &Runways::surface_lift_at);
 	ClassDB::bind_method(D_METHOD("get_runway_count"), &Runways::get_runway_count);
 	ClassDB::bind_method(D_METHOD("get_model_count"), &Runways::get_model_count);
@@ -249,7 +251,7 @@ void Runways::build_airport(const String &icao, const Dictionary &ap, const Call
 			root->add_child(mi);
 			register_lookup(icao, batch, frame);
 		}
-		MeshInstance3D *lm = build_lights(ap, frame);
+		MeshInstance3D *lm = build_lights(icao, ap, frame);
 		if (lm != nullptr)
 		{
 			root->add_child(lm);
@@ -883,8 +885,12 @@ void Runways::gen_runway_lights(Lights &L, const RwyGeo &g, bool intl, const Dic
 			L.add(lv95_local(inv, g.p0 + g.u * t + g.r * 0.6, g.z_at(t)), a_col, b_col, ax, 0, 0.8);
 		}
 	}
-	// PAPI: four units on the pilot's left, 300 m past the threshold, angles
-	// 2.5 / 2.83 / 3.17 / 3.5 deg from the outermost unit inward.
+	// PAPI: four units on the pilot's left, 300 m past the threshold, set
+	// 30' and 10' either side of the end's approach slope (ICAO Annex 14:
+	// the ILS glide path where the runway has one, else 3 deg): for 3 deg
+	// 2.5 / 2.83 / 3.17 / 3.5 from the outermost unit inward, for LSZH 28's
+	// 3.3 deg path 2.8 .. 3.8 (gery 2026-11-08: "on Rwy 28 the lights are
+	// always white").
 	if (!classes.has("papi"))
 	{
 		for (int end_i = 0; end_i < 2; end_i++)
@@ -895,7 +901,7 @@ void Runways::gen_runway_lights(Lights &L, const RwyGeo &g, bool intl, const Dic
 			const Vector2 axis_i = end_i == 0 ? ax : -ax;
 			for (int unit = 0; unit < 4; unit++)
 			{
-				const double angle = 3.5 - unit * (1.0 / 3.0);
+				const double angle = g.glide_deg[end_i] + 0.5 - unit * (1.0 / 3.0);
 				const double lat_off = g.half_w + PAPI_OFFSET_M + unit * PAPI_UNIT_SPACING_M;
 				L.add(lv95_local(inv, g.p0 + g.u * t_p + left * lat_off, g.z_at(t_p)), COL_WHITE, COL_WHITE, axis_i, 2, PAPI_SIZE, angle);
 			}
@@ -1093,7 +1099,23 @@ void Runways::add_osm_lights(Lights &L, const Dictionary &ap, const Transform3D 
 	}
 }
 
-MeshInstance3D *Runways::build_lights(const Dictionary &ap, const Transform3D &frame)
+double Runways::papi_glide_deg(const String &icao, const String &end_ident)
+{
+	if (icao.is_empty() || end_ident.is_empty())
+	{
+		return 3.0;
+	}
+	for (const Ils &s : NavaidsLib::all_ils())
+	{
+		if (s.icao == icao && s.rwy == end_ident && s.gs_deg >= 1.0 && s.gs_deg <= 6.0)
+		{
+			return s.gs_deg;
+		}
+	}
+	return 3.0;
+}
+
+MeshInstance3D *Runways::build_lights(const String &icao, const Dictionary &ap, const Transform3D &frame)
 {
 	const Transform3D inv = frame.affine_inverse();
 	Lights L;
@@ -1128,6 +1150,18 @@ MeshInstance3D *Runways::build_lights(const Dictionary &ap, const Transform3D &f
 		if (!rwy_geo(rws[i], inv, g))
 		{
 			continue;
+		}
+		const Dictionary rw = rws[i];
+		const Array ends = rw.get("ends", Array());
+		const Array des = rw.get("designators", Array());
+		for (int e = 0; e < 2; e++)
+		{
+			String ident = e < ends.size() ? String(Dictionary(ends[e]).get("ident", "")) : String();
+			if (ident.is_empty() && e < des.size())
+			{
+				ident = String(des[e]);
+			}
+			g.glide_deg[e] = papi_glide_deg(icao, ident);
 		}
 		geos.push_back(g);
 		if (g.lit)

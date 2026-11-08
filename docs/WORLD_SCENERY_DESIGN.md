@@ -1516,7 +1516,11 @@ with at least 8 mapped fixtures replaces the generated one for that
 airport, otherwise the generated layout is used. PAPI/VASI are always
 generated (OSM maps one node per system and never the angles) and lit day
 and night: the shader applies the night intensity only to modes 0 and 1
-(gery, 2026-11-01: "the PAPI should always be visible").
+(gery, 2026-11-01: "the PAPI should always be visible"). The four units
+sit 30' and 10' either side of the end's approach slope, which is the ILS
+glide path of that runway end from the ILS catalog (`Runways::papi_glide_deg`,
+LSZH 28 = 3.3 deg) and 3 deg elsewhere (gery, 2026-11-08: "on Rwy 28 the
+lights are always white").
 
 **Generated layout** (`src/runways.cpp`, one PRIMITIVE_POINTS mesh per
 airport, one vertex per fixture, lights 35 cm above the surface):

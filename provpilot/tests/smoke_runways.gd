@@ -127,6 +127,28 @@ func _ready() -> void:
 		_fail("taxiway ribbons built %d of %d" % [rws.taxiway_count, n_tw])
 	if rws.apron_count < n_ap - 2:
 		_fail("apron polygons built %d of %d" % [rws.apron_count, n_ap])
+	# PAPI slope per runway end (gery 2026-11-08: "on Rwy 28, 3.3 deg, the
+	# lights are always white"): the ILS glide path where there is one
+	if absf(Runways.papi_glide_deg("LSZH", "28") - 3.3) > 1e-6 or absf(Runways.papi_glide_deg("LSZH", "16") - 3.0) > 1e-6 or absf(Runways.papi_glide_deg("LSZH", "10") - 3.0) > 1e-6:
+		_fail("PAPI slope: LSZH 28 %.2f (want 3.3), 16 %.2f (3.0), 10 %.2f (3.0)" % [Runways.papi_glide_deg("LSZH", "28"), Runways.papi_glide_deg("LSZH", "16"), Runways.papi_glide_deg("LSZH", "10")])
+	var lm: MeshInstance3D = node.get_node_or_null("Lights")
+	if lm == null:
+		_fail("no Lights mesh for LSZH")
+	else:
+		var c2: PackedFloat32Array = lm.mesh.surface_get_arrays(0)[Mesh.ARRAY_CUSTOM2]
+		var angles: Dictionary = {}
+		for i in range(c2.size() / 4):
+			if int(c2[i * 4 + 3] + 0.5) == 2:
+				angles[snappedf(c2[i * 4 + 2], 0.01)] = angles.get(snappedf(c2[i * 4 + 2], 0.01), 0) + 1
+		print("[runways] LSZH PAPI unit angles: %s" % str(angles))
+		var has_angle := func(a: float) -> bool:
+			for k in angles.keys():
+				if absf(float(k) - a) < 0.02:
+					return true
+			return false
+		# 28 and 34 (IZW / IZS, 3.3 deg paths) span 2.8..3.8, the other ends 2.5..3.5
+		if not (has_angle.call(3.8) and has_angle.call(2.8) and has_angle.call(3.5) and has_angle.call(2.5)):
+			_fail("PAPI units should span 2.8..3.8 on the 3.3 deg ends and 2.5..3.5 on the others, got %s" % str(angles))
 	var mi: MeshInstance3D = node.get_node_or_null("Surfaces")
 	if mi == null:
 		_fail("no Surfaces mesh for LSZH")
