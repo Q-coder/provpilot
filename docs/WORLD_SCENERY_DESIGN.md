@@ -1053,6 +1053,18 @@ volumetric cumulus was weighed as a sprite source and set aside, see §14.5):
   steps iterations, full-step start jitter; the quality presets are 28 /
   44 / 72. Grazing rays toward the horizon used to take km steps and
   smeared every cloud into horizontal streaks; a faint rest remains.
+- Second round after gery's test flight (dither close to the clouds,
+  blown-out white patches, a repeating pattern in the distance): the step
+  length grows with the distance along the ray (`max(t * 0.012, thickness
+  / 60)` up to the nominal step) with half the start jitter, so close-up
+  samples are fine and need no dither; the phase function is normalised
+  (isotropic = 1, forward lobe g 0.6, capped at 4) and the cloud colour gets
+  a soft knee above 0.8 instead of clipping; the shape sample position is
+  domain-warped by the coverage-scale noise (0.6 × shape_scale), which
+  breaks the 7 km tiling period without changing the value distribution;
+  and the cloud tops vary with the coverage field (a weak clump tops out at
+  45 % of the layer, a vigorous one at top_m) so the horizon is no longer a
+  wall of equal tops.
 - Probe: `PROBE_WEATHER_JSON='{"layers":[...]}'` (a dictionary with
   `layers`, not a bare list) with `PROBE_LOOK="pitch:18"` for the bases.
 

@@ -79,10 +79,13 @@ float height_profile(float hf) {
 // The coverage field: a low-frequency sample of the shape noise over the
 // map, so cumuli gather in clumps with gaps between (a uniform threshold
 // made one continuous blob at 5/8). Stratus stays uniform.
-float local_coverage(vec3 q) {
+float macro_field(vec3 q) {
+	return texture(shape_noise, vec3(q.x, 3737.0, q.z) / macro_scale).r;
+}
+
+float local_coverage(vec3 q, float macro) {
 	float cov = clamp(coverage, 0.0, 1.0);
 	if (cloud_type == 2) return cov;
-	float macro = texture(shape_noise, vec3(q.x, 3737.0, q.z) / macro_scale).r;
 	// below the mean field the clouds thin out and vanish, above it they thicken
 	return clamp(cov * remap(macro, 0.3, 0.75, 0.2, 1.6), 0.0, 1.0);
 }
@@ -95,11 +98,25 @@ float density_at(vec3 p, vec3 c, bool with_detail) {
 	float hf = (h - base_m) / max(top_m - base_m, 1.0);
 	if (hf <= 0.0 || hf >= 1.0) return 0.0;
 	vec3 q = vec3(p.x + world_offset.x + wind_offset.x, h, p.z + world_offset.y + wind_offset.y);
-	float cov = local_coverage(q);
+	float macro = macro_field(q);
+	float cov = local_coverage(q, macro);
 	if (cov <= 0.005) return 0.0;
+	// Cloud tops vary with the field: a vigorous clump reaches top_m, a thin
+	// one only half way (every cloud topping out at one height drew a wall
+	// of flat tops along the horizon). Stratus keeps its lid.
+	if (cloud_type != 2) {
+		float top_frac = mix(0.45, 1.0, smoothstep(0.3, 0.8, macro));
+		hf /= top_frac;
+		if (hf >= 1.0) return 0.0;
+	}
+	// Domain warp by the coverage-scale noise: the shape texture repeats every
+	// shape_scale and the period showed from a distance; a smooth warp of a
+	// few km breaks it without changing the value distribution.
+	vec2 w = texture(shape_noise, vec3(q.x, 777.0, q.z) / (macro_scale * 0.55)).gb - 0.5;
+	vec3 qw = q + vec3(w.x, 0.0, w.y) * shape_scale * 0.6;
 	// R is the equalised perlin-worley base (uniform 0..1), so the coverage
 	// threshold below covers exactly its fraction of the volume.
-	vec4 low = texture(shape_noise, q / shape_scale);
+	vec4 low = texture(shape_noise, qw / shape_scale);
 	float shape = low.r * height_profile(hf);
 	// the threshold rises with height for the puffy types: domed tops over a flat base
 	float lift = (cloud_type == 2) ? 0.0 : ((cloud_type == 4) ? 0.1 : 0.3);
@@ -186,22 +203,26 @@ vec4 march(vec3 ro, vec3 rd, vec2 screen_uv, mat4 inv_proj) {
 	// the thickness, never coarser than a third of it (a grazing ray toward
 	// the horizon spans tens of km: coarse steps there smeared every cloud
 	// into horizontal streaks). The loop may run up to 3 x steps to reach t1.
+	// Step length grows with the distance along the ray (fine close in, where
+	// the eye sees detail, coarse far out), bounded by the thickness; the
+	// nominal segment / steps sets the scale and the loop may run 4 x steps.
 	int n = max(steps, 8);
 	float thick = top_m - base_m;
-	float min_step = thick / 40.0;
-	float ds = clamp((t1 - t0) / float(n), min_step, thick / 4.0);
+	float ds_nom = clamp((t1 - t0) / float(n), thick / 40.0, thick / 4.0);
 	int n_max = n * 4;
 	// Jitter the start to hide banding.
 	// Interleaved gradient noise: finer-grained than a sin hash, less visible
 	// as dither at close range.
 	vec2 px = screen_uv * vec2(1920.0, 1080.0);
 	float jitter = fract(52.9829189 * fract(0.06711056 * px.x + 0.00583715 * px.y));
-	float t = t0 + ds * jitter;
+	float ds = clamp(max(t0 * 0.012, thick / 60.0), thick / 60.0, ds_nom);
+	float t = t0 + ds * jitter * 0.5;
 
 	float sigma = sigma_ext;
 	float mu = dot(rd, sun_dir);
-	// two-lobe phase: strong forward peak (silver lining) + a little back scatter
-	float phase = mix(hg(mu, 0.72), hg(mu, -0.2), 0.3);
+	// two-lobe phase, normalised so isotropic = 1: a forward peak for the
+	// silver lining (about 6 x looking into the sun) and a little back scatter
+	float phase = mix(hg(mu, 0.6), hg(mu, -0.2), 0.3);   // hg(): isotropic = 1, forward peak about 6
 	float trans = 1.0;
 	vec3 col = vec3(0.0);
 	float t_weight = 0.0;
@@ -210,6 +231,7 @@ vec4 march(vec3 ro, vec3 rd, vec2 screen_uv, mat4 inv_proj) {
 	for (int i = 0; i < n_max; i++) {
 		if (t > t1) break;
 		vec3 p = ro + rd * t;
+		ds = clamp(max(t * 0.012, thick / 60.0), thick / 60.0, ds_nom);
 		// Cheap shape-only probe first; step twice as far through empty air
 		// after a few misses, drop back to the fine step on a hit.
 		float d = density_at(p, c, false);
@@ -238,7 +260,7 @@ vec4 march(vec3 ro, vec3 rd, vec2 screen_uv, mat4 inv_proj) {
 			float beer = exp(-ld);
 			float powder = 1.0 - exp(-ld * 2.0);
 			float lt = max(beer * mix(1.0, powder, 0.5) * 1.6, 0.06);
-			vec3 sun = sun_color * sun_energy * lt * (0.45 + 0.55 * phase);
+			vec3 sun = sun_color * sun_energy * lt * (0.55 + 0.45 * min(phase, 4.0));
 			// ambient: sky light from above, graded to the base, plus a little
 			// ground bounce under the base; thin wisps let more through.
 			float sky_amb = mix(0.4, 1.0, hf) * mix(1.0, 0.65, clamp(d, 0.0, 1.0));
@@ -255,6 +277,8 @@ vec4 march(vec3 ro, vec3 rd, vec2 screen_uv, mat4 inv_proj) {
 	float alpha = 1.0 - trans;
 	if (alpha <= 0.002) return vec4(0.0, 0.0, 0.0, -1.0);
 	vec3 rgb = col / alpha;
+	// soft knee: the sunlit silver lining may exceed 1, the body must not clip to flat white
+	rgb = rgb / (1.0 + max(rgb - 0.8, vec3(0.0)) * 0.6);
 	// Distance haze toward the cloud's mean depth; fade out toward the box
 	// edge so the layer has no hard far edge on the horizon.
 	float tm = (t_weight > 0.0) ? t_sum / t_weight : t0;
