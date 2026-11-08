@@ -12,6 +12,7 @@
 #include <godot_cpp/classes/geometry_instance3d.hpp>
 #include <godot_cpp/classes/plane_mesh.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
+#include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
@@ -198,8 +199,10 @@ void CloudLayers::_ready()
 	}
 	volume_shader = ResourceLoader::get_singleton()->load("res://shaders/cloud_layer.gdshader");
 	sheet_shader = ResourceLoader::get_singleton()->load("res://shaders/cloud_sheet.gdshader");
+	const uint64_t t0 = Time::get_singleton()->get_ticks_msec();
 	shape_noise = make_shape_noise(96);
 	detail_noise = make_detail_noise(32);
+	UtilityFunctions::print("CloudLayers: noise textures built in ", (int)(Time::get_singleton()->get_ticks_msec() - t0), " ms");
 	sheet_noise = memnew(NoiseTexture2D);
 	sheet_noise->set_width(256);
 	sheet_noise->set_height(256);

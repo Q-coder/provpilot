@@ -21,6 +21,7 @@ height m, u32 ring count; ring: u32 n, n x (f32 dx, f32 dz) from the SW corner.
 """
 import argparse
 import json
+import os
 import math
 import struct
 import sys
@@ -169,6 +170,28 @@ def write_tile(path: Path, te: int, tn: int, data):
                     f.write(struct.pack("<ff", x - e0, y - n0))
 
 
+def write_index(veg_dir: Path) -> int:
+    """vegetation/index.txt: one `E N kind` line per tile (kind f = forest_, v =
+    vegetation_), so the runtime indexes a region without listing a million
+    files (Germany alone has 350 000)."""
+    lines = []
+    with os.scandir(veg_dir) as it:
+        for de in it:
+            n = de.name
+            if not n.endswith(".bin"):
+                continue
+            kind = "f" if n.startswith("forest_") else "v" if n.startswith("vegetation_") else None
+            if kind is None:
+                continue
+            parts = n[:-4].split("_")
+            if len(parts) < 3:
+                continue
+            lines.append(f"{parts[-2]} {parts[-1]} {kind}")
+    lines.sort()
+    (veg_dir / "index.txt").write_text("\n".join(lines) + ("\n" if lines else ""))
+    return len(lines)
+
+
 def ensure_pbf(region: str, pbf_arg):
     if pbf_arg:
         return Path(pbf_arg)
@@ -184,14 +207,19 @@ def ensure_pbf(region: str, pbf_arg):
 
 def main() -> int:
     p = argparse.ArgumentParser(description="OSM forests + road corridors -> <pack>/vegetation/forest_E_N.bin")
-    p.add_argument("--region", required=True, help="world_regions.json id (switzerland-base, austria, germany, ...)")
+    p.add_argument("--region", help="world_regions.json id (switzerland-base, austria, germany, ...)")
     p.add_argument("--pbf", help="a local .osm.pbf instead of the cached Geofabrik file")
     p.add_argument("--bbox", nargs=4, type=float, metavar=("E0", "N0", "E1", "N1"), help="LV95 window")
     p.add_argument("--roads-only", action="store_true", help="corridors only (a pack whose trees come from surveyed vegetation_*.bin)")
     p.add_argument("--all-squares", action="store_true", help="write every square, not only those with a terrain tile")
     p.add_argument("--out", help="output pack dir (default <build_root>/<region>/<Subdir>)")
     p.add_argument("--install", help="also copy the vegetation dir into this installed pack dir")
+    p.add_argument("--reindex", metavar="VEG_DIR", help="only (re)write index.txt for this vegetation dir and exit")
     args = p.parse_args()
+    if args.reindex:
+        n = write_index(Path(args.reindex))
+        print(f"  index.txt: {n} tiles in {args.reindex}")
+        return 0
 
     regions = REGIONS["regions"]
     regions = regions if isinstance(regions, list) else list(regions.values())
@@ -226,8 +254,9 @@ def main() -> int:
         write_tile(veg_dir / f"forest_{te * TILE}_{tn * TILE}.bin", te, tn, data)
         written += 1
         trees_est += sum(Polygon(r[0], r[1:]).area for _, r in data["forest"]) * DENSITY
+    n_index = write_index(veg_dir)
     size_mb = sum(f.stat().st_size for f in veg_dir.glob("forest_*.bin")) / 1048576
-    print(f"  {written} forest tiles written to {veg_dir} ({size_mb:.1f} MB), about {trees_est / 1e6:.1f} M trees at 1 per {1 / DENSITY:.0f} m2")
+    print(f"  {written} forest tiles written to {veg_dir} ({size_mb:.1f} MB), about {trees_est / 1e6:.1f} M trees at 1 per {1 / DENSITY:.0f} m2; index.txt {n_index} tiles")
     if args.install:
         import shutil
         dst = Path(args.install) / "vegetation"
@@ -236,7 +265,8 @@ def main() -> int:
         for f in veg_dir.glob("forest_*.bin"):
             shutil.copy2(f, dst / f.name)
             n += 1
-        print(f"  installed {n} tiles into {dst}")
+        write_index(dst)
+        print(f"  installed {n} tiles into {dst} (index.txt rewritten)")
     return 0
 
 
