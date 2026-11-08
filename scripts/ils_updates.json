@@ -70,7 +70,7 @@
    "rwy": "26R",
    "freq_khz": 111300,
    "was": "ILNW 108.35",
-   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending; confirmed by an OpenStreetMap ILS beacon on 111.30 (ODbL), 2026-11-08"
   },
   {
    "icao": "EDDS",
@@ -121,7 +121,7 @@
    "rwy": "26",
    "freq_khz": 111100,
    "was": "BWG 108.50",
-   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending; confirmed by an OpenStreetMap ILS beacon on 111.10 (ODbL), 2026-11-08"
   },
   {
    "icao": "EFMA",
@@ -136,7 +136,7 @@
    "rwy": "30",
    "freq_khz": 108100,
    "was": "PO 109.10",
-   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending; confirmed by an OpenStreetMap ILS beacon PO on 108.10 (ODbL), 2026-11-08"
   },
   {
    "icao": "EFSA",
@@ -186,14 +186,14 @@
    "freq_khz": 110300,
    "ident": "SGG",
    "was": "SSG 110.30",
-   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending; confirmed by an OpenStreetMap ILS beacon SGG on 110.30 (ODbL), 2026-11-08"
   },
   {
    "icao": "ESSL",
    "rwy": "11",
    "freq_khz": 108900,
    "was": "LSL 108.70",
-   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending; confirmed by an OpenStreetMap ILS beacon LSL on 108.90 (ODbL), 2026-11-08"
   },
   {
    "icao": "ESSV",
@@ -231,7 +231,7 @@
    "freq_khz": 111750,
    "ident": "INOW",
    "was": "NDO 111.90",
-   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending; confirmed by an OpenStreetMap ILS beacon on 111.75 (ODbL), 2026-11-08"
   },
   {
    "icao": "ETNG",
@@ -239,7 +239,7 @@
    "freq_khz": 110100,
    "ident": "IGEW",
    "was": "GIX 110.10",
-   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending; confirmed by an OpenStreetMap ILS beacon on 110.10 (ODbL), 2026-11-08"
   },
   {
    "icao": "ETNH",

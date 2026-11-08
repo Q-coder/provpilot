@@ -230,8 +230,106 @@ def compare_with_xplane(entries, path: Path):
     print("  new:", ", ".join(f"{k[0]} {k[1]} {xp[k][1]} {xp[k][0] / 1000:.2f}" for k in new))
 
 
+OSM_OVERPASS = "https://overpass-api.de/api/interpreter"
+OSM_QUERY = """[out:json][timeout:180];
+(
+  node["airmark"="beacon"]["beacon:type"~"ILS|LOC",i]({bbox});
+  node["aeroway"="navigationaid"]["navigationaid"~"ils|loc",i]({bbox});
+  way["aeroway"="navigationaid"]["navigationaid"~"ils|loc",i]({bbox});
+);
+out center tags;
+"""
+
+
+def osm_localizers(offline: bool, refresh: bool, bbox: str):
+    """ILS beacons OpenStreetMap maps (airmark=beacon + beacon:type=ILS, ODbL),
+    reduced to the ones carrying a VHF localizer frequency: [(lat, lon, khz, code)].
+    Cache: <cache_root>/osm/ils_beacons.json."""
+    path = load_cache_root() / "osm" / "ils_beacons.json"
+    if refresh or not path.exists():
+        if offline:
+            print("  OSM check skipped: no cached ils_beacons.json (run once without --offline)")
+            return []
+        import urllib.parse
+        import urllib.request
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = urllib.parse.urlencode({"data": OSM_QUERY.format(bbox=bbox)}).encode()
+        req = urllib.request.Request(OSM_OVERPASS, data=data, headers={"User-Agent": "provpilot build_world_ils.py (ILS check)"})
+        with urllib.request.urlopen(req, timeout=240) as r:
+            path.write_bytes(r.read())
+    with open(path) as f:
+        els = json.load(f).get("elements", [])
+    out = []
+    for e in els:
+        t = e.get("tags", {})
+        v = t.get("beacon:frequency") or t.get("frequency") or ""
+        m = re.search(r"(\d{3}[.,]\d{1,3})", v)
+        if not m:
+            continue
+        mhz = float(m.group(1).replace(",", "."))
+        if not 108.0 <= mhz <= 112.0:
+            continue   # glide path (UHF), DME channel, ...
+        lat = e.get("lat") or e.get("center", {}).get("lat")
+        lon = e.get("lon") or e.get("center", {}).get("lon")
+        if lat is None:
+            continue
+        out.append((lat, lon, int(round(mhz * 1000)), t.get("beacon:code") or t.get("ref") or ""))
+    return out
+
+
+def osm_check(entries, by_icao, locs, updates_path: Path, confirm: bool):
+    """Report: for every catalog ILS, an OSM localizer within 4 km of the airport
+    on the same frequency confirms it; one right at the nav.dat antenna on
+    another frequency disagrees (OSM is itself stale here and there, so a
+    disagreement is a hint, never a correction). With confirm, the source
+    line of a confirmed entry of ils_updates.json records the confirmation."""
+    def dist_km(a, b, c, d):
+        return math.hypot((a - c) * 111.32, (b - d) * 111.32 * math.cos(math.radians(a)))
+    ups = {}
+    if updates_path.exists():
+        with open(updates_path) as f:
+            doc = json.load(f)
+        ups = {(u["icao"], u["rwy"]): u for u in doc["updates"]}
+    agree, disagree, silent, confirmed = 0, [], 0, 0
+    for e in entries:
+        a = by_icao.get(e["icao"])
+        if a is None:
+            silent += 1
+            continue
+        near = [l for l in locs if dist_km(a["lat"], a["lon"], l[0], l[1]) < 4.0]
+        if not near:
+            silent += 1
+            continue
+        same = [l for l in near if l[2] == e["freq_khz"]]
+        key = (e["icao"], e["rwy"])
+        if same:
+            agree += 1
+            u = ups.get(key)
+            if confirm and u is not None and "OpenStreetMap" not in u.get("source", ""):
+                code = f" {same[0][3]}" if same[0][3] else ""
+                u["source"] = u.get("source", "") + f"; confirmed by an OpenStreetMap ILS beacon{code} on {e['freq_khz'] / 1000:.2f} (ODbL), {date.today().isoformat()}"
+                confirmed += 1
+            continue
+        ref = e["loc"] or {"lat": a["lat"], "lon": a["lon"]}
+        near.sort(key=lambda l: dist_km(ref["lat"], ref["lon"], l[0], l[1]))
+        if dist_km(ref["lat"], ref["lon"], near[0][0], near[0][1]) < 0.6:
+            disagree.append(f"{e['icao']} {e['rwy']} {e['ident']} {e['freq_khz'] / 1000:.2f} (OSM {near[0][3]} {near[0][2] / 1000:.2f})")
+        else:
+            silent += 1
+    print(f"  OSM check ({len(locs)} mapped localizers with a VHF frequency): {agree} agree, {len(disagree)} disagree, {silent} without a usable beacon")
+    if disagree:
+        print("  OSM disagrees (check against the AIP):", "; ".join(disagree))
+    if confirm and confirmed:
+        with open(updates_path, "w") as f:
+            json.dump(doc, f, indent=1)
+            f.write("\n")
+        print(f"  {confirmed} corrections marked as confirmed by OpenStreetMap in {updates_path.name}")
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="FlightGear nav.dat + catalog -> provpilot/ils.json")
+    p.add_argument("--osm-check", action="store_true", help="compare the catalog with OpenStreetMap's ILS beacons (Overpass, cached under <cache_root>/osm)")
+    p.add_argument("--osm-confirm", action="store_true", help="with --osm-check: record OSM confirmations in the source lines of ils_updates.json")
     p.add_argument("--updates", default=str(UPDATES), help="AIP corrections applied after the match (default scripts/ils_updates.json)")
     p.add_argument("--no-updates", action="store_true", help="plain nav.dat, no corrections")
     p.add_argument("--compare", metavar="EARTH_NAV_DAT", help="report the differences to an X-Plane earth_nav.dat and exit (nothing written)")
@@ -324,6 +422,15 @@ def main() -> int:
     if args.compare:
         compare_with_xplane(entries, Path(args.compare))
         return 0
+    if args.osm_check or args.osm_confirm:
+        lats = [a["lat"] for a in airports]
+        lons = [a["lon"] for a in airports]
+        bbox = f"{min(lats) - 0.5:.2f},{min(lons) - 0.5:.2f},{max(lats) + 0.5:.2f},{max(lons) + 0.5:.2f}"
+        # the check runs on the corrected catalog, so apply the updates first (on a copy)
+        trial = [dict(e) for e in entries]
+        if not args.no_updates:
+            apply_updates(trial, Path(args.updates), False)
+        osm_check(trial, by_icao, osm_localizers(args.offline, args.refresh, bbox), Path(args.updates), args.osm_confirm)
     n_upd, n_rm = (0, 0) if args.no_updates else apply_updates(entries, Path(args.updates), args.verbose)
     if n_upd or n_rm:
         print(f"  {n_upd} corrections from {Path(args.updates).name} applied, {n_rm} ILS removed")

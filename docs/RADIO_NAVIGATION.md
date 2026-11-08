@@ -171,8 +171,28 @@ rwy)** — a new `freq_khz` and/or `ident`, or `remove: true` — each with a
 `source` line; `build_world_ils.py` applies them after the runway match and
 marks the entry `updated`. The two Swiss changes are verified against the
 AIP charts; the other 49 come from the comparison and are marked "AIP check
-pending". Removals and additions are left for a free current source
-(none exists; OpenStreetMap's `aeroway=navigationaid` is a candidate).
+pending". Removals and additions are left for a free current source.
+
+**Is there a free current source?** (gery 2026-11-08: "if you have a reliable
+source that can be redistributed then please check and integrate") No
+complete one. Robin Peel's GPL X-Plane data ended with the 2013.10 cycle we
+use; every later X-Plane / FlightGear-compatible set is Navigraph's. The
+national eAIPs are public and authoritative but not machine-friendly: of the
+nine, Switzerland (skybriefing) and Italy (ENAV) need a login, Germany's
+DFS BasicIFR renders pages as images, France and Norway sit behind
+JavaScript portals, Sweden's offline AIP is a 1 GB zip, Finland and Austria
+are clean Eurocontrol-style HTML. Checking 49 frequencies by hand on the
+charts is the realistic route; the build cannot do it. **OpenStreetMap**
+(ODbL, redistributable with attribution) maps ILS as `airmark=beacon` +
+`beacon:type=ILS` with `beacon:frequency`: 1 089 beacons in Europe, 240 of
+them with a VHF localizer frequency (the rest glide-path UHF or untagged).
+`build_world_ils.py --osm-check` downloads them through Overpass (cached in
+`<cache_root>/osm/ils_beacons.json`) and compares: on 2026-11-08 90 of our
+437 agree, 5 disagree, 342 have no usable beacon. `--osm-confirm` records a
+match in the source line of the correction (7 of the 51 confirmed). The
+disagreements are OSM's own stale values (its LSZH 14 beacon still says
+108.30 against the current chart's 111.75), so OSM is a second opinion, never
+a correction on its own.
 
 **Geometry** is not taken from nav.dat: `NavaidsLib::resolve_ils()` builds
 it from the runway the sim draws and spawns on, so the approach ends on the
