@@ -1,6 +1,6 @@
 {
- "_comment": "ILS per runway end of provpilot/airports.json, built by scripts/build_world_ils.py. Real localizers / glide slopes / ILS DMEs from FlightGear nav.dat (GPL-2, cycle 2013.10); runtime geometry comes from the catalog runway (NavaidsLib) unless `offset` is true, when the nav.dat localizer course and position are used. `source` is 'nav.dat' or 'synthetic' (paved runway >= 1500 m without real ILS, invented frequency and ident). freq_khz: 110500 = 110.50 MHz.",
- "source": "FlightGear nav.dat cycle 2013.10 + synthetic, 2026-11-01",
+ "_comment": "ILS per runway end of provpilot/airports.json, built by scripts/build_world_ils.py. Real localizers / glide slopes / ILS DMEs from FlightGear nav.dat (GPL-2, cycle 2013.10); runtime geometry comes from the catalog runway (NavaidsLib) unless `offset` is true, when the nav.dat localizer course and position are used. `source` is 'nav.dat' or 'synthetic' (paved runway >= 1500 m without real ILS, invented frequency and ident). freq_khz: 110500 = 110.50 MHz. Entries with `updated` carry a correction from scripts/ils_updates.json (frequency / ident changes since 2013, from the AIPs).",
+ "source": "FlightGear nav.dat cycle 2013.10 + ils_updates.json, 2026-11-08",
  "ils": [
   {
    "icao": "EDAC",
@@ -84,7 +84,7 @@
    "designator": "04/22",
    "rwy": "22",
    "ident": "IDRW",
-   "freq_khz": 109700,
+   "freq_khz": 109750,
    "cat": "ILS-cat-I",
    "course_true_deg": 220.806,
    "gs_deg": 3.0,
@@ -101,7 +101,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.19,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDDF",
@@ -237,8 +238,8 @@
    "icao": "EDDF",
    "designator": "07L/25R",
    "rwy": "25R",
-   "ident": "IFNW",
-   "freq_khz": 111350,
+   "ident": "IFWR",
+   "freq_khz": 109750,
    "cat": "ILS-cat-I",
    "course_true_deg": 249.586,
    "gs_deg": 3.0,
@@ -260,14 +261,15 @@
    },
    "offset": false,
    "course_dev_deg": -0.01,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDDG",
    "designator": "07/25",
    "rwy": "07",
    "ident": "IMOE",
-   "freq_khz": 111900,
+   "freq_khz": 111750,
    "cat": "ILS-cat-I",
    "course_true_deg": 70.926,
    "gs_deg": 3.0,
@@ -284,7 +286,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.07,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDDG",
@@ -339,7 +342,7 @@
    "designator": "15/33",
    "rwy": "15",
    "ident": "IHHS",
-   "freq_khz": 111350,
+   "freq_khz": 109550,
    "cat": "ILS-cat-I",
    "course_true_deg": 152.887,
    "gs_deg": 3.0,
@@ -356,14 +359,15 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": 0.09,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDDH",
    "designator": "05/23",
    "rwy": "23",
    "ident": "IHHW",
-   "freq_khz": 111500,
+   "freq_khz": 111300,
    "cat": "ILS-cat-III",
    "course_true_deg": 230.209,
    "gs_deg": 3.0,
@@ -380,7 +384,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.09,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDDH",
@@ -431,7 +436,7 @@
    "designator": "05L/23R",
    "rwy": "05L",
    "ident": "IDNE",
-   "freq_khz": 109500,
+   "freq_khz": 110950,
    "cat": "ILS-cat-I",
    "course_true_deg": 52.764,
    "gs_deg": 3.0,
@@ -448,14 +453,15 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.24,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDDL",
    "designator": "05R/23L",
    "rwy": "05R",
    "ident": "IDSE",
-   "freq_khz": 111500,
+   "freq_khz": 110150,
    "cat": "ILS-cat-III",
    "course_true_deg": 52.716,
    "gs_deg": 3.0,
@@ -472,7 +478,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.28,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDDL",
@@ -623,7 +630,7 @@
    "designator": "10/28",
    "rwy": "10",
    "ident": "INUE",
-   "freq_khz": 111300,
+   "freq_khz": 109550,
    "cat": "ILS-cat-I",
    "course_true_deg": 98.639,
    "gs_deg": 3.0,
@@ -640,7 +647,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.36,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDDN",
@@ -695,7 +703,7 @@
    "designator": "08R/26L",
    "rwy": "08R",
    "ident": "ILSR",
-   "freq_khz": 111900,
+   "freq_khz": 111750,
    "cat": "ILS-cat-III",
    "course_true_deg": 85.749,
    "gs_deg": 3.0,
@@ -712,7 +720,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.25,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDDP",
@@ -743,7 +752,7 @@
    "designator": "08L/26R",
    "rwy": "26R",
    "ident": "ILNW",
-   "freq_khz": 108350,
+   "freq_khz": 111300,
    "cat": "ILS-cat-III",
    "course_true_deg": 265.698,
    "gs_deg": 3.0,
@@ -760,14 +769,15 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.0,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDDS",
    "designator": "07/25",
    "rwy": "07",
    "ident": "ISTE",
-   "freq_khz": 110900,
+   "freq_khz": 109500,
    "cat": "ILS-cat-II",
    "course_true_deg": 73.992,
    "gs_deg": 3.0,
@@ -789,7 +799,8 @@
    },
    "offset": false,
    "course_dev_deg": 1.99,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDDS",
@@ -873,7 +884,7 @@
    "designator": "09R/27L",
    "rwy": "27L",
    "ident": "IHSW",
-   "freq_khz": 109500,
+   "freq_khz": 109950,
    "cat": "ILS-cat-I",
    "course_true_deg": 272.6,
    "gs_deg": 3.0,
@@ -890,7 +901,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.4,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDDV",
@@ -1084,7 +1096,7 @@
    "icao": "EDHI",
    "designator": "05/23",
    "rwy": "23",
-   "ident": "HFW",
+   "ident": "IHFW",
    "freq_khz": 108500,
    "cat": "ILS-cat-I",
    "course_true_deg": 231.803,
@@ -1107,7 +1119,8 @@
    },
    "offset": false,
    "course_dev_deg": -0.2,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDHK",
@@ -1162,7 +1175,7 @@
    "designator": "07/25",
    "rwy": "07",
    "ident": "ILUE",
-   "freq_khz": 111700,
+   "freq_khz": 109350,
    "cat": "ILS-cat-I",
    "course_true_deg": 72.139,
    "gs_deg": 3.0,
@@ -1179,7 +1192,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": 0.14,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDHL",
@@ -1335,7 +1349,7 @@
    "designator": "06/24",
    "rwy": "24",
    "ident": "IDWW",
-   "freq_khz": 110300,
+   "freq_khz": 111300,
    "cat": "ILS-cat-II",
    "course_true_deg": 240.493,
    "gs_deg": 3.0,
@@ -1352,13 +1366,14 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.51,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDMA",
    "designator": "07/25",
    "rwy": "25",
-   "ident": "AUG",
+   "ident": "IAGW",
    "freq_khz": 108500,
    "cat": "ILS-cat-I",
    "course_true_deg": 251.387,
@@ -1376,7 +1391,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": 0.39,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDMO",
@@ -1580,7 +1596,7 @@
    "designator": "08/26",
    "rwy": "26",
    "ident": "BWG",
-   "freq_khz": 108500,
+   "freq_khz": 111100,
    "cat": "ILS-cat-I",
    "course_true_deg": 264.89,
    "gs_deg": 3.5,
@@ -1597,7 +1613,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.11,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EDXW",
@@ -2154,8 +2171,8 @@
    "icao": "EFMA",
    "designator": "03/21",
    "rwy": "21",
-   "ident": "MA",
-   "freq_khz": 110900,
+   "ident": "SD",
+   "freq_khz": 108900,
    "cat": "ILS-cat-I",
    "course_true_deg": 203.34,
    "gs_deg": 3.5,
@@ -2172,7 +2189,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": 0.34,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EFMI",
@@ -2232,7 +2250,7 @@
    "designator": "12/30",
    "rwy": "30",
    "ident": "PO",
-   "freq_khz": 109100,
+   "freq_khz": 108100,
    "cat": "ILS-cat-I",
    "course_true_deg": 305.808,
    "gs_deg": 3.0,
@@ -2249,7 +2267,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.19,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EFRO",
@@ -2285,7 +2304,7 @@
    "designator": "12/30",
    "rwy": "12",
    "ident": "SA",
-   "freq_khz": 109700,
+   "freq_khz": 111100,
    "cat": "ILS-cat-I",
    "course_true_deg": 125.745,
    "gs_deg": 3.0,
@@ -2302,7 +2321,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.25,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EFSI",
@@ -2333,7 +2353,7 @@
    "designator": "06/24",
    "rwy": "24",
    "ident": "TP",
-   "freq_khz": 109700,
+   "freq_khz": 110100,
    "cat": "ILS-cat-I",
    "course_true_deg": 244.396,
    "gs_deg": 3.0,
@@ -2350,7 +2370,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": 0.1,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EFTU",
@@ -2516,7 +2537,7 @@
    "designator": "09/27",
    "rwy": "09",
    "ident": "BIL",
-   "freq_khz": 111700,
+   "freq_khz": 109750,
    "cat": "ILS-cat-III",
    "course_true_deg": 86.872,
    "gs_deg": 3.0,
@@ -2533,7 +2554,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.13,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EKBI",
@@ -2762,7 +2784,7 @@
    "designator": "08/26",
    "rwy": "26",
    "ident": "ES",
-   "freq_khz": 110300,
+   "freq_khz": 110150,
    "cat": "ILS-cat-I",
    "course_true_deg": 259.417,
    "gs_deg": 3.0,
@@ -2779,7 +2801,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": 0.42,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "EKKA",
@@ -3076,7 +3099,7 @@
    "designator": "08L/26R",
    "rwy": "26R",
    "ident": "YT",
-   "freq_khz": 109900,
+   "freq_khz": 111550,
    "cat": "ILS-cat-II",
    "course_true_deg": 263.193,
    "gs_deg": 2.75,
@@ -3098,7 +3121,8 @@
    },
    "offset": false,
    "course_dev_deg": -0.11,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "ENAN",
@@ -3228,7 +3252,7 @@
    "designator": "07/25",
    "rwy": "25",
    "ident": "BD",
-   "freq_khz": 109100,
+   "freq_khz": 108700,
    "cat": "ILS-cat-I",
    "course_true_deg": 268.288,
    "gs_deg": 3.5,
@@ -3245,7 +3269,8 @@
    "dme": null,
    "offset": true,
    "course_dev_deg": 10.29,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "ENBR",
@@ -4075,7 +4100,7 @@
    "icao": "ESGG",
    "designator": "03/21",
    "rwy": "03",
-   "ident": "SSG",
+   "ident": "SGG",
    "freq_khz": 110300,
    "cat": "ILS-cat-II",
    "course_true_deg": 25.975,
@@ -4093,7 +4118,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.03,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "ESGG",
@@ -5452,7 +5478,7 @@
    "designator": "11/29",
    "rwy": "11",
    "ident": "LSL",
-   "freq_khz": 108700,
+   "freq_khz": 108900,
    "cat": "ILS-cat-I",
    "course_true_deg": 112.202,
    "gs_deg": 3.25,
@@ -5469,7 +5495,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": 0.2,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "ESSL",
@@ -5598,7 +5625,7 @@
    "designator": "03/21",
    "rwy": "21",
    "ident": "SV",
-   "freq_khz": 110300,
+   "freq_khz": 109150,
    "cat": "ILS-cat-I",
    "course_true_deg": 200.953,
    "gs_deg": 3.0,
@@ -5615,7 +5642,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.05,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "ESTA",
@@ -5646,7 +5674,7 @@
    "designator": "11R/29L",
    "rwy": "29L",
    "ident": "DA",
-   "freq_khz": 111700,
+   "freq_khz": 108550,
    "cat": "ILS-cat-I",
    "course_true_deg": 293.364,
    "gs_deg": 3.0,
@@ -5663,7 +5691,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": 0.36,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "ESUD",
@@ -5823,7 +5852,7 @@
    "icao": "ETAR",
    "designator": "09/27",
    "rwy": "09",
-   "ident": "IRST",
+   "ident": "IREL",
    "freq_khz": 111500,
    "cat": "LOC",
    "course_true_deg": 86.336,
@@ -5837,7 +5866,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.66,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "ETAR",
@@ -5872,8 +5902,8 @@
    "icao": "ETAR",
    "designator": "09/27",
    "rwy": "27",
-   "ident": "IRMS",
-   "freq_khz": 110500,
+   "ident": "IRWR",
+   "freq_khz": 110750,
    "cat": "LOC",
    "course_true_deg": 266.291,
    "gs_deg": null,
@@ -5886,7 +5916,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.71,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "ETHN",
@@ -5916,8 +5947,8 @@
    "icao": "ETMN",
    "designator": "08/26",
    "rwy": "26",
-   "ident": "NDO",
-   "freq_khz": 111900,
+   "ident": "INOW",
+   "freq_khz": 111750,
    "cat": "ILS-cat-I",
    "course_true_deg": 258.373,
    "gs_deg": 3.0,
@@ -5934,7 +5965,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": 0.37,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "ETND",
@@ -5964,7 +5996,7 @@
    "icao": "ETNG",
    "designator": "09/27",
    "rwy": "27",
-   "ident": "GIX",
+   "ident": "IGEW",
    "freq_khz": 110100,
    "cat": "ILS-cat-I",
    "course_true_deg": 270.573,
@@ -5982,13 +6014,14 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.43,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "ETNH",
    "designator": "08/26",
    "rwy": "26",
-   "ident": "HN",
+   "ident": "IMHW",
    "freq_khz": 108900,
    "cat": "ILS-cat-I",
    "course_true_deg": 259.56,
@@ -6006,13 +6039,14 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": 0.16,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "ETNW",
    "designator": "08/26",
    "rwy": "26",
-   "ident": "WUN",
+   "ident": "IWUW",
    "freq_khz": 109700,
    "cat": "ILS-cat-I",
    "course_true_deg": 261.822,
@@ -6030,7 +6064,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": 0.82,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "ETSH",
@@ -6639,7 +6674,7 @@
    "icao": "LFBP",
    "designator": "13/31",
    "rwy": "31",
-   "ident": "PU",
+   "ident": "PYR",
    "freq_khz": 110100,
    "cat": "ILS-cat-III",
    "course_true_deg": 305.888,
@@ -6662,7 +6697,8 @@
    },
    "offset": false,
    "course_dev_deg": 0.89,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "LFBT",
@@ -7064,7 +7100,7 @@
    "icao": "LFKB",
    "designator": "16/34",
    "rwy": "34",
-   "ident": "BP",
+   "ident": "BAS",
    "freq_khz": 111350,
    "cat": "ILS-cat-I",
    "course_true_deg": 342.81,
@@ -7087,7 +7123,8 @@
    },
    "offset": false,
    "course_dev_deg": -0.19,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "LFKC",
@@ -8439,7 +8476,7 @@
    "designator": "08L/26R",
    "rwy": "26R",
    "ident": "GAU",
-   "freq_khz": 109100,
+   "freq_khz": 111950,
    "cat": "ILS-cat-III",
    "course_true_deg": 265.345,
    "gs_deg": 3.0,
@@ -8456,7 +8493,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": 0.35,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "LFPG",
@@ -9320,7 +9358,7 @@
    "icao": "LFSB",
    "designator": "15/33",
    "rwy": "33",
-   "ident": "IBLU",
+   "ident": "BLU",
    "freq_khz": 109350,
    "cat": "ILS-cat-I",
    "course_true_deg": 334.865,
@@ -9343,7 +9381,8 @@
    },
    "offset": false,
    "course_dev_deg": -0.13,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "LFSI",
@@ -9500,7 +9539,7 @@
    "designator": "11/29",
    "rwy": "11",
    "ident": "LXI",
-   "freq_khz": 108090,
+   "freq_khz": 108100,
    "cat": "ILS-cat-I",
    "course_true_deg": 113.0,
    "gs_deg": 3.0,
@@ -9517,7 +9556,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": 0.0,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "LFSX",
@@ -9687,7 +9727,7 @@
    "icao": "LIBP",
    "designator": "04/22",
    "rwy": "22",
-   "ident": "IPS",
+   "ident": "IPSC",
    "freq_khz": 110700,
    "cat": "ILS-cat-I",
    "course_true_deg": 217.392,
@@ -9710,14 +9750,15 @@
    },
    "offset": false,
    "course_dev_deg": -0.01,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "LIBR",
    "designator": "13/31",
    "rwy": "31",
-   "ident": "IBN",
-   "freq_khz": 109500,
+   "ident": "IBRN",
+   "freq_khz": 109550,
    "cat": "ILS-cat-I",
    "course_true_deg": 316.882,
    "gs_deg": 2.5,
@@ -9734,7 +9775,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.12,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "LICA",
@@ -10075,7 +10117,7 @@
    "icao": "LIME",
    "designator": "10/28",
    "rwy": "28",
-   "ident": "BRM",
+   "ident": "IBRM",
    "freq_khz": 108700,
    "cat": "ILS-cat-III",
    "course_true_deg": 285.082,
@@ -10098,7 +10140,8 @@
    },
    "offset": false,
    "course_dev_deg": 0.08,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "LIMF",
@@ -10309,7 +10352,7 @@
    "icao": "LIPE",
    "designator": "12/30",
    "rwy": "12",
-   "ident": "BLN",
+   "ident": "IBLN",
    "freq_khz": 108900,
    "cat": "ILS-cat-III",
    "course_true_deg": 116.811,
@@ -10332,7 +10375,8 @@
    },
    "offset": false,
    "course_dev_deg": -0.19,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "LIPE",
@@ -10502,8 +10546,8 @@
    "icao": "LIPX",
    "designator": "04/22",
    "rwy": "04",
-   "ident": "IVF",
-   "freq_khz": 110100,
+   "ident": "IVRN",
+   "freq_khz": 111750,
    "cat": "ILS-cat-III",
    "course_true_deg": 45.764,
    "gs_deg": 3.0,
@@ -10525,7 +10569,8 @@
    },
    "offset": false,
    "course_dev_deg": -0.24,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "LIPY",
@@ -10589,8 +10634,8 @@
    "icao": "LIRA",
    "designator": "15/33",
    "rwy": "15",
-   "ident": "CIA",
-   "freq_khz": 109900,
+   "ident": "ICIA",
+   "freq_khz": 110550,
    "cat": "ILS-cat-I",
    "course_true_deg": 152.811,
    "gs_deg": 3.0,
@@ -10607,7 +10652,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": 0.81,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "LIRE",
@@ -10642,7 +10688,7 @@
    "icao": "LIRF",
    "designator": "16L/34R",
    "rwy": "16L",
-   "ident": "FLL",
+   "ident": "IFLL",
    "freq_khz": 108100,
    "cat": "ILS-cat-II",
    "course_true_deg": 162.685,
@@ -10660,14 +10706,15 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.31,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "LIRF",
    "designator": "16R/34L",
    "rwy": "16R",
-   "ident": "FRR",
-   "freq_khz": 110300,
+   "ident": "IFRR",
+   "freq_khz": 109750,
    "cat": "ILS-cat-II",
    "course_true_deg": 162.67,
    "gs_deg": 3.0,
@@ -10684,7 +10731,8 @@
    "dme": null,
    "offset": false,
    "course_dev_deg": -0.33,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "LIRF",
@@ -10719,7 +10767,7 @@
    "icao": "LIRF",
    "designator": "16R/34L",
    "rwy": "34L",
-   "ident": "ISW",
+   "ident": "IFSW",
    "freq_khz": 108900,
    "cat": "ILS-cat-I",
    "course_true_deg": 342.664,
@@ -10742,7 +10790,8 @@
    },
    "offset": false,
    "course_dev_deg": -0.34,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
   },
   {
    "icao": "LIRF",
@@ -11184,7 +11233,7 @@
    "designator": "01/19",
    "rwy": "01",
    "ident": "ILU",
-   "freq_khz": 111500,
+   "freq_khz": 108900,
    "cat": "IGS",
    "course_true_deg": 18.79,
    "gs_deg": 6.0,
@@ -11206,7 +11255,8 @@
    },
    "offset": false,
    "course_dev_deg": -0.21,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "Swiss AIP LSZA AD 2.19 / vACC Switzerland chart: LOC 01 ILU 108.90 (the DME stays on 111.50), verified 2026-11-08"
   },
   {
    "icao": "LSZB",
@@ -11242,7 +11292,7 @@
    "designator": "14/32",
    "rwy": "14",
    "ident": "IKL",
-   "freq_khz": 108300,
+   "freq_khz": 111750,
    "cat": "ILS-cat-III",
    "course_true_deg": 137.331,
    "gs_deg": 3.0,
@@ -11264,7 +11314,8 @@
    },
    "offset": false,
    "course_dev_deg": 0.33,
-   "source": "nav.dat"
+   "source": "nav.dat",
+   "updated": "Swiss AIP LSZH AD 2.19 / vACC Switzerland ILS 14 chart (rev. 2024-01-25): ILS/DME 14 IKL 111.75, verified 2026-11-08"
   },
   {
    "icao": "LSZH",

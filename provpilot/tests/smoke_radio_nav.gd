@@ -126,6 +126,17 @@ func _initialize() -> void:
 		if s["icao"] == "LSZH" and s["rwy"] == "16":
 			izh = s
 	_check(not izh.is_empty() and izh["resolved"], "ILS 110.50 is IZH LSZH 16, geometry resolved (%d ILS in the catalog)" % NavaidsLib.ils_count())
+	# gery 2026-11-08: no ILS for LSZH 14 on 111.75 — nav.dat 2013 still had IKL on 108.30;
+	# scripts/ils_updates.json carries the AIP correction
+	var ikl_new := false
+	for s in NavaidsLib.find_ils(111750):
+		if s["icao"] == "LSZH" and s["rwy"] == "14" and s["ident"] == "IKL":
+			ikl_new = true
+	var ikl_old := false
+	for s in NavaidsLib.find_ils(108300):
+		if s["icao"] == "LSZH":
+			ikl_old = true
+	_check(ikl_new and not ikl_old, "ILS 111.75 is IKL LSZH 14 (AIP correction over the 2013 nav.dat), nothing of LSZH left on 108.30")
 	if not izh.is_empty() and izh["resolved"]:
 		var course: float = izh["course_deg"]
 		var gs_lat: float = izh["gs_lat"]

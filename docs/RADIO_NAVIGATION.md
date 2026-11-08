@@ -157,6 +157,23 @@ would add one per paved catalog runway of 1500 m or more without a real ILS
 unused within 150 nm, ident `I` + the last two ICAO letters); the map and the
 HUD would mark those with an asterisk (`ILS*`).
 
+**Corrections** (2026-11-08, gery: "I don't get an ILS for LSZH Rwy 14 on
+111.75"): the 2013 cycle is stale. Zurich moved ILS 14 (IKL) from 108.30 to
+111.75 and Lugano its LOC 01 (ILU) from 111.50 to 108.90, and a comparison
+with a current X-Plane 12 `earth_nav.dat` (Navigraph cycle 2406, the user's
+own installation, `--compare <path>` prints the report and writes nothing)
+shows 36 frequency and 15 ident changes among our 437, 111 entries that no
+longer exist (79 at airports without any ILS today, many of them nav.dat's
+back-course duplicates, 32 at airports whose other ILS remain) and 95 ILS
+in our regions that we lack. That data is not redistributable, so
+`scripts/ils_updates.json` holds the corrections as **facts per (icao,
+rwy)** — a new `freq_khz` and/or `ident`, or `remove: true` — each with a
+`source` line; `build_world_ils.py` applies them after the runway match and
+marks the entry `updated`. The two Swiss changes are verified against the
+AIP charts; the other 49 come from the comparison and are marked "AIP check
+pending". Removals and additions are left for a free current source
+(none exists; OpenStreetMap's `aeroway=navigationaid` is a candidate).
+
 **Geometry** is not taken from nav.dat: `NavaidsLib::resolve_ils()` builds
 it from the runway the sim draws and spawns on, so the approach ends on the
 runway. The welcome screen hands its airport list (catalog with the packs'

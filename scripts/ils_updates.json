@@ -1,0 +1,385 @@
+{
+ "_comment": "Corrections scripts/build_world_ils.py applies on top of FlightGear's nav.dat (cycle 2013.10) after matching the localizers to the catalog runways: per (icao, rwy) a new freq_khz and/or ident, or \"remove\": true for an ILS that no longer exists. Facts from the national AIPs (publicly available); `source` says where each one was checked. Add an entry here, re-run the script, and ils.json follows.",
+ "updates": [
+  {
+   "icao": "EDDC",
+   "rwy": "22",
+   "freq_khz": 109750,
+   "was": "IDRW 109.70",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDDF",
+   "rwy": "25R",
+   "freq_khz": 109750,
+   "ident": "IFWR",
+   "was": "IFNW 111.35",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDDG",
+   "rwy": "07",
+   "freq_khz": 111750,
+   "was": "IMOE 111.90",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDDH",
+   "rwy": "15",
+   "freq_khz": 109550,
+   "was": "IHHS 111.35",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDDH",
+   "rwy": "23",
+   "freq_khz": 111300,
+   "was": "IHHW 111.50",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDDL",
+   "rwy": "05L",
+   "freq_khz": 110950,
+   "was": "IDNE 109.50",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDDL",
+   "rwy": "05R",
+   "freq_khz": 110150,
+   "was": "IDSE 111.50",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDDN",
+   "rwy": "10",
+   "freq_khz": 109550,
+   "was": "INUE 111.30",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDDP",
+   "rwy": "08R",
+   "freq_khz": 111750,
+   "was": "ILSR 111.90",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDDP",
+   "rwy": "26R",
+   "freq_khz": 111300,
+   "was": "ILNW 108.35",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDDS",
+   "rwy": "07",
+   "freq_khz": 109500,
+   "was": "ISTE 110.90",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDDV",
+   "rwy": "27L",
+   "freq_khz": 109950,
+   "was": "IHSW 109.50",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDHI",
+   "rwy": "23",
+   "freq_khz": 108500,
+   "ident": "IHFW",
+   "was": "HFW 108.50",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDHL",
+   "rwy": "07",
+   "freq_khz": 109350,
+   "was": "ILUE 111.70",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDLW",
+   "rwy": "24",
+   "freq_khz": 111300,
+   "was": "IDWW 110.30",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDMA",
+   "rwy": "25",
+   "freq_khz": 108500,
+   "ident": "IAGW",
+   "was": "AUG 108.50",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EDVE",
+   "rwy": "26",
+   "freq_khz": 111100,
+   "was": "BWG 108.50",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EFMA",
+   "rwy": "21",
+   "freq_khz": 108900,
+   "ident": "SD",
+   "was": "MA 110.90",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EFPO",
+   "rwy": "30",
+   "freq_khz": 108100,
+   "was": "PO 109.10",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EFSA",
+   "rwy": "12",
+   "freq_khz": 111100,
+   "was": "SA 109.70",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EFTP",
+   "rwy": "24",
+   "freq_khz": 110100,
+   "was": "TP 109.70",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EKBI",
+   "rwy": "09",
+   "freq_khz": 109750,
+   "was": "BIL 111.70",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EKEB",
+   "rwy": "26",
+   "freq_khz": 110150,
+   "was": "ES 110.30",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "EKYT",
+   "rwy": "26R",
+   "freq_khz": 111550,
+   "was": "YT 109.90",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "ENBO",
+   "rwy": "25",
+   "freq_khz": 108700,
+   "was": "BD 109.10",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "ESGG",
+   "rwy": "03",
+   "freq_khz": 110300,
+   "ident": "SGG",
+   "was": "SSG 110.30",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "ESSL",
+   "rwy": "11",
+   "freq_khz": 108900,
+   "was": "LSL 108.70",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "ESSV",
+   "rwy": "21",
+   "freq_khz": 109150,
+   "was": "SV 110.30",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "ESTL",
+   "rwy": "29L",
+   "freq_khz": 108550,
+   "was": "DA 111.70",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "ETAR",
+   "rwy": "09",
+   "freq_khz": 111500,
+   "ident": "IREL",
+   "was": "IRST 111.50",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "ETAR",
+   "rwy": "27",
+   "freq_khz": 110750,
+   "ident": "IRWR",
+   "was": "IRMS 110.50",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "ETMN",
+   "rwy": "26",
+   "freq_khz": 111750,
+   "ident": "INOW",
+   "was": "NDO 111.90",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "ETNG",
+   "rwy": "27",
+   "freq_khz": 110100,
+   "ident": "IGEW",
+   "was": "GIX 110.10",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "ETNH",
+   "rwy": "26",
+   "freq_khz": 108900,
+   "ident": "IMHW",
+   "was": "HN 108.90",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "ETNW",
+   "rwy": "26",
+   "freq_khz": 109700,
+   "ident": "IWUW",
+   "was": "WUN 109.70",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LFBP",
+   "rwy": "31",
+   "freq_khz": 110100,
+   "ident": "PYR",
+   "was": "PU 110.10",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LFKB",
+   "rwy": "34",
+   "freq_khz": 111350,
+   "ident": "BAS",
+   "was": "BP 111.35",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LFPG",
+   "rwy": "26R",
+   "freq_khz": 111950,
+   "was": "GAU 109.10",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LFSB",
+   "rwy": "33",
+   "freq_khz": 109350,
+   "ident": "BLU",
+   "was": "IBLU 109.35",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LFSX",
+   "rwy": "11",
+   "freq_khz": 108100,
+   "was": "LXI 108.09",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LIBP",
+   "rwy": "22",
+   "freq_khz": 110700,
+   "ident": "IPSC",
+   "was": "IPS 110.70",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LIBR",
+   "rwy": "31",
+   "freq_khz": 109550,
+   "ident": "IBRN",
+   "was": "IBN 109.50",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LIME",
+   "rwy": "28",
+   "freq_khz": 108700,
+   "ident": "IBRM",
+   "was": "BRM 108.70",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LIPE",
+   "rwy": "12",
+   "freq_khz": 108900,
+   "ident": "IBLN",
+   "was": "BLN 108.90",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LIPX",
+   "rwy": "04",
+   "freq_khz": 111750,
+   "ident": "IVRN",
+   "was": "IVF 110.10",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LIRA",
+   "rwy": "15",
+   "freq_khz": 110550,
+   "ident": "ICIA",
+   "was": "CIA 109.90",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LIRF",
+   "rwy": "16L",
+   "freq_khz": 108100,
+   "ident": "IFLL",
+   "was": "FLL 108.10",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LIRF",
+   "rwy": "16R",
+   "freq_khz": 109750,
+   "ident": "IFRR",
+   "was": "FRR 110.30",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LIRF",
+   "rwy": "34L",
+   "freq_khz": 108900,
+   "ident": "IFSW",
+   "was": "ISW 108.90",
+   "source": "frequency change since nav.dat 2013.10 seen in the X-Plane 12 default nav data (cycle 2406); AIP check pending"
+  },
+  {
+   "icao": "LSZA",
+   "rwy": "01",
+   "freq_khz": 108900,
+   "was": "ILU 111.50",
+   "source": "Swiss AIP LSZA AD 2.19 / vACC Switzerland chart: LOC 01 ILU 108.90 (the DME stays on 111.50), verified 2026-11-08"
+  },
+  {
+   "icao": "LSZH",
+   "rwy": "14",
+   "freq_khz": 111750,
+   "was": "IKL 108.30",
+   "source": "Swiss AIP LSZH AD 2.19 / vACC Switzerland ILS 14 chart (rev. 2024-01-25): ILS/DME 14 IKL 111.75, verified 2026-11-08"
+  }
+ ]
+}

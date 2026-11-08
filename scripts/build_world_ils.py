@@ -44,6 +44,7 @@ REGIONS_JSON = REPO / "scripts" / "world_regions.json"
 AIRPORTS = REPO / "provpilot" / "airports.json"
 NAVAIDS = REPO / "provpilot" / "navaids.json"
 OUT = REPO / "provpilot" / "ils.json"
+UPDATES = REPO / "scripts" / "ils_updates.json"   # AIP corrections on top of the 2013 nav.dat
 
 FT_TO_M = 0.3048
 NM_M = 1852.0
@@ -58,7 +59,8 @@ COMMENT = ("ILS per runway end of provpilot/airports.json, built by scripts/buil
            "runtime geometry comes from the catalog runway (NavaidsLib) unless `offset` is true, "
            "when the nav.dat localizer course and position are used. `source` is 'nav.dat' or "
            "'synthetic' (paved runway >= 1500 m without real ILS, invented frequency and ident). "
-           "freq_khz: 110500 = 110.50 MHz.")
+           "freq_khz: 110500 = 110.50 MHz. Entries with `updated` carry a correction from "
+           "scripts/ils_updates.json (frequency / ident changes since 2013, from the AIPs).")
 
 
 def load_cache_root():
@@ -175,8 +177,64 @@ def pack_runway_files(extra):
     return files
 
 
+def apply_updates(entries, path: Path, verbose: bool):
+    """scripts/ils_updates.json: per (icao, rwy) a new freq_khz / ident, or remove."""
+    if not path.exists():
+        return 0, 0
+    with open(path) as f:
+        ups = json.load(f)["updates"]
+    by_key = {(e["icao"], e["rwy"]): e for e in entries}
+    n_changed = n_removed = 0
+    for u in ups:
+        e = by_key.get((u["icao"], u["rwy"]))
+        if e is None:
+            print(f"  WARNING: ils_updates: no catalog ILS for {u['icao']} {u['rwy']}")
+            continue
+        if u.get("remove"):
+            entries.remove(e)
+            n_removed += 1
+            continue
+        before = f"{e['ident']} {e['freq_khz'] / 1000:.2f}"
+        for k in ("freq_khz", "ident", "cat", "gs_deg"):
+            if k in u:
+                e[k] = u[k]
+        e["updated"] = u.get("source", "ils_updates.json")
+        n_changed += 1
+        if verbose:
+            print(f"  update {u['icao']} {u['rwy']}: {before} -> {e['ident']} {e['freq_khz'] / 1000:.2f}")
+    return n_changed, n_removed
+
+
+def compare_with_xplane(entries, path: Path):
+    """Report mode: our catalog against a locally installed X-Plane earth_nav.dat
+    (type 4 localizer rows). Nothing is copied: the report names the ILS whose
+    frequency or ident differs, the ones that are gone and the ones we lack,
+    for checking against the AIPs and adding to ils_updates.json."""
+    xp = {}
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            p = line.split()
+            if len(p) < 11 or p[0] != "4":
+                continue
+            xp[(p[8], p[10])] = (int(p[4]) * 10, p[7])
+    ours = {(e["icao"], e["rwy"]): e for e in entries}
+    changed = [(k, e["ident"], e["freq_khz"], xp[k][1], xp[k][0]) for k, e in sorted(ours.items())
+               if k in xp and (xp[k][0] != e["freq_khz"] or xp[k][1] != e["ident"])]
+    gone = [k for k in sorted(ours) if k not in xp]
+    prefixes = {e["icao"][:2] for e in entries}
+    new = [k for k in sorted(xp) if k[0][:2] in prefixes and k not in ours]
+    print(f"=== compare with {path}: {len(changed)} changed, {len(gone)} gone, {len(new)} not in our catalog ===")
+    for k, i0, f0, i1, f1 in changed:
+        print(f"  changed {k[0]} {k[1]}: {i0} {f0 / 1000:.2f} -> {i1} {f1 / 1000:.2f}")
+    print("  gone:", ", ".join(f"{k[0]} {k[1]}" for k in gone))
+    print("  new:", ", ".join(f"{k[0]} {k[1]} {xp[k][1]} {xp[k][0] / 1000:.2f}" for k in new))
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="FlightGear nav.dat + catalog -> provpilot/ils.json")
+    p.add_argument("--updates", default=str(UPDATES), help="AIP corrections applied after the match (default scripts/ils_updates.json)")
+    p.add_argument("--no-updates", action="store_true", help="plain nav.dat, no corrections")
+    p.add_argument("--compare", metavar="EARTH_NAV_DAT", help="report the differences to an X-Plane earth_nav.dat and exit (nothing written)")
     p.add_argument("--packs", action="append", default=[], help="extra scenery pack dir with airports/runways.json")
     p.add_argument("--offline", action="store_true")
     p.add_argument("--refresh", action="store_true")
@@ -263,6 +321,12 @@ def main() -> int:
         taken.add((icao, r["designator"], idx))
 
     n_real = len(entries)
+    if args.compare:
+        compare_with_xplane(entries, Path(args.compare))
+        return 0
+    n_upd, n_rm = (0, 0) if args.no_updates else apply_updates(entries, Path(args.updates), args.verbose)
+    if n_upd or n_rm:
+        print(f"  {n_upd} corrections from {Path(args.updates).name} applied, {n_rm} ILS removed")
     n_synth = 0
     if args.synthetic and not args.no_synthetic:
         used = [(e["freq_khz"], e["loc"]["lat"], e["loc"]["lon"]) for e in entries] + vor_freqs
@@ -295,7 +359,7 @@ def main() -> int:
 
     entries.sort(key=lambda e: (e["icao"], e["rwy"]))
     with open(OUT, "w") as f:
-        json.dump({"_comment": COMMENT, "source": f"FlightGear nav.dat cycle 2013.10{' + synthetic' if n_synth else ''}, {date.today().isoformat()}",
+        json.dump({"_comment": COMMENT, "source": f"FlightGear nav.dat cycle 2013.10{' + ils_updates.json' if n_upd or n_rm else ''}{' + synthetic' if n_synth else ''}, {date.today().isoformat()}",
                    "ils": entries}, f, indent=1)
         f.write("\n")
     airports_with = len({e["icao"] for e in entries})
