@@ -2362,8 +2362,12 @@ clear of trees, even inside forests." Per-tree files do not scale (CH is
 mixed and a density of 1 tree / 36 m², plus **corridors** = road and rail
 centre lines with a half width per class, motorway 16 m … track 3 m, rail
 5 m) for the squares that have a terrain tile. A few KB per square:
-Switzerland's corridors are 7 KB a square, Austria's forests ≈ 20 000
-squares. `S3DVegetationManager` fills the polygons on its worker thread
+Switzerland's corridors are 30 335 squares, 137 MB (4.5 KB each); Austria's
+forests and corridors 79 343 squares, 345 MB, from 200 000 forest areas and
+2 M ways in 4.5 minutes (about 1.1 G trees if every one were stored: the
+per-tree format would have been 27 GB). Probe over the Vienna Woods at
+1 500 ft, base tier only: 70 fps, 242 tiles, 9 M primitives, roads cut
+through the forest. `S3DVegetationManager` fills the polygons on its worker thread
 (jittered grid at the spacing, deterministic per square, holes honoured,
 `species_hint` from the leaf type) and drops every tree within a corridor's
 half width + 1 m. The corridors of every forest file of a square also thin
