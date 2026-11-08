@@ -37,8 +37,21 @@ from pathlib import Path
 
 import osmium
 import pyproj
-from shapely.geometry import LineString, Polygon, box
+from shapely import make_valid
+from shapely.errors import GEOSException
+from shapely.geometry import LineString, MultiPolygon, Polygon, box
 from shapely.ops import transform as shp_transform
+
+
+def _polygonal(geom):
+    """The Polygon / MultiPolygon part of a make_valid result (None when none)."""
+    if geom is None or geom.is_empty:
+        return None
+    if geom.geom_type in ("Polygon", "MultiPolygon"):
+        return geom
+    polys = [g for g in getattr(geom, "geoms", []) if g.geom_type == "Polygon"]
+    polys += [q for g in getattr(geom, "geoms", []) if g.geom_type == "MultiPolygon" for q in g.geoms]
+    return MultiPolygon(polys) if polys else None
 
 ROOT = Path(__file__).resolve().parent.parent
 REGIONS = json.loads((ROOT / "scripts" / "world_regions.json").read_text())
@@ -114,7 +127,7 @@ class Collector(osmium.SimpleHandler):
         self.bbox = bbox            # (e0, n0, e1, n1) or None
         self.roads_only = roads_only
         self.tiles = defaultdict(lambda: {"forest": [], "corridor": [], "cover": []})
-        self.n_forest = self.n_ways = self.n_cover = 0
+        self.n_forest = self.n_ways = self.n_cover = self.n_invalid = 0
         self.wkb = osmium.geom.WKBFactory()
 
     def _tile_range(self, geom):
@@ -146,6 +159,14 @@ class Collector(osmium.SimpleHandler):
             geom = geom.simplify(SIMPLIFY_M, preserve_topology=True)
             if geom.is_empty or geom.area < MIN_AREA[cover]:
                 return
+        # OSM multipolygons are not always valid (self-touching rings, holes
+        # outside their shell); GEOS then throws in the clip below. Repair
+        # them first and keep the polygonal part of the repair.
+        if not geom.is_valid:
+            geom = _polygonal(make_valid(geom))
+            if geom is None or geom.is_empty:
+                self.n_invalid += 1
+                return
             self.n_cover += 1
             min_part = 100.0
         else:
@@ -156,7 +177,14 @@ class Collector(osmium.SimpleHandler):
         for te in rng[0]:
             for tn in rng[1]:
                 cell = box(te * TILE, tn * TILE, (te + 1) * TILE, (tn + 1) * TILE)
-                part = geom.intersection(cell)
+                try:
+                    part = geom.intersection(cell)
+                except GEOSException:
+                    try:
+                        part = _polygonal(make_valid(geom.buffer(0))).intersection(cell)
+                    except Exception:
+                        self.n_invalid += 1
+                        continue
                 if part.is_empty:
                     continue
                 polys = [part] if part.geom_type == "Polygon" else [g for g in getattr(part, "geoms", []) if g.geom_type == "Polygon"]
@@ -295,7 +323,7 @@ def main() -> int:
     print(f"=== forests {args.region}: {pbf} ===")
     col = Collector(tuple(args.bbox) if args.bbox else None, args.roads_only)
     col.apply_file(str(pbf), locations=True, idx="flex_mem")
-    print(f"  {col.n_forest} forest areas, {col.n_cover} land-cover areas, {col.n_ways} corridor ways in {time.time() - t0:.0f} s; {len(col.tiles)} squares touched")
+    print(f"  {col.n_forest} forest areas, {col.n_cover} land-cover areas, {col.n_ways} corridor ways ({col.n_invalid} unrepairable areas skipped) in {time.time() - t0:.0f} s; {len(col.tiles)} squares touched")
     written = trees_est = 0
     for (te, tn), data in sorted(col.tiles.items()):
         if squares is not None and (te, tn) not in squares:
