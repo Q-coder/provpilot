@@ -331,6 +331,7 @@ void AircraftRig::apply_model_normals(Node *root)
 	{
 		return;
 	}
+	apply_glass_materials(root);
 	if (cfg.is_valid() && !cfg->get_bool("model", "flip_normals", true))
 	{
 		return;
@@ -341,6 +342,70 @@ void AircraftRig::apply_model_normals(Node *root)
 		prefix = cfg->get_string("model", "flip_normals_prefix", prefix);
 	}
 	flip_normals_recursive(root, prefix);
+}
+
+void AircraftRig::apply_glass_materials(Node *root)
+{
+	if (root == nullptr || !cfg.is_valid())
+	{
+		return;
+	}
+	const Array names = cfg->get_string_array("model", "glass_materials", Array());
+	if (names.is_empty())
+	{
+		return;
+	}
+	const Vector3 tint = cfg->get_vector3("model", "glass_tint", Vector3(0.35, 0.4, 0.45));
+	const double alpha = cfg->get_float("model", "glass_alpha", 0.14);
+	const double rough = cfg->get_float("model", "glass_roughness", 0.06);
+	auto matches = [&](const String &mat_name) {
+		for (int i = 0; i < names.size(); i++)
+		{
+			const String pat = String(names[i]).strip_edges();
+			if (pat.ends_with("*") ? mat_name.begins_with(pat.left(pat.length() - 1)) : mat_name == pat)
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+	int done = 0;
+	Vector<Node *> stack;
+	stack.push_back(root);
+	while (!stack.is_empty())
+	{
+		Node *n = stack[stack.size() - 1];
+		stack.remove_at(stack.size() - 1);
+		for (int i = 0; i < n->get_child_count(); i++)
+		{
+			stack.push_back(n->get_child(i));
+		}
+		MeshInstance3D *mi = Object::cast_to<MeshInstance3D>(n);
+		if (mi == nullptr || mi->get_mesh().is_null())
+		{
+			continue;
+		}
+		for (int s = 0; s < mi->get_mesh()->get_surface_count(); s++)
+		{
+			Ref<Material> m = mi->get_active_material(s);
+			BaseMaterial3D *bm = Object::cast_to<BaseMaterial3D>(m.ptr());
+			if (bm == nullptr || !matches(bm->get_name()))
+			{
+				continue;
+			}
+			bm->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA_DEPTH_PRE_PASS);
+			bm->set_albedo(Color(tint.x, tint.y, tint.z, alpha));
+			bm->set_roughness(rough);
+			bm->set_metallic(0.0);
+			bm->set_specular(0.5);
+			bm->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+			done++;
+		}
+	}
+	if (done > 0)
+	{
+		UtilityFunctions::print("Glass materials: ", done, " surface(s) made clear (alpha ", alpha, ", roughness ", rough, ")");
+	}
 }
 
 // Only exterior surfaces are flipped (prefix): the interior cockpit meshes

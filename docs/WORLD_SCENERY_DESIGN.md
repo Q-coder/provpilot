@@ -2310,6 +2310,17 @@ image, scaling the card to the record's crown radius squeezed every tree to
 (`probe_forest_fps.gd -- <out> <veg> 3 2674500 1186500 160 2500`): forest
 to the tree line, small trees on the upper slopes, bare alps above.
 
+Flicker (gery: "visible flickering of chunks of forest … a border line
+behind the airplane"): two causes, both per tile. The engine's visibility
+range swapped a whole tile from its near to its far set at 2.5 km, and a
+tile whose terrain arrived after its trees was dropped and re-queued, a gap
+of several frames. Now both sets are drawn within ± 400 m of the hand-over
+(the ranges only cull beyond that plus the tile half-diagonal) and the
+shader crossfades them per tree by complementary dither
+(`lod_split_m` / `lod_band_m`, `INSTANCE_CUSTOM.w` marks the far set); a
+re-snapped tile is rebuilt in place, the old nodes freed in the frame the
+new ones land.
+
 Open: BlenderKit species (CC0 / royalty-free pines, spruce, birch) through
 the same bake; forests outside Switzerland from OSM polygons (step 4);
 SRTM measures the canopy in forests, so the ground under a forest is

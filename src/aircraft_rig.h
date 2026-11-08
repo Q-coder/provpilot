@@ -92,6 +92,10 @@ namespace jsbgodot
         // Flips mesh normals under `root` per cfg [model] flip_normals /
         // flip_normals_prefix (the C172P .blend import bakes them inverted).
         void apply_model_normals(Node *root);
+        // cfg [model] glass_materials: the named materials become clear glass
+        // (dark tint, low alpha, low roughness) instead of the milky grey the
+        // AC3D / Sketchfab exports carry (gery 2026-11-08: PC-7 and ASK 21).
+        void apply_glass_materials(Node *root);
         // Resolves every model-dependent node against the loaded GLB: control
         // surfaces, propeller (+ blur disc), gear legs, cockpit levers (+ pick
         // bodies), cfg [model] hide_nodes. Emits `nodes_resolved` at the end.

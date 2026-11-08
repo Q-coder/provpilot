@@ -127,6 +127,15 @@ and the resulting `animations.json` under `fg_animations`.
 with `<texture-prop>` name (default `model/liveries`); a variant without its
 own folder reads the base's.
 
+`glass_materials` (list of material names, a trailing `*` matches a prefix),
+`glass_tint` (rgb, default 0.35 0.4 0.45), `glass_alpha` (default 0.14) and
+`glass_roughness` (default 0.06): the named materials are turned into clear
+glass after the model loads (`AircraftRig::apply_glass_materials`). The AC3D
+and Sketchfab exports carry their canopies as light grey at 30 % with a rough
+surface, which reads as milk; a dark tint at low alpha with a tight sun
+highlight reads as perspex. PC-7: `transparent`; ASK 21: `GLASS`,
+`transparent*`, `Material.014` (2026-11-08).
+
 ### `[liveries]`
 `catalog "model/liveries/<variant>.json"` — the liveries of a FlightGear
 package, exported by `scripts/fg_liveries.py` (2026-11-01). A FlightGear

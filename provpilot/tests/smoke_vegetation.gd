@@ -89,7 +89,10 @@ func _ready() -> void:
 				far = c
 	_check(near != null and far != null, "two MultiMeshInstance3D per tile (near / far)")
 	if near != null and far != null:
-		_check(is_equal_approx(near.visibility_range_end, 2500.0) and is_equal_approx(far.visibility_range_begin, 2500.0) and far.visibility_range_end > 8000.0, "visibility ranges: near to 2.5 km, far from 2.5 km past 8 km (%.0f / %.0f-%.0f)" % [near.visibility_range_end, far.visibility_range_begin, far.visibility_range_end])
+		# the engine ranges only cull outside the hand-over band (+- 400 m) plus the tile half-diagonal; the shader crossfades per tree
+		_check(is_equal_approx(near.visibility_range_end, 3700.0) and is_equal_approx(far.visibility_range_begin, 1300.0) and far.visibility_range_end > 8000.0, "visibility ranges: near culled past 3.7 km, far from 1.3 km past 8 km, the 2.5 km hand-over crossfaded in the shader (%.0f / %.0f-%.0f)" % [near.visibility_range_end, far.visibility_range_begin, far.visibility_range_end])
+		var mat: ShaderMaterial = near.material_override
+		_check(is_equal_approx(float(mat.get_shader_parameter("lod_split_m")), 2500.0) and is_equal_approx(float(mat.get_shader_parameter("lod_band_m")), 400.0), "the shader knows the hand-over distance and band")
 		_check(near.material_override is ShaderMaterial and near.material_override == far.material_override, "one shared tree ShaderMaterial on both sets")
 		var mm: MultiMesh = near.multimesh
 		_check(mm.use_custom_data and mm.mesh == mesh, "near instances use the card mesh with custom data")
