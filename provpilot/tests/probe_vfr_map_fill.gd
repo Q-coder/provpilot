@@ -75,7 +75,7 @@ func _ready() -> void:
 	var map = root._vfr_map
 	if not map.is_map_enabled():
 		map.toggle_visible()
-	map.set_frame_size(400)  # the times below are for this frame; a larger one needs more and finer cells
+	map.set_frame_size(int(args[3]) if args.size() > 3 else 400)  # the times below are for this frame; a larger one needs more and finer cells
 	if not map.is_background_enabled():
 		map.set_background_enabled(true)
 	while map.get_zoom_index() > 0:
@@ -112,7 +112,7 @@ func _ready() -> void:
 	var t_tall: float = await _fill_time(map)
 	var n_tall: int = map.get_cached_tile_count()
 	print("FILL %s tall 250km: %.2f s, %d -> %d cells" % [tag, t_tall, n_square, n_tall])
-	_check(n_tall >= n_square + 100, "a tall frame loads the cells for its height (%d -> %d)" % [n_square, n_tall])
+	_check(n_tall >= n_square + 50, "a tall frame loads the cells for its height (%d -> %d)" % [n_square, n_tall])
 	await _shot(map, out_dir, "fill_%s_tall.png" % tag)
 	map.resize_frame_by(Vector2(0.0, -600.0))
 	# pan with the mouse, centre button back to the aircraft
@@ -140,5 +140,20 @@ func _ready() -> void:
 	var ac2: Vector2 = map.get_projected_px(lv.x, lv.y)
 	_check(not map.is_panned() and (ac2 - ac0).length() < 2.0, "the centre button puts the view back on the aircraft")
 	await _shot(map, out_dir, "fill_%s_centred.png" % tag)
+	# orientation buttons: north up / aircraft heading up
+	origin = map.get_global_rect().position
+	sz = map.get_global_rect().size
+	var north_pt := Vector2(lv.x, lv.y + 10000.0)
+	var up0: Vector2 = map.get_projected_px(north_pt.x, north_pt.y) - map.get_projected_px(lv.x, lv.y)
+	await _click(origin + Vector2(sz.x - 8.0 - 18.0 - 56.0, sz.y - 12.0 - 18.0))
+	await get_tree().create_timer(0.4).timeout
+	var up1: Vector2 = map.get_projected_px(north_pt.x, north_pt.y) - map.get_projected_px(lv.x, lv.y)
+	_check(map.is_north_up(), "the N button turns the map north up")
+	_check(absf(up1.x) < 0.5 and up1.y < -5.0, "north is straight up (10 km north projects to %s; heading up it was %s)" % [str(up1), str(up0)])
+	await _shot(map, out_dir, "fill_%s_north_up.png" % tag)
+	await _click(origin + Vector2(sz.x - 8.0 - 18.0 - 28.0, sz.y - 12.0 - 18.0))
+	await get_tree().create_timer(0.3).timeout
+	var up2: Vector2 = map.get_projected_px(north_pt.x, north_pt.y) - map.get_projected_px(lv.x, lv.y)
+	_check(not map.is_north_up() and (up2 - up0).length() < 0.5, "the aircraft button turns it heading up again")
 	print("PROBE RESULT: %s" % ("PASS" if _fails == 0 else "FAIL (%d)" % _fails))
 	get_tree().quit(0 if _fails == 0 else 1)

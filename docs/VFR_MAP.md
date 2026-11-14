@@ -97,7 +97,9 @@ python scripts/generate_vfr_map_tiles.py --terrain-dir .../CH/terrain \
   - `scripts/build_map_overview.py <Region> ...` writes
     `<Region>/map_overview/L2/c_<ei>_<ni>.i16` (128 x 128 int16 metres, the
     very samples the renderer picks). One file per cell and region; the 250 km
-    view fills in 0.3 s. Run it after every terrain bake; `bundle_world_pack.py`
+    view fills in 0.3 s. The script also writes `L1/c_<ei>_<ni>.i16z` (8 km
+    cells at 64 m, deflated; about 650 MB for the nine regions): the 160 km view
+    in a 900 px frame, 31 s from the tile files, takes 1.7 s. Run it after every terrain bake; `bundle_world_pack.py`
     packs the folder. A region without it falls back to the tile files.
   - Composite cells (L3 / L5) are kept as PNG under
     `user://map_cache/<key>/L1|L2/`. The key hashes the terrain dirs and their
@@ -109,6 +111,9 @@ python scripts/generate_vfr_map_tiles.py --terrain-dir .../CH/terrain \
   symbol, rings and heading line move on. The button in the map's bottom-right
   corner (lit while panned) centres the view on the aircraft again. A click
   without a drag still selects a symbol. The pan is not saved.
+- **Orientation** — two buttons left of the centre button: aircraft heading up
+  (default) or north up (`[map] map_north_up`). North up, the aircraft symbol
+  and the dashed nose line turn with the heading instead of the map.
 - **Terrain checkbox** — the title bar's checkbox (`[map] map_background`)
   turns the background off: symbols, rings and ILS feathers on a plain fill.
 - **Redraw** — `_draw()` is throttled to ~10 Hz and only re-queued when

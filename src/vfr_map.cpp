@@ -255,6 +255,8 @@ void VfrMap::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_pending_tile_count"), &VfrMap::get_pending_tile_count);
     ClassDB::bind_method(D_METHOD("pan_by", "delta_px"), &VfrMap::pan_by);
     ClassDB::bind_method(D_METHOD("reset_pan"), &VfrMap::reset_pan);
+    ClassDB::bind_method(D_METHOD("set_north_up", "on"), &VfrMap::set_north_up);
+    ClassDB::bind_method(D_METHOD("is_north_up"), &VfrMap::is_north_up);
     ClassDB::bind_method(D_METHOD("is_panned"), &VfrMap::is_panned);
     // The map key (N) flipped the frame: the host mirrors it into the
     // SettingsStore so Settings > Map and the next Save show the same state.
@@ -405,6 +407,33 @@ Rect2 VfrMap::center_button_rect() const
     return Rect2(map_area_rect.position + map_area_rect.size - Vector2(30.0, 30.0), Vector2(24.0, 24.0));
 }
 
+Rect2 VfrMap::heading_button_rect() const
+{
+    Rect2 r = center_button_rect();
+    r.position.x -= 28.0;
+    return r;
+}
+
+Rect2 VfrMap::north_button_rect() const
+{
+    Rect2 r = center_button_rect();
+    r.position.x -= 56.0;
+    return r;
+}
+
+void VfrMap::set_north_up(bool on)
+{
+    if (north_up == on)
+    {
+        return;
+    }
+    north_up = on;
+    persist_layout();
+    request_redraw();
+}
+
+bool VfrMap::is_north_up() const { return north_up; }
+
 void VfrMap::update_frame_center()
 {
     frame_center_px = map_area_rect.get_center();
@@ -412,7 +441,7 @@ void VfrMap::update_frame_center()
     {
         // the view centre is the panned spot: the aircraft sits off-centre by its offset from it
         Vector2 off;
-        project_offset(ac_e - pan_e, ac_n - pan_n, std::cos(heading_rad), std::sin(heading_rad), px_per_m, Vector2(), off);
+        project_offset(ac_e - pan_e, ac_n - pan_n, std::cos(map_rot()), std::sin(map_rot()), px_per_m, Vector2(), off);
         frame_center_px += off;
     }
 }
@@ -430,7 +459,7 @@ void VfrMap::pan_by(const Vector2 &delta_px)
         pan_n = ac_n;
     }
     // inverse of project_offset: the content follows the mouse, the centre goes the other way
-    const double ch = std::cos(heading_rad), sh = std::sin(heading_rad);
+    const double ch = std::cos(map_rot()), sh = std::sin(map_rot());
     const double x = -delta_px.x / px_per_m, y = delta_px.y / px_per_m;
     pan_e += x * ch + y * sh;
     pan_n += -x * sh + y * ch;
@@ -615,7 +644,7 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
         {
             set_default_cursor_shape(Control::CURSOR_BDIAGSIZE);
         }
-        else if (in_background_box(lp) || center_button_rect().has_point(lp))
+        else if (in_background_box(lp) || center_button_rect().has_point(lp) || north_button_rect().has_point(lp) || heading_button_rect().has_point(lp))
         {
             set_default_cursor_shape(Control::CURSOR_POINTING_HAND);
         }
@@ -662,6 +691,12 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
             if (mode == DRAG_NONE && center_button_rect().has_point(lp))
             {
                 reset_pan();
+                get_viewport()->set_input_as_handled();
+                return;
+            }
+            if (mode == DRAG_NONE && (north_button_rect().has_point(lp) || heading_button_rect().has_point(lp)))
+            {
+                set_north_up(north_button_rect().has_point(lp));
                 get_viewport()->set_input_as_handled();
                 return;
             }
@@ -804,6 +839,7 @@ void VfrMap::load_config()
     layout_loaded = true;
     zoom_index = std::max(0, std::min(N_ZOOM - 1, int(cfg->get_value("map", "zoom_index", 2))));
     background = bool(cfg->get_value("map", "map_background", true));
+    north_up = bool(cfg->get_value("map", "map_north_up", false));
 }
 
 // Zoom and frame layout go straight into provpilot.cfg [map]; the
@@ -822,6 +858,7 @@ void VfrMap::persist_layout()
     cfg->set_value("map", "map_enabled", enabled);
     cfg->set_value("map", "zoom_index", zoom_index);
     cfg->set_value("map", "map_background", background);
+    cfg->set_value("map", "map_north_up", north_up);
     cfg->set_value("map", "map_frame_w", frame_w);
     cfg->set_value("map", "map_frame_h", frame_h);
     cfg->set_value("map", "map_frame_right", frame_right);
@@ -943,10 +980,10 @@ void VfrMap::project_px(double e, double n, Vector2 &out) const
     if (panned)
     {
         Vector2 off;
-        project_offset(ac_e - pan_e, ac_n - pan_n, std::cos(heading_rad), std::sin(heading_rad), px_per_m, Vector2(), off);
+        project_offset(ac_e - pan_e, ac_n - pan_n, std::cos(map_rot()), std::sin(map_rot()), px_per_m, Vector2(), off);
         center += off;
     }
-    project_offset(e - ac_e, n - ac_n, std::cos(heading_rad), std::sin(heading_rad),
+    project_offset(e - ac_e, n - ac_n, std::cos(map_rot()), std::sin(map_rot()),
                    px_per_m, center, out);
 }
 
@@ -1603,7 +1640,8 @@ void VfrMap::push_loader_sources()
         {
             const String ov = String(terrain_paths[i]).trim_suffix("/").get_base_dir().path_join("map_overview").path_join("L2");
             sig += String(terrain_paths[i]) + "|" + String::num_uint64(FileAccess::get_modified_time(terrain_paths[i])) + "|" +
-                    String::num_uint64(FileAccess::get_modified_time(ov)) + ";";
+                    String::num_uint64(FileAccess::get_modified_time(ov)) + "|" +
+                    String::num_uint64(FileAccess::get_modified_time(ov.get_base_dir().path_join("L1"))) + ";";
         }
         const String root = OS::get_singleton()->get_user_data_dir().path_join("map_cache");
         const String name = String::num_uint64(uint64_t(sig.hash()), 16) + "_" + String::num_int64(sig.length());
@@ -1896,17 +1934,23 @@ Ref<Image> VfrMap::render_terrain_image(const PackedStringArray &terrain_paths, 
         {
             continue;
         }
-        if (key.level == 2)
+        if (key.level >= 1)
         {
-            const String ov_dir = dir.get_base_dir().path_join("map_overview").path_join("L2");
+            // L2: raw int16; L1 (64 m samples, many more cells): the same, deflated
+            const bool packed = key.level == 1;
+            const String ov_dir = dir.get_base_dir().path_join("map_overview").path_join(packed ? "L1" : "L2");
             if (DirAccess::dir_exists_absolute(ov_dir))
             {
-                Ref<FileAccess> f = FileAccess::open(ov_dir.path_join(String("c_") + String::num_int64(key.ei) + "_" + String::num_int64(key.ni) + ".i16"), FileAccess::READ);
-                if (f.is_null() || f->get_length() != uint64_t(S) * S * 2)
+                Ref<FileAccess> f = FileAccess::open(ov_dir.path_join(String("c_") + String::num_int64(key.ei) + "_" + String::num_int64(key.ni) + (packed ? ".i16z" : ".i16")), FileAccess::READ);
+                if (f.is_null() || (!packed && f->get_length() != uint64_t(S) * S * 2))
                 {
                     continue; // nothing of this region in the cell
                 }
-                const PackedByteArray buf = f->get_buffer(int64_t(S) * S * 2);
+                PackedByteArray buf = f->get_buffer(int64_t(f->get_length()));
+                if (packed)
+                {
+                    buf = buf.decompress(int64_t(S) * S * 2, FileAccess::COMPRESSION_DEFLATE);
+                }
                 if (buf.size() != int64_t(S) * S * 2)
                 {
                     continue;
@@ -2114,8 +2158,8 @@ void VfrMap::draw_world(CanvasItem *ci)
     // A point at LV95 (e, n) projects to:
     //   px = center + ((e - ac_e) * cosH + (n - ac_n) * sinH) * ppm
     //   py = center + ((ac_n - n) * cosH - (e - ac_e) * sinH) * ppm
-    double ch = std::cos(heading_rad);
-    double sh = std::sin(heading_rad);
+    double ch = std::cos(map_rot());
+    double sh = std::sin(map_rot());
 
     auto project = [&](double e, double n, Vector2 &out) {
         // Heading-up rotation (see project_offset / project_px).
@@ -2352,15 +2396,17 @@ void VfrMap::draw_world(CanvasItem *ci)
     // Course line: dashed, from the aircraft symbol to ~85% of the map radius.
     {
         double len = (map_area.size.x / 2.0) * 0.85;
-        Vector2 from(frame_center_px.x, frame_center_px.y - 14);
-        Vector2 to(frame_center_px.x, frame_center_px.y - len);
+        // along the nose: straight up when heading-up, turned by the heading when north-up
+        const double rel = heading_rad - map_rot();
+        const Vector2 dir(std::sin(rel), -std::cos(rel));
+        const Vector2 from = frame_center_px + dir * 14.0;
         double seg = 10.0;
         double gap = 6.0;
         double d = 0.0;
         while (d < len - 14.0)
         {
             double d2 = std::min(d + seg, len - 14.0);
-            ci->draw_line(from + Vector2(0, -(d)), from + Vector2(0, -(d2)), C_COURSE, 1.5, false);
+            ci->draw_line(from + dir * d, from + dir * d2, C_COURSE, 1.5, false);
             d = d2 + gap;
         }
     }
@@ -2506,9 +2552,10 @@ void VfrMap::draw_world(CanvasItem *ci)
     // Aircraft symbol: centered triangle pointing up (heading-up).
     {
         PackedVector2Array tri;
-        tri.push_back(Vector2(frame_center_px.x, frame_center_px.y - 9));
-        tri.push_back(Vector2(frame_center_px.x + 6, frame_center_px.y + 8));
-        tri.push_back(Vector2(frame_center_px.x - 6, frame_center_px.y + 8));
+        const double rel = heading_rad - map_rot(); // nose direction on the map
+        tri.push_back(frame_center_px + Vector2(0, -9).rotated(rel));
+        tri.push_back(frame_center_px + Vector2(6, 8).rotated(rel));
+        tri.push_back(frame_center_px + Vector2(-6, 8).rotated(rel));
         ci->draw_colored_polygon(tri, C_AC_BODY);
         PackedVector2Array edge;
         edge.push_back(tri[0]);
@@ -2516,6 +2563,41 @@ void VfrMap::draw_world(CanvasItem *ci)
         edge.push_back(tri[2]);
         edge.push_back(tri[0]);
         ci->draw_polyline(edge, C_AC_EDGE, 1.5, false);
+    }
+
+    // Orientation buttons: aircraft heading up (an arrowhead) or north up (N
+    // under a tick); the active one is lit.
+    for (int b = 0; b < 2; b++)
+    {
+        const bool is_north = b == 1;
+        const Rect2 r = is_north ? north_button_rect() : heading_button_rect();
+        const bool active = north_up == is_north;
+        const Color fg = active ? Color(1.0f, 0.85f, 0.3f) : Color(0.75f, 0.8f, 0.9f, 0.7f);
+        ci->draw_rect(r, Color(0.05f, 0.07f, 0.1f, active ? 0.85f : 0.55f));
+        ci->draw_rect(r, fg, false, 1.0);
+        const Vector2 c = r.get_center();
+        if (is_north)
+        {
+            PackedVector2Array tick;
+            tick.push_back(c + Vector2(0, -10));
+            tick.push_back(c + Vector2(4, -5));
+            tick.push_back(c + Vector2(-4, -5));
+            ci->draw_colored_polygon(tick, fg);
+            if (font.is_valid())
+            {
+                ci->draw_string(font, c + Vector2(-5, 9), "N", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, fg);
+            }
+        }
+        else
+        {
+            PackedVector2Array arrow;
+            arrow.push_back(c + Vector2(0, -9));
+            arrow.push_back(c + Vector2(7, 8));
+            arrow.push_back(c + Vector2(0, 4));
+            arrow.push_back(c + Vector2(-7, 8));
+            arrow.push_back(c + Vector2(0, -9));
+            ci->draw_polyline(arrow, fg, 1.5, true);
+        }
     }
 
     // Centre button: puts a panned view back on the aircraft (lit while panned).

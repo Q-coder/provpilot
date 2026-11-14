@@ -13,6 +13,13 @@ cell's north edge), 4 x 4 samples per terrain tile (every 8th of its 34):
 exactly what VfrMap::render_terrain_image() picks from the tile files.
 -32768 = no tile, -32767 = sea level (the bake stores 0.01 m there).
 
+The medium views (and the 160 km view in a large frame) use 8.192 km cells at
+64 m per pixel, 64 tiles each:
+
+    <Region>/map_overview/L1/c_<ei>_<ni>.i16z
+
+the same layout (16 x 16 samples per tile, every 2nd), zlib-deflated.
+
 Run it after a terrain bake, before bundling the region:
 
     python3 scripts/build_map_overview.py /Volumes/Data1/provpilot/build/germany/Germany [...]
@@ -22,6 +29,7 @@ import os
 import re
 import sys
 import time
+import zlib
 from multiprocessing import Pool
 
 import numpy as np
@@ -37,11 +45,22 @@ NO_DATA = -32768
 SEA = -32767
 NAME_RE = re.compile(r"^tile_(-?\d+)_(-?\d+)\.raw$")
 PICK = np.minimum(TILE_PX - 1, np.arange(P) * STRIDE)
+CELL1_M = 8192
+K1 = CELL1_M // TILE_M        # 8
+P1 = 16
+PICK1 = np.minimum(TILE_PX - 1, np.arange(P1) * 2)
+
+
+def encode(block):
+    q = np.clip(np.rint(block), -32000, 32000).astype("<i2")
+    q[block < 0.05] = SEA
+    return q
 
 
 def build_cell(job):
     terrain_dir, out_dir, ei, ni, tiles = job
     cell = np.full((S, S), NO_DATA, dtype="<i2")
+    fine = {}                 # (ei1, ni1) -> 128 x 128
     used = 0
     for e, n in tiles:
         path = os.path.join(terrain_dir, "tile_%d_%d.raw" % (e, n))
@@ -56,11 +75,20 @@ def build_cell(job):
         # raw rows run south -> north, columns east -> west
         block = h[np.ix_(PICK, TILE_PX - 1 - PICK)]       # [sy from south, sx from west]
         block = block[::-1, :]                             # row 0 = north
-        q = np.clip(np.rint(block), -32000, 32000).astype("<i2")
-        q[block < 0.05] = SEA
         y0 = (K - 1 - ty) * P
         x0 = tx * P
-        cell[y0:y0 + P, x0:x0 + P] = q
+        cell[y0:y0 + P, x0:x0 + P] = encode(block)
+        # the 8 km cell of this tile
+        k1 = (e // CELL1_M, n // CELL1_M)
+        c1 = fine.get(k1)
+        if c1 is None:
+            c1 = fine[k1] = np.full((S, S), NO_DATA, dtype="<i2")
+        tx1 = (e - k1[0] * CELL1_M) // TILE_M
+        ty1 = (n - k1[1] * CELL1_M) // TILE_M
+        b1 = h[np.ix_(PICK1, TILE_PX - 1 - PICK1)][::-1, :]
+        y1 = (K1 - 1 - ty1) * P1
+        x1 = tx1 * P1
+        c1[y1:y1 + P1, x1:x1 + P1] = encode(b1)
         used += 1
     if used == 0:
         return 0
@@ -68,6 +96,12 @@ def build_cell(job):
     tmp = out + ".tmp"
     cell.tofile(tmp)
     os.replace(tmp, out)
+    dir1 = os.path.join(os.path.dirname(out_dir), "L1")
+    for (e1, n1), c1 in fine.items():
+        out = os.path.join(dir1, "c_%d_%d.i16z" % (e1, n1))
+        with open(out + ".tmp", "wb") as f:
+            f.write(zlib.compress(c1.tobytes(), 6))
+        os.replace(out + ".tmp", out)
     return used
 
 
@@ -87,9 +121,12 @@ def build_region(region_dir, workers):
             cells.setdefault((e // CELL_M, n // CELL_M), []).append((e, n))
     out_dir = os.path.join(region_dir, "map_overview", "L2")
     os.makedirs(out_dir, exist_ok=True)
-    for name in os.listdir(out_dir):      # a re-bake may have dropped cells
-        if name.endswith(".i16") or name.endswith(".tmp"):
-            os.remove(os.path.join(out_dir, name))
+    dir1 = os.path.join(region_dir, "map_overview", "L1")
+    os.makedirs(dir1, exist_ok=True)
+    for d in (out_dir, dir1):             # a re-bake may have dropped cells
+        for name in os.listdir(d):
+            if name.endswith((".i16", ".i16z", ".tmp")):
+                os.remove(os.path.join(d, name))
     jobs = [(terrain_dir, out_dir, ei, ni, tiles) for (ei, ni), tiles in sorted(cells.items())]
     used = 0
     with Pool(workers) as pool:

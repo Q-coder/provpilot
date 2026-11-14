@@ -145,6 +145,8 @@ namespace jsbgodot
         VfrMap();
         ~VfrMap();
         void pan_by(const Vector2 &delta_px);          // drag the map content by this many pixels
+        void set_north_up(bool on);
+        bool is_north_up() const;
         void reset_pan();
         bool is_panned() const;
         void set_background_enabled(bool on);
@@ -208,6 +210,10 @@ namespace jsbgodot
         double drag_start_pan_e = 0.0, drag_start_pan_n = 0.0;
         bool drag_pan_moved = false;                   // past the click threshold: a pan, not a click
         Vector2 drag_start_local;
+        bool north_up = false;                         // map orientation: north up, else aircraft heading up
+        double map_rot() const { return north_up ? 0.0 : heading_rad; } // the rotation the projection uses
+        Rect2 heading_button_rect() const;             // heading-up / north-up buttons left of the centre button
+        Rect2 north_button_rect() const;
         Rect2 center_button_rect() const;              // frame px, bottom-right of the map area
         void update_frame_center();                    // where the aircraft sits in the frame
         int drag_mode = DRAG_NONE;
