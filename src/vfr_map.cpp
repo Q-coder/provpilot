@@ -253,6 +253,9 @@ void VfrMap::_bind_methods()
     ClassDB::bind_method(D_METHOD("set_background_enabled", "on"), &VfrMap::set_background_enabled);
     ClassDB::bind_method(D_METHOD("is_background_enabled"), &VfrMap::is_background_enabled);
     ClassDB::bind_method(D_METHOD("get_pending_tile_count"), &VfrMap::get_pending_tile_count);
+    ClassDB::bind_method(D_METHOD("pan_by", "delta_px"), &VfrMap::pan_by);
+    ClassDB::bind_method(D_METHOD("reset_pan"), &VfrMap::reset_pan);
+    ClassDB::bind_method(D_METHOD("is_panned"), &VfrMap::is_panned);
     // The map key (N) flipped the frame: the host mirrors it into the
     // SettingsStore so Settings > Map and the next Save show the same state.
     ADD_SIGNAL(MethodInfo("enabled_changed", PropertyInfo(Variant::BOOL, "enabled")));
@@ -397,6 +400,54 @@ bool VfrMap::in_resize_grip(const Vector2 &local_px) const
     return local_px.x >= frame_w + info_w() - RESIZE_GRIP_PX && local_px.y >= frame_h - RESIZE_GRIP_PX;
 }
 
+Rect2 VfrMap::center_button_rect() const
+{
+    return Rect2(map_area_rect.position + map_area_rect.size - Vector2(30.0, 30.0), Vector2(24.0, 24.0));
+}
+
+void VfrMap::update_frame_center()
+{
+    frame_center_px = map_area_rect.get_center();
+    if (panned && has_position)
+    {
+        // the view centre is the panned spot: the aircraft sits off-centre by its offset from it
+        Vector2 off;
+        project_offset(ac_e - pan_e, ac_n - pan_n, std::cos(heading_rad), std::sin(heading_rad), px_per_m, Vector2(), off);
+        frame_center_px += off;
+    }
+}
+
+void VfrMap::pan_by(const Vector2 &delta_px)
+{
+    if (!has_position || px_per_m <= 0.0)
+    {
+        return;
+    }
+    if (!panned)
+    {
+        panned = true;
+        pan_e = ac_e;
+        pan_n = ac_n;
+    }
+    // inverse of project_offset: the content follows the mouse, the centre goes the other way
+    const double ch = std::cos(heading_rad), sh = std::sin(heading_rad);
+    const double x = -delta_px.x / px_per_m, y = delta_px.y / px_per_m;
+    pan_e += x * ch + y * sh;
+    pan_n += -x * sh + y * ch;
+    request_redraw();
+}
+
+void VfrMap::reset_pan()
+{
+    if (panned)
+    {
+        panned = false;
+        request_redraw();
+    }
+}
+
+bool VfrMap::is_panned() const { return panned; }
+
 bool VfrMap::in_background_box(const Vector2 &local_px) const
 {
     const double w = frame_w >= BG_LABEL_MIN_W ? 70.0 : 20.0;
@@ -518,6 +569,21 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
         if (drag_mode != DRAG_NONE)
         {
             const Vector2 d = mm->get_global_position() - drag_start_mouse;
+            if (drag_mode == DRAG_PAN)
+            {
+                if (!drag_pan_moved && d.length() < 4.0)
+                {
+                    return; // still a click
+                }
+                drag_pan_moved = true;
+                panned = true;
+                pan_e = drag_start_pan_e;
+                pan_n = drag_start_pan_n;
+                pan_by(d);
+                set_default_cursor_shape(Control::CURSOR_DRAG);
+                get_viewport()->set_input_as_handled();
+                return;
+            }
             if (drag_mode == DRAG_MOVE)
             {
                 frame_right = drag_start_right - d.x;
@@ -549,7 +615,7 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
         {
             set_default_cursor_shape(Control::CURSOR_BDIAGSIZE);
         }
-        else if (in_background_box(lp))
+        else if (in_background_box(lp) || center_button_rect().has_point(lp))
         {
             set_default_cursor_shape(Control::CURSOR_POINTING_HAND);
         }
@@ -593,11 +659,20 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
             {
                 mode = DRAG_MOVE;
             }
+            if (mode == DRAG_NONE && center_button_rect().has_point(lp))
+            {
+                reset_pan();
+                get_viewport()->set_input_as_handled();
+                return;
+            }
             if (mode == DRAG_NONE && map_area_rect.has_point(lp))
             {
-                // a click on an airport or navaid symbol opens its details, one on the bare map closes them
-                select_at(lp);
-                get_viewport()->set_input_as_handled();
+                // a drag pans the map; a plain click (decided on release) selects a symbol
+                mode = DRAG_PAN;
+                drag_pan_moved = false;
+                drag_start_local = lp;
+                drag_start_pan_e = panned ? pan_e : ac_e;
+                drag_start_pan_n = panned ? pan_n : ac_n;
             }
             if (mode != DRAG_NONE)
             {
@@ -609,6 +684,16 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
                 drag_start_h = frame_h;
                 get_viewport()->set_input_as_handled();
             }
+        }
+        else if (drag_mode == DRAG_PAN)
+        {
+            drag_mode = DRAG_NONE;
+            if (!drag_pan_moved)
+            {
+                // a click on an airport or navaid symbol opens its details, one on the bare map closes them
+                select_at(drag_start_local);
+            }
+            get_viewport()->set_input_as_handled();
         }
         else if (drag_mode != DRAG_NONE)
         {
@@ -854,8 +939,15 @@ void VfrMap::update_lv95(double e, double n, double heading_deg, bool ui_visible
 // there; ac_e/ac_n/heading_rad are live, so this tracks update() 1:1.)
 void VfrMap::project_px(double e, double n, Vector2 &out) const
 {
+    Vector2 center = map_area_rect.get_center();
+    if (panned)
+    {
+        Vector2 off;
+        project_offset(ac_e - pan_e, ac_n - pan_n, std::cos(heading_rad), std::sin(heading_rad), px_per_m, Vector2(), off);
+        center += off;
+    }
     project_offset(e - ac_e, n - ac_n, std::cos(heading_rad), std::sin(heading_rad),
-                   px_per_m, frame_center_px, out);
+                   px_per_m, center, out);
 }
 
 Vector2 VfrMap::get_projected_px(double e, double n) const
@@ -1987,8 +2079,8 @@ void VfrMap::_draw()
     // Map area (below the title bar): the clipped canvas child covers it and
     // draws the world (draw_world) right after this.
     place_canvas();
-    frame_center_px = map_area_rect.get_center();
     px_per_m = map_area_rect.size.x / VIEW_WIDTHS_M[zoom_index];
+    update_frame_center();
 
     // Resize grips: two short diagonals in each bottom corner.
     for (int i = 0; i < 2; i++)
@@ -2044,15 +2136,17 @@ void VfrMap::draw_world(CanvasItem *ci)
     std::vector<double> wanted_d2;
     int tiles_drawn = 0;
     int cells_in_view = 0;
+    const double vc_e = panned ? pan_e : ac_e; // view centre
+    const double vc_n = panned ? pan_n : ac_n;
     auto draw_level = [&](int lv) {
         const int cell = level_cell_m(lv);
         // The farthest visible corner plus a half-cell margin, so rotation
         // never exposes un-drawn edges.
         const double extent = view_reach_m() + cell * 0.5;
-        const int ei_min = int(std::floor((ac_e - extent) / (double)cell));
-        const int ei_max = int(std::floor((ac_e + extent) / (double)cell));
-        const int ni_min = int(std::floor((ac_n - extent) / (double)cell));
-        const int ni_max = int(std::floor((ac_n + extent) / (double)cell));
+        const int ei_min = int(std::floor((vc_e - extent) / (double)cell));
+        const int ei_max = int(std::floor((vc_e + extent) / (double)cell));
+        const int ni_min = int(std::floor((vc_n - extent) / (double)cell));
+        const int ni_max = int(std::floor((vc_n + extent) / (double)cell));
         cells_in_view += (ei_max - ei_min + 1) * (ni_max - ni_min + 1);
         for (int ni = ni_min; ni <= ni_max && tiles_drawn < MAX_TILES_PER_DRAW; ni++)
         {
@@ -2064,8 +2158,8 @@ void VfrMap::draw_world(CanvasItem *ci)
                 {
                     if (missing_cells.count(cell_hash(key)) == 0)
                     {
-                        const double de = (ei + 0.5) * cell - ac_e;
-                        const double dn = (ni + 0.5) * cell - ac_n;
+                        const double de = (ei + 0.5) * cell - vc_e;
+                        const double dn = (ni + 0.5) * cell - vc_n;
                         wanted.push_back(key);
                         // the overview level goes first: a few cells cover the whole view
                         wanted_d2.push_back(lv == level ? de * de + dn * dn : -1.0);
@@ -2422,6 +2516,21 @@ void VfrMap::draw_world(CanvasItem *ci)
         edge.push_back(tri[2]);
         edge.push_back(tri[0]);
         ci->draw_polyline(edge, C_AC_EDGE, 1.5, false);
+    }
+
+    // Centre button: puts a panned view back on the aircraft (lit while panned).
+    {
+        const Rect2 r = center_button_rect();
+        const Color fg = panned ? Color(1.0f, 0.85f, 0.3f) : Color(0.75f, 0.8f, 0.9f, 0.7f);
+        ci->draw_rect(r, Color(0.05f, 0.07f, 0.1f, panned ? 0.85f : 0.55f));
+        ci->draw_rect(r, fg, false, 1.0);
+        const Vector2 c = r.get_center();
+        ci->draw_arc(c, 6.0, 0, TAU, 24, fg, 1.5, true);
+        ci->draw_circle(c, 1.8, fg);
+        ci->draw_line(c + Vector2(0, -10), c + Vector2(0, -6), fg, 1.5, true);
+        ci->draw_line(c + Vector2(0, 6), c + Vector2(0, 10), fg, 1.5, true);
+        ci->draw_line(c + Vector2(-10, 0), c + Vector2(-6, 0), fg, 1.5, true);
+        ci->draw_line(c + Vector2(6, 0), c + Vector2(10, 0), fg, 1.5, true);
     }
 }
 

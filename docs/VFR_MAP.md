@@ -104,6 +104,11 @@ python scripts/generate_vfr_map_tiles.py --terrain-dir .../CH/terrain \
     modification times, so a changed scenery set starts a fresh cache; caches
     unused for 30 days are deleted. A 40 km view: 2.5 s the first time, 0.14 s
     after.
+- **Pan** — a left drag in the map area moves the view off the aircraft; it
+  then stays on that spot of the world (`pan_e` / `pan_n`) while the aircraft
+  symbol, rings and heading line move on. The button in the map's bottom-right
+  corner (lit while panned) centres the view on the aircraft again. A click
+  without a drag still selects a symbol. The pan is not saved.
 - **Terrain checkbox** — the title bar's checkbox (`[map] map_background`)
   turns the background off: symbols, rings and ILS feathers on a plain fill.
 - **Redraw** — `_draw()` is throttled to ~10 Hz and only re-queued when

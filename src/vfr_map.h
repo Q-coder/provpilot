@@ -144,6 +144,9 @@ namespace jsbgodot
     public:
         VfrMap();
         ~VfrMap();
+        void pan_by(const Vector2 &delta_px);          // drag the map content by this many pixels
+        void reset_pan();
+        bool is_panned() const;
         void set_background_enabled(bool on);
         bool is_background_enabled() const;
         int get_pending_tile_count() const;            // cells waiting for or in the loader
@@ -196,7 +199,17 @@ namespace jsbgodot
         double frame_top = 16.0;                       // gap to the parent's top edge (px)
         int zoom_index = 2;                            // VIEW_WIDTHS_M index (20 km)
 
-        enum DragMode { DRAG_NONE = 0, DRAG_MOVE = 1, DRAG_RESIZE = 2, DRAG_RESIZE_LEFT = 3 };
+        enum DragMode { DRAG_NONE = 0, DRAG_MOVE = 1, DRAG_RESIZE = 2, DRAG_RESIZE_LEFT = 3, DRAG_PAN = 4 };
+        // Pan: a drag in the map area moves the view off the aircraft; the
+        // view then stays on that spot of the world (pan_e / pan_n) until the
+        // centre button puts it back on the aircraft.
+        bool panned = false;
+        double pan_e = 0.0, pan_n = 0.0;               // view centre (LV95) while panned
+        double drag_start_pan_e = 0.0, drag_start_pan_n = 0.0;
+        bool drag_pan_moved = false;                   // past the click threshold: a pan, not a click
+        Vector2 drag_start_local;
+        Rect2 center_button_rect() const;              // frame px, bottom-right of the map area
+        void update_frame_center();                    // where the aircraft sits in the frame
         int drag_mode = DRAG_NONE;
         Vector2 drag_start_mouse;                      // global (viewport) px
         double drag_start_right = 0.0, drag_start_top = 0.0;
@@ -283,7 +296,7 @@ namespace jsbgodot
         int visible_airports = 0;
         int visible_navaids = 0;
         double px_per_m = 1.0;
-        Vector2 frame_center_px;                       // map area center in local px
+        Vector2 frame_center_px;                       // the aircraft in local px (the map area's centre unless panned)
 
         // ── Details panel (a click on an airport or navaid symbol) ──
         enum SelKind { SEL_NONE = 0, SEL_AIRPORT = 1, SEL_NAVAID = 2 };

@@ -27,6 +27,23 @@ func _fill_time(map) -> float:
 	await get_tree().create_timer(0.4).timeout
 	return t
 
+func _mouse(pos: Vector2, down: bool) -> void:
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.pressed = down
+	ev.position = pos
+	ev.global_position = pos
+	get_viewport().push_input(ev)
+	await get_tree().process_frame
+
+func _motion(pos: Vector2) -> void:
+	var ev := InputEventMouseMotion.new()
+	ev.position = pos
+	ev.global_position = pos
+	ev.button_mask = MOUSE_BUTTON_MASK_LEFT
+	get_viewport().push_input(ev)
+	await get_tree().process_frame
+
 func _click(pos: Vector2) -> void:
 	for down in [true, false]:
 		var ev := InputEventMouseButton.new()
@@ -58,6 +75,7 @@ func _ready() -> void:
 	var map = root._vfr_map
 	if not map.is_map_enabled():
 		map.toggle_visible()
+	map.set_frame_size(400)  # the times below are for this frame; a larger one needs more and finer cells
 	if not map.is_background_enabled():
 		map.set_background_enabled(true)
 	while map.get_zoom_index() > 0:
@@ -97,5 +115,30 @@ func _ready() -> void:
 	_check(n_tall >= n_square + 100, "a tall frame loads the cells for its height (%d -> %d)" % [n_square, n_tall])
 	await _shot(map, out_dir, "fill_%s_tall.png" % tag)
 	map.resize_frame_by(Vector2(0.0, -600.0))
+	# pan with the mouse, centre button back to the aircraft
+	while map.get_zoom_index() > 4:
+		map.zoom_in()
+	await _fill_time(map)
+	var origin: Vector2 = map.get_global_rect().position
+	var ac0: Vector2 = map.get_projected_px(lv.x, lv.y)
+	var start: Vector2 = origin + ac0 + Vector2(40.0, 60.0)
+	await _mouse(start, true)
+	for i in range(1, 9):
+		await _motion(start + Vector2(-15.0, 20.0) * i)
+	await _mouse(start + Vector2(-120.0, 160.0), false)
+	await get_tree().create_timer(0.5).timeout
+	var ac1: Vector2 = map.get_projected_px(lv.x, lv.y)
+	_check(map.is_panned(), "a drag in the map area pans the view")
+	_check((ac1 - ac0 - Vector2(-120.0, 160.0)).length() < 2.0, "the aircraft symbol follows the drag (moved %s)" % str(ac1 - ac0))
+	await _fill_time(map)
+	await _shot(map, out_dir, "fill_%s_panned.png" % tag)
+	await _click(origin + ac1 + Vector2(90.0, 90.0))
+	_check(map.is_panned(), "a plain click does not move the view")
+	var sz: Vector2 = map.get_global_rect().size
+	await _click(origin + Vector2(sz.x - 8.0 - 18.0, sz.y - 12.0 - 18.0))
+	await get_tree().create_timer(0.4).timeout
+	var ac2: Vector2 = map.get_projected_px(lv.x, lv.y)
+	_check(not map.is_panned() and (ac2 - ac0).length() < 2.0, "the centre button puts the view back on the aircraft")
+	await _shot(map, out_dir, "fill_%s_centred.png" % tag)
 	print("PROBE RESULT: %s" % ("PASS" if _fails == 0 else "FAIL (%d)" % _fails))
 	get_tree().quit(0 if _fails == 0 else 1)
