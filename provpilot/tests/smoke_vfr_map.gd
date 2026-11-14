@@ -75,10 +75,11 @@ func check(cond: bool, msg: String) -> void:
 
 # This custom engine build does not expose the static Input.key_press/release
 # helpers, so drive the Input singleton through parsed key events instead.
-func press_key(k: Key) -> void:
+func press_key(k: Key, shift: bool = false) -> void:
 	var ev := InputEventKey.new()
 	ev.keycode = k
 	ev.physical_keycode = k
+	ev.shift_pressed = shift
 	ev.pressed = true
 	Input.parse_input_event(ev)
 
@@ -330,8 +331,8 @@ func _process(_delta: float) -> void:
 			if frame - phase_frame >= 5:
 				check(vfr_map.get_zoom_index() == max(0, zoom_before_key - 1),
 					"'=' key zooms in (got %d)" % vfr_map.get_zoom_index())
-				press_key(KEY_PLUS)  # '+' — Shift+=' on US, Shift+1 on Swiss
-				release_key(KEY_PLUS)
+				press_key(KEY_EQUAL, true)  # '+' = Shift+= (the catalog's second map_zoom_in key)
+				release_key(KEY_EQUAL)
 				_enter_phase("check_keys_zin_plus")
 
 		"check_keys_zin_plus":

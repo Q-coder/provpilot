@@ -8,6 +8,7 @@
 #include <godot_cpp/classes/rich_text_label.hpp>
 #include <godot_cpp/classes/input_event.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
+#include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/rect2.hpp>
@@ -16,6 +17,7 @@
 
 #include <cstdint>
 #include <list>
+#include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -141,6 +143,10 @@ namespace jsbgodot
 
     public:
         VfrMap();
+        ~VfrMap();
+        void set_background_enabled(bool on);
+        bool is_background_enabled() const;
+        int get_pending_tile_count() const;            // cells waiting for or in the loader
 
         // Godot virtuals (must be public for the GDCLASS binding).
         void _ready() override;
@@ -155,7 +161,8 @@ namespace jsbgodot
         static constexpr int MAX_CACHE_TILES_HARD = 4096; // ... and its ceiling
         static constexpr int MAX_TILES_PER_LEVEL = 1200; // level choice: coarser when a level needs more tiles for the view
         static constexpr double MIN_TILE_SCREEN_PX = 40.0; // level-switch threshold
-        static constexpr int MAX_LOAD_COST_PER_FRAME = 128; // per redraw: a jpg tile costs 1, a terrain cell costs its tile count (1 / 64 / 1024)
+        static constexpr int MAX_UPLOADS_PER_FRAME = 24; // finished cell images turned into textures per frame
+        static constexpr int LOADER_THREADS = 3;
         static constexpr double REDRAW_INTERVAL = 0.1; // ~10 Hz redraw throttle
         static constexpr double PARKED_REDRAW_INTERVAL = 1.0; // ... 1 Hz while the aircraft does not move (navaid / data refreshes)
         static constexpr int MAX_TILES_PER_DRAW = 4096; // safety valve for the tile loop
@@ -235,8 +242,7 @@ namespace jsbgodot
         static uint64_t cell_hash(const TileKey &key);
 
         int cache_cap = MAX_CACHE_TILES;               // LRU cap: at least twice the tiles the current view needs
-        int pending_loads = 0;                         // load cost spent this redraw
-        int last_load_cost = 0;                        // cost of the last try_load_tile()
+        bool background = true;                        // terrain / map tiles under the symbols (title-bar checkbox)
 
         // ── Static map data ──
         struct Airport {
@@ -308,8 +314,22 @@ namespace jsbgodot
         void parse_cantons(const String &path);
 
         Ref<ImageTexture> get_tile(int ei, int ni, int level);
-        bool try_load_tile(const TileKey &key);
-        bool render_terrain_tile(const TileKey &key, Ref<ImageTexture> &out) const;
+        // Cell images are built off the main thread (tile_loader): a wide
+        // view needs up to 1024 terrain files per cell, which stalled the
+        // frame and filled the map one cell per redraw. Composite cells
+        // (L3 / L5) are also kept as PNG under user://map_cache, so a region
+        // seen once comes back in milliseconds.
+        static Ref<Image> render_terrain_image(const PackedStringArray &terrain_dirs, const TileKey &key);
+        static Ref<Image> load_cell_image(const PackedStringArray &map_dirs, const PackedStringArray &terrain_dirs,
+                const String &cache_dir, const TileKey &key);
+        struct TileLoader;
+        std::shared_ptr<TileLoader> loader;
+        String cache_dir;                              // user://map_cache/<key of the terrain dirs>, "" = no disk cache
+        bool in_background_box(const Vector2 &local_px) const;
+        void ensure_loader();
+        void push_loader_sources();                    // paths changed: new generation, queue dropped
+        void pump_tile_results();                      // main thread: finished images -> textures
+        void request_tiles(std::vector<TileKey> &wanted); // nearest first; replaces the waiting queue
         int pick_level() const;                        // 0/1/2 for current zoom and frame size
         int tiles_per_axis(int level) const;           // grid cells the tile loop walks per axis at a level
         double frame_size_px() const;                  // map area width (px)

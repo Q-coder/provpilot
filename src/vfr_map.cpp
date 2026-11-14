@@ -7,6 +7,8 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/classes/config_file.hpp>
 #include <godot_cpp/classes/control.hpp>
+#include <godot_cpp/classes/dir_access.hpp>
+#include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/font.hpp>
 #include <godot_cpp/classes/image.hpp>
@@ -30,6 +32,9 @@
 #include <cstdio>
 #include <cstring>
 #include <unordered_map>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 
 using namespace godot;
 
@@ -78,6 +83,8 @@ namespace
     const Color C_NO_TILE(0.13, 0.17, 0.14, 1.0);     // missing-tile fill
 
     constexpr int TITLE_H = 26;                        // title bar height (px)
+    constexpr double BG_BOX_X = 80.0;                  // title bar: the terrain checkbox
+    constexpr double BG_LABEL_MIN_W = 320.0;           // ... gets its label from this frame width
     constexpr int MARGIN = 8;                          // frame padding (px)
 
     constexpr double TAU = 6.283185307179586;
@@ -243,6 +250,9 @@ void VfrMap::_bind_methods()
     ClassDB::bind_method(D_METHOD("_on_info_close"), &VfrMap::_on_info_close);
     ClassDB::bind_method(D_METHOD("get_view_width_m"), &VfrMap::get_view_width_m);
     ClassDB::bind_method(D_METHOD("toggle_visible"), &VfrMap::toggle_visible);
+    ClassDB::bind_method(D_METHOD("set_background_enabled", "on"), &VfrMap::set_background_enabled);
+    ClassDB::bind_method(D_METHOD("is_background_enabled"), &VfrMap::is_background_enabled);
+    ClassDB::bind_method(D_METHOD("get_pending_tile_count"), &VfrMap::get_pending_tile_count);
     // The map key (N) flipped the frame: the host mirrors it into the
     // SettingsStore so Settings > Map and the next Save show the same state.
     ADD_SIGNAL(MethodInfo("enabled_changed", PropertyInfo(Variant::BOOL, "enabled")));
@@ -385,6 +395,12 @@ void VfrMap::request_redraw()
 bool VfrMap::in_resize_grip(const Vector2 &local_px) const
 {
     return local_px.x >= frame_w + info_w() - RESIZE_GRIP_PX && local_px.y >= frame_h - RESIZE_GRIP_PX;
+}
+
+bool VfrMap::in_background_box(const Vector2 &local_px) const
+{
+    const double w = frame_w >= BG_LABEL_MIN_W ? 70.0 : 20.0;
+    return local_px.y < TITLE_H && local_px.x >= BG_BOX_X - 4.0 && local_px.x <= BG_BOX_X - 4.0 + w;
 }
 
 bool VfrMap::in_resize_grip_left(const Vector2 &local_px) const
@@ -533,6 +549,10 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
         {
             set_default_cursor_shape(Control::CURSOR_BDIAGSIZE);
         }
+        else if (in_background_box(lp))
+        {
+            set_default_cursor_shape(Control::CURSOR_POINTING_HAND);
+        }
         else if (lp.y < TITLE_H)
         {
             set_default_cursor_shape(Control::CURSOR_MOVE);
@@ -554,6 +574,12 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
         if (btn->is_pressed())
         {
             const Vector2 lp = btn->get_position();
+            if (in_background_box(lp))
+            {
+                set_background_enabled(!background);
+                get_viewport()->set_input_as_handled();
+                return;
+            }
             int mode = DRAG_NONE;
             if (in_resize_grip(lp))
             {
@@ -638,6 +664,7 @@ void VfrMap::set_tile_paths(const PackedStringArray &map_dirs)
 {
     tile_paths = map_dirs;
     missing_cells.clear();
+    push_loader_sources();
     request_redraw();
 }
 
@@ -645,6 +672,7 @@ void VfrMap::set_terrain_paths(const PackedStringArray &terrain_dirs)
 {
     terrain_paths = terrain_dirs;
     missing_cells.clear();
+    push_loader_sources();
     request_redraw();
 }
 
@@ -690,6 +718,7 @@ void VfrMap::load_config()
     frame_top = std::max(0.0, double(cfg->get_value("map", "map_frame_top", 16.0)));
     layout_loaded = true;
     zoom_index = std::max(0, std::min(N_ZOOM - 1, int(cfg->get_value("map", "zoom_index", 2))));
+    background = bool(cfg->get_value("map", "map_background", true));
 }
 
 // Zoom and frame layout go straight into provpilot.cfg [map]; the
@@ -707,6 +736,7 @@ void VfrMap::persist_layout()
     }
     cfg->set_value("map", "map_enabled", enabled);
     cfg->set_value("map", "zoom_index", zoom_index);
+    cfg->set_value("map", "map_background", background);
     cfg->set_value("map", "map_frame_w", frame_w);
     cfg->set_value("map", "map_frame_h", frame_h);
     cfg->set_value("map", "map_frame_right", frame_right);
@@ -782,6 +812,7 @@ void VfrMap::update_lv95(double e, double n, double heading_deg, bool ui_visible
     ac_n = n;
     heading_rad = Math::deg_to_rad(heading_deg);
     has_position = true;
+    pump_tile_results();
     if (sel_kind != SEL_NONE && double(Time::get_singleton()->get_ticks_msec()) - last_info_ms >= 1000.0)
     {
         refresh_info(); // bearing and distance from the aircraft
@@ -1332,10 +1363,284 @@ void VfrMap::load_tile_into_cache(const TileKey &key, const Ref<ImageTexture> &t
     cache_index.push_back(slot);
 }
 
-bool VfrMap::try_load_tile(const TileKey &key)
+// ── Cell loader (worker threads) ────────────────────────────────────────────
+
+struct VfrMap::TileLoader
+{
+    struct Result
+    {
+        TileKey key;
+        uint64_t gen = 0;
+        Ref<Image> img;                        // null = no data for this cell
+    };
+    std::mutex m;
+    std::condition_variable cv;
+    std::vector<TileKey> queue;                // farthest first: workers pop the back
+    std::unordered_set<uint64_t> busy;         // taken by a worker, result not yet pumped
+    std::vector<Result> results;
+    PackedStringArray map_dirs;
+    PackedStringArray terrain_dirs;
+    String cache_dir;
+    PackedStringArray purge_dirs;              // stale cache dirs to delete
+    uint64_t gen = 0;
+    bool stop = false;
+    std::vector<std::thread> threads;
+};
+
+namespace
+{
+    void remove_dir_recursive(const String &dir)
+    {
+        const PackedStringArray files = DirAccess::get_files_at(dir);
+        for (int i = 0; i < files.size(); i++)
+        {
+            DirAccess::remove_absolute(dir.path_join(files[i]));
+        }
+        const PackedStringArray dirs = DirAccess::get_directories_at(dir);
+        for (int i = 0; i < dirs.size(); i++)
+        {
+            remove_dir_recursive(dir.path_join(dirs[i]));
+        }
+        DirAccess::remove_absolute(dir);
+    }
+}
+
+void VfrMap::ensure_loader()
+{
+    if (loader)
+    {
+        return;
+    }
+    loader = std::make_shared<TileLoader>();
+    std::shared_ptr<TileLoader> L = loader;
+    for (int t = 0; t < LOADER_THREADS; t++)
+    {
+        L->threads.emplace_back([L]() {
+            for (;;)
+            {
+                TileKey key;
+                uint64_t gen = 0;
+                PackedStringArray map_dirs, terrain_dirs, purge;
+                String cdir;
+                {
+                    std::unique_lock<std::mutex> lock(L->m);
+                    L->cv.wait(lock, [&]() { return L->stop || !L->queue.empty() || !L->purge_dirs.is_empty(); });
+                    if (L->stop)
+                    {
+                        return;
+                    }
+                    if (!L->purge_dirs.is_empty())
+                    {
+                        purge = L->purge_dirs;
+                        L->purge_dirs.clear();
+                    }
+                    else
+                    {
+                        key = L->queue.back();
+                        L->queue.pop_back();
+                        L->busy.insert(cell_hash(key));
+                        gen = L->gen;
+                        map_dirs = L->map_dirs;
+                        terrain_dirs = L->terrain_dirs;
+                        cdir = L->cache_dir;
+                    }
+                }
+                if (!purge.is_empty())
+                {
+                    for (int i = 0; i < purge.size(); i++)
+                    {
+                        remove_dir_recursive(purge[i]);
+                    }
+                    continue;
+                }
+                TileLoader::Result r;
+                r.key = key;
+                r.gen = gen;
+                r.img = load_cell_image(map_dirs, terrain_dirs, cdir, key);
+                {
+                    std::lock_guard<std::mutex> lock(L->m);
+                    L->results.push_back(r);
+                }
+            }
+        });
+    }
+    push_loader_sources();
+}
+
+VfrMap::~VfrMap()
+{
+    if (loader)
+    {
+        {
+            std::lock_guard<std::mutex> lock(loader->m);
+            loader->stop = true;
+        }
+        loader->cv.notify_all();
+        for (std::thread &t : loader->threads)
+        {
+            if (t.joinable())
+            {
+                t.join();
+            }
+        }
+    }
+}
+
+// The disk cache is keyed by the terrain dirs and their modification times:
+// installing, removing or re-baking a region starts a fresh cache instead of
+// showing cells composed from the old set. Caches not used for 30 days go.
+void VfrMap::push_loader_sources()
+{
+    cache_dir = String();
+    PackedStringArray purge;
+    if (!terrain_paths.is_empty())
+    {
+        String sig;
+        for (int i = 0; i < terrain_paths.size(); i++)
+        {
+            const String ov = String(terrain_paths[i]).trim_suffix("/").get_base_dir().path_join("map_overview").path_join("L2");
+            sig += String(terrain_paths[i]) + "|" + String::num_uint64(FileAccess::get_modified_time(terrain_paths[i])) + "|" +
+                    String::num_uint64(FileAccess::get_modified_time(ov)) + ";";
+        }
+        const String root = OS::get_singleton()->get_user_data_dir().path_join("map_cache");
+        const String name = String::num_uint64(uint64_t(sig.hash()), 16) + "_" + String::num_int64(sig.length());
+        const String dir = root.path_join(name);
+        if (DirAccess::make_dir_recursive_absolute(dir.path_join("L1")) == OK &&
+            DirAccess::make_dir_recursive_absolute(dir.path_join("L2")) == OK)
+        {
+            cache_dir = dir;
+            Ref<FileAccess> stamp = FileAccess::open(dir.path_join("stamp"), FileAccess::WRITE);
+            if (stamp.is_valid())
+            {
+                stamp->store_string(sig);
+            }
+            const uint64_t now = uint64_t(Time::get_singleton()->get_unix_time_from_system());
+            const PackedStringArray others = DirAccess::get_directories_at(root);
+            for (int i = 0; i < others.size(); i++)
+            {
+                if (others[i] == name)
+                {
+                    continue;
+                }
+                const uint64_t used = FileAccess::get_modified_time(root.path_join(others[i]).path_join("stamp"));
+                if (used + 30ull * 86400ull < now)
+                {
+                    purge.push_back(root.path_join(others[i]));
+                }
+            }
+        }
+    }
+    if (!loader)
+    {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(loader->m);
+        loader->gen++;
+        loader->queue.clear();
+        loader->map_dirs = tile_paths;
+        loader->terrain_dirs = terrain_paths;
+        loader->cache_dir = cache_dir;
+        loader->purge_dirs.append_array(purge);
+    }
+    loader->cv.notify_all();
+}
+
+void VfrMap::request_tiles(std::vector<TileKey> &wanted)
+{
+    if (wanted.empty() && !loader)
+    {
+        return;
+    }
+    ensure_loader();
+    // `wanted` is nearest first; the queue is popped from the back.
+    std::reverse(wanted.begin(), wanted.end());
+    {
+        std::lock_guard<std::mutex> lock(loader->m);
+        loader->queue.clear();
+        for (const TileKey &k : wanted)
+        {
+            if (loader->busy.count(cell_hash(k)) == 0)
+            {
+                loader->queue.push_back(k);
+            }
+        }
+    }
+    loader->cv.notify_all();
+}
+
+void VfrMap::pump_tile_results()
+{
+    if (!loader)
+    {
+        return;
+    }
+    std::vector<TileLoader::Result> done;
+    uint64_t gen = 0;
+    {
+        std::lock_guard<std::mutex> lock(loader->m);
+        if (loader->results.empty())
+        {
+            return;
+        }
+        const size_t n = std::min(loader->results.size(), size_t(MAX_UPLOADS_PER_FRAME));
+        done.assign(loader->results.begin(), loader->results.begin() + n);
+        loader->results.erase(loader->results.begin(), loader->results.begin() + n);
+        for (const TileLoader::Result &r : done)
+        {
+            loader->busy.erase(cell_hash(r.key));
+        }
+        gen = loader->gen;
+    }
+    for (const TileLoader::Result &r : done)
+    {
+        if (r.gen != gen)
+        {
+            continue; // built from sources that changed meanwhile
+        }
+        if (r.img.is_null())
+        {
+            missing_cells.insert(cell_hash(r.key));
+            continue;
+        }
+        if (get_tile(r.key.ei, r.key.ni, r.key.level).is_null())
+        {
+            load_tile_into_cache(r.key, ImageTexture::create_from_image(r.img));
+        }
+    }
+    drawn_valid = false; // new cells: the next redraw tick shows them, also when parked
+}
+
+int VfrMap::get_pending_tile_count() const
+{
+    if (!loader)
+    {
+        return 0;
+    }
+    std::lock_guard<std::mutex> lock(loader->m);
+    return int(loader->queue.size() + loader->busy.size());
+}
+
+void VfrMap::set_background_enabled(bool on)
+{
+    if (background == on)
+    {
+        return;
+    }
+    background = on;
+    persist_layout();
+    request_redraw();
+}
+
+bool VfrMap::is_background_enabled() const { return background; }
+
+// Worker thread. Sources in priority order: a pre-rendered map/ tile, the
+// disk cache (composite levels), the base tier's terrain shaded on the fly.
+Ref<Image> VfrMap::load_cell_image(const PackedStringArray &map_dirs, const PackedStringArray &terrain_dirs,
+        const String &cdir, const TileKey &key)
 {
     int cell = level_cell_m(key.level);
-    String fname = String("map_") + String::num_int64((long long)(key.ei * cell)) + "_" + String::num_int64((long long)(key.ni * cell)) + ".jpg";
+    String fname = String("map_") + String::num_int64((long long)(key.ei) * cell) + "_" + String::num_int64((long long)(key.ni) * cell) + ".jpg";
     const String subdir = LEVELS[std::max(0, std::min(2, key.level))].subdir;
     // is_empty(), not subdir[0]: indexing an empty String goes through the
     // engine's out-of-line operator[], which in this build resolves its
@@ -1343,9 +1648,9 @@ bool VfrMap::try_load_tile(const TileKey &key)
     // is "").
     String suffix = subdir.is_empty() ? fname : (String("/") + subdir + "/" + fname);
 
-    for (int i = 0; i < tile_paths.size(); i++)
+    for (int i = 0; i < map_dirs.size(); i++)
     {
-        String base = tile_paths[i];
+        String base = map_dirs[i];
         if (base.is_empty())
         {
             continue;
@@ -1359,37 +1664,53 @@ bool VfrMap::try_load_tile(const TileKey &key)
         Ref<Image> img = memnew(Image);
         if (img->load_jpg_from_buffer(data) != OK)
         {
-            return false;
+            return Ref<Image>();
         }
         // Tile files store pixel(0,0) at the SE corner (top row = south,
         // left col = east). Godot textures need top-left = NW: flip both
         // axes so texture UV (0,0) samples the cell's NW corner.
         img->flip_y();
         img->flip_x();
-        Ref<ImageTexture> tex = ImageTexture::create_from_image(img);
-        load_tile_into_cache(key, tex);
-        last_load_cost = 1;
-        return true;
+        return img;
     }
-    // No pre-rendered tile: the base tier's terrain, shaded on the fly.
-    if (!terrain_paths.is_empty())
+    if (terrain_dirs.is_empty())
     {
-        const uint64_t h = cell_hash(key);
-        if (missing_cells.count(h) != 0)
-        {
-            return false;
-        }
-        const int k = std::max(1, level_cell_m(key.level) / 1024);
-        last_load_cost = k * k;
-        Ref<ImageTexture> tex;
-        if (render_terrain_tile(key, tex))
-        {
-            load_tile_into_cache(key, tex);
-            return true;
-        }
-        missing_cells.insert(h);
+        return Ref<Image>();
     }
-    return false;
+    // Composite cells (64 / 1024 terrain files) come from the disk cache once
+    // built; an empty file marks a cell without any terrain (open sea).
+    String cache_file;
+    if (key.level > 0 && !cdir.is_empty())
+    {
+        cache_file = cdir.path_join(String("L") + String::num_int64(key.level)).path_join(
+                String("c_") + String::num_int64(key.ei) + "_" + String::num_int64(key.ni) + ".png");
+        Ref<FileAccess> f = FileAccess::open(cache_file, FileAccess::READ);
+        if (f.is_valid())
+        {
+            const uint64_t len = f->get_length();
+            if (len == 0)
+            {
+                return Ref<Image>();
+            }
+            Ref<Image> img = memnew(Image);
+            if (img->load_png_from_buffer(f->get_buffer(len)) == OK && !img->is_empty())
+            {
+                return img;
+            }
+            // truncated (the sim quit mid-write): build it again
+        }
+    }
+    Ref<Image> img = render_terrain_image(terrain_dirs, key);
+    if (!cache_file.is_empty())
+    {
+        const PackedByteArray png = img.is_valid() ? img->save_png_to_buffer() : PackedByteArray();
+        Ref<FileAccess> f = FileAccess::open(cache_file, FileAccess::WRITE);
+        if (f.is_valid() && !png.is_empty())
+        {
+            f->store_buffer(png);
+        }
+    }
+    return img;
 }
 
 uint64_t VfrMap::cell_hash(const TileKey &key)
@@ -1410,6 +1731,8 @@ namespace
         { 2500.0, 0.88f, 0.84f, 0.78f },  // rocky grey
         { 3200.0, 0.97f, 0.97f, 0.97f },  // snow white
     };
+    constexpr int16_t OVERVIEW_NO_DATA = -32768;     // map_overview cells: no tile
+    constexpr int16_t OVERVIEW_SEA = -32767;         // ... a sea level sample (the bake stores 0.01 m)
     const Color C_SEA(0.60f, 0.72f, 0.86f, 1.0f);   // sea level samples (the bake stores 0.01 m)
 
     Color tint_of(double elev)
@@ -1446,7 +1769,7 @@ namespace
 // up) times the hypsometric tint; samples without a tile stay transparent
 // so the frame's no-data fill shows through. 1 m add-on tiles (1024² floats)
 // are skipped — those packs carry pre-rendered map/ tiles.
-bool VfrMap::render_terrain_tile(const TileKey &key, Ref<ImageTexture> &out) const
+Ref<Image> VfrMap::render_terrain_image(const PackedStringArray &terrain_paths, const TileKey &key)
 {
     const int cell = level_cell_m(key.level);
     const int K = std::max(1, cell / 1024);
@@ -1457,50 +1780,113 @@ bool VfrMap::render_terrain_tile(const TileKey &key, Ref<ImageTexture> &out) con
     std::vector<float> h(size_t(S) * size_t(S), NO_DATA);
     const int64_t tile_bytes = int64_t(BASE_TILE_PX) * BASE_TILE_PX * 4;
     bool any = false;
-    for (int ty = 0; ty < K; ty++)
+    // Sources in priority order; the first one that has a tile wins it.
+    // A region with a map_overview/ folder (scripts/build_map_overview.py)
+    // delivers a whole overview cell in one file of 128 x 128 int16 metres
+    // instead of 1024 tile files - what makes the wide views fill at once.
+    std::vector<uint8_t> done(size_t(K) * size_t(K), 0);
+    int todo = K * K;
+    for (int i = 0; i < terrain_paths.size() && todo > 0; i++)
     {
-        for (int tx = 0; tx < K; tx++)
+        const String dir = String(terrain_paths[i]).trim_suffix("/");
+        if (dir.is_empty())
         {
-            const long long e = (long long)key.ei * cell + (long long)tx * 1024;
-            const long long n = (long long)key.ni * cell + (long long)ty * 1024;
-            const String fname = String("tile_") + String::num_int64(e) + "_" + String::num_int64(n) + ".raw";
-            Ref<FileAccess> f;
-            for (int i = 0; i < terrain_paths.size() && f.is_null(); i++)
+            continue;
+        }
+        if (key.level == 2)
+        {
+            const String ov_dir = dir.get_base_dir().path_join("map_overview").path_join("L2");
+            if (DirAccess::dir_exists_absolute(ov_dir))
             {
-                if (!terrain_paths[i].is_empty())
+                Ref<FileAccess> f = FileAccess::open(ov_dir.path_join(String("c_") + String::num_int64(key.ei) + "_" + String::num_int64(key.ni) + ".i16"), FileAccess::READ);
+                if (f.is_null() || f->get_length() != uint64_t(S) * S * 2)
                 {
-                    f = FileAccess::open(String(terrain_paths[i]).path_join(fname), FileAccess::READ);
+                    continue; // nothing of this region in the cell
                 }
-            }
-            if (f.is_null() || f->get_length() != uint64_t(tile_bytes))
-            {
+                const PackedByteArray buf = f->get_buffer(int64_t(S) * S * 2);
+                if (buf.size() != int64_t(S) * S * 2)
+                {
+                    continue;
+                }
+                const int16_t *v16 = reinterpret_cast<const int16_t *>(buf.ptr());
+                for (int ty = 0; ty < K; ty++)
+                {
+                    for (int tx = 0; tx < K; tx++)
+                    {
+                        if (done[size_t(ty) * K + tx])
+                        {
+                            continue;
+                        }
+                        const int y0 = (K - 1 - ty) * P;
+                        const int x0 = tx * P;
+                        if (v16[size_t(y0) * S + x0] == OVERVIEW_NO_DATA)
+                        {
+                            continue; // the region has no tile here
+                        }
+                        for (int y = y0; y < y0 + P; y++)
+                        {
+                            for (int x = x0; x < x0 + P; x++)
+                            {
+                                const int16_t q = v16[size_t(y) * S + x];
+                                h[size_t(y) * S + x] = q == OVERVIEW_SEA ? 0.0f : (q == OVERVIEW_NO_DATA ? NO_DATA : std::max(0.1f, float(q)));
+                            }
+                        }
+                        done[size_t(ty) * K + tx] = 1;
+                        todo--;
+                        any = true;
+                    }
+                }
                 continue;
             }
-            const PackedByteArray buf = f->get_buffer(tile_bytes);
-            if (buf.size() != tile_bytes)
+        }
+        for (int ty = 0; ty < K; ty++)
+        {
+            for (int tx = 0; tx < K; tx++)
             {
-                continue;
-            }
-            const uint8_t *p = buf.ptr();
-            for (int sy = 0; sy < P; sy++)
-            {
-                const int row = std::min(BASE_TILE_PX - 1, sy * stride);          // from the south
-                for (int sx = 0; sx < P; sx++)
+                if (done[size_t(ty) * K + tx])
                 {
-                    const int col = BASE_TILE_PX - 1 - std::min(BASE_TILE_PX - 1, sx * stride); // col 0 = east
-                    float v;
-                    std::memcpy(&v, p + (size_t(row) * BASE_TILE_PX + col) * 4, 4);
-                    const int x = tx * P + sx;
-                    const int y = (K - 1 - ty) * P + (P - 1 - sy);
-                    h[size_t(y) * S + x] = v;
+                    continue;
                 }
+                const long long e = (long long)key.ei * cell + (long long)tx * 1024;
+                const long long n = (long long)key.ni * cell + (long long)ty * 1024;
+                const String fname = String("tile_") + String::num_int64(e) + "_" + String::num_int64(n) + ".raw";
+                Ref<FileAccess> f = FileAccess::open(dir.path_join(fname), FileAccess::READ);
+                if (f.is_null())
+                {
+                    continue;
+                }
+                done[size_t(ty) * K + tx] = 1; // also a 1 m add-on tile: it shadows the base tile
+                todo--;
+                if (f->get_length() != uint64_t(tile_bytes))
+                {
+                    continue;
+                }
+                const PackedByteArray buf = f->get_buffer(tile_bytes);
+                if (buf.size() != tile_bytes)
+                {
+                    continue;
+                }
+                const uint8_t *p = buf.ptr();
+                for (int sy = 0; sy < P; sy++)
+                {
+                    const int row = std::min(BASE_TILE_PX - 1, sy * stride);          // from the south
+                    for (int sx = 0; sx < P; sx++)
+                    {
+                        const int col = BASE_TILE_PX - 1 - std::min(BASE_TILE_PX - 1, sx * stride); // col 0 = east
+                        float v;
+                        std::memcpy(&v, p + (size_t(row) * BASE_TILE_PX + col) * 4, 4);
+                        const int x = tx * P + sx;
+                        const int y = (K - 1 - ty) * P + (P - 1 - sy);
+                        h[size_t(y) * S + x] = v;
+                    }
+                }
+                any = true;
             }
-            any = true;
         }
     }
     if (!any)
     {
-        return false;
+        return Ref<Image>();
     }
     const double m_per_px = double(cell) / double(S);
     const double az = Math::deg_to_rad(315.0);
@@ -1543,13 +1929,7 @@ bool VfrMap::render_terrain_tile(const TileKey &key, Ref<ImageTexture> &out) con
             q[3] = 255;
         }
     }
-    Ref<Image> img = Image::create_from_data(S, S, false, Image::FORMAT_RGBA8, px);
-    if (img.is_null())
-    {
-        return false;
-    }
-    out = ImageTexture::create_from_image(img);
-    return out.is_valid();
+    return Image::create_from_data(S, S, false, Image::FORMAT_RGBA8, px);
 }
 
 // ── Drawing ─────────────────────────────────────────────────────────────────
@@ -1570,6 +1950,18 @@ void VfrMap::_draw()
     if (font.is_valid())
     {
         draw_string(font, Vector2(8, 18), "VFR MAP", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, C_TITLE_TEXT);
+        // terrain background on / off: a checkbox, labelled where the bar has room
+        const Rect2 box(BG_BOX_X, 7.0, 12.0, 12.0);
+        draw_rect(box, C_TITLE_TEXT, false, 1.0);
+        if (background)
+        {
+            draw_line(Vector2(BG_BOX_X + 2.5, 13.0), Vector2(BG_BOX_X + 5.0, 16.0), C_TITLE_TEXT, 1.5, true);
+            draw_line(Vector2(BG_BOX_X + 5.0, 16.0), Vector2(BG_BOX_X + 9.5, 9.5), C_TITLE_TEXT, 1.5, true);
+        }
+        if (frame_w >= BG_LABEL_MIN_W)
+        {
+            draw_string(font, Vector2(BG_BOX_X + 17.0, 18), "Terrain", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, C_TITLE_TEXT);
+        }
         // the view width in both units (charts and DME read nautical miles)
         const String width_txt = String::num_int64((int)(VIEW_WIDTHS_M[zoom_index] / 1000.0)) + " km / " +
                 String::num_int64((int)std::lround(VIEW_WIDTHS_M[zoom_index] / 1852.0)) + " NM";
@@ -1627,106 +2019,126 @@ void VfrMap::draw_world(CanvasItem *ci)
         project_offset(e - ac_e, n - ac_n, ch, sh, px_per_m, frame_center_px, out);
     };
 
-    // Tiles: iterate the level's grid cells covering the view.
+    // Tiles: iterate the level's grid cells covering the view. Cells not in
+    // the texture cache are requested from the loader threads (nearest
+    // first) and appear on a later redraw; under a finer level the overview
+    // level is drawn first, so the view is never empty while it fills.
     int level = pick_level();
-    int cell = level_cell_m(level);
     double half_view = view_m / 2.0;
-    // Farthest visible corner is half_view*sqrt(2); add a half-cell margin
-    // so rotation never exposes un-drawn edges.
-    double extent = half_view * 1.5 + cell * 0.5;
-
-    int ei_min = int(std::floor((ac_e - extent) / (double)cell));
-    int ei_max = int(std::floor((ac_e + extent) / (double)cell));
-    int ni_min = int(std::floor((ac_n - extent) / (double)cell));
-    int ni_max = int(std::floor((ac_n + extent) / (double)cell));
-
-    // The LRU cap follows the view: a frame resized to half the screen at
-    // 10 km needs ~300 L0 tiles at once; a fixed 256 made every redraw evict
-    // tiles it was about to draw again (black cells flickering in and out,
-    // steady holes, and a reload storm that cost frame rate).
-    {
-        const int n_tiles = (ei_max - ei_min + 1) * (ni_max - ni_min + 1);
-        cache_cap = std::max(MAX_CACHE_TILES, std::min(MAX_CACHE_TILES_HARD, 2 * n_tiles));
-    }
     drawn_e = ac_e;
     drawn_n = ac_n;
     drawn_heading_rad = heading_rad;
     drawn_valid = true;
 
+    std::vector<TileKey> wanted;
+    std::vector<double> wanted_d2;
     int tiles_drawn = 0;
-    pending_loads = 0;
-    for (int ni = ni_min; ni <= ni_max && tiles_drawn < MAX_TILES_PER_DRAW; ni++)
-    {
-        for (int ei = ei_min; ei <= ei_max && tiles_drawn < MAX_TILES_PER_DRAW; ei++)
+    int cells_in_view = 0;
+    auto draw_level = [&](int lv) {
+        const int cell = level_cell_m(lv);
+        // Farthest visible corner is half_view*sqrt(2); add a half-cell margin
+        // so rotation never exposes un-drawn edges.
+        const double extent = half_view * 1.5 + cell * 0.5;
+        const int ei_min = int(std::floor((ac_e - extent) / (double)cell));
+        const int ei_max = int(std::floor((ac_e + extent) / (double)cell));
+        const int ni_min = int(std::floor((ac_n - extent) / (double)cell));
+        const int ni_max = int(std::floor((ac_n + extent) / (double)cell));
+        cells_in_view += (ei_max - ei_min + 1) * (ni_max - ni_min + 1);
+        for (int ni = ni_min; ni <= ni_max && tiles_drawn < MAX_TILES_PER_DRAW; ni++)
         {
-            TileKey key{ei, ni, level};
-            Ref<ImageTexture> tex = get_tile(ei, ni, level);
-            if (tex.is_null())
+            for (int ei = ei_min; ei <= ei_max && tiles_drawn < MAX_TILES_PER_DRAW; ei++)
             {
-                if (pending_loads < MAX_LOAD_COST_PER_FRAME)
+                TileKey key{ei, ni, lv};
+                Ref<ImageTexture> tex = get_tile(ei, ni, lv);
+                if (tex.is_null())
                 {
-                    last_load_cost = 0;
-                    if (try_load_tile(key))
+                    if (missing_cells.count(cell_hash(key)) == 0)
                     {
-                        tex = get_tile(ei, ni, level);
+                        const double de = (ei + 0.5) * cell - ac_e;
+                        const double dn = (ni + 0.5) * cell - ac_n;
+                        wanted.push_back(key);
+                        // the overview level goes first: a few cells cover the whole view
+                        wanted_d2.push_back(lv == level ? de * de + dn * dn : -1.0);
                     }
-                    pending_loads += std::max(1, last_load_cost);
+                    continue; // not there yet, or no data — what is underneath shows through
                 }
-                else
+
+                // Tile LV95 corners: file name encodes the SW corner of the cell
+                // (same convention as orthophoto/terrain tiles). The cell spans
+                // easting [ei*cell, (ei+1)*cell], northing [ni*cell, (ni+1)*cell].
+                double e_west = ei * (double)cell;    // min E (file name)
+                double n_south = ni * (double)cell;   // min N (file name)
+                double e_east = e_west + cell;        // max E
+                double n_north = n_south + cell;      // max N
+
+                Vector2 p_se, p_sw, p_ne, p_nw;
+                project(e_east, n_south, p_se);
+                project(e_west, n_south, p_sw);
+                project(e_east, n_north, p_ne);
+                project(e_west, n_north, p_nw);
+
+                // After the double flip in load_cell_image() the texture's top-left
+                // is the cell's NW corner. Canvas UVs are normalized [0,1]
+                // (draw_polygon remaps 0..1 for AtlasTexture and passes plain
+                // textures straight to the rasterizer), so map the quad corners
+                // onto unit-square UVs: NW->(0,0), NE->(1,0), SE->(1,1), SW->(0,1).
+                const Vector2 quad_pts[4] = { p_nw, p_ne, p_se, p_sw };
+                const Vector2 quad_uvs[4] = {
+                    Vector2(0.0, 0.0), Vector2(1.0, 0.0),
+                    Vector2(1.0, 1.0), Vector2(0.0, 1.0) };
+
+                // Clip to the map area: the tile extent deliberately overshoots
+                // so rotation never exposes un-drawn edges, but without clipping
+                // tiles would bleed past the frame border. UVs interpolate
+                // linearly along clipped edges (exact for canvas polygons).
+                std::vector<Vector2> cp;
+                std::vector<Vector2> cu;
+                if (!clip_polygon_to_rect(quad_pts, quad_uvs, 4, map_area, cp, cu))
                 {
-                    drawn_valid = false; // budget spent with tiles still to try: redraw next tick even when parked
+                    continue;
                 }
+
+                PackedVector2Array pts;
+                PackedVector2Array uvs;
+                for (size_t i = 0; i < cp.size(); i++)
+                {
+                    pts.push_back(cp[i]);
+                    uvs.push_back(cu[i]);
+                }
+                ci->draw_colored_polygon(pts, Color(1, 1, 1, 1), uvs, tex);
+                tiles_drawn++;
             }
-            if (tex.is_null())
-            {
-                continue; // no data here — background fill shows through
-            }
-
-            // Tile LV95 corners: file name encodes the SW corner of the cell
-            // (same convention as orthophoto/terrain tiles). The cell spans
-            // easting [ei*cell, (ei+1)*cell], northing [ni*cell, (ni+1)*cell].
-            double e_west = ei * (double)cell;    // min E (file name)
-            double n_south = ni * (double)cell;   // min N (file name)
-            double e_east = e_west + cell;        // max E
-            double n_north = n_south + cell;      // max N
-
-            Vector2 p_se, p_sw, p_ne, p_nw;
-            project(e_east, n_south, p_se);
-            project(e_west, n_south, p_sw);
-            project(e_east, n_north, p_ne);
-            project(e_west, n_north, p_nw);
-
-            // After the double flip in try_load_tile() the texture's top-left
-            // is the cell's NW corner. Canvas UVs are normalized [0,1]
-            // (draw_polygon remaps 0..1 for AtlasTexture and passes plain
-            // textures straight to the rasterizer), so map the quad corners
-            // onto unit-square UVs: NW->(0,0), NE->(1,0), SE->(1,1), SW->(0,1).
-            const Vector2 quad_pts[4] = { p_nw, p_ne, p_se, p_sw };
-            const Vector2 quad_uvs[4] = {
-                Vector2(0.0, 0.0), Vector2(1.0, 0.0),
-                Vector2(1.0, 1.0), Vector2(0.0, 1.0) };
-
-            // Clip to the map area: the tile extent deliberately overshoots
-            // so rotation never exposes un-drawn edges, but without clipping
-            // tiles would bleed past the frame border. UVs interpolate
-            // linearly along clipped edges (exact for canvas polygons).
-            std::vector<Vector2> cp;
-            std::vector<Vector2> cu;
-            if (!clip_polygon_to_rect(quad_pts, quad_uvs, 4, map_area, cp, cu))
-            {
-                continue;
-            }
-
-            PackedVector2Array pts;
-            PackedVector2Array uvs;
-            for (size_t i = 0; i < cp.size(); i++)
-            {
-                pts.push_back(cp[i]);
-                uvs.push_back(cu[i]);
-            }
-            ci->draw_colored_polygon(pts, Color(1, 1, 1, 1), uvs, tex);
-            tiles_drawn++;
         }
+    };
+    if (background)
+    {
+        if (level < 2)
+        {
+            draw_level(2);
+        }
+        draw_level(level);
+        // The LRU cap follows the view: a frame resized to half the screen at
+        // 10 km needs ~300 L0 tiles at once; a fixed 256 made every redraw evict
+        // tiles it was about to draw again (black cells flickering in and out,
+        // steady holes, and a reload storm that cost frame rate).
+        cache_cap = std::max(MAX_CACHE_TILES, std::min(MAX_CACHE_TILES_HARD, 2 * cells_in_view));
+        std::vector<size_t> order(wanted.size());
+        for (size_t i = 0; i < order.size(); i++)
+        {
+            order[i] = i;
+        }
+        std::sort(order.begin(), order.end(), [&](size_t x, size_t y) { return wanted_d2[x] < wanted_d2[y]; });
+        std::vector<TileKey> sorted;
+        sorted.reserve(order.size());
+        for (size_t i : order)
+        {
+            sorted.push_back(wanted[i]);
+        }
+        request_tiles(sorted);
+    }
+    else
+    {
+        request_tiles(wanted); // empty: drops what was still queued
     }
 
     // Canton borders (rotated with the map world). Every segment is clipped

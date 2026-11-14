@@ -51,7 +51,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = ROOT / "scripts" / "world_regions.json"
 DEFAULT_BASE_URL = "https://www.md80.ch/provpilot/scenery/"
-DEFAULT_SUBDIRS = ("terrain", "airports", "roads")
+DEFAULT_SUBDIRS = ("terrain", "airports", "roads", "map_overview")
 SKIP_NAMES = {".DS_Store", "Thumbs.db"}
 
 
@@ -173,7 +173,7 @@ def main() -> int:
     ap.add_argument("--out-dir", default=None, help="Where the ZIPs go (default: <build_root>/world-packs)")
     ap.add_argument("--version", default="1", help="Pack version tag in the filename and the manifest")
     ap.add_argument("--subdirs", default=",".join(DEFAULT_SUBDIRS),
-                    help="Comma-separated asset folders to pack (default terrain,airports,roads)")
+                    help="Comma-separated asset folders to pack (default terrain,airports,roads,map_overview)")
     ap.add_argument("--stored", action="store_true", help="No compression (ZIP_STORED)")
     ap.add_argument("--dry-run", action="store_true", help="Count files and bytes only")
     ap.add_argument("--manifest", action="store_true", help="Also write scenery_manifest.json in the output dir")

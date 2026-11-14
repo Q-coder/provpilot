@@ -84,9 +84,28 @@ python scripts/generate_vfr_map_tiles.py --terrain-dir .../CH/terrain \
   rotation: screen-right = east·cosH − north·sinH, screen-forward =
   east·sinH + north·cosH. All math in double precision.
 - **Streaming** — visible grid cells are resolved against an LRU texture
-  cache (256 tiles) with a budget of 2 JPEG decodes per frame; missing tiles
-  show the neutral background fill. Tile paths follow scenery-area priority
-  order (first source with data wins, like orthophotos).
+  cache. Missing cells are built by three loader threads, nearest to the
+  aircraft first (`TileLoader`): the main thread only turns finished images
+  into textures (24 per frame). Under the 5 - 40 km views the overview level
+  (L5) is drawn first, so the frame is never empty while the finer cells
+  arrive. Tile paths follow scenery-area priority order (first source with
+  data wins, like orthophotos).
+- **Base tier (no `map/` tiles)** — cells are shaded from the 34 x 34 terrain
+  tiles. An overview cell (32.768 km, the 80 - 250 km views) is 1024 tile
+  files; a 250 km view is about 170 000 of them (100 s from a cold disk,
+  measured at Frankfurt). Two things remove that:
+  - `scripts/build_map_overview.py <Region> ...` writes
+    `<Region>/map_overview/L2/c_<ei>_<ni>.i16` (128 x 128 int16 metres, the
+    very samples the renderer picks). One file per cell and region; the 250 km
+    view fills in 0.3 s. Run it after every terrain bake; `bundle_world_pack.py`
+    packs the folder. A region without it falls back to the tile files.
+  - Composite cells (L3 / L5) are kept as PNG under
+    `user://map_cache/<key>/L1|L2/`. The key hashes the terrain dirs and their
+    modification times, so a changed scenery set starts a fresh cache; caches
+    unused for 30 days are deleted. A 40 km view: 2.5 s the first time, 0.14 s
+    after.
+- **Terrain checkbox** — the title bar's checkbox (`[map] map_background`)
+  turns the background off: symbols, rings and ILS feathers on a plain fill.
 - **Redraw** — `_draw()` is throttled to ~10 Hz and only re-queued when
   state changes; the map freezes while welcome/settings overlays are up.
 - **Static data** — airports from `res://airports.json` (international =
@@ -114,6 +133,10 @@ godot --headless --path provpilot --res tests/smoke_vfr_map.tscn
 It generates a synthetic tile pyramid in `/tmp`, drives the module around
 LSZH, and asserts tile streaming, airport detection, heading propagation,
 zoom steps, and the N-toggle visibility flag.
+
+`tests/probe_vfr_map_fill.tscn` (non-headless, real scenery, run from a
+scratch directory holding a copy of `provpilot.cfg`) prints the fill time of
+the 250 / 160 / 40 / 20 km views and checks the Terrain checkbox.
 
 ## Future Work
 
