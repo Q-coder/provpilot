@@ -148,8 +148,10 @@ void FlightHud::build_overlays()
 	nav_label->set_anchors_preset(Control::PRESET_BOTTOM_LEFT);
 	nav_label->set_offset(SIDE_LEFT, 14);
 	nav_label->set_offset(SIDE_RIGHT, 1100);
-	nav_label->set_offset(SIDE_TOP, -96);
-	nav_label->set_offset(SIDE_BOTTOM, -66);
+	// A row of its own under the airspeed / altitude row (-120 .. -60): on a
+	// narrow window that row reaches the left edge and ran through the text.
+	nav_label->set_offset(SIDE_TOP, -54);
+	nav_label->set_offset(SIDE_BOTTOM, -24);
 	nav_label->set_text(nav_text);
 	nav_label->set_visible(hud_mode >= 1 && !nav_text.is_empty());
 	add_child(nav_label);
