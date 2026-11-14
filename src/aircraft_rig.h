@@ -21,6 +21,7 @@
 #include "fg_bridge.h"
 #include "fg_controls.h"
 #include "it_autoflight.h"
+#include "ht9100_mcdu.h"
 #include "fg_property_rules.h"
 #include "fg_sounds.h"
 
@@ -155,6 +156,7 @@ namespace jsbgodot
         FGSounds *get_fg_sounds() const;
         Ref<FGPropertyRules> get_fg_property_rules() const;
         Ref<ItAutoflight> get_autoflight() const;
+        Ref<Ht9100Mcdu> get_mcdu() const;
         FGAnimator *get_fg_animator() const;
         AircraftLights *get_aircraft_lights() const;
         // The systems built on the model (called from resolve_nodes; public
@@ -210,6 +212,7 @@ namespace jsbgodot
         Ref<FGControls> fg_controls;
         FGSounds *fg_sounds = nullptr;
         Ref<FGPropertyRules> fg_rules;    // cfg [jsbsim] property_rules
+        Ref<Ht9100Mcdu> mcdu;             // cfg [mcdu] ht9100 (MD-80)
         Ref<ItAutoflight> autoflight;     // cfg [autoflight] it_autoflight
         Dictionary rule_fdm_nodes;
         Dictionary last_fg_props; // see get_fg_property()        // rule output -> the FDM has that node

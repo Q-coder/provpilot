@@ -1,5 +1,5 @@
 {
- "_comment": "Nasal call -> property action table for the MD-80 cockpit bindings (docs/MD80_FLIGHTGEAR_PORT.md D5). A binding's script is split at ';' and each statement matched by prefix. Actions: pulse (1 for <seconds>, then 0), assign (value / value_arg / value_map), set (several), adjust (step_arg x factor, min, max, wrap, mask, resolution), toggle, swap, cycle (values, dir_arg), action (ProvPilot: gear_cmd with the sign of the argument and 0 = release, gear_smart = the handle toggles on a non-zero argument, flaps_step, speedbrake). {n} in a property takes the n-th call argument. Autopilot panel (cockpit.ApPanel.*): action 'autoflight' calls the ItAutoflight module's FGCP handler of that name with the call's argument (arg_index).",
+ "_comment": "Nasal call -> property action table for the MD-80 cockpit bindings (docs/MD80_FLIGHTGEAR_PORT.md D5). A binding's script is split at ';' and each statement matched by prefix. Actions: pulse (1 for <seconds>, then 0), assign (value / value_arg / value_map), set (several), adjust (step_arg x factor, min, max, wrap, mask, resolution), toggle, swap, cycle (values, dir_arg), action (ProvPilot: gear_cmd with the sign of the argument and 0 = release, gear_smart = the handle toggles on a non-zero argument, flaps_step, speedbrake). {n} in a property takes the n-th call argument. Autopilot panel (cockpit.ApPanel.*): action 'autoflight' calls the ItAutoflight module's FGCP handler of that name with the call's argument (arg_index). HT9100 MCDU (mcdu_ht9100.unit[0].*): action 'mcdu' calls the Ht9100Mcdu module's key handler of that name with the call's text argument.",
  "shims": [
   {
    "match": "core.Sound.switch1(",
@@ -348,6 +348,41 @@
    "match": "if (dfgs.Output.athr",
    "action": "autoflight",
    "kind": "atDisc"
+  },
+  {
+   "match": "mcdu_ht9100.unit[0].softKey(",
+   "action": "mcdu",
+   "kind": "softKey"
+  },
+  {
+   "match": "mcdu_ht9100.unit[0].alphaNumKey(",
+   "action": "mcdu",
+   "kind": "alphaNumKey"
+  },
+  {
+   "match": "mcdu_ht9100.unit[0].clearKey(",
+   "action": "mcdu",
+   "kind": "clearKey"
+  },
+  {
+   "match": "mcdu_ht9100.unit[0].pageKey(",
+   "action": "mcdu",
+   "kind": "pageKey"
+  },
+  {
+   "match": "mcdu_ht9100.unit[0].nextPageKey(",
+   "action": "mcdu",
+   "kind": "nextPageKey"
+  },
+  {
+   "match": "mcdu_ht9100.unit[0].prevPageKey(",
+   "action": "mcdu",
+   "kind": "prevPageKey"
+  },
+  {
+   "match": "mcdu_ht9100.unit[0].execKey(",
+   "action": "mcdu",
+   "kind": "execKey"
   }
  ]
 }

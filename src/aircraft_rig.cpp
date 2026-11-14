@@ -72,6 +72,7 @@ void AircraftRig::_bind_methods()
 	ClassDB::bind_method(D_METHOD("get_fg_controls"), &AircraftRig::get_fg_controls);
 	ClassDB::bind_method(D_METHOD("get_fg_property_rules"), &AircraftRig::get_fg_property_rules);
 	ClassDB::bind_method(D_METHOD("get_autoflight"), &AircraftRig::get_autoflight);
+	ClassDB::bind_method(D_METHOD("get_mcdu"), &AircraftRig::get_mcdu);
 	ClassDB::bind_method(D_METHOD("_on_autoflight_action", "kind", "arg"), &AircraftRig::_on_autoflight_action);
 	ClassDB::bind_method(D_METHOD("get_fg_sounds"), &AircraftRig::get_fg_sounds);
 	ClassDB::bind_method(D_METHOD("get_fg_animator"), &AircraftRig::get_fg_animator);
@@ -980,10 +981,19 @@ Ref<FGBridge> AircraftRig::get_fg_bridge() const { return fg_bridge; }
 Ref<FGControls> AircraftRig::get_fg_controls() const { return fg_controls; }
 Ref<FGPropertyRules> AircraftRig::get_fg_property_rules() const { return fg_rules; }
 Ref<ItAutoflight> AircraftRig::get_autoflight() const { return autoflight; }
+Ref<Ht9100Mcdu> AircraftRig::get_mcdu() const { return mcdu; }
 
 void AircraftRig::setup_autoflight()
 {
 	autoflight.unref();
+	// cfg [mcdu] ht9100: the HT9100 FMS / MCDU module (type / engines: the IDENT page)
+	mcdu.unref();
+	if (cfg.is_valid() && cfg->get_bool("mcdu", "ht9100", false))
+	{
+		mcdu.instantiate();
+		mcdu->set_option("type", cfg->get_string("mcdu", "type", "DC-9-82"));
+		mcdu->set_option("engines", cfg->get_string("mcdu", "engines", "JT8D-217A"));
+	}
 	if (cfg.is_null() || !cfg->get_bool("autoflight", "it_autoflight", false))
 	{
 		return;
@@ -997,6 +1007,16 @@ void AircraftRig::setup_autoflight()
 
 void AircraftRig::_on_autoflight_action(const String &kind, double arg)
 {
+	if (kind.begins_with("mcdu."))
+	{
+		// "mcdu.<handler>:<text argument>" from the shim action "mcdu"
+		const int colon = kind.find(":");
+		if (mcdu.is_valid() && colon > 5)
+		{
+			mcdu->key(kind.substr(5, colon - 5), kind.substr(colon + 1));
+		}
+		return;
+	}
 	if (autoflight.is_valid() && !autoflight->panel(kind, arg))
 	{
 		UtilityFunctions::push_warning("Autoflight: unknown panel action '", kind, "'");
@@ -1349,6 +1369,16 @@ void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *renderin
 		fg_bridge->set_extra_properties(autoflight->get_published());
 	}
 	Dictionary props = fg_bridge->collect(p_jsb, airborne, night);
+	if (mcdu.is_valid())
+	{
+		mcdu->update(props, delta, fdm->get_latitude_deg(), fdm->get_longitude_deg());
+		const Dictionary pub = mcdu->get_published();
+		const Array pk = pub.keys();
+		for (int i = 0; i < pk.size(); i++)
+		{
+			props[pk[i]] = pub[pk[i]];
+		}
+	}
 	if (autoflight.is_valid())
 	{
 		// the mode logic reads the flight state and writes its inputs / outputs

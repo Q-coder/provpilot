@@ -116,6 +116,425 @@
     "instrumentation/fma/blink-3"
    ],
    "font_scale": 1.0
+  },
+  {
+   "node": "HT9100__mcdu1_screen",
+   "_comment": "The HT9100 MCDU (src/ht9100_mcdu.cpp): the text fields of Nasal/Displays/res/HT9100.svg (1024 x 870) on its 24-column character grid.",
+   "power": "systems/electrical/bus/emer-dc",
+   "font": "fonts/HT9100Large.ttf",
+   "font_small": "fonts/HT9100Small.ttf",
+   "char_w": 0.0396083984375,
+   "color": "#ffffff",
+   "texts": [
+    {
+     "prop": "instrumentation/ht9100/d/Title",
+     "color_prop": "instrumentation/ht9100/c/Title",
+     "small_prop": "instrumentation/ht9100/s/Title",
+     "x": 0.46436,
+     "y": 0.08438,
+     "align": "center"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/PageNum",
+     "color_prop": "instrumentation/ht9100/c/PageNum",
+     "small_prop": "instrumentation/ht9100/s/PageNum",
+     "x": 0.88381,
+     "y": 0.08369,
+     "align": "center"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/Scratchpad",
+     "color_prop": "instrumentation/ht9100/c/Scratchpad",
+     "small_prop": "instrumentation/ht9100/s/Scratchpad",
+     "x": 0.02494,
+     "y": 0.95748,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L1",
+     "color_prop": "instrumentation/ht9100/c/L1",
+     "small_prop": "instrumentation/ht9100/s/L1",
+     "x": 0.02494,
+     "y": 0.21487,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L1L",
+     "color_prop": "instrumentation/ht9100/c/L1L",
+     "small_prop": "instrumentation/ht9100/s/L1L",
+     "x": 0.02494,
+     "y": 0.15216,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L1B",
+     "color_prop": "instrumentation/ht9100/c/L1B",
+     "small_prop": "instrumentation/ht9100/s/L1B",
+     "x": 0.02494,
+     "y": 0.21487,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/C1",
+     "color_prop": "instrumentation/ht9100/c/C1",
+     "small_prop": "instrumentation/ht9100/s/C1",
+     "x": 0.02833,
+     "y": 0.21077,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/C1L",
+     "color_prop": "instrumentation/ht9100/c/C1L",
+     "small_prop": "instrumentation/ht9100/s/C1L",
+     "x": 0.02833,
+     "y": 0.14806,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R1",
+     "color_prop": "instrumentation/ht9100/c/R1",
+     "small_prop": "instrumentation/ht9100/s/R1",
+     "x": 0.98368,
+     "y": 0.21487,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R1L",
+     "color_prop": "instrumentation/ht9100/c/R1L",
+     "small_prop": "instrumentation/ht9100/s/R1L",
+     "x": 0.98368,
+     "y": 0.15216,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R1B",
+     "color_prop": "instrumentation/ht9100/c/R1B",
+     "small_prop": "instrumentation/ht9100/s/R1B",
+     "x": 0.98368,
+     "y": 0.21487,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L2",
+     "color_prop": "instrumentation/ht9100/c/L2",
+     "small_prop": "instrumentation/ht9100/s/L2",
+     "x": 0.02494,
+     "y": 0.34759,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L2L",
+     "color_prop": "instrumentation/ht9100/c/L2L",
+     "small_prop": "instrumentation/ht9100/s/L2L",
+     "x": 0.02494,
+     "y": 0.28487,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L2B",
+     "color_prop": "instrumentation/ht9100/c/L2B",
+     "small_prop": "instrumentation/ht9100/s/L2B",
+     "x": 0.02494,
+     "y": 0.34759,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/C2",
+     "color_prop": "instrumentation/ht9100/c/C2",
+     "small_prop": "instrumentation/ht9100/s/C2",
+     "x": 0.02833,
+     "y": 0.34348,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/C2L",
+     "color_prop": "instrumentation/ht9100/c/C2L",
+     "small_prop": "instrumentation/ht9100/s/C2L",
+     "x": 0.02833,
+     "y": 0.28077,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R2",
+     "color_prop": "instrumentation/ht9100/c/R2",
+     "small_prop": "instrumentation/ht9100/s/R2",
+     "x": 0.98368,
+     "y": 0.34759,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R2L",
+     "color_prop": "instrumentation/ht9100/c/R2L",
+     "small_prop": "instrumentation/ht9100/s/R2L",
+     "x": 0.98368,
+     "y": 0.28487,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R2B",
+     "color_prop": "instrumentation/ht9100/c/R2B",
+     "small_prop": "instrumentation/ht9100/s/R2B",
+     "x": 0.98368,
+     "y": 0.34759,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L3",
+     "color_prop": "instrumentation/ht9100/c/L3",
+     "small_prop": "instrumentation/ht9100/s/L3",
+     "x": 0.02494,
+     "y": 0.4803,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L3L",
+     "color_prop": "instrumentation/ht9100/c/L3L",
+     "small_prop": "instrumentation/ht9100/s/L3L",
+     "x": 0.02494,
+     "y": 0.41757,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L3B",
+     "color_prop": "instrumentation/ht9100/c/L3B",
+     "small_prop": "instrumentation/ht9100/s/L3B",
+     "x": 0.02494,
+     "y": 0.4803,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/C3",
+     "color_prop": "instrumentation/ht9100/c/C3",
+     "small_prop": "instrumentation/ht9100/s/C3",
+     "x": 0.02833,
+     "y": 0.4762,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/C3L",
+     "color_prop": "instrumentation/ht9100/c/C3L",
+     "small_prop": "instrumentation/ht9100/s/C3L",
+     "x": 0.02833,
+     "y": 0.41347,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R3",
+     "color_prop": "instrumentation/ht9100/c/R3",
+     "small_prop": "instrumentation/ht9100/s/R3",
+     "x": 0.98368,
+     "y": 0.4803,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R3L",
+     "color_prop": "instrumentation/ht9100/c/R3L",
+     "small_prop": "instrumentation/ht9100/s/R3L",
+     "x": 0.98368,
+     "y": 0.41757,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R3B",
+     "color_prop": "instrumentation/ht9100/c/R3B",
+     "small_prop": "instrumentation/ht9100/s/R3B",
+     "x": 0.98368,
+     "y": 0.4803,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L4",
+     "color_prop": "instrumentation/ht9100/c/L4",
+     "small_prop": "instrumentation/ht9100/s/L4",
+     "x": 0.02494,
+     "y": 0.61301,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L4L",
+     "color_prop": "instrumentation/ht9100/c/L4L",
+     "small_prop": "instrumentation/ht9100/s/L4L",
+     "x": 0.02494,
+     "y": 0.55029,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L4B",
+     "color_prop": "instrumentation/ht9100/c/L4B",
+     "small_prop": "instrumentation/ht9100/s/L4B",
+     "x": 0.02494,
+     "y": 0.61301,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/C4",
+     "color_prop": "instrumentation/ht9100/c/C4",
+     "small_prop": "instrumentation/ht9100/s/C4",
+     "x": 0.02833,
+     "y": 0.60891,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/C4L",
+     "color_prop": "instrumentation/ht9100/c/C4L",
+     "small_prop": "instrumentation/ht9100/s/C4L",
+     "x": 0.02833,
+     "y": 0.54618,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R4",
+     "color_prop": "instrumentation/ht9100/c/R4",
+     "small_prop": "instrumentation/ht9100/s/R4",
+     "x": 0.98368,
+     "y": 0.61301,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R4L",
+     "color_prop": "instrumentation/ht9100/c/R4L",
+     "small_prop": "instrumentation/ht9100/s/R4L",
+     "x": 0.98368,
+     "y": 0.55029,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R4B",
+     "color_prop": "instrumentation/ht9100/c/R4B",
+     "small_prop": "instrumentation/ht9100/s/R4B",
+     "x": 0.98368,
+     "y": 0.61301,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L5",
+     "color_prop": "instrumentation/ht9100/c/L5",
+     "small_prop": "instrumentation/ht9100/s/L5",
+     "x": 0.02494,
+     "y": 0.74572,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L5L",
+     "color_prop": "instrumentation/ht9100/c/L5L",
+     "small_prop": "instrumentation/ht9100/s/L5L",
+     "x": 0.02494,
+     "y": 0.683,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L5B",
+     "color_prop": "instrumentation/ht9100/c/L5B",
+     "small_prop": "instrumentation/ht9100/s/L5B",
+     "x": 0.02494,
+     "y": 0.74572,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/C5",
+     "color_prop": "instrumentation/ht9100/c/C5",
+     "small_prop": "instrumentation/ht9100/s/C5",
+     "x": 0.02833,
+     "y": 0.74162,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/C5L",
+     "color_prop": "instrumentation/ht9100/c/C5L",
+     "small_prop": "instrumentation/ht9100/s/C5L",
+     "x": 0.02833,
+     "y": 0.6789,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R5",
+     "color_prop": "instrumentation/ht9100/c/R5",
+     "small_prop": "instrumentation/ht9100/s/R5",
+     "x": 0.98368,
+     "y": 0.74572,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R5L",
+     "color_prop": "instrumentation/ht9100/c/R5L",
+     "small_prop": "instrumentation/ht9100/s/R5L",
+     "x": 0.98368,
+     "y": 0.683,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R5B",
+     "color_prop": "instrumentation/ht9100/c/R5B",
+     "small_prop": "instrumentation/ht9100/s/R5B",
+     "x": 0.98368,
+     "y": 0.74572,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L6",
+     "color_prop": "instrumentation/ht9100/c/L6",
+     "small_prop": "instrumentation/ht9100/s/L6",
+     "x": 0.02494,
+     "y": 0.87843,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L6L",
+     "color_prop": "instrumentation/ht9100/c/L6L",
+     "small_prop": "instrumentation/ht9100/s/L6L",
+     "x": 0.02494,
+     "y": 0.81552,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/L6B",
+     "color_prop": "instrumentation/ht9100/c/L6B",
+     "small_prop": "instrumentation/ht9100/s/L6B",
+     "x": 0.02494,
+     "y": 0.87843,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/C6",
+     "color_prop": "instrumentation/ht9100/c/C6",
+     "small_prop": "instrumentation/ht9100/s/C6",
+     "x": 0.02833,
+     "y": 0.87432,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/C6L",
+     "color_prop": "instrumentation/ht9100/c/C6L",
+     "small_prop": "instrumentation/ht9100/s/C6L",
+     "x": 0.02833,
+     "y": 0.81141,
+     "align": "left"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R6",
+     "color_prop": "instrumentation/ht9100/c/R6",
+     "small_prop": "instrumentation/ht9100/s/R6",
+     "x": 0.98368,
+     "y": 0.87843,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R6L",
+     "color_prop": "instrumentation/ht9100/c/R6L",
+     "small_prop": "instrumentation/ht9100/s/R6L",
+     "x": 0.98368,
+     "y": 0.81552,
+     "align": "right"
+    },
+    {
+     "prop": "instrumentation/ht9100/d/R6B",
+     "color_prop": "instrumentation/ht9100/c/R6B",
+     "small_prop": "instrumentation/ht9100/s/R6B",
+     "x": 0.98368,
+     "y": 0.87843,
+     "align": "right"
+    }
+   ]
   }
  ]
 }

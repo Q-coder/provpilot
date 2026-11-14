@@ -1124,6 +1124,82 @@ namespace jsbgodot
                 }
                 font = fonts[font_path];
             }
+            // "texts": free labels on a character grid (the MD-80 MCDU) instead of
+            // the column windows of "cells": [{"prop", "x", "y", "align",
+            // "color", "color_prop", "small_prop"}], x / y = the text anchor and
+            // baseline as fractions of the screen from its top-left corner,
+            // "char_w" = one character's advance as a fraction of the width
+            // (the fonts are monospaced), "font_small" the alternative face.
+            const Array texts = sc.get("texts", Array());
+            if (!texts.is_empty())
+            {
+                Ref<Font> font_small = font;
+                const String small_rel = sc.get("font_small", "");
+                if (!small_rel.is_empty())
+                {
+                    const String small_path = json_path.get_base_dir().path_join(small_rel);
+                    if (!fonts.has(small_path))
+                    {
+                        Ref<FontFile> ff;
+                        ff.instantiate();
+                        fonts[small_path] = ff->load_dynamic_font(small_path) == OK ? Ref<Font>(ff) : Ref<Font>();
+                    }
+                    if (fonts[small_path].is_valid())
+                        font_small = fonts[small_path];
+                }
+                const int FS = 96;
+                double advance_px = FS * 0.6, descent_px = FS * 0.2;
+                if (font.is_valid())
+                {
+                    advance_px = std::max(1.0, (double)font->get_string_size("0", HORIZONTAL_ALIGNMENT_LEFT, -1, FS).x);
+                    descent_px = font->get_descent(FS);
+                }
+                const double char_w = num(sc.get("char_w", 1.0 / 24.0), 1.0 / 24.0) * width;
+                const double pixel = char_w / advance_px;
+                for (int ti = 0; ti < texts.size(); ti++)
+                {
+                    if (texts[ti].get_type() != Variant::DICTIONARY)
+                        continue;
+                    const Dictionary t = texts[ti];
+                    Label3D *lb = memnew(Label3D);
+                    lb->set_name(String("ScreenText_") + node_name + "_t" + String::num_int64(ti));
+                    TextState ts;
+                    ts.kind = 2;
+                    ts.format = "%s";
+                    ts.prop = prop_id(t.get("prop", ""));
+                    ts.power_prop = power;
+                    ts.power_min = num(sc.get("power_min", 24.0), 24.0);
+                    if (!String(t.get("color_prop", "")).is_empty())
+                        ts.color_prop = prop_id(t.get("color_prop", ""));
+                    if (!String(t.get("small_prop", "")).is_empty())
+                        ts.small_prop = prop_id(t.get("small_prop", ""));
+                    ts.font = font;
+                    ts.font_small = font_small;
+                    const bool small = (bool)t.get("small", false);
+                    if (font.is_valid())
+                        lb->set_font(small ? font_small : font);
+                    lb->set_font_size(FS);
+                    lb->set_pixel_size(pixel);
+                    const String align = t.get("align", "left");
+                    lb->set_horizontal_alignment(align == "right" ? HORIZONTAL_ALIGNMENT_RIGHT : (align == "center" ? HORIZONTAL_ALIGNMENT_CENTER : HORIZONTAL_ALIGNMENT_LEFT));
+                    lb->set_vertical_alignment(VERTICAL_ALIGNMENT_BOTTOM);
+                    lb->set_modulate(Color::html(String(t.get("color", sc.get("color", "#ffffff")))));
+                    lb->set_draw_flag(Label3D::FLAG_SHADED, false);
+                    lb->set_draw_flag(Label3D::FLAG_DOUBLE_SIDED, false);
+                    lb->set_alpha_cut_mode(Label3D::ALPHA_CUT_DISCARD);
+                    lb->set_texture_filter(BaseMaterial3D::TEXTURE_FILTER_LINEAR_WITH_MIPMAPS);
+                    // the anchor on the baseline; the label's bottom edge is the descent below it
+                    const double cx = num(t.get("x", 0.0), 0.0) - 0.5;
+                    const double cy = 0.5 - num(t.get("y", 0.0), 0.0);
+                    const Vector3 pos = centre + ex * (cx * width) + ey * (cy * height - descent_px * pixel) + ez * 0.001;
+                    lb->set_transform(mi->get_transform() * Transform3D(lb_basis, pos));
+                    parent->add_child(lb);
+                    ts.label_id = lb->get_instance_id();
+                    text_states.push_back(ts);
+                    made++;
+                }
+                continue;
+            }
             for (int ci = 0; ci < cells.size() && ci < cols; ci++)
             {
                 const Array col = cells[ci];
@@ -1197,6 +1273,20 @@ namespace jsbgodot
                     on = (Time::get_singleton()->get_ticks_msec() % 1000) >= 500; // 1 Hz, as fma.nas blanks the window
                 if (lb->is_visible() != on)
                     lb->set_visible(on);
+            }
+            if (ts.color_prop >= 0 && prop_strings[ts.color_prop] != ts.last_color && prop_strings[ts.color_prop].begins_with("#"))
+            {
+                ts.last_color = prop_strings[ts.color_prop];
+                lb->set_modulate(Color::html(ts.last_color));
+            }
+            if (ts.small_prop >= 0 && ts.font.is_valid())
+            {
+                const int small = prop_values[ts.small_prop] >= 0.5 ? 1 : 0;
+                if (small != ts.last_small)
+                {
+                    ts.last_small = small;
+                    lb->set_font(small ? ts.font_small : ts.font);
+                }
             }
             const double v = ts.prop >= 0 ? prop_values[ts.prop] : 0.0;
             // A screen window shows a string property as it is: an empty mode

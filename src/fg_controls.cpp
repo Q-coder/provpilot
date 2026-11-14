@@ -1588,6 +1588,21 @@ bool FGControls::run_shim(const String &statement, const Dictionary &ctx)
 				on_module_action.call(String(sh.get("kind", "")), arg);
 			}
 		}
+		else if (action == "mcdu")
+		{
+			// a module action with a text argument: the MCDU's key handlers
+			// (mcdu_ht9100.unit[0].alphaNumKey("A") -> "mcdu.alphaNumKey:A")
+			String text;
+			if (!args.is_empty())
+			{
+				const Variant a0 = args[0];
+				text = a0.get_type() == Variant::STRING ? String(a0) : String::num_int64((int64_t)std::llround(num(a0)));
+			}
+			if (on_module_action.is_valid())
+			{
+				on_module_action.call(String("mcdu.") + String(sh.get("kind", "")) + ":" + text, 0.0);
+			}
+		}
 		else if (action == "action")
 		{
 			// a ProvPilot action (gear_cmd, gear_smart, flaps_step, speedbrake, gear_toggle ...)

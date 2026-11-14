@@ -925,3 +925,27 @@ FlightGear's MD-80 has no reverser lever of its own either: the DEL key calls `s
 - `AircraftRig::toggle_reverse_thrust(jsb)` (bound; `is_reverse_engaged`) ports `toggleRevThrust`: the flags come from the cfg `[engines] reverse_engage_props` (one FDM property per engine), the idle test from `reverse_lever_max_prop` (the throttle input when absent), the ground test from the FDM's `gear/wow`. Aircraft without the cfg entries return false.
 - Keyboard: `reverse_toggle` on **R** ("Reverse thrust (on the ground, levers at idle)"); the flight-model start moved to **Shift+R**. `KeyBindings::load` migrates: an action absent from `keyboard.cfg` keeps its default key, and a stored action of the same section that still sits on that key only because it used to be its own default moves on to its current default (a deliberate rebinding stays). Gamepad: button action `reverse_toggle` ("Reverse thrust on / off"), unbound by default, dispatched in `node_3d.gd` next to the flap buttons.
 - `smoke_md80_ils`: the toggle refuses in the air; after the ATS lets go on the rollout the toggle deploys the buckets (1.00 within 8 s), the throttle input at 1 pulls about 7 400 lb per engine backwards at N1 80, the aircraft slows, and the toggle again stows them with the levers idled. `smoke_keyboard`: the migration (fdm_start R → Shift+R when reverse_toggle is new; J stays J).
+
+## HT9100 FMS / MCDU (2026-11-14)
+
+The MCDU works to the extent the FlightGear package implements it. `src/ht9100_mcdu.cpp`
+(`Ht9100Mcdu`, cfg `[mcdu] ht9100 true`, `type` / `engines` per variant) is a port of
+`Nasal/HT9100/*.nas`: pages MENU, IDENT, POS REF, DATA INDEX, NEAREST INDEX, NEAREST
+AIRPORTS, RTE 1 (origin, destination, flight number) and PERF INIT (transition altitude,
+cruise level), the scratchpad with its messages (INVALID ENTRY, NOT IN DATA BASE, INVALID
+CLEAR / DELETE), CLR, long CLR, DELETE and +/-. Every other page key shows PAGE NOT AVAIL,
+as upstream.
+
+- Keys: the shim action `mcdu` (`model/nasal_shims.json`) forwards
+  `mcdu_ht9100.unit[0].softKey("l1")` etc. with the text argument to `Ht9100Mcdu::key`.
+- Screen: `screen_texts.json` got a second form, `texts` (free labels on a character grid:
+  x / y anchor, align, `color_prop`, `small_prop`, `char_w`, `font_small`); the 51 fields of
+  `Displays/res/HT9100.svg` are laid out from it with the package's HT9100 fonts. The module
+  publishes `instrumentation/ht9100/d|c|s/<field>` and the EXEC / MSG lights.
+- Data base: the bundled `airports.json` (origin / destination lookup, nearest airports with
+  magnetic course and distance).
+- Not there, as upstream has no logic for it either: LEGS, DEP ARR, HOLD, PROG, RTE 2, the
+  other NEAREST lists. Company routes answer NOT IN DATA BASE (they are FlightGear flight
+  plan files). Origin, destination and cruise altitude are published under
+  `autopilot/route-manager/*` for a later route manager / LNAV.
+- Test: `tests/probe_md80_mcdu.tscn -- <out_dir>` (24 checks, a real click on R6, close-ups).

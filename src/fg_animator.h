@@ -154,6 +154,11 @@ namespace jsbgodot
             double power_min = 24.0;
             Vector<int> show_props; // screen texts: shown while any of these is true (empty = always)
             int blink_prop = -1;    // screen texts: 1 Hz blink while this property is true
+            int color_prop = -1;    // free texts: a string property "#rrggbb" colours the label
+            int small_prop = -1;    // free texts: true = font_small instead of font
+            Ref<Font> font, font_small;
+            String last_color;
+            int last_small = -1;
         };
         struct MatState
         {
