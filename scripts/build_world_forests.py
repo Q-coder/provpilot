@@ -19,7 +19,7 @@ the region's build dir are written (--all-squares to ignore that).
 File (little-endian): "FOR1", u32 1, u32 polygon count, u32 0, f64 tile
 east, f64 tile north; polygon: u8 kind (0 broadleaf, 1 conifer, 2 mixed,
 3 corridor, 4 water, 5 farmland, 6 grass / meadow / scrub, 7 built-up,
-8 industrial, 9 bare rock, 10 glacier, 11 sand), u8[3], f32 density trees/m2
+8 industrial, 9 bare rock, 10 glacier, 11 sand, 12 airfield), u8[3], f32 density trees/m2
 (corridor: half width m; land cover: 0), f32 mean height m, u32 ring count;
 ring: u32 n, n x (f32 dx, f32 dz) from the SW corner. Land-cover polygons are
 simplified to 2 m before clipping (the raster is 4-8 m per pixel).
@@ -70,7 +70,7 @@ ROAD_HALF = {"motorway": 16.0, "trunk": 11.0, "primary": 8.0, "secondary": 7.0, 
              "residential": 5.0, "unclassified": 5.0, "living_street": 4.0, "service": 3.5, "track": 3.0}
 RAIL_HALF = 5.0
 # land-cover kinds (4+) by OSM tag, painted by the tile manager (s3d_forest_file.cpp)
-K_WATER, K_FARM, K_GRASS, K_URBAN, K_INDUSTRIAL, K_ROCK, K_GLACIER, K_SAND = 4, 5, 6, 7, 8, 9, 10, 11
+K_WATER, K_FARM, K_GRASS, K_URBAN, K_INDUSTRIAL, K_ROCK, K_GLACIER, K_SAND, K_AIRFIELD = 4, 5, 6, 7, 8, 9, 10, 11, 12
 LANDUSE_KIND = {"farmland": K_FARM, "orchard": K_FARM, "vineyard": K_FARM, "plant_nursery": K_FARM, "greenhouse_horticulture": K_FARM,
                 "meadow": K_GRASS, "grass": K_GRASS, "village_green": K_GRASS, "recreation_ground": K_GRASS, "cemetery": K_GRASS,
                 "allotments": K_GRASS, "flowerbed": K_GRASS,
@@ -85,13 +85,17 @@ NATURAL_KIND = {"water": K_WATER, "wetland": K_GRASS, "grassland": K_GRASS, "hea
 LEISURE_KIND = {"park": K_GRASS, "golf_course": K_GRASS, "pitch": K_GRASS, "garden": K_GRASS, "sports_centre": K_GRASS,
                 "stadium": K_URBAN}
 MIN_AREA = {K_WATER: 400.0, K_FARM: 2000.0, K_GRASS: 2000.0, K_URBAN: 2000.0, K_INDUSTRIAL: 2000.0,
-            K_ROCK: 4000.0, K_GLACIER: 4000.0, K_SAND: 1000.0}
+            K_ROCK: 4000.0, K_GLACIER: 4000.0, K_SAND: 1000.0, K_AIRFIELD: 2000.0}
 SIMPLIFY_M = 2.0
 TO_LV95 = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2056", always_xy=True)
 
 
 def landcover_kind(tags):
     """The land-cover kind (4+) of an OSM area, or None."""
+    # An aerodrome is worn grass between the runways, not a town (and wins
+    # over a landuse=military / industrial tag on the same boundary).
+    if tags.get("aeroway") == "aerodrome":
+        return K_AIRFIELD
     if "landuse" in tags and tags["landuse"] in LANDUSE_KIND:
         return LANDUSE_KIND[tags["landuse"]]
     if "natural" in tags and tags["natural"] in NATURAL_KIND:
@@ -100,7 +104,7 @@ def landcover_kind(tags):
         return K_WATER
     if "leisure" in tags and tags["leisure"] in LEISURE_KIND:
         return LEISURE_KIND[tags["leisure"]]
-    if tags.get("amenity") in ("school", "university", "hospital", "college") or tags.get("aeroway") == "aerodrome":
+    if tags.get("amenity") in ("school", "university", "hospital", "college"):
         return K_URBAN
     return None
 

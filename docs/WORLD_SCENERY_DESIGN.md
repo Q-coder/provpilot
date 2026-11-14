@@ -2509,7 +2509,7 @@ map: OSM polygons decide *where* a class is, position-hashed patterns decide
 
 Data: `build_world_forests.py` now also collects land-cover areas into the
 same FOR1 files (kinds 4 water, 5 farmland, 6 grass / meadow / scrub / parks,
-7 built-up, 8 industrial, 9 bare rock / quarry, 10 glacier, 11 sand / beach;
+7 built-up, 8 industrial, 9 bare rock / quarry, 10 glacier, 11 sand / beach, 12 airfield (aeroway=aerodrome: worn grass);
 tag tables LANDUSE_KIND / NATURAL_KIND / LEISURE_KIND), simplified to 2 m,
 minimum areas per class. Only kinds 0-2 get trees (`fill_polygons` skips the
 rest). The Drøbak–ENGM test window: 23 555 land-cover areas next to 8 411

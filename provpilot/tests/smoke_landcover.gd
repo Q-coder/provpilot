@@ -41,7 +41,7 @@ func _write_forest(path: String, e: int, n: int) -> void:
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_buffer("FOR1".to_ascii_buffer())
 	f.store_32(1)
-	f.store_32(6)
+	f.store_32(7)
 	f.store_32(0)
 	f.store_double(float(e))
 	f.store_double(float(n))
@@ -58,6 +58,10 @@ func _write_forest(path: String, e: int, n: int) -> void:
 	_ring(f, [Vector2(100, 600), Vector2(500, 600), Vector2(500, 1000), Vector2(100, 1000), Vector2(100, 600)])
 	_poly_header(f, 7, 0.0, 0.0, 1)
 	_ring(f, [Vector2(600, 350), Vector2(1000, 350), Vector2(1000, 550), Vector2(600, 550), Vector2(600, 350)])
+	# an aerodrome boundary (830..990 x 500..980), written last: it still paints
+	# under the town it overlaps (500..550)
+	_poly_header(f, 12, 0.0, 0.0, 1)
+	_ring(f, [Vector2(830, 500), Vector2(990, 500), Vector2(990, 980), Vector2(830, 980), Vector2(830, 500)])
 	f.close()
 
 ## A flat 34 px terrain tile at 600 m (the base tier's resolution).
@@ -125,6 +129,22 @@ func _ready() -> void:
 				town_dark += 1
 		town_sum /= 40.0
 		_check(absf(town_sum.r - town_sum.g) < 0.12 and town_dark >= 4, "the town is a grey-brown speckle of roofs and gardens (mean %s, %d dark of 40)" % [town_sum, town_dark])
+		var field_min := 1.0
+		var field_max := 0.0
+		var field_green := 0
+		for i in range(40):
+			var c := _px(img, 840.0 + (i * 37) % 140, 570.0 + (i * 53) % 400)
+			field_min = minf(field_min, c.r)
+			field_max = maxf(field_max, c.r)
+			if c.g >= c.r - 0.02 and c.g > c.b + 0.04:
+				field_green += 1
+		_check(field_green == 40 and field_min > 0.36 and field_max < 0.56, "the airfield is worn grass: muted green to olive, no roofs, no parcels (%d of 40 green, red %.2f..%.2f)" % [field_green, field_min, field_max])
+		var town_over := 0
+		for i in range(30):
+			var c := _px(img, 835.0 + i * 5.0, 505.0 + (i * 11) % 40)
+			if absf(c.r - c.g) < 0.03 or c.r > c.g:
+				town_over += 1
+		_check(town_over >= 5, "a town mapped inside the aerodrome boundary paints over the airfield grass (%d grey or roof pixels of 30)" % town_over)
 		_check(_is_forest(_px(img, 180.0, 400.0)), "the wood stands 30 m beside the road")
 		# orientation: the broadleaf square (NE quarter) lies at low columns (east) and high rows (north)
 		var ne := img.get_pixel(127 - int(floor(700.0 / 8.0)), int(floor(700.0 / 8.0)))
