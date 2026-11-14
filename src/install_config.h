@@ -98,6 +98,8 @@ namespace jsbgodot
         String install_root;
         String config_path;
         Ref<ConfigFile> config;
+        Ref<ConfigFile> disk_snapshot; // the file as last read / written: _save merges only this instance's changes
+        void _take_snapshot();
         bool loaded = false;
 
         void _discover_and_load();

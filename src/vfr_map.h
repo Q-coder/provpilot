@@ -3,7 +3,9 @@
 
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/classes/canvas_item.hpp>
+#include <godot_cpp/classes/button.hpp>
 #include <godot_cpp/classes/control.hpp>
+#include <godot_cpp/classes/rich_text_label.hpp>
 #include <godot_cpp/classes/input_event.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
@@ -125,6 +127,15 @@ namespace jsbgodot
         // aircraft without capturing rendered pixels.
         Vector2 get_projected_px(double e, double n) const;
 
+        // Details panel: select the airport / navaid symbol nearest to a frame
+        // pixel (within 14 px; false and the panel closes when there is none),
+        // or an airport by ICAO; the panel's text (BBCode) for the tests.
+        bool select_at(const Vector2 &local_px);
+        bool select_airport(const String &icao);
+        void close_info();
+        String get_info_text() const;
+        void _on_info_close();
+
         // The map world, painted by the clipped child canvas in frame coordinates.
         void draw_world(CanvasItem *ci);
 
@@ -159,7 +170,9 @@ namespace jsbgodot
         static const LevelDef LEVELS[3];   // L0 base, L3 coarse, L5 overview
         static int level_cell_m(int level);
 
-        static const double VIEW_WIDTHS_M[5];          // {5, 10, 20, 40, 80} km
+        static constexpr int N_ZOOM = 7;
+        static const double VIEW_WIDTHS_M[N_ZOOM];     // {5, 10, 20, 40, 80, 160, 250} km
+        static constexpr double INFO_W = 250.0;        // width of the details panel right of the map (px)
         static const int FRAME_SIZES_PX[3];            // {240, 320, 400}: the Settings presets
 
         // ── Config / state ──
@@ -231,6 +244,9 @@ namespace jsbgodot
             double n = 0.0;
             String icao;
             bool international = false;
+            String name, type;
+            double lat = 0.0, lon = 0.0, elev_m = 0.0;
+            Array runways;                             // airports.json records: designator, length_m, surface
         };
         std::vector<Airport> airports;
         // Radio navaids (res://navaids.json via NavaidsLib): LV95 position,
@@ -241,6 +257,8 @@ namespace jsbgodot
             String ident;
             String freq;
             int kind = 0;
+            String name, type;
+            double lat = 0.0, lon = 0.0, elev_m = 0.0;
         };
         std::vector<NavaidMark> navaids;
         // ILS localizer feathers (LV95): apex at the threshold, base 7 km out.
@@ -260,6 +278,19 @@ namespace jsbgodot
         int visible_navaids = 0;
         double px_per_m = 1.0;
         Vector2 frame_center_px;                       // map area center in local px
+
+        // ── Details panel (a click on an airport or navaid symbol) ──
+        enum SelKind { SEL_NONE = 0, SEL_AIRPORT = 1, SEL_NAVAID = 2 };
+        int sel_kind = SEL_NONE;
+        int sel_index = -1;
+        RichTextLabel *info_label = nullptr;
+        Button *info_close = nullptr;
+        String info_text;
+        double last_info_ms = -1e9;
+        double info_w() const { return sel_kind != SEL_NONE ? INFO_W : 0.0; } // the frame is this much wider while the panel shows
+        void place_info();
+        void refresh_info();
+        String build_info_text() const;
 
         // ── Internals ──
         void load_config();

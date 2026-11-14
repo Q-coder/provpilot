@@ -115,6 +115,7 @@ void InstallConfig::_discover_and_load()
         if (err == OK)
         {
             loaded = true;
+            _take_snapshot();
             UtilityFunctions::print("InstallRoot: loaded config ", config_path);
         }
         else
@@ -424,10 +425,65 @@ Error InstallConfig::save_config()
 // on success; failures are always reported.
 Error InstallConfig::_save(const char *what)
 {
+    // Another instance (the editor next to the game, a test run next to a
+    // flight) may have written the file since this one read it. Writing the
+    // whole in-memory copy would put that instance's changes back to what this
+    // one loaded - joystick bindings came back as their old values that way.
+    // So: read the file again and apply only what THIS instance changed since
+    // its last load / save.
+    Ref<ConfigFile> fresh;
+    fresh.instantiate();
+    if (disk_snapshot.is_valid() && FileAccess::file_exists(config_path) && fresh->load(config_path) == OK)
+    {
+        PackedStringArray sections = config->get_sections();
+        const PackedStringArray old_sections = disk_snapshot->get_sections();
+        for (int i = 0; i < old_sections.size(); i++)
+        {
+            if (!sections.has(old_sections[i]))
+            {
+                sections.append(old_sections[i]);
+            }
+        }
+        for (int i = 0; i < sections.size(); i++)
+        {
+            const String sn = sections[i];
+            PackedStringArray keys = config->has_section(sn) ? config->get_section_keys(sn) : PackedStringArray();
+            if (disk_snapshot->has_section(sn))
+            {
+                const PackedStringArray old_keys = disk_snapshot->get_section_keys(sn);
+                for (int k = 0; k < old_keys.size(); k++)
+                {
+                    if (!keys.has(old_keys[k]))
+                    {
+                        keys.append(old_keys[k]);
+                    }
+                }
+            }
+            for (int k = 0; k < keys.size(); k++)
+            {
+                const bool now = config->has_section_key(sn, keys[k]);
+                const bool before = disk_snapshot->has_section_key(sn, keys[k]);
+                if (now && before && UtilityFunctions::var_to_str(config->get_value(sn, keys[k])) == UtilityFunctions::var_to_str(disk_snapshot->get_value(sn, keys[k])))
+                {
+                    continue; // untouched here: the file's value stands
+                }
+                if (now)
+                {
+                    fresh->set_value(sn, keys[k], config->get_value(sn, keys[k]));
+                }
+                else if (fresh->has_section_key(sn, keys[k]))
+                {
+                    fresh->erase_section_key(sn, keys[k]);
+                }
+            }
+        }
+        config = fresh;
+    }
     Error err = config->save(config_path);
     if (err == OK)
     {
         loaded = true;
+        _take_snapshot();
         if (what != nullptr)
         {
             UtilityFunctions::print("InstallRoot: ", what, " ", config_path);
@@ -438,6 +494,14 @@ Error InstallConfig::_save(const char *what)
         UtilityFunctions::push_error(vformat("InstallRoot: failed to save %s (err=%d)", config_path, int(err)));
     }
     return err;
+}
+
+// The file's content as this instance last read or wrote it (the baseline
+// _save compares against).
+void InstallConfig::_take_snapshot()
+{
+    disk_snapshot.instantiate();
+    disk_snapshot->parse(config->encode_to_text());
 }
 
 // ── One-time migrations ─────────────────────────────────────────────────────

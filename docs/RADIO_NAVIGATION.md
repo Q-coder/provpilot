@@ -264,3 +264,19 @@ differences.
 - NAV 2 has no DME of its own (the MD-80's DME 2 readout) and no ADF 2.
 - The PC-7 got the same gauges and radios on 2026-10-31 (KX 165 and KR 87
   on the right-hand console, docs/INSTRUMENTS.md §5).
+
+## 2026-11-14: parallel runways, DME 2, map details
+
+- **ILS on parallel runways.** `NavaidsLib::resolve_ils` matched an ILS to the
+  first runway whose designator fitted with the L / R / C letter ignored, so
+  at Copenhagen 22L (109.5 OXS) took the geometry of 04L/22R and both
+  localizers led to 22R. The exact designator is now tried over all runways
+  first, the tolerant match only after that (`tests/probe_ekch_ils`).
+- **DME per receiver.** `RadioNav::write_properties` publishes
+  `instrumentation/dme[1]/*` for NAV 2 (the MD-80's second DME window).
+- **VFR map.** Views of 160 and 250 km (small fields as dots, only VORs
+  labelled there), km and NM in the title and on the scale bar, and a details
+  panel on the right after a click on an airport (runways, ILS frequencies and
+  magnetic courses, navaids within 25 NM) or a navaid (type, frequency,
+  radial); bearing and distance from the aircraft refresh once a second. A
+  click on the bare map or the x closes it (`tests/probe_vfr_map_info`).

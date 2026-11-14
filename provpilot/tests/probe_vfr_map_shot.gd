@@ -3,7 +3,7 @@ extends Node
 ## VFR map's zoom, optionally move / resize the frame, wait for the tiles and
 ## save the map frame's pixels (plus the whole viewport) as PNGs.
 ## Run NON-headless:
-##   godot --path provpilot res://tests/probe_vfr_map_shot.tscn -- <zoom_index 0-4> [out_dir] [resize_w,resize_h]
+##   godot --path provpilot res://tests/probe_vfr_map_shot.tscn -- <zoom_index 0-6> [out_dir] [resize_w,resize_h]
 ## Output: <out_dir>/vfr_map_z<zoom>.png (frame crop) and vfr_map_z<zoom>_full.png.
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()

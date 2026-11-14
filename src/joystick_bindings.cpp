@@ -81,6 +81,7 @@ void JoystickBindings::_bind_methods()
 	ClassDB::bind_method(D_METHOD("detect_active_button"), &JoystickBindings::detect_active_button);
 	ClassDB::bind_method(D_METHOD("save"), &JoystickBindings::save);
 	ClassDB::bind_method(D_METHOD("reset_to_defaults"), &JoystickBindings::reset_to_defaults);
+	ClassDB::bind_method(D_METHOD("reload"), &JoystickBindings::reload);
 	ClassDB::bind_method(D_METHOD("get_axis_bindings"), &JoystickBindings::get_axis_bindings);
 	ClassDB::bind_method(D_METHOD("set_axis_bindings", "bindings"), &JoystickBindings::set_axis_bindings);
 	ClassDB::bind_method(D_METHOD("get_button_bindings"), &JoystickBindings::get_button_bindings);
@@ -263,6 +264,14 @@ void JoystickBindings::apply_defaults()
 void JoystickBindings::reset_to_defaults()
 {
 	apply_defaults();
+}
+
+// Back to what provpilot.cfg holds (Settings > Cancel): the defaults first,
+// so an action the file does not list has its default again.
+void JoystickBindings::reload()
+{
+	apply_defaults();
+	load();
 }
 
 // ── Runtime accessors ───────────────────────────────────────────────────────

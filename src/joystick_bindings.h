@@ -63,6 +63,8 @@ namespace jsbgodot
 
         void save();
         void reset_to_defaults();
+        // Discard unsaved changes: the bindings as provpilot.cfg holds them.
+        void reload();
 
         Dictionary get_axis_bindings() const; void set_axis_bindings(const Dictionary &d);
         Dictionary get_button_bindings() const; void set_button_bindings(const Dictionary &d);

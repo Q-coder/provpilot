@@ -1358,8 +1358,9 @@ void SettingsScreen::_on_cancel()
     Node *jc = _joystick_config();
     if (jc != nullptr)
     {
-        jc->call("reset_to_defaults");
-        jc->call("_load");
+        // (this called an unbound "_load" after the reset: every Cancel / Esc left the
+        // pad on its default bindings for the rest of the session)
+        jc->call("reload");
         _refresh_joystick_panel();
     }
     Node *kc = _key_config();

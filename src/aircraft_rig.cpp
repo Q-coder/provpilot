@@ -153,6 +153,12 @@ bool AircraftRig::load_config(const String &p_aircraft_id)
 	reverse_lever_prop = cfg->get_string("engines", "reverse_lever_max_prop", "");
 	reverse_engaged = false;
 
+	// Speed brake lever of an FDM with its own spoiler system (the MD-80).
+	speedbrake_prop = cfg->get_string("controls", "speedbrake_prop", "");
+	speedbrake_key_value = cfg->get_float("controls", "speedbrake_key_value", 1.0);
+	speedbrake_step = cfg->get_float("controls", "speedbrake_step", 0.0);
+	speedbrake_out = false;
+
 	// Flap detents (cockpit lever notches).
 	const Array positions = cfg->get_float_array("flaps", "positions", Array());
 	if (!positions.is_empty())
@@ -1603,6 +1609,42 @@ void AircraftRig::push_nav_text(const String &text)
 	}
 }
 
+void AircraftRig::command_speedbrake(JSBGodot *fdm, bool out, bool notch)
+{
+	if (fdm == nullptr)
+	{
+		return;
+	}
+	if (!speedbrake_prop.is_empty())
+	{
+		// the FDM's own lever: the key goes all the way (the FDM limits the travel
+		// in the air), a lever click moves one notch
+		double v = out ? speedbrake_key_value : 0.0;
+		if (notch && speedbrake_step > 0.0)
+		{
+			const double cur = fdm->get_property(speedbrake_prop);
+			v = Math::clamp(cur + (out ? speedbrake_step : -speedbrake_step), 0.0, speedbrake_key_value);
+		}
+		fdm->set_property(speedbrake_prop, v);
+		if (fg_controls.is_valid())
+		{
+			// the property mirror pushes controls/* from the cockpit state every frame
+			fg_controls->assign_external(speedbrake_prop.trim_prefix("/"), v);
+		}
+		speedbrake_out = v > 0.01;
+		return;
+	}
+	speedbrake_out = out;
+	if (fdm->get_throttle_drives_airbrakes())
+	{
+		fdm->set_input_throttle(out ? 0.0f : 1.0f); // the lever the throttle inputs work
+	}
+	else
+	{
+		fdm->set_property("fcs/speedbrake-cmd-norm", out ? 1.0 : 0.0);
+	}
+}
+
 void AircraftRig::poll_keys(Object *p_jsb)
 {
 	// Keys by the keyboard mapping (Settings > Keyboard, hotspots_debug / speedbrake_toggle / landing_lights)
@@ -1632,15 +1674,7 @@ void AircraftRig::poll_keys(Object *p_jsb)
 			speedbrake_key_held = true;
 			if (fdm != nullptr)
 			{
-				speedbrake_out = !speedbrake_out;
-				if (fdm->get_throttle_drives_airbrakes())
-				{
-					fdm->set_input_throttle(speedbrake_out ? 0.0f : 1.0f); // the lever the throttle inputs work
-				}
-				else
-				{
-					fdm->set_property("fcs/speedbrake-cmd-norm", speedbrake_out ? 1.0 : 0.0);
-				}
+				command_speedbrake(fdm, !speedbrake_out, false);
 				UtilityFunctions::print("Speed brakes: ", speedbrake_out ? "OUT" : "IN");
 			}
 		}
@@ -1914,8 +1948,7 @@ void AircraftRig::_on_fg_control(const String &prop, const Variant &value)
 		state.erase(prop);
 		if (fdm != nullptr)
 		{
-			speedbrake_out = on;
-			fdm->set_property("fcs/speedbrake-cmd-norm", on ? 1.0 : 0.0);
+			command_speedbrake(fdm, on, true);
 		}
 	}
 	else if (prop == "provpilot/gear-toggle")

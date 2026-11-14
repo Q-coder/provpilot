@@ -2,6 +2,7 @@
 #include "vfr_map.h"
 #include "geo.h"
 #include "navaids_lib.h"
+#include "geo_magnetic.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/classes/config_file.hpp>
@@ -37,7 +38,7 @@ namespace jsbgodot
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const double VfrMap::VIEW_WIDTHS_M[5] = { 5000.0, 10000.0, 20000.0, 40000.0, 80000.0 };
+const double VfrMap::VIEW_WIDTHS_M[VfrMap::N_ZOOM] = { 5000.0, 10000.0, 20000.0, 40000.0, 80000.0, 160000.0, 250000.0 };
 const int VfrMap::FRAME_SIZES_PX[3] = { 240, 320, 400 };
 
 // Map tile pyramid (scripts/generate_vfr_map_tiles.py): same LV95 grid family
@@ -235,6 +236,11 @@ void VfrMap::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_visible_airport_count"), &VfrMap::get_visible_airport_count);
     ClassDB::bind_method(D_METHOD("get_visible_navaid_count"), &VfrMap::get_visible_navaid_count);
     ClassDB::bind_method(D_METHOD("get_zoom_index"), &VfrMap::get_zoom_index);
+    ClassDB::bind_method(D_METHOD("select_at", "local_px"), &VfrMap::select_at);
+    ClassDB::bind_method(D_METHOD("select_airport", "icao"), &VfrMap::select_airport);
+    ClassDB::bind_method(D_METHOD("close_info"), &VfrMap::close_info);
+    ClassDB::bind_method(D_METHOD("get_info_text"), &VfrMap::get_info_text);
+    ClassDB::bind_method(D_METHOD("_on_info_close"), &VfrMap::_on_info_close);
     ClassDB::bind_method(D_METHOD("get_view_width_m"), &VfrMap::get_view_width_m);
     ClassDB::bind_method(D_METHOD("toggle_visible"), &VfrMap::toggle_visible);
     // The map key (N) flipped the frame: the host mirrors it into the
@@ -289,6 +295,25 @@ void VfrMap::_ready()
         canvas->owner = this;
         add_child(canvas);
     }
+    if (info_label == nullptr)
+    {
+        info_label = memnew(RichTextLabel);
+        info_label->set_use_bbcode(true);
+        info_label->set_scroll_active(true);
+        info_label->add_theme_font_size_override("normal_font_size", 12);
+        info_label->add_theme_font_size_override("bold_font_size", 12);
+        info_label->add_theme_color_override("default_color", Color(0.88, 0.92, 1.0));
+        info_label->set_visible(false);
+        add_child(info_label);
+        info_close = memnew(Button);
+        info_close->set_text("x");
+        info_close->set_flat(true);
+        info_close->set_focus_mode(Control::FOCUS_NONE);
+        info_close->add_theme_font_size_override("font_size", 13);
+        info_close->set_visible(false);
+        info_close->connect("pressed", Callable(this, "_on_info_close"));
+        add_child(info_close);
+    }
     load_config();
     load_static_data();
     set_visible(enabled);
@@ -318,13 +343,13 @@ void VfrMap::_reposition()
     frame_h = std::max(MIN_FRAME_PX, frame_h);
     if (area.x >= MIN_FRAME_PX && area.y >= MIN_FRAME_PX)
     {
-        frame_w = std::min(frame_w, double(area.x));
+        frame_w = std::min(frame_w, std::max(MIN_FRAME_PX, double(area.x) - info_w()));
         frame_h = std::min(frame_h, double(area.y));
-        frame_right = std::max(0.0, std::min(frame_right, double(area.x) - frame_w));
+        frame_right = std::max(0.0, std::min(frame_right, double(area.x) - frame_w - info_w()));
         frame_top = std::max(0.0, std::min(frame_top, double(area.y) - frame_h));
     }
     set_anchors_preset(Control::PRESET_TOP_RIGHT);
-    set_offset(Side::SIDE_LEFT, -frame_right - frame_w);
+    set_offset(Side::SIDE_LEFT, -frame_right - frame_w - info_w()); // the details panel widens the frame to the left
     set_offset(Side::SIDE_TOP, frame_top);
     set_offset(Side::SIDE_RIGHT, -frame_right);
     set_offset(Side::SIDE_BOTTOM, frame_top + frame_h);
@@ -344,6 +369,7 @@ void VfrMap::place_canvas()
         canvas->set_position(map_area_rect.position);
         canvas->set_size(map_area_rect.size);
     }
+    place_info();
 }
 
 void VfrMap::request_redraw()
@@ -358,7 +384,7 @@ void VfrMap::request_redraw()
 
 bool VfrMap::in_resize_grip(const Vector2 &local_px) const
 {
-    return local_px.x >= frame_w - RESIZE_GRIP_PX && local_px.y >= frame_h - RESIZE_GRIP_PX;
+    return local_px.x >= frame_w + info_w() - RESIZE_GRIP_PX && local_px.y >= frame_h - RESIZE_GRIP_PX;
 }
 
 bool VfrMap::in_resize_grip_left(const Vector2 &local_px) const
@@ -541,6 +567,12 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
             {
                 mode = DRAG_MOVE;
             }
+            if (mode == DRAG_NONE && map_area_rect.has_point(lp))
+            {
+                // a click on an airport or navaid symbol opens its details, one on the bare map closes them
+                select_at(lp);
+                get_viewport()->set_input_as_handled();
+            }
             if (mode != DRAG_NONE)
             {
                 drag_mode = mode;
@@ -582,7 +614,7 @@ void VfrMap::_gui_input(const Ref<InputEvent> &event)
 
 void VfrMap::zoom_step(int step)
 {
-    int next = std::max(0, std::min(4, zoom_index + step));
+    int next = std::max(0, std::min(N_ZOOM - 1, zoom_index + step));
     if (next != zoom_index)
     {
         zoom_index = next;
@@ -657,7 +689,7 @@ void VfrMap::load_config()
     frame_right = std::max(0.0, double(cfg->get_value("map", "map_frame_right", 16.0)));
     frame_top = std::max(0.0, double(cfg->get_value("map", "map_frame_top", 16.0)));
     layout_loaded = true;
-    zoom_index = std::max(0, std::min(4, int(cfg->get_value("map", "zoom_index", 2))));
+    zoom_index = std::max(0, std::min(N_ZOOM - 1, int(cfg->get_value("map", "zoom_index", 2))));
 }
 
 // Zoom and frame layout go straight into provpilot.cfg [map]; the
@@ -750,6 +782,10 @@ void VfrMap::update_lv95(double e, double n, double heading_deg, bool ui_visible
     ac_n = n;
     heading_rad = Math::deg_to_rad(heading_deg);
     has_position = true;
+    if (sel_kind != SEL_NONE && double(Time::get_singleton()->get_ticks_msec()) - last_info_ms >= 1000.0)
+    {
+        refresh_info(); // bearing and distance from the aircraft
+    }
 
     // Throttle redraws to ~10 Hz; the map only needs to track smoothly. A
     // parked aircraft (same position and heading as the last redraw, within
@@ -785,6 +821,242 @@ Vector2 VfrMap::get_projected_px(double e, double n) const
     Vector2 out;
     project_px(e, n, out);
     return out;
+}
+
+// ── Details panel ───────────────────────────────────────────────────────────
+
+void VfrMap::place_info()
+{
+    if (info_label == nullptr)
+    {
+        return;
+    }
+    const bool on = sel_kind != SEL_NONE;
+    info_label->set_visible(on);
+    info_close->set_visible(on);
+    if (on)
+    {
+        info_label->set_position(Vector2(frame_w + 6.0, TITLE_H + 4.0));
+        info_label->set_size(Vector2(INFO_W - 12.0, frame_h - TITLE_H - 22.0));
+        info_close->set_position(Vector2(frame_w + INFO_W - 26.0, 0.0));
+        info_close->set_size(Vector2(22.0, TITLE_H));
+    }
+}
+
+bool VfrMap::select_at(const Vector2 &local_px)
+{
+    int kind = SEL_NONE, index = -1;
+    double best = 14.0;
+    for (size_t i = 0; i < airports.size(); i++)
+    {
+        Vector2 sp;
+        project_px(airports[i].e, airports[i].n, sp);
+        const double d = sp.distance_to(local_px);
+        if (d < best && map_area_rect.has_point(sp))
+        {
+            best = d;
+            kind = SEL_AIRPORT;
+            index = int(i);
+        }
+    }
+    for (size_t i = 0; i < navaids.size(); i++)
+    {
+        Vector2 sp;
+        project_px(navaids[i].e, navaids[i].n, sp);
+        const double d = sp.distance_to(local_px);
+        if (d < best && map_area_rect.has_point(sp))
+        {
+            best = d;
+            kind = SEL_NAVAID;
+            index = int(i);
+        }
+    }
+    sel_kind = kind;
+    sel_index = index;
+    refresh_info();
+    _reposition();
+    request_redraw();
+    return kind != SEL_NONE;
+}
+
+bool VfrMap::select_airport(const String &icao)
+{
+    for (size_t i = 0; i < airports.size(); i++)
+    {
+        if (airports[i].icao == icao)
+        {
+            sel_kind = SEL_AIRPORT;
+            sel_index = int(i);
+            refresh_info();
+            _reposition();
+            request_redraw();
+            return true;
+        }
+    }
+    return false;
+}
+
+void VfrMap::close_info()
+{
+    sel_kind = SEL_NONE;
+    sel_index = -1;
+    refresh_info();
+    _reposition();
+    request_redraw();
+}
+
+void VfrMap::_on_info_close() { close_info(); }
+
+String VfrMap::get_info_text() const { return info_text; }
+
+void VfrMap::refresh_info()
+{
+    last_info_ms = double(Time::get_singleton()->get_ticks_msec());
+    const String text = build_info_text();
+    if (text != info_text)
+    {
+        info_text = text;
+        if (info_label != nullptr)
+        {
+            info_label->set_text(text); // only on a change: setting it resets the scroll position
+        }
+    }
+}
+
+namespace
+{
+    String km_nm(double m)
+    {
+        const double nm = m / 1852.0;
+        return String::num(nm, nm < 100.0 ? 1 : 0) + " NM (" + String::num(m / 1000.0, m < 100000.0 ? 1 : 0) + " km)";
+    }
+    String deg3(double d)
+    {
+        int v = int(std::lround(Math::fposmod(d, 360.0))) % 360;
+        if (v == 0)
+        {
+            v = 360;
+        }
+        return String::num_int64(v).pad_zeros(3);
+    }
+    String khz_text(int khz)
+    {
+        return khz >= 100000 ? String::num(khz / 1000.0, 2).pad_decimals(2) + " MHz" : String::num_int64(khz) + " kHz";
+    }
+    const char *HEAD = "[color=#8fb4e6]";
+}
+
+// BBCode for the selected airport (runways, its ILS, the navaids around it)
+// or navaid (type, frequency), with the magnetic bearing and the distance
+// from the aircraft.
+String VfrMap::build_info_text() const
+{
+    if (sel_kind == SEL_NONE || sel_index < 0)
+    {
+        return String();
+    }
+    const Vector2 ac_ll = has_position ? Geo::lv95_to_wgs84(ac_e, ac_n) : Vector2();
+    const double year = GeoMagnetic::decimal_year_now();
+    auto from_aircraft = [&](double lat, double lon) -> String {
+        if (!has_position)
+        {
+            return String();
+        }
+        double d, b12, b21;
+        NavaidsLib::inverse(ac_ll.x, ac_ll.y, lat, lon, d, b12, b21);
+        const double var = GeoMagnetic::declination_deg(ac_ll.x, ac_ll.y, 0.0, year);
+        return String("From the aircraft: ") + deg3(b12 - var) + String::utf8("° M, ") + km_nm(d) + "\n";
+    };
+    String t;
+    if (sel_kind == SEL_NAVAID && sel_index < int(navaids.size()))
+    {
+        const NavaidMark &nv = navaids[sel_index];
+        t += String("[b]") + nv.ident + "[/b]  " + nv.name + "\n";
+        const Navaid *src = nullptr;
+        for (const Navaid &n : NavaidsLib::all())
+        {
+            if (n.ident == nv.ident && std::abs(n.lat - nv.lat) < 1e-6 && std::abs(n.lon - nv.lon) < 1e-6)
+            {
+                src = &n;
+                break;
+            }
+        }
+        t += String(nv.type) + String("  [b]") + (src != nullptr ? khz_text(src->freq_khz) : nv.freq) + "[/b]\n";
+        if (src != nullptr && src->dme_khz > 0 && !(src->kind & NavaidsLib::KIND_VOR))
+        {
+            t += String("DME channel paired with ") + khz_text(src->dme_khz) + "\n";
+        }
+        t += String("Elevation ") + String::num_int64((int)std::lround(nv.elev_m / 0.3048)) + " ft\n";
+        t += from_aircraft(nv.lat, nv.lon);
+        if (has_position && (nv.kind & NavaidsLib::KIND_VOR))
+        {
+            double d, b12, b21;
+            NavaidsLib::inverse(nv.lat, nv.lon, ac_ll.x, ac_ll.y, d, b12, b21);
+            const double var = (src != nullptr && src->has_station_var) ? src->station_var_deg : GeoMagnetic::declination_deg(nv.lat, nv.lon, 0.0, year);
+            t += String("The aircraft is on radial ") + deg3(b12 - var) + "\n";
+        }
+        return t;
+    }
+    if (sel_kind != SEL_AIRPORT || sel_index >= int(airports.size()))
+    {
+        return String();
+    }
+    const Airport &ap = airports[sel_index];
+    t += String("[b]") + ap.icao + "[/b]  " + ap.name + "\n";
+    t += ap.type.capitalize() + ", elevation " + String::num_int64((int)std::lround(ap.elev_m / 0.3048)) + " ft\n";
+    t += from_aircraft(ap.lat, ap.lon);
+    const double ap_var = GeoMagnetic::declination_deg(ap.lat, ap.lon, 0.0, year);
+    if (!ap.runways.is_empty())
+    {
+        t += String("\n") + HEAD + "RUNWAYS[/color]\n";
+        for (int i = 0; i < ap.runways.size(); i++)
+        {
+            const Dictionary r = ap.runways[i];
+            t += String("[b]") + String(r.get("designator", "")) + "[/b]  " + String::num_int64((int)double(r.get("length_m", 0.0))) + " m  " + String(r.get("surface", "")) + "\n";
+        }
+    }
+    String ils_txt;
+    for (const Ils &s : NavaidsLib::all_ils())
+    {
+        if (s.icao != ap.icao)
+        {
+            continue;
+        }
+        ils_txt += String("[b]") + s.rwy + "  " + String::num(s.freq_khz / 1000.0, 2).pad_decimals(2) + "[/b]  " + s.ident + "  " + deg3(s.course_deg - ap_var) + String::utf8("°  GS ") + String::num(s.gs_deg, 1) +
+                (s.synthetic ? String("  (no real ILS)") : String()) + "\n";
+    }
+    if (!ils_txt.is_empty())
+    {
+        t += String("\n") + HEAD + "ILS (runway, MHz, ident, course)[/color]\n" + ils_txt;
+    }
+    // navaids within 25 NM of the field, nearest first
+    struct Near { double d; const NavaidMark *m; };
+    std::vector<Near> near;
+    for (const NavaidMark &nv : navaids)
+    {
+        if (std::abs(nv.lat - ap.lat) > 0.6)
+        {
+            continue;
+        }
+        const double d = NavaidsLib::distance_m(ap.lat, ap.lon, nv.lat, nv.lon);
+        if (d <= 25.0 * 1852.0)
+        {
+            near.push_back({d, &nv});
+        }
+    }
+    std::sort(near.begin(), near.end(), [](const Near &a, const Near &b) { return a.d < b.d; });
+    if (!near.empty())
+    {
+        t += String("\n") + HEAD + "NAVAIDS within 25 NM[/color]\n";
+        for (size_t i = 0; i < near.size() && i < 12; i++)
+        {
+            const NavaidMark &nv = *near[i].m;
+            double d, b12, b21;
+            NavaidsLib::inverse(ap.lat, ap.lon, nv.lat, nv.lon, d, b12, b21);
+            t += String("[b]") + nv.ident + "  " + nv.freq + "[/b]  " + nv.type + "  " + deg3(b12 - ap_var) + String::utf8("° ") + String::num(d / 1852.0, 1) + " NM\n";
+        }
+    }
+    return t;
 }
 
 // ── Debug / test accessors ──────────────────────────────────────────────────
@@ -861,6 +1133,12 @@ void VfrMap::parse_airports(const String &path)
         ap.icao = String(a.get("icao", ""));
         String type = String(a.get("type", ""));
         ap.international = (type == "international_airport");
+        ap.name = String(a.get("name", ""));
+        ap.type = type.replace("_", " ");
+        ap.lat = lat;
+        ap.lon = lon;
+        ap.elev_m = double(a.get("elevation_m", 0.0));
+        ap.runways = a.get("runways", Array());
         airports.push_back(ap);
     }
 }
@@ -880,7 +1158,12 @@ void VfrMap::load_navaids()
         m.n = lv.y;
         m.ident = n.ident;
         m.kind = n.kind;
-        m.freq = n.freq_khz >= 100000 ? String::num(n.freq_khz / 1000.0, 2) : String::num_int64(n.freq_khz);
+        m.name = n.name;
+        m.type = n.type;
+        m.lat = n.lat;
+        m.lon = n.lon;
+        m.elev_m = n.elev_m;
+        m.freq = n.freq_khz >= 100000 ? String::num(n.freq_khz / 1000.0, 2).pad_decimals(2) : String::num_int64(n.freq_khz);
         navaids.push_back(m);
     }
 }
@@ -1273,7 +1556,8 @@ bool VfrMap::render_terrain_tile(const TileKey &key, Ref<ImageTexture> &out) con
 
 void VfrMap::_draw()
 {
-    const Rect2 frame(0, 0, frame_w, frame_h);
+    const double total_w = frame_w + info_w();
+    const Rect2 frame(0, 0, total_w, frame_h);
     // Frame background + border.
     draw_rect(frame, C_BG);
     draw_rect(frame, C_BORDER, false, 2.0);
@@ -1281,14 +1565,20 @@ void VfrMap::_draw()
     Ref<Font> font = ThemeDB::get_singleton()->get_default_theme()->get_font("font", "Label");
 
     // Title bar: "VFR MAP" left, view width right.
-    Rect2 title(0, 0, frame_w, TITLE_H);
+    Rect2 title(0, 0, total_w, TITLE_H);
     draw_rect(title, C_TITLE_BG);
     if (font.is_valid())
     {
         draw_string(font, Vector2(8, 18), "VFR MAP", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, C_TITLE_TEXT);
-        String width_txt = String::num_int64((int)(VIEW_WIDTHS_M[zoom_index] / 1000.0)) + " km";
-        double tw = double(width_txt.length()) * 7.5; // ~px per char at size 14
+        // the view width in both units (charts and DME read nautical miles)
+        const String width_txt = String::num_int64((int)(VIEW_WIDTHS_M[zoom_index] / 1000.0)) + " km / " +
+                String::num_int64((int)std::lround(VIEW_WIDTHS_M[zoom_index] / 1852.0)) + " NM";
+        const double tw = font->get_string_size(width_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x;
         draw_string(font, Vector2(frame_w - 8 - tw, 18), width_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, C_TITLE_TEXT);
+        if (sel_kind != SEL_NONE)
+        {
+            draw_line(Vector2(frame_w, TITLE_H), Vector2(frame_w, frame_h), C_BORDER, 1.0, false);
+        }
     }
 
     // Map area (below the title bar): the clipped canvas child covers it and
@@ -1301,7 +1591,7 @@ void VfrMap::_draw()
     for (int i = 0; i < 2; i++)
     {
         const double d = 5.0 + 5.0 * i;
-        draw_line(Vector2(frame_w - 3.0, frame_h - 3.0 - d), Vector2(frame_w - 3.0 - d, frame_h - 3.0), C_BORDER, 1.5, false);
+        draw_line(Vector2(total_w - 3.0, frame_h - 3.0 - d), Vector2(total_w - 3.0 - d, frame_h - 3.0), C_BORDER, 1.5, false);
         draw_line(Vector2(3.0, frame_h - 3.0 - d), Vector2(3.0 + d, frame_h - 3.0), C_BORDER, 1.5, false);
     }
 }
@@ -1494,6 +1784,15 @@ void VfrMap::draw_world(CanvasItem *ci)
             continue;
         }
         visible_airports++;
+        if (sel_kind == SEL_AIRPORT && sel_index == int(&ap - airports.data()))
+        {
+            ci->draw_arc(sp, 9.0, 0, TAU, 24, C_COURSE, 2.0, false);
+        }
+        if (zoom_index >= 5 && !ap.international)
+        {
+            ci->draw_circle(sp, 1.5, C_AIRPORT_GA); // the wide views: small fields as dots
+            continue;
+        }
         Color c = ap.international ? C_AIRPORT_INTL : C_AIRPORT_GA;
         if (ap.international)
         {
@@ -1509,8 +1808,8 @@ void VfrMap::draw_world(CanvasItem *ci)
     // Range rings: smallest step that keeps the ring count <= 4 (so the frame
     // shows 2-4 rings, not a dense stack of them).
     double max_ring_m = (map_area.size.x / 2.0) / px_per_m; // meters to edge
-    const double ring_steps[] = { 500, 1000, 2000, 5000, 10000, 20000, 40000 };
-    double ring_step = ring_steps[6];
+    const double ring_steps[] = { 500, 1000, 2000, 5000, 10000, 20000, 40000, 80000 };
+    double ring_step = ring_steps[7];
     for (double st : ring_steps)
     {
         if (max_ring_m / st <= 4.0)
@@ -1562,8 +1861,9 @@ void VfrMap::draw_world(CanvasItem *ci)
             String lbl = (ring_step >= 1000.0)
                 ? (String::num_int64((int)(ring_step / 1000.0)) + " km")
                 : (String::num_int64((int)ring_step) + " m");
-            double lw = double(lbl.length()) * 6.5;
-            ci->draw_string(font, bl + Vector2(bar_px / 2.0 - lw / 2.0, -4), lbl,
+            const double nm = ring_step / 1852.0;
+            lbl += String(" / ") + String::num(nm, nm < 10.0 ? 1 : 0) + " NM";
+            ci->draw_string(font, bl + Vector2(4, -4), lbl,
                         HORIZONTAL_ALIGNMENT_LEFT, -1, 11, C_RING_LABEL);
         }
     }
@@ -1615,6 +1915,10 @@ void VfrMap::draw_world(CanvasItem *ci)
             continue;
         }
         visible_navaids++;
+        if (sel_kind == SEL_NAVAID && sel_index == int(&nv - navaids.data()))
+        {
+            ci->draw_arc(sp, 10.0, 0, TAU, 24, C_COURSE, 2.0, false);
+        }
         if (nv.kind & NavaidsLib::KIND_VOR)
         {
             PackedVector2Array hex;
@@ -1652,6 +1956,10 @@ void VfrMap::draw_world(CanvasItem *ci)
             {
                 continue;
             }
+            if (zoom_index >= 5 && !(nv.kind & NavaidsLib::KIND_VOR))
+            {
+                continue; // the wide views label the VORs only
+            }
             // ident and frequency up to the 20 km view, ident alone beyond
             const String text = zoom_index <= 2 ? nv.ident + String(" ") + nv.freq : nv.ident;
             const Color c = (nv.kind & NavaidsLib::KIND_NDB) ? C_NDB : C_VOR;
@@ -1664,6 +1972,10 @@ void VfrMap::draw_world(CanvasItem *ci)
             Vector2 sp;
             project(ap.e, ap.n, sp);
             if (!map_area.grow(8.0).has_point(sp))
+            {
+                continue;
+            }
+            if (zoom_index >= 5 && !ap.international)
             {
                 continue;
             }

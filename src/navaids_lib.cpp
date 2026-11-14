@@ -414,7 +414,7 @@ void NavaidsLib::set_airports(const TypedArray<Dictionary> &p_airports)
 	resolve_ils();
 }
 
-static bool runway_end_index(const Dictionary &rwy, const String &end, int &idx, PackedStringArray &ends)
+static bool runway_end_index(const Dictionary &rwy, const String &end, int &idx, PackedStringArray &ends, bool tolerant)
 {
 	ends = String(rwy.get("designator", "")).split("/");
 	for (int i = 0; i < ends.size(); i++)
@@ -424,6 +424,10 @@ static bool runway_end_index(const Dictionary &rwy, const String &end, int &idx,
 			idx = i;
 			return true;
 		}
+	}
+	if (!tolerant)
+	{
+		return false;
 	}
 	// tolerate a missing / extra L, R, C
 	auto strip = [](const String &s) {
@@ -479,17 +483,24 @@ void NavaidsLib::resolve_ils()
 		Dictionary rwy;
 		int idx = -1;
 		PackedStringArray ends;
-		for (int r = 0; r < rws.size(); r++)
+		// The exact designator over every runway first: with the tolerant match
+		// per runway, "22L" took the first runway that has any 22 (Copenhagen's
+		// 04L/22R), so one of two parallel localizers lay on the other runway.
+		for (int pass = 0; pass < 2 && idx < 0; pass++)
 		{
-			if (rws[r].get_type() != Variant::DICTIONARY)
+			for (int r = 0; r < rws.size(); r++)
 			{
-				continue;
-			}
-			const Dictionary cand = rws[r];
-			if (runway_end_index(cand, s.rwy, idx, ends) && ends.size() >= 2)
-			{
-				rwy = cand;
-				break;
+				if (rws[r].get_type() != Variant::DICTIONARY)
+				{
+					continue;
+				}
+				const Dictionary cand = rws[r];
+				if (runway_end_index(cand, s.rwy, idx, ends, pass == 1) && ends.size() >= 2)
+				{
+					rwy = cand;
+					break;
+				}
+				idx = -1;
 			}
 		}
 		if (idx < 0)

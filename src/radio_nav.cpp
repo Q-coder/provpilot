@@ -416,16 +416,17 @@ void RadioNav::write_properties(Dictionary &p) const
 	p[N + String("nav-id")] = nav_ident();
 	p[N + String("power-btn")] = powered ? 1.0 : 0.0;
 	p[N + String("serviceable")] = 1.0;
+	// DME: one per NAV receiver (dme slaved to NAV 1, dme[1] to NAV 2 - the MD-80's two RMI windows)
+	const String D = receiver_index > 0 ? vformat("instrumentation/dme[%d]/", receiver_index) : String("instrumentation/dme/");
+	p[D + String("frequencies/selected-mhz")] = nav_mhz;
+	p[D + String("in-range")] = dme_ok ? 1.0 : 0.0;
+	p[D + String("indicated-distance-nm")] = dme_ok ? dme_nm : 0.0;
+	p[D + String("indicated-ground-speed-kt")] = dme_ok ? Math::max(dme_gs_kt, 0.0) : 0.0;
+	p[D + String("indicated-time-min")] = (dme_ok && dme_gs_kt > 1.0) ? dme_nm / dme_gs_kt * 60.0 : 0.0;
 	if (receiver_index > 0)
 	{
 		return;
 	}
-	// DME (slaved to NAV 1)
-	p["instrumentation/dme/frequencies/selected-mhz"] = nav_mhz;
-	p["instrumentation/dme/in-range"] = dme_ok ? 1.0 : 0.0;
-	p["instrumentation/dme/indicated-distance-nm"] = dme_ok ? dme_nm : 0.0;
-	p["instrumentation/dme/indicated-ground-speed-kt"] = dme_ok ? Math::max(dme_gs_kt, 0.0) : 0.0;
-	p["instrumentation/dme/indicated-time-min"] = (dme_ok && dme_gs_kt > 1.0) ? dme_nm / dme_gs_kt * 60.0 : 0.0;
 	// ADF 1
 	p["instrumentation/adf/frequencies/selected-khz"] = adf_khz;
 	p["instrumentation/adf/in-range"] = adf_ok ? 1.0 : 0.0;

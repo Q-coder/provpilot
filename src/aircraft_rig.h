@@ -226,6 +226,11 @@ namespace jsbgodot
         void apply_livery_props();
         bool parking_brake = false;
         bool speedbrake_out = false;
+        String speedbrake_prop;          // [controls] speedbrake_prop: the FDM's own lever property (MD-80), else fcs/speedbrake-cmd-norm
+        double speedbrake_key_value = 1.0; // ... the lever value the B key deploys to
+        double speedbrake_step = 0.0;    // ... one lever notch for the cockpit lever clicks (0 = in / out only)
+        // The speed brake lever: out / in (B key), or one notch (the cockpit lever).
+        void command_speedbrake(JSBGodot *fdm, bool out, bool notch);
         bool hotspot_key_held = false;
         bool speedbrake_key_held = false;
         bool reverse_key_held = false;

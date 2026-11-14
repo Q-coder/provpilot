@@ -700,6 +700,7 @@ void FGBridge::surfaces(JSBGodot *jsb, Dictionary &p)
 	p["surface-positions/elevator-pos-norm"] = elevator;
 	p["surface-positions/left-aileron-pos-norm"] = ail_l;
 	p["surface-positions/right-aileron-pos-norm"] = -ail_l;
+	p["surface-positions/flap-pos-norm"] = flap; // the MD-80 airframe reads the unsided name
 	p["surface-positions/left-flap-pos-norm"] = flap;
 	p["surface-positions/right-flap-pos-norm"] = flap;
 	p["surface-positions/left-spoiler-pos-norm"] = speedbrake;
@@ -1055,6 +1056,7 @@ void FGBridge::radios(JSBGodot *jsb, Dictionary &p, double lat_deg, double lon_d
 	}
 	if (!nav2_on)
 	{
+		p["instrumentation/dme[1]/in-range"] = 0.0;
 		p["instrumentation/nav[1]/in-range"] = 0.0;
 		p["instrumentation/nav[1]/to-flag"] = 0.0;
 		p["instrumentation/nav[1]/from-flag"] = 0.0;

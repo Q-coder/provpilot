@@ -949,3 +949,16 @@ as upstream.
   plan files). Origin, destination and cruise altitude are published under
   `autopilot/route-manager/*` for a later route manager / LNAV.
 - Test: `tests/probe_md80_mcdu.tscn -- <out_dir>` (24 checks, a real click on R6, close-ups).
+
+## Spoiler lever, flaps on the airframe (2026-11-14)
+
+- The spoilers are the FDM's own system (`md-80-spoilers.xml` reads
+  `/controls/flight/speedbrake` in notches of 0.2), so the generic
+  `fcs/speedbrake-cmd-norm` did nothing. `[controls] speedbrake_prop /
+  speedbrake_key_value / speedbrake_step` in aircraft.cfg: B moves the lever
+  to 0.8 and back, a click on the cockpit lever moves one notch. The value
+  goes through the cockpit state as well, because the property mirror pushes
+  `controls/*` into the FDM every frame.
+- The airframe animates `surface-positions/flap-pos-norm` (unsided); the
+  bridge only wrote the left / right names.
+- `tests/probe_md80_surfaces` checks both and the NAV 2 DME.
