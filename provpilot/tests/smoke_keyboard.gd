@@ -36,6 +36,7 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(TMP)
 	_test_chords()
 	_test_catalog_and_matching()
+	await _test_held_modifier()
 	await _test_persistence()
 	await _test_panel()
 	if fails.is_empty():
@@ -45,6 +46,24 @@ func _ready() -> void:
 		for f in fails:
 			printerr("   - ", f)
 	get_tree().quit(0 if fails.is_empty() else 1)
+
+
+## Shift held with no other key or mouse event (slewing fast with the pad):
+## the Shift key's own event may come without its modifier flag.
+func _test_held_modifier() -> void:
+	print("== held modifier")
+	var down := _key(KEY_SHIFT)          # shift_pressed = false on its own event
+	Input.parse_input_event(down)
+	for i in range(3):
+		await get_tree().process_frame
+	check(KeyBindings.pressed("slew_fast"), "Shift alone, flag missing on its own event: the hold action reads pressed")
+	check(Input.is_key_pressed(KEY_SHIFT), "... and the key is not released as stale")
+	var up := _key(KEY_SHIFT)
+	up.pressed = false
+	Input.parse_input_event(up)
+	for i in range(3):
+		await get_tree().process_frame
+	check(not KeyBindings.pressed("slew_fast"), "released again")
 
 
 func _test_chords() -> void:

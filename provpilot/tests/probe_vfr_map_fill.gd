@@ -85,5 +85,17 @@ func _ready() -> void:
 	_check(cfg.get_value("map", "map_background", true) == false, "the choice is saved in [map] map_background")
 	await _click(box)
 	_check(map.is_background_enabled(), "a second click turns it back on")
+	# a frame dragged tall shows three times as far up and down: cells must cover it
+	while map.get_zoom_index() < 6:
+		map.zoom_out()
+	await _fill_time(map)
+	var n_square: int = map.get_cached_tile_count()
+	map.resize_frame_by(Vector2(0.0, 600.0))
+	var t_tall: float = await _fill_time(map)
+	var n_tall: int = map.get_cached_tile_count()
+	print("FILL %s tall 250km: %.2f s, %d -> %d cells" % [tag, t_tall, n_square, n_tall])
+	_check(n_tall >= n_square + 100, "a tall frame loads the cells for its height (%d -> %d)" % [n_square, n_tall])
+	await _shot(map, out_dir, "fill_%s_tall.png" % tag)
+	map.resize_frame_by(Vector2(0.0, -600.0))
 	print("PROBE RESULT: %s" % ("PASS" if _fails == 0 else "FAIL (%d)" % _fails))
 	get_tree().quit(0 if _fails == 0 else 1)

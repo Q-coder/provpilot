@@ -768,6 +768,17 @@ double VfrMap::frame_size_px() const
     return frame_w - 2.0 * MARGIN; // the map area's width
 }
 
+// Distance from the aircraft to the farthest corner of the map area (m). The
+// view width names the horizontal span only: a frame dragged tall shows three
+// times as far up and down, and cells were loaded for the width alone.
+double VfrMap::view_reach_m() const
+{
+    const double w = std::max(1.0, frame_size_px());
+    const double h = std::max(w, double(map_area_rect.size.y));
+    const double ppm = w / VIEW_WIDTHS_M[zoom_index];
+    return 0.5 * std::sqrt(w * w + h * h) / ppm * 1.03;
+}
+
 int VfrMap::tiles_per_axis(int level) const
 {
     // Mirrors the tile loop in draw_world: the view's half diagonal plus a
@@ -775,7 +786,7 @@ int VfrMap::tiles_per_axis(int level) const
     // both ends (independent of where the aircraft sits in its cell, so the
     // level choice does not flap while flying).
     const int cell = level_cell_m(level);
-    const double extent = VIEW_WIDTHS_M[zoom_index] * 0.75 + cell * 0.5;
+    const double extent = view_reach_m() + cell * 0.5;
     return int(2.0 * extent / cell) + 2;
 }
 
@@ -2024,7 +2035,6 @@ void VfrMap::draw_world(CanvasItem *ci)
     // first) and appear on a later redraw; under a finer level the overview
     // level is drawn first, so the view is never empty while it fills.
     int level = pick_level();
-    double half_view = view_m / 2.0;
     drawn_e = ac_e;
     drawn_n = ac_n;
     drawn_heading_rad = heading_rad;
@@ -2036,9 +2046,9 @@ void VfrMap::draw_world(CanvasItem *ci)
     int cells_in_view = 0;
     auto draw_level = [&](int lv) {
         const int cell = level_cell_m(lv);
-        // Farthest visible corner is half_view*sqrt(2); add a half-cell margin
-        // so rotation never exposes un-drawn edges.
-        const double extent = half_view * 1.5 + cell * 0.5;
+        // The farthest visible corner plus a half-cell margin, so rotation
+        // never exposes un-drawn edges.
+        const double extent = view_reach_m() + cell * 0.5;
         const int ei_min = int(std::floor((ac_e - extent) / (double)cell));
         const int ei_max = int(std::floor((ac_e + extent) / (double)cell));
         const int ni_min = int(std::floor((ac_n - extent) / (double)cell));

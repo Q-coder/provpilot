@@ -331,6 +331,7 @@ namespace jsbgodot
         void pump_tile_results();                      // main thread: finished images -> textures
         void request_tiles(std::vector<TileKey> &wanted); // nearest first; replaces the waiting queue
         int pick_level() const;                        // 0/1/2 for current zoom and frame size
+        double view_reach_m() const;
         int tiles_per_axis(int level) const;           // grid cells the tile loop walks per axis at a level
         double frame_size_px() const;                  // map area width (px)
         void load_tile_into_cache(const TileKey &key, const Ref<ImageTexture> &tex);

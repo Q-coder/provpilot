@@ -443,6 +443,31 @@ void KeyBindings::_input(const Ref<InputEvent> &event)
 	mod_shift = m->is_shift_pressed();
 	mod_ctrl = m->is_ctrl_pressed() || m->is_meta_pressed();
 	mod_alt = m->is_alt_pressed();
+	// A modifier's own key event need not carry its flag (platform dependent):
+	// the key state is what counts. Without this, Shift held with nothing else
+	// on the keyboard or mouse (slewing fast with the pad) read as up, and the
+	// stale-modifier release below let go of it.
+	bool own[4] = {false, false, false, false}; // shift, ctrl, meta, alt
+	Ref<InputEventKey> own_key = event;
+	if (own_key.is_valid() && !own_key->is_echo())
+	{
+		const Key kc = own_key->get_keycode() != KEY_NONE ? own_key->get_keycode() : own_key->get_physical_keycode();
+		if (kc == KEY_SHIFT)
+		{
+			mod_shift = own_key->is_pressed();
+			own[0] = true;
+		}
+		else if (kc == KEY_CTRL || kc == KEY_META)
+		{
+			mod_ctrl = own_key->is_pressed() || (kc == KEY_CTRL ? m->is_meta_pressed() : m->is_ctrl_pressed());
+			own[kc == KEY_CTRL ? 1 : 2] = true;
+		}
+		else if (kc == KEY_ALT)
+		{
+			mod_alt = own_key->is_pressed();
+			own[3] = true;
+		}
+	}
 	// a modifier Input still holds while the event says it is up: its key-up
 	// never arrived (macOS system shortcut); release it for everyone
 	Input *in = Input::get_singleton();
@@ -450,7 +475,7 @@ void KeyBindings::_input(const Ref<InputEvent> &event)
 	const bool held[] = {m->is_shift_pressed(), m->is_ctrl_pressed(), m->is_meta_pressed(), m->is_alt_pressed()};
 	for (int i = 0; i < 4; i++)
 	{
-		if (!held[i] && in->is_key_pressed(stale[i]))
+		if (!own[i] && !held[i] && in->is_key_pressed(stale[i]))
 		{
 			Ref<InputEventKey> up;
 			up.instantiate();
