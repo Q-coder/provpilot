@@ -1,0 +1,11 @@
+Schleicher ASK 21 for ProVPilot
+
+A port of the FlightGear ASK21 by Heiko Schulz, Thomas Polzer, Viktor Radnai,
+Benedikt Wolf, Gilberto Agostinho and contributors (the full list is in
+jsbsim/aircraft/ask21/AUTHORS.md). Source:
+https://github.com/viktorradnai/flightgear-ask21
+
+Licence: GNU General Public License, version 2 or any later version (see
+LICENSE in this folder). The files here are modified from the FlightGear
+originals (converted to glTF, adapted to ProVPilot); the changes are in the
+ProVPilot source repository: https://gitlab.md80.ch/gery/provpilot

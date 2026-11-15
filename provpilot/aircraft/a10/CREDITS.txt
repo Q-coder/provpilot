@@ -1,0 +1,10 @@
+Fairchild A-10 for ProVPilot
+
+A port of the FlightGear A-10 (model, cockpit, instruments, sounds, flight
+model data) by Lee Elliott, Alexis Bory, David Bastien and the FlightGear
+contributors. Source: the FlightGear aircraft repository (FGAddon), A-10.
+
+Licence: GNU General Public License, version 2 (see LICENSE in this folder).
+The files here are modified from the FlightGear originals (converted to glTF,
+rescaled, adapted to ProVPilot); the changes are in the ProVPilot source
+repository: https://gitlab.md80.ch/gery/provpilot

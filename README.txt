@@ -96,7 +96,14 @@ No additional runtime libraries or installers are required.
 
 LICENSES
 --------
+ProVPilot's own code is MIT. The program contains GPL-2.0 code (the MD-80
+autoflight port) and is distributed as a whole under the GNU General Public
+License, version 2; the source is at https://gitlab.md80.ch/gery/provpilot
+(NOTICE.md there lists every component).
 The A-10, MD-80 family and ASK 21 are ports of FlightGear aircraft
-(GPL-2.0); their licence texts are in aircraft\<id>\ after the first start.
-Base terrain: SRTM 30 m; airports: OurAirports and OpenStreetMap; Swiss
-roads: swisstopo swissTLM3D; navaids: OurAirports.
+(GPL-2.0); their licence texts and credits are in aircraft\<id>\ after the
+first start. Cockpit instruments of the Cessna and PC-7: FlightGear (GPL-2.0).
+Base terrain: NASA SRTM; coastline, roads, forests and airports:
+(c) OpenStreetMap contributors (ODbL); airports and navaids: OurAirports;
+ILS data: X-Plane nav.dat (GPL); Swiss data: swisstopo.
+All product names are trademarks of their owners; no affiliation.

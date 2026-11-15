@@ -527,14 +527,10 @@ The engine audio system uses an `AudioStreamPlayer` with RPM-mapped pitch (0.7â€
 
 ## License
 
-This project combines multiple open-source components:
-- JSBSim: LGPL 2.1
-- Godot Engine: MIT (custom `4.6-macdev` fork with `precision=double`)
-- godot-cpp: MIT
-- Scenery3D: MIT (https://gitlab.md80.ch/gery/scenery3d)
-- Aircraft models: Various (see individual model licenses)
-- Terrain data: SwissTopo Open Data (free for commercial & non-commercial use)
-- Road, water, airport data: SwissTopo swissTLM3D (Open Data)
+ProVPilot's own source code is MIT (`LICENSE`). The built program contains
+GPL-2.0 code (the MD-80 autoflight port) and is distributed as a whole under
+the GNU GPL, version 2. Every third-party component, aircraft and data
+source with its licence is listed in [NOTICE.md](NOTICE.md).
 
 ## Acknowledgments
 
