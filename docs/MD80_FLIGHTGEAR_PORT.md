@@ -976,3 +976,18 @@ as upstream.
   by `nav_prop / strobe_prop / beacon_prop` (`/systems/exterior-lights/*`: the
   POS/STROBE and ANTI-COLLISION switches, bus voltage, strobes off with the nose
   wheel on the ground). The flight starts with POS/STROBE at BOTH.
+
+## Landing lamps and nose torque links (2026-11-15)
+
+- `[lights] landing "WingLightL, WingLightR"` puts the wing landing lights on the
+  retractable lamp meshes; `landing_ext_props` (one entry per landing fixture,
+  `-` = fixed) names the extension property: the lens faces down when stowed,
+  the beam swings from straight down to forward with the lamp, and the lamp
+  burns while it swings out with its switch at on. Two nose gear lamps
+  (`landing_pos`), as in MD-80-main.xml. Test: `probe_md80_lamps -- <out_dir>`.
+- FlightGear's MD-80-main.xml has the nose torque link pivots 0.8 m ahead of
+  the links (x 1.74994 / 1.68094; the MD-87 file has them on the links): the
+  links swung far out of the gear, the lower one 14 cm under the ground with
+  the nose strut compressed by braking. Corrected to 2.55 / 2.481 in
+  `animations.json` and in the source XML — re-apply after a rebuild from a
+  fresh FlightGear package. Test: `probe_brake_dip -- md80 "^LGN"`.

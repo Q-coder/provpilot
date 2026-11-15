@@ -31,6 +31,7 @@ void AircraftLights::_bind_methods()
 	ClassDB::bind_method(D_METHOD("set_landing_lights", "on"), &AircraftLights::set_landing_lights);
 	ClassDB::bind_method(D_METHOD("set_fixture_level", "kind", "index", "level"), &AircraftLights::set_fixture_level);
 	ClassDB::bind_method(D_METHOD("get_fixture_level", "kind", "index"), &AircraftLights::get_fixture_level);
+	ClassDB::bind_method(D_METHOD("set_fixture_extension", "kind", "index", "ext"), &AircraftLights::set_fixture_extension);
 	ClassDB::bind_method(D_METHOD("fixture_count_of", "kind"), &AircraftLights::fixture_count_of);
 	ClassDB::bind_method(D_METHOD("landing_lights_on"), &AircraftLights::landing_lights_on);
 	ClassDB::bind_method(D_METHOD("toggle_landing_lights"), &AircraftLights::toggle_landing_lights);
@@ -119,6 +120,9 @@ void AircraftLights::setup(Node *model_root, const Ref<AircraftConfig> &cfg, Nod
 	// "pair_meshes false": leave "<x>-on"/"<x>-off" mesh visibility to another
 	// system (the FlightGear select animations on the A-10)
 	pair_meshes = cfg->get_bool("lights", "pair_meshes", true);
+	// "landing_ext_props": one entry per landing fixture ("-" = a fixed lamp);
+	// a named one is a retractable lamp that faces down when stowed
+	ext_prop_names = cfg->get_string_array("lights", "landing_ext_props", Array());
 	for (const char *k : KINDS)
 	{
 		const String kind(k);
@@ -294,6 +298,19 @@ void AircraftLights::set_fixture_level(const String &kind, int index, double lev
 	}
 }
 
+void AircraftLights::set_fixture_extension(const String &kind, int index, double ext)
+{
+	int k = 0;
+	for (int i = 0; i < fixtures.size(); i++)
+	{
+		if (fixtures[i].kind == kind && k++ == index)
+		{
+			fixtures.write[i].ext = Math::clamp(ext, 0.0, 1.0);
+			return;
+		}
+	}
+}
+
 double AircraftLights::get_fixture_level(const String &kind, int index) const
 {
 	int k = 0;
@@ -341,6 +358,13 @@ void AircraftLights::add_fixture(const String &kind, Node3D *anchor)
 		fixtures.push_back(f);
 		return;
 	}
+	bool retractable = false;
+	if (kind == "landing")
+	{
+		const int idx = fixture_count_of(kind);
+		const String en = idx < ext_prop_names.size() ? String(ext_prop_names[idx]).strip_edges() : String();
+		retractable = !en.is_empty() && en != "-";
+	}
 	Vector3 centre;
 	MeshInstance3D *am = Object::cast_to<MeshInstance3D>(anchor);
 	if (am != nullptr && am->get_mesh().is_valid())
@@ -357,6 +381,7 @@ void AircraftLights::add_fixture(const String &kind, Node3D *anchor)
 		else if (kind == "nav_right") out = Vector3(-1, 0, 0);
 		else if (kind == "nav_tail") out = Vector3(0, 0, -1);
 		else if (kind == "beacon") out = Vector3(0, 1, 0);
+		else if (retractable) out = Vector3(0, -1, 0); // stowed at setup: the lens faces down and swings forward with the lamp
 		else if (kind == "landing" || kind == "taxi") out = Vector3(0, 0, 1);
 		else if (kind == "strobe") out = std::abs(p_ac.x) > 1.0 ? Vector3(Math::sign((double)p_ac.x), 0, 0) : Vector3(0, 0, -1);
 		const Vector3 world_dir = ac->get_global_transform().basis.xform(out);
@@ -365,7 +390,7 @@ void AircraftLights::add_fixture(const String &kind, Node3D *anchor)
 			const Vector3 local_dir = anchor->get_global_transform().basis.inverse().xform(world_dir);
 			if (local_dir.length_squared() > 1e-12)
 			{
-				centre += local_dir.normalized() * OUT_OFFSET;
+				centre += local_dir.normalized() * (retractable ? OUT_OFFSET * 0.6 : OUT_OFFSET);
 			}
 		}
 	}
@@ -397,6 +422,7 @@ void AircraftLights::add_fixture(const String &kind, Node3D *anchor)
 	f.anchor = anchor;
 	f.anchor_id = anchor->get_instance_id();
 	f.centre = centre;
+	f.retractable = retractable;
 	// lit / unlit mesh pair
 	if (pair_meshes)
 	{
@@ -564,7 +590,13 @@ void AircraftLights::apply_states()
 			if (f.spot->is_visible() && anchor_alive && f.anchor->is_inside_tree())
 			{
 				const Vector3 origin = f.anchor->get_global_transform().xform(f.centre);
-				const Vector3 dir = f.kind == "landing" ? aim : taxi_aim;
+				Vector3 dir = f.kind == "landing" ? aim : taxi_aim;
+				if (f.retractable && f.ext < 1.0)
+				{
+					// the beam swings with the lamp: straight down when stowed
+					const double a = (1.0 - f.ext) * Math_PI * 0.5;
+					dir = (dir * std::cos(a) + down * std::sin(a)).normalized();
+				}
 				// spot lights shine along -Z
 				const Vector3 z = -dir;
 				Vector3 x = (-down).cross(z);

@@ -54,6 +54,7 @@ namespace jsbgodot
         // exterior-light and cockpit flood properties): the i-th fixture of a kind.
         void set_fixture_level(const String &kind, int index, double level);
         double get_fixture_level(const String &kind, int index) const;
+        void set_fixture_extension(const String &kind, int index, double ext);
         int fixture_count_of(const String &kind) const;
         bool landing_lights_on() const;
         bool toggle_landing_lights();
@@ -89,7 +90,10 @@ namespace jsbgodot
             uint64_t anchor_id = 0;
             Vector3 centre; // sprite vertex in anchor space
             double energy = 0.0;
+            bool retractable = false;    // [lights] landing_ext_props: the lamp swings out of the airframe
+            double ext = 1.0;            // its extension, 0 = stowed (facing down) .. 1 = out (facing forward)
         };
+        Array ext_prop_names;            // per landing fixture, "" or "-" = fixed
         static constexpr double STROBE_PERIOD_S = 1.2; // double flash every 1.2 s
         static constexpr double STROBE_FLASH_S = 0.06;
         static constexpr double BEACON_PERIOD_S = 1.0;

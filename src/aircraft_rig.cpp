@@ -1165,6 +1165,7 @@ void AircraftRig::setup_aircraft_lights()
 	// the switch properties the L key sets (landing_switch_props)
 	landing_props = cfg->get_string_array("lights", "landing_props", Array());
 	flood_props = cfg->get_string_array("lights", "flood_props", Array());
+	landing_ext_props = cfg->get_string_array("lights", "landing_ext_props", Array());
 	nav_prop = cfg->get_string("lights", "nav_prop", "").strip_edges();
 	strobe_prop = cfg->get_string("lights", "strobe_prop", "").strip_edges();
 	beacon_prop = cfg->get_string("lights", "beacon_prop", "").strip_edges();
@@ -1454,7 +1455,21 @@ void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *renderin
 		for (int i = 0; i < landing_props.size(); i++)
 		{
 			const String pr = String(landing_props[i]).strip_edges();
-			aircraft_lights->set_fixture_level("landing", i, fdm->has_property(pr) ? fdm->get_property(pr) : 0.0);
+			double level = fdm->has_property(pr) ? fdm->get_property(pr) : 0.0;
+			// a retractable lamp: the beam follows its extension, and it burns while it
+			// swings out with its switch at on (the FDM lights it only fully out, from dark)
+			const String ep = i < landing_ext_props.size() ? String(landing_ext_props[i]).strip_edges() : String();
+			if (!ep.is_empty() && ep != "-" && fdm->has_property(ep))
+			{
+				const double ext = fdm->get_property(ep);
+				aircraft_lights->set_fixture_extension("landing", i, ext);
+				const String sw = i < landing_switch_props.size() ? String("/") + String(landing_switch_props[i]).strip_edges().trim_prefix("/") : String();
+				if (ext > 0.02 && !sw.is_empty() && fdm->has_property(sw) && fdm->get_property(sw) >= landing_switch_on - 1e-6)
+				{
+					level = Math::max(level, 1.0);
+				}
+			}
+			aircraft_lights->set_fixture_level("landing", i, level);
 		}
 		for (int i = 0; i < flood_props.size(); i++)
 		{
