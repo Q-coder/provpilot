@@ -2,6 +2,7 @@
 #include "aircraft_settings_panel.h"
 #include "joystick_settings_panel.h"
 #include "keyboard_settings_panel.h"
+#include "logbook_panel.h"
 #include "scenery_downloader_panel.h"
 
 #include <godot_cpp/core/class_db.hpp>
@@ -130,6 +131,10 @@ void SettingsScreen::show_settings()
 {
     _apply_to_ui();
     _refresh_aircraft_panel();
+    if (logbook_panel != nullptr)
+    {
+        logbook_panel->call("refresh");
+    }
     set_visible(true);
 }
 
@@ -215,6 +220,7 @@ void SettingsScreen::_build_ui()
     _build_realism_tab();
     _build_joystick_tab();
     _build_keyboard_tab();
+    _build_logbook_tab();
 
     // ── Bottom buttons ──
     main_vbox->add_child(memnew(HSeparator));
@@ -1204,6 +1210,14 @@ void SettingsScreen::_build_keyboard_tab()
     VBoxContainer *content = _add_tab("Keyboard");
     keyboard_panel = memnew(KeyboardSettingsPanel);
     content->add_child(keyboard_panel);
+}
+
+// ── Tab: Logbook (LogbookPanel, src/logbook_panel.cpp) ──
+void SettingsScreen::_build_logbook_tab()
+{
+    VBoxContainer *content = _add_tab("Logbook");
+    logbook_panel = memnew(LogbookPanel);
+    content->add_child(logbook_panel);
 }
 
 Node *SettingsScreen::_key_config() const

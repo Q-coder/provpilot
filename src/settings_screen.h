@@ -185,6 +185,8 @@ namespace jsbgodot
         void _build_realism_tab();
         void _build_joystick_tab();
         void _build_keyboard_tab();
+        void _build_logbook_tab();
+        Control *logbook_panel = nullptr;
 
         Label *_make_label(const String &text, int font_size, const Color &color, int min_w = 0);
         static Ref<ImageTexture> _check_icon(bool checked, bool disabled);

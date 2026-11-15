@@ -58,10 +58,12 @@ var _sea: SeaSurface = null           # the sea surface at 0 m (docs/SEA.md)
 var _fullscreen_applied := false      # the "fullscreen" setting the window was last set from
 var _crash := CrashMonitor.new()      # docs/CRASH_DETECTION.md
 var _crash_reason := ""               # set while the crash message is up
-var _crash_timer := 0.0
-var _crash_label: Label = null
 var _last_flight: Array = []          # [aircraft id, E, N, heading] of the running flight
-const CRASH_MESSAGE_S := 4.0
+var _crash_dialog: Control = null
+var _crash_reason_label: Label = null
+var _paused := false                  # the P key (docs/LOGBOOK.md has the pause notes)
+var _pause_label: Label = null
+var _flight_log := FlightLog.new()    # docs/LOGBOOK.md
 const WATER_DRAFT_M := 0.8            # how deep the water lets the wheels in before it carries
 const WATER_SINK_MPS := 0.4           # a ditched aircraft goes down this fast
 var _water_sink_m := 0.8
@@ -160,6 +162,7 @@ func _ready() -> void:
 	_world.set_streaming(false)
 	jsb_node.set_ground_query(Callable(_world, "ground_height_geodetic"))
 	_vfr_map.setup(InstallRoot.get_config_path())
+	_flight_log.set_directory(InstallRoot.get_install_root())
 	_vfr_map.enabled_changed.connect(_on_vfr_map_enabled_changed)
 
 	# Flight-side modules.
@@ -283,6 +286,8 @@ func _setup_sky_atmosphere() -> void:
 func _process(delta: float) -> void:
 	if KeyBindings.just_pressed("fullscreen_toggle"):   # Alt+Enter, also over the menus
 		_set_fullscreen(not _is_fullscreen(), true)
+	if KeyBindings.just_pressed("pause") and not _ui_up() and not _fly_loading and _crash_reason == "":
+		_set_paused(not _paused)
 	_spawn.process_deferred_init()   # first flight: JSBSim onto the streamed terrain
 	_sky.update(delta, get_viewport())
 	_check_camera_sanity()
@@ -629,7 +634,14 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 	_aircraft.apply_selected_aircraft(aircraft_id, jsb_node)
 	_last_flight = [aircraft_id, swiss_e, swiss_n, heading_deg]
 	_crash.configure(_aircraft.get_config())
-	_end_crash_message()
+	_close_crash_dialog()
+	_set_paused(false)
+	_end_logged_flight()
+	var start_ll: Vector2 = Geo.lv95_to_wgs84(swiss_e, swiss_n)
+	var cfg_now = _aircraft.get_config()
+	var ac_name: String = cfg_now.get_string("aircraft", "name", aircraft_id) if cfg_now else aircraft_id
+	if not _aircraft.is_vehicle():
+		_flight_log.begin(aircraft_id, ac_name, start_ll.x, start_ll.y, _place_name(start_ll.x, start_ll.y))
 	# A ground vehicle: DriveMode takes the node over once the spawn has
 	# settled (a train is only placed for now).
 	_drive_mode.disengage(jsb_node)
@@ -998,21 +1010,18 @@ func _config_for_aircraft(id: String):
 
 ## Crash detection (docs/CRASH_DETECTION.md). The monitor always runs (it also
 ## takes the rebound out of a hard touchdown); with the Realism checkbox on, a
-## crash freezes the flight, names its reason and starts the flight again.
+## crash freezes the flight and opens a dialog: Restart starts the flight
+## again, Resume stays at the scene.
 func _update_crash(delta: float) -> void:
-	if _crash_reason != "":
-		_crash_timer -= delta
-		if _crash_timer <= 0.0:
-			var f := _last_flight
-			_end_crash_message()
-			if f.size() == 4:
-				_on_welcome_flight_requested(f[0], f[1], f[2], f[3])
+	if _crash_reason != "" or _paused:
 		return
 	if jsb_node == null or not is_instance_valid(_ac) or _fly_loading or _ui_up() or _aircraft.is_vehicle():
 		return
 	if _terrain_elevation.get_rebase_cooldown() > 0:
 		_crash.reset()   # the spawn is still settling
 		return
+	var here: Vector3 = W3DCoords.ecef_to_geodetic(_ac.global_position)
+	_flight_log.sample(jsb_node, here.x, here.y, delta)
 	var floor_m: float = _world.terrain_elevation_below(_ac.global_position)
 	var reason: String = _crash.update(jsb_node, not is_nan(floor_m) and floor_m < -0.5, delta)
 	if reason == "":
@@ -1021,33 +1030,155 @@ func _update_crash(delta: float) -> void:
 	if not bool(_settings.get_setting("crash_detection")):
 		_crash.reset()
 		return
+	_flight_log.note_crash(reason)
 	_crash_reason = reason
-	_crash_timer = CRASH_MESSAGE_S
-	jsb_node.set_process(false)
-	jsb_node.set_physics_process(false)
-	if _crash_label == null:
-		_crash_label = Label.new()
-		_crash_label.name = "CrashMessage"
-		_crash_label.set_anchors_preset(Control.PRESET_FULL_RECT)
-		_crash_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_crash_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		_crash_label.add_theme_font_size_override("font_size", 44)
-		_crash_label.add_theme_color_override("font_color", Color(1.0, 0.92, 0.85))
-		_crash_label.add_theme_color_override("font_outline_color", Color(0.25, 0.0, 0.0))
-		_crash_label.add_theme_constant_override("outline_size", 10)
-		_crash_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var layer := CanvasLayer.new()
-		layer.layer = 50
-		add_child(layer)
-		layer.add_child(_crash_label)
-	_crash_label.text = "CRASH\n%s\n\nThe flight starts again..." % reason
-	_crash_label.visible = true
+	_freeze_flight(true)
+	if _crash_dialog == null:
+		_build_crash_dialog()
+	_crash_reason_label.text = reason
+	_crash_dialog.visible = true
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 
 
-func _end_crash_message() -> void:
+func _build_crash_dialog() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 50
+	add_child(layer)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(center)
+	_crash_dialog = center
+	var panel := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.09, 0.11, 0.94)
+	style.border_color = Color(0.85, 0.3, 0.2)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(28)
+	panel.add_theme_stylebox_override("panel", style)
+	center.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 18)
+	panel.add_child(box)
+	var title := Label.new()
+	title.text = "CRASH"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 40)
+	title.add_theme_color_override("font_color", Color(1.0, 0.5, 0.4))
+	box.add_child(title)
+	var reason := Label.new()
+	reason.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	reason.add_theme_font_size_override("font_size", 22)
+	reason.custom_minimum_size = Vector2(520, 0)
+	box.add_child(reason)
+	_crash_reason_label = reason
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 24)
+	box.add_child(row)
+	for spec in [["Restart", "_on_crash_restart"], ["Resume", "_on_crash_resume"]]:
+		var b := Button.new()
+		b.text = spec[0]
+		b.custom_minimum_size = Vector2(180, 48)
+		b.add_theme_font_size_override("font_size", 20)
+		b.focus_mode = Control.FOCUS_NONE   # the flight keys stay with the sim
+		b.pressed.connect(Callable(self, spec[1]))
+		row.add_child(b)
+	var hint := Label.new()
+	hint.text = "Restart begins this flight again. Resume stays at the scene."
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 14)
+	hint.add_theme_color_override("font_color", Color(0.65, 0.65, 0.65))
+	box.add_child(hint)
+
+
+func _close_crash_dialog() -> void:
 	_crash_reason = ""
-	if _crash_label:
-		_crash_label.visible = false
+	if _crash_dialog:
+		_crash_dialog.visible = false
+	_freeze_flight(false)
+
+
+func _on_crash_restart() -> void:
+	var f := _last_flight
+	_close_crash_dialog()
+	if f.size() == 4:
+		_on_welcome_flight_requested(f[0], f[1], f[2], f[3])
+
+
+func _on_crash_resume() -> void:
+	_close_crash_dialog()
+	_crash.reset()   # quiet for a few seconds, then armed again
+
+
+## The flight model stands still (pause, crash dialog); the scene keeps drawing.
+func _freeze_flight(on: bool) -> void:
 	if jsb_node:
-		jsb_node.set_process(true)
-		jsb_node.set_physics_process(true)
+		jsb_node.set_process(not on)
+		jsb_node.set_physics_process(not on)
+	AudioServer.set_bus_mute(0, on)
+
+
+## P: freeze the flight, P again: go on.
+func _set_paused(on: bool) -> void:
+	if on == _paused:
+		return
+	_paused = on
+	_freeze_flight(on)
+	if on and _pause_label == null:
+		var layer := CanvasLayer.new()
+		layer.layer = 49
+		add_child(layer)
+		_pause_label = Label.new()
+		_pause_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+		_pause_label.position.y = 60
+		_pause_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_pause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_pause_label.add_theme_font_size_override("font_size", 34)
+		_pause_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+		_pause_label.add_theme_constant_override("outline_size", 8)
+		_pause_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_pause_label.text = "PAUSED"
+		layer.add_child(_pause_label)
+	if _pause_label:
+		_pause_label.visible = on
+	print("Flight ", "paused" if on else "resumed")
+
+
+## Logbook (docs/LOGBOOK.md): the running flight is closed when another one is
+## requested and when the window closes.
+func _end_logged_flight() -> void:
+	if not _flight_log.is_recording():
+		return
+	var lat := 0.0
+	var lon := 0.0
+	if is_instance_valid(_ac) and _ac.global_position.length() > 1.0e6:
+		var g: Vector3 = W3DCoords.ecef_to_geodetic(_ac.global_position)
+		lat = g.x
+		lon = g.y
+	_flight_log.end(lat, lon, _place_name(lat, lon))
+
+
+## The airport within 5 km (its ICAO code), or the coordinates.
+func _place_name(lat: float, lon: float) -> String:
+	var best := ""
+	var best_d := 5000.0
+	for icao in _runways_merged:
+		var ap: Dictionary = _runways_merged[icao]
+		if not ap.has("lat"):
+			continue
+		var dlat: float = (float(ap["lat"]) - lat) * 111320.0
+		if absf(dlat) > best_d:
+			continue
+		var dlon: float = (float(ap["lon"]) - lon) * 111320.0 * cos(deg_to_rad(lat))
+		var d: float = sqrt(dlat * dlat + dlon * dlon)
+		if d < best_d:
+			best_d = d
+			best = str(icao)
+	return best if best != "" else "%.3f %s %.3f %s" % [absf(lat), "N" if lat >= 0.0 else "S", absf(lon), "E" if lon >= 0.0 else "W"]
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
+		if _flight_log and _flight_log.is_recording() and is_instance_valid(_ac):
+			_end_logged_flight()

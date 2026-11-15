@@ -96,9 +96,24 @@ func _ready() -> void:
 		if root._crash_reason != "" and reason == "":
 			reason = root._crash_reason
 			print("probe_crash:   CRASH at t+%.1f: %s (Nz %.1f, %.0f kt)" % [t, reason, jsb.get_property("accelerations/Nz"), jsb.get_property("velocities/vc-kts")])
-		if reason != "" and root._crash_reason == "" and not restarted:
+		if reason != "" and not restarted:
+			# the dialog is up and the flight frozen: check, then press Resume or Restart
+			var h0: float = jsb.get_property("position/h-sl-ft")
+			await get_tree().create_timer(1.0).timeout
+			print("probe_crash:   dialog %s, FDM frozen %s" % [str(root._crash_dialog != null and root._crash_dialog.visible), str(absf(jsb.get_property("position/h-sl-ft") - h0) < 0.01)])
+			if OS.get_environment("CRASH_RESUME") != "":
+				root._on_crash_resume()
+				await get_tree().create_timer(1.0).timeout
+				print("probe_crash:   resumed: dialog %s, sim running %s" % [str(root._crash_dialog.visible), str(jsb.is_processing() or jsb.is_physics_processing())])
+			else:
+				root._on_crash_restart()
+				print("probe_crash:   restart requested: dialog %s" % str(root._crash_dialog.visible))
 			restarted = true
-			print("probe_crash:   flight started again at t+%.1f" % t)
 			break
+	root._set_paused(true)
+	var hp: float = jsb.get_property("position/h-sl-ft") if false else 0.0
+	root._set_paused(false)
+	root._end_logged_flight()
+	print("probe_crash: logbook dir %s, entries %d" % [root._flight_log.get_directory(), FlightLog.read_entries(root._flight_log.get_directory()).size()])
 	print("probe_crash: %s %s: reason '%s', restarted %s; after the first contact: highest climb rate %.1f m/s, highest point %.1f m, energy gained %.0f m" % [id, kase, reason, str(restarted), max_up_after, max_agl_after, worst_gain])
 	get_tree().quit(0)

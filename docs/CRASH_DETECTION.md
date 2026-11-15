@@ -32,10 +32,10 @@ without a section: 3.8 / -1.52 g, no speed check.
 
 ## What happens
 
-With the checkbox on: the FDM is frozen, "CRASH" and the reason stand on the
-screen for 4 s, and the same flight starts again. With it off the reason is
-only printed to the log and the flight goes on (over water the aircraft
-sinks, docs/SEA.md).
+With the checkbox on: the flight is frozen and a dialog names the reason, with
+**Restart** (the same flight again) and **Resume** (stay at the scene); see
+docs/LOGBOOK.md. With it off the reason is only printed to the log and the
+flight goes on (over water the aircraft sinks, docs/SEA.md).
 
 The monitor is quiet for 6 s after a flight starts and while the spawn pins
 the aircraft, in slew mode and for ground vehicles.
@@ -57,4 +57,3 @@ Test: `probe_crash -- <id> <dive|g|land|drop> [detection 0|1]`.
   end of the flight or nothing.
 - Collisions with buildings, trees and other objects are not detected (the
   FDM only knows the ground).
-- No choice of what happens after a crash (restart only).
