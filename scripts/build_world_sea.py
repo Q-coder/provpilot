@@ -41,6 +41,7 @@ MAX_DEPTH_M = 30.0    # by distance alone (600 m offshore)
 LAND_MIN_M = 0.3      # land never lies lower (polders, tidal flats)
 MARGIN_M = 640.0      # coastline looked at around a tile: MAX_DEPTH_M / SLOPE + a pixel
 NODATA_NUDGE = 0.01   # the engine reads exactly 0 as "no data"
+CREATE_REACH = 16     # ... and never further than this from the region's planned cells
 FILL_MAX_M = 3.0      # an island without height data rises to this
 CREATE_ROUNDS = 12    # tiles outward an island may be completed past the region's own, per run
 
@@ -296,13 +297,43 @@ def complete_islands(region, have, geoms, dirs, px, tile_m, args):
                 others.append(bwt.get_region(e["id"]).terrain_out)
             except Exception:
                 pass
+    # never further than CREATE_REACH tiles from the region's planned cells:
+    # repeated runs must not walk along a coast no region covers
+    reach = None
+    try:
+        if not region.plan_path.exists():
+            raise FileNotFoundError(region.plan_path)
+        plan = bwt.load_plan(region)
+        pe = np.asarray(plan["cells_e"]) // tile_m
+        pn = np.asarray(plan["cells_n"]) // tile_m
+        e_lo, n_lo = int(pe.min()) - CREATE_REACH, int(pn.min()) - CREATE_REACH
+        grid = np.zeros((int(pn.max()) - n_lo + CREATE_REACH + 1, int(pe.max()) - e_lo + CREATE_REACH + 1), dtype=bool)
+        grid[pn - n_lo, pe - e_lo] = True
+        for _ in range(CREATE_REACH):
+            g = grid.copy()
+            g[1:, :] |= grid[:-1, :]
+            g[:-1, :] |= grid[1:, :]
+            grid = g.copy()
+            grid[:, 1:] |= g[:, :-1]
+            grid[:, :-1] |= g[:, 1:]
+        reach = (grid, e_lo, n_lo)
+    except Exception as ex:   # no plan: the rounds alone bound it
+        print(f"  islands: no plan to bound the reach ({ex})")
+
+    def in_reach(c):
+        if reach is None:
+            return True
+        grid, e_lo, n_lo = reach
+        r, k = c[1] - n_lo, c[0] - e_lo
+        return 0 <= r < grid.shape[0] and 0 <= k < grid.shape[1] and bool(grid[r, k])
+
     frontier = set(have)
     total = 0
     for _ in range(CREATE_ROUNDS):
         cand = set()
         for ei, ni in frontier:
             for c in ((ei + 1, ni), (ei - 1, ni), (ei, ni + 1), (ei, ni - 1)):
-                if c in have or c in cand:
+                if c in have or c in cand or not in_reach(c):
                     continue
                 if args.bbox and not (args.bbox[0] - tile_m < c[0] * tile_m < args.bbox[2] and args.bbox[1] - tile_m < c[1] * tile_m < args.bbox[3]):
                     continue
