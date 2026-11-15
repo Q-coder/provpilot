@@ -116,7 +116,7 @@ Dictionary SettingsStore::get_defaults()
     d["auto_mixture"] = true;
     d["auto_carb_heat"] = true;
     d["unlimited_fuel"] = true;
-    d["crash_detection"] = false;
+    d["crash_detection"] = true;    // end the flight on a crash (docs/CRASH_DETECTION.md)
     // Weather (UI model only for now — see design doc; the JSBSim hookup
     // for wind/turbulence/QNH and the visual clouds/visibility come later).
     // Each layer spans base_m..top_m (wind and clouds alike); the gaps in

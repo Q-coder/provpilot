@@ -802,7 +802,7 @@ void SettingsScreen::_build_realism_tab()
     _add_check_row(content, "auto_mixture", "Auto Mixture:", "Automatically manage mixture control");
     _add_check_row(content, "auto_carb_heat", "Auto Carb Heat:", "Automatically manage carburetor heat");
     _add_check_row(content, "unlimited_fuel", "Unlimited Fuel:", "Fuel never runs out");
-    _add_check_row(content, "crash_detection", "Crash Detection:", "Enable crash on hard impact");
+    _add_check_row(content, "crash_detection", "Crash Detection:", "A crash ends the flight: hard impact, airframe on the ground, water, overstress, overspeed");
     _add_hint(content, "Wind and turbulence moved to the Weather tab.");
 }
 

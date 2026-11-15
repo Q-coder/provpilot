@@ -161,6 +161,7 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_input_magnetos"), &JSBGodot::get_input_magnetos);
     ClassDB::bind_method(D_METHOD("set_terrain_elevation", "elevation_m"), &JSBGodot::set_terrain_elevation);
     ClassDB::bind_method(D_METHOD("set_ground_query", "query"), &JSBGodot::set_ground_query);
+    ClassDB::bind_method(D_METHOD("limit_climb_speed", "max_up_mps"), &JSBGodot::limit_climb_speed);
     ClassDB::bind_method(D_METHOD("set_nose_steer_range", "limited_deg", "full_deg"), &JSBGodot::set_nose_steer_range);
     ClassDB::bind_method(D_METHOD("set_nose_steer_full", "full"), &JSBGodot::set_nose_steer_full);
     ClassDB::bind_method(D_METHOD("get_nose_steer_full"), &JSBGodot::get_nose_steer_full);
@@ -544,6 +545,27 @@ void JSBGodot::set_nose_steer_full(bool full)
 bool JSBGodot::get_nose_steer_full() const
 {
     return nose_steer_full;
+}
+
+void JSBGodot::limit_climb_speed(double max_up_mps)
+{
+    if (FDMExec == nullptr || !is_initialized())
+    {
+        return;
+    }
+    auto prop = FDMExec->GetPropagate();
+    JSBSim::FGColumnVector3 vel = prop->GetVel();   // north, east, down (ft/s)
+    const double max_up_fps = max_up_mps / 0.3048;
+    if (-vel(3) <= max_up_fps)
+    {
+        return;
+    }
+    vel(3) = -max_up_fps;
+    const JSBSim::FGColumnVector3 uvw = prop->GetTl2b() * vel;
+    for (unsigned int i = 1; i <= 3; i++)
+    {
+        prop->SetUVW(i, uvw(i));
+    }
 }
 
 void JSBGodot::set_ground_query(const godot::Callable &query)

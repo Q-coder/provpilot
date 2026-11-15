@@ -183,6 +183,8 @@ namespace jsbgodot
         // height stepped, ENGM 2026-09-20). set_terrain_elevation() remains
         // the fallback where the query has no data.
         void set_ground_query(const godot::Callable &query);
+        // Caps the upward speed (m/s) for this frame: the rebound of a hard touchdown (CrashMonitor).
+        void limit_climb_speed(double max_up_mps);
         
         // Initialise JSBSim resting on the terrain (metres ASL) at the aircraft
         // node's ECEF position with a TRUE compass heading (degrees). Must be

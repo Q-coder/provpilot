@@ -55,6 +55,13 @@ var _clouds: CloudLayers = null
 var _runways: Runways = null          # airport surfaces + lights (design §12)
 var _city_lights: CityLights = null   # town and city lights at night (docs/CITY_LIGHTS.md)
 var _sea: SeaSurface = null           # the sea surface at 0 m (docs/SEA.md)
+var _fullscreen_applied := false      # the "fullscreen" setting the window was last set from
+var _crash := CrashMonitor.new()      # docs/CRASH_DETECTION.md
+var _crash_reason := ""               # set while the crash message is up
+var _crash_timer := 0.0
+var _crash_label: Label = null
+var _last_flight: Array = []          # [aircraft id, E, N, heading] of the running flight
+const CRASH_MESSAGE_S := 4.0
 const WATER_DRAFT_M := 0.8            # how deep the water lets the wheels in before it carries
 const WATER_SINK_MPS := 0.4           # a ditched aircraft goes down this fast
 var _water_sink_m := 0.8
@@ -213,8 +220,11 @@ func _create_settings_screen() -> void:
 	_settings_screen.closed.connect(_on_settings_closed)
 	# Exported builds start in the saved window mode; editor runs and the
 	# probes keep their window (Alt+Enter or Settings switch any time).
-	if not OS.has_feature("editor") and DisplayServer.get_name() != "headless":
-		_set_fullscreen(bool(_settings.get_setting("fullscreen")), false)
+	# (a run from the editor binary included: gery starts the sim that way; a
+	# probe instances this scene under its own and is not the current scene)
+	_fullscreen_applied = bool(_settings.get_setting("fullscreen"))
+	if get_tree().current_scene == self and DisplayServer.get_name() != "headless":
+		_set_fullscreen(_fullscreen_applied, false)
 	_clouds = CloudLayers.new()
 	_clouds.name = "CloudLayers"
 	add_child(_clouds)
@@ -290,6 +300,7 @@ func _process(delta: float) -> void:
 		_clouds.update(cam, _sky.sun_dir_now, _sky.sun_color_now, _sky.sun_energy_now,
 			env.ambient_light_color if env else Color(0.55, 0.65, 0.85), _sky.cloud_ambient_now,
 			env.fog_density if env and env.fog_enabled else 0.0, _sky.fog_color_now, delta)
+	_update_crash(delta)
 	# Ditching: the water takes the wheels WATER_DRAFT_M under its surface; an
 	# aircraft that has come down on it and lost its speed sinks to the sea floor.
 	if jsb_node and is_instance_valid(_ac):
@@ -419,6 +430,8 @@ func _set_fullscreen(on: bool, persist: bool) -> void:
 	if persist and _settings and bool(_settings.get_setting("fullscreen")) != on:
 		_settings.set_setting("fullscreen", on)
 		_settings.save()
+	if persist:
+		_fullscreen_applied = on
 
 
 ## The forest's sway follows the weather's wind (design §14): the FDM's wind
@@ -614,6 +627,9 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 	_edit_session = false
 	_ac.visible = true   # hidden during an Edit Mode session
 	_aircraft.apply_selected_aircraft(aircraft_id, jsb_node)
+	_last_flight = [aircraft_id, swiss_e, swiss_n, heading_deg]
+	_crash.configure(_aircraft.get_config())
+	_end_crash_message()
 	# A ground vehicle: DriveMode takes the node over once the spawn has
 	# settled (a train is only placed for now).
 	_drive_mode.disengage(jsb_node)
@@ -750,8 +766,11 @@ func _on_vfr_map_enabled_changed(on: bool) -> void:
 func _on_settings_closed() -> void:
 	if _settings_screen:
 		_settings_screen.hide_settings()
-	if DisplayServer.get_name() != "headless":
-		_set_fullscreen(bool(_settings.get_setting("fullscreen")), false)
+	# the window mode follows the checkbox only when it was changed (closing
+	# Settings used to switch a windowed session to the saved fullscreen)
+	var want_full: bool = bool(_settings.get_setting("fullscreen"))
+	var switch_window: bool = want_full != _fullscreen_applied and DisplayServer.get_name() != "headless"
+	_fullscreen_applied = want_full
 	_apply_tree_density()
 	_apply_scenery_sources()
 	_vfr_map.apply_config()
@@ -763,6 +782,8 @@ func _on_settings_closed() -> void:
 		_welcome_screen.set_continue_enabled(not _spawn.is_first_flight())
 		_welcome_screen.visible = true
 		_welcome_screen.show_welcome()
+	if switch_window:
+		_set_fullscreen(want_full, false)   # with the welcome screen up again, not over the bare scene
 
 
 func _apply_tree_density() -> void:
@@ -973,3 +994,60 @@ func _config_for_aircraft(id: String):
 		return _aircraft_cfg
 	var path: String = AircraftConfig.resolve_path(id)
 	return AircraftConfig.load_for_aircraft(id) if FileAccess.file_exists(path) else null
+
+
+## Crash detection (docs/CRASH_DETECTION.md). The monitor always runs (it also
+## takes the rebound out of a hard touchdown); with the Realism checkbox on, a
+## crash freezes the flight, names its reason and starts the flight again.
+func _update_crash(delta: float) -> void:
+	if _crash_reason != "":
+		_crash_timer -= delta
+		if _crash_timer <= 0.0:
+			var f := _last_flight
+			_end_crash_message()
+			if f.size() == 4:
+				_on_welcome_flight_requested(f[0], f[1], f[2], f[3])
+		return
+	if jsb_node == null or not is_instance_valid(_ac) or _fly_loading or _ui_up() or _aircraft.is_vehicle():
+		return
+	if _terrain_elevation.get_rebase_cooldown() > 0:
+		_crash.reset()   # the spawn is still settling
+		return
+	var floor_m: float = _world.terrain_elevation_below(_ac.global_position)
+	var reason: String = _crash.update(jsb_node, not is_nan(floor_m) and floor_m < -0.5, delta)
+	if reason == "":
+		return
+	print("Crash: ", reason, " (detection ", "on" if bool(_settings.get_setting("crash_detection")) else "off", ")")
+	if not bool(_settings.get_setting("crash_detection")):
+		_crash.reset()
+		return
+	_crash_reason = reason
+	_crash_timer = CRASH_MESSAGE_S
+	jsb_node.set_process(false)
+	jsb_node.set_physics_process(false)
+	if _crash_label == null:
+		_crash_label = Label.new()
+		_crash_label.name = "CrashMessage"
+		_crash_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_crash_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_crash_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_crash_label.add_theme_font_size_override("font_size", 44)
+		_crash_label.add_theme_color_override("font_color", Color(1.0, 0.92, 0.85))
+		_crash_label.add_theme_color_override("font_outline_color", Color(0.25, 0.0, 0.0))
+		_crash_label.add_theme_constant_override("outline_size", 10)
+		_crash_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var layer := CanvasLayer.new()
+		layer.layer = 50
+		add_child(layer)
+		layer.add_child(_crash_label)
+	_crash_label.text = "CRASH\n%s\n\nThe flight starts again..." % reason
+	_crash_label.visible = true
+
+
+func _end_crash_message() -> void:
+	_crash_reason = ""
+	if _crash_label:
+		_crash_label.visible = false
+	if jsb_node:
+		jsb_node.set_process(true)
+		jsb_node.set_physics_process(true)
