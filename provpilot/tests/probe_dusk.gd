@@ -31,7 +31,7 @@ func _ready() -> void:
 	root.jsb_node.set_paused(true) if root.jsb_node.has_method("set_paused") else null
 	for h in hours:
 		root._sky.set_time(false, int(h * 60.0))
-		await get_tree().create_timer(2.0).timeout
+		await get_tree().create_timer(float(OS.get_environment("DUSK_WAIT")) if OS.get_environment("DUSK_WAIT") != "" else 2.0).timeout
 		var img: Image = get_viewport().get_texture().get_image()
 		var up := 0.0
 		var lo := 0.0
@@ -46,6 +46,16 @@ func _ready() -> void:
 				n += 1
 		var env: Environment = root._sky.environment
 		print("probe_dusk: %05.2f h: twilight %.2f, fog light %.3f, cloud sky light %.3f, sun %.2f | mean brightness upper half %.3f, lower half %.3f" % [h, root._sky.twilight_now, env.fog_light_energy, root._sky.cloud_ambient_now, root._sky.sun_energy_now, up / (n * 0.5), lo / (n * 0.5)])
+		print("probe_dusk: %05.2f h: city lights %s" % [h, str(root._city_lights.stats())])
+		print("probe_dusk: %05.2f h: %.0f fps, %d draw calls" % [h, Engine.get_frames_per_second(), RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)])
+		if OS.get_environment("DUSK_NO_CITY") != "":
+			root._city_lights.visible = false
+			root._city_lights.set_process(false)
+			var keep: bool = root._city_lights.enabled
+			root._city_lights.enabled = false
+			await get_tree().create_timer(3.0).timeout
+			print("probe_dusk: %05.2f h without city lights: %.0f fps, %d draw calls" % [h, Engine.get_frames_per_second(), RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)])
+			root._city_lights.enabled = keep
 		if out_dir != "":
 			img.resize(img.get_width() / 2, img.get_height() / 2)
 			img.save_png(out_dir.path_join("dusk_%04d.png" % int(h * 100.0)))

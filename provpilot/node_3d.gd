@@ -53,6 +53,7 @@ var _settings: SettingsStore = null
 var _sky := SkyAtmosphere.new()       # sun, atmosphere, fog
 var _clouds: CloudLayers = null
 var _runways: Runways = null          # airport surfaces + lights (design §12)
+var _city_lights: CityLights = null   # town and city lights at night (docs/CITY_LIGHTS.md)
 var _runways_merged: Dictionary = {}  # icao -> merged pack airport entry
 var _live_weather: Node = null        # C++ LiveWeather (METAR)
 var _welcome_screen: WelcomeScreen = null
@@ -216,6 +217,10 @@ func _create_settings_screen() -> void:
 	_runways = Runways.new()
 	_runways.name = "Runways"
 	add_child(_runways)
+	_city_lights = CityLights.new()
+	_city_lights.name = "CityLights"
+	add_child(_city_lights)
+	_city_lights.set_terrain_height(Callable(_world, "terrain_elevation_geodetic"))
 	_world.set_runways(_runways)
 	_live_weather = LiveWeather.new()
 	_live_weather.latlon_provider = _aircraft_latlon
@@ -278,6 +283,11 @@ func _process(delta: float) -> void:
 		_clouds.update(cam, _sky.sun_dir_now, _sky.sun_color_now, _sky.sun_energy_now,
 			env.ambient_light_color if env else Color(0.55, 0.65, 0.85), _sky.cloud_ambient_now,
 			env.fog_density if env and env.fog_enabled else 0.0, _sky.fog_color_now, delta)
+	if _city_lights and cam:
+		# town lights come on through dusk (twilight 0.55 -> 0.2) and with the airfields' in poor visibility
+		var env2: Environment = _sky.environment
+		var town: float = maxf(1.0 - smoothstep(0.2, 0.55, _sky.twilight_now), night * 0.6)
+		_city_lights.update(cam, town, env2.fog_density if env2 and env2.fog_enabled else 0.0, delta)
 	_hud.set_time_text("Time: " + _sky.get_time_string())
 
 	# Post-Fly loading: the destination settles while the intro zoom plays
@@ -740,6 +750,8 @@ func _apply_scenery_sources() -> void:
 		return
 	_settings.apply_scenery_sources(scenery3d_node, vegetation_node, _vfr_map)
 	_scenery_objects.apply_scenery_areas(_settings.get_enabled_scenery_areas(), scenery3d_node, vegetation_node)
+	if _city_lights and scenery3d_node:
+		_city_lights.set_paths(scenery3d_node.get("landcover_paths"))
 	_rebuild_runways()
 
 
