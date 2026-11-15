@@ -13,10 +13,19 @@ surface at 0 m everywhere; the depth test makes the shore.
   polygons, 908 MB zip) in `<cache_root>/osm_coast/`.
 - **Sea pixels**: `h = min(h, -0.05 x distance to the shore)`, at most -30 m by
   distance alone; deeper bathymetry already in the tile stays.
-- **Land pixels**: `h = max(h, +0.05 x distance to the shore)`, and at least
-  0.3 m beyond the first pixel. The waterline, interpolated between a land and
-  a sea pixel, falls on the coastline; land below sea level (polders, tidal
-  flats) is lifted to 0.3 m so the sea cannot flood it.
+- **Land pixels**: at least 0.3 m (reached over the first metres from the
+  shore), never more. The waterline, interpolated between a land and a sea
+  pixel, falls on the coastline; land below sea level (polders, tidal flats)
+  is lifted to 0.3 m so the sea cannot flood it. (Until 2026-11-15 the floor
+  rose by 0.05 x shore distance to 10.3 m and buried every low coast under a
+  shelf: Aalborg's runways ended at a tile edge.)
+- **Islands the height model lacks**: a no-data pixel on OSM land rises
+  gently from the shore (to 3 m), and a tile the region does not have but
+  that holds land and sea by the coastline is created (12 tiles outward per
+  run, never where another region has the tile). A missing tile therefore
+  means open sea: the far terrain fills missing tiles from their neighbours'
+  edge heights, and an island that ran into one was stretched over
+  kilometres of sea (Tisler, 2026-11-15).
 - **In place, idempotent**: the same pixels in `terrain/` and `terrain_base/`;
   runway plateaus and road corridors stay. Airport heights fitted to ground
   below 0.3 m (runway planes, taxiway paths, aprons, lights: 233 in Denmark,
@@ -28,6 +37,16 @@ surface at 0 m everywhere; the depth test makes the shore.
   the globe below 0 m under the same surface.
 
 `.venv/bin/python scripts/build_world_sea.py --region norway [--bbox E0 N0 E1 N1] [--dry-run]`
+
+`--from-source` takes the ground of every coastal tile from the height model
+again before cutting (undoes an earlier cut). It drops the airport plateaus
+of those tiles, so the restore is three steps:
+`build_world_sea.py --from-source`, `build_world_terrain.py flatten --no-fetch`,
+`build_world_sea.py`.
+
+The globe (world3d) runs with `clamp_sea_level = false`: its ETOPO sea floor
+lies under the surface. Clamped to 0 m it met the sea surface at every mesh
+vertex and showed through as a grid of light stars from altitude.
 
 ## Runtime
 
@@ -50,7 +69,7 @@ The heat shimmer (`ExhaustEffects`) reads the screen copy, which is taken
 before the sea is drawn: it is left out where the opaque scene behind the
 plume lies under the sea plane (it showed the green sea floor).
 
-Test: `DUSK_LAT=59.76 DUSK_LON=10.56 DUSK_HDG=15 DUSK_AGL_FT=2500 probe_dusk -- <out_dir> 12.5`.
+Test: `probe_view -- <out_dir> <lat> <lon> <alt_m> <pitch_down> <bearing ...>` (free camera, clear sky), or `DUSK_LAT=59.76 DUSK_LON=10.56 DUSK_HDG=15 DUSK_AGL_FT=2500 probe_dusk -- <out_dir> 12.5`.
 
 ## Open
 

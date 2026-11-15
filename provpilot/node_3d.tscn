@@ -169,4 +169,4 @@ tree_scene_path = "res://Tree_lowpoly.glb"
 [node name="Globe" type="W3DGlobe" parent="GlobeMount" unique_id=610000002]
 faces_path = "res://faces"
 vertical_exaggeration = 1.0
-clamp_sea_level = true
+clamp_sea_level = false

@@ -203,9 +203,9 @@ bool FlightSpawn::process_deferred_init()
 		// No detailed patch here (outside the installed regions): fall back
 		// to the coarse globe so we still spawn instead of hanging.
 		api_height = world->globe_elevation_geodetic(ll.x, ll.y);
-		if (std::isnan(api_height))
+		if (std::isnan(api_height) || api_height < 0.0)
 		{
-			api_height = 0.0;
+			api_height = 0.0;   // the globe carries the sea floor: spawn on the water
 		}
 		snprintf(buf, sizeof(buf), "Scenery patch elevation unavailable at E=%.0f N=%.0f after %.0fs - spawning on globe/fallback elevation %.0f m ASL",
 				e, n, waited / 1000.0, api_height);

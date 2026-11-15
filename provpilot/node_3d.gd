@@ -183,11 +183,23 @@ func _ready() -> void:
 	_loading_screen.hide_loading()
 	_create_settings_screen()
 	_create_welcome_screen()
+	# Nothing of the 3D scene is drawn before the first flight: the window
+	# switching to fullscreen at start showed the default cockpit for a
+	# second or two beside the welcome screen (gery 2026-11-15).
+	# (the app only: a probe instances this scene under its own and looks at it)
+	if get_tree().current_scene == self:
+		_show_3d(false)
 	_setup_sky_atmosphere()
 	_apply_tree_density()
 	_apply_scenery_sources()
 	_world.refresh_globe_suppress()
 	print("Node3D ready - welcome screen shown (scenery deferred)")
+
+
+func _show_3d(on: bool) -> void:
+	get_viewport().disable_3d = not on
+	if not on:
+		RenderingServer.set_default_clear_color(Color.BLACK)
 
 
 ## Mount the world3d globe: the world IS ECEF, so the mount is the identity
@@ -629,6 +641,7 @@ func _on_welcome_flight_requested(aircraft_id: String, swiss_e: float, swiss_n: 
 	if not _scenery_available():
 		return
 	_settings_from_welcome = false
+	_show_3d(true)
 	_edit_session = false
 	_ac.visible = true   # hidden during an Edit Mode session
 	_aircraft.apply_selected_aircraft(aircraft_id, jsb_node)
@@ -686,6 +699,7 @@ func _on_welcome_edit_requested(swiss_e: float, swiss_n: float, heading_deg: flo
 		if _welcome_screen:
 			_welcome_screen.show_welcome()
 		return
+	_show_3d(true)
 	_cancel_intro_zoom()
 	_drive_mode.disengage(jsb_node)
 	_edit_session = true
@@ -749,6 +763,7 @@ func _on_welcome_settings_requested() -> void:
 ## Resume the in-progress flight: flight logic only pauses while the welcome
 ## screen is visible, so hiding it is enough.
 func _on_welcome_continue_requested() -> void:
+	_show_3d(true)
 	_ac.visible = true   # never resume with the aircraft hidden (Edit Mode hides it)
 	if _welcome_screen:
 		_welcome_screen.hide_welcome()

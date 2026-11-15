@@ -41,6 +41,8 @@ MAX_DEPTH_M = 30.0    # by distance alone (600 m offshore)
 LAND_MIN_M = 0.3      # land never lies lower (polders, tidal flats)
 MARGIN_M = 640.0      # coastline looked at around a tile: MAX_DEPTH_M / SLOPE + a pixel
 NODATA_NUDGE = 0.01   # the engine reads exactly 0 as "no data"
+FILL_MAX_M = 3.0      # an island without height data rises to this
+CREATE_ROUNDS = 12    # tiles outward an island may be completed past the region's own, per run
 
 _G = {}
 
@@ -67,7 +69,11 @@ def load_sea(region, bbox_lv95):
     return shapely.transform(geoms, to_lv95)
 
 
-def _init(geoms, terrain_dirs, px, tile_m, dry):
+def _init(geoms, terrain_dirs, px, tile_m, dry, source_region=None):
+    _G["source"] = None
+    if source_region:
+        reg = bwt.get_region(source_region)
+        _G["source"] = (reg, bwt._SrtmCache(reg))
     _G["tree"] = shapely.STRtree(geoms) if len(geoms) else None
     _G["geoms"] = geoms
     _G["dirs"] = terrain_dirs
@@ -106,11 +112,16 @@ def carve(data, e_sw, n_sw, px, tile_m, water):
     d_land = d_land.reshape(px, px)
     sea_h = -np.minimum(SLOPE * d_sea, MAX_DEPTH_M)
     sea_h = np.minimum(sea_h, -NODATA_NUDGE)
-    land_h = np.maximum(np.minimum(SLOPE * d_land, LAND_MIN_M + 10.0), NODATA_NUDGE)
-    # beyond the first pixel from the shore the land keeps a floor (polders)
-    land_floor = np.where(d_land > sp, np.maximum(land_h, LAND_MIN_M), land_h)
+    # land keeps a floor (polders, tidal flats): LAND_MIN_M, reached over the
+    # first metres from the shore. Never more: a floor that rose with the
+    # distance buried every low coast under a 10 m shelf (Aalborg, 2026-11-15)
+    land_floor = np.maximum(np.minimum(SLOPE * d_land, LAND_MIN_M), NODATA_NUDGE)
+    # a no-data pixel on land (a skerry the height model has as sea) takes a
+    # gentle rise from the shore: left at 0 the island ends at a straight
+    # line, and the far terrain stretches its edge over the open sea
+    fill = np.maximum(np.minimum(SLOPE * d_land, FILL_MAX_M), NODATA_NUDGE)
     new = np.where(in_sea, np.minimum(out, sea_h), np.maximum(out, land_floor))
-    new = np.where(valid | in_sea, new, out)   # a no-data pixel stays no data on land
+    new = np.where(valid | in_sea, new, fill)
     changed_sea = int((in_sea & (np.abs(new - out) > 1e-4)).sum())
     changed_land = int((~in_sea & (np.abs(new - out) > 1e-4)).sum())
     return new.astype("<f4"), changed_sea, changed_land
@@ -139,14 +150,51 @@ def _work(cell):
         data = np.fromfile(p, dtype="<f4")
         if data.size != px * px:
             continue
+        fresh = False
+        if _G["source"] is not None and water is not None:
+            # --from-source: the coastal tile's ground from the height model
+            # again (undoes an earlier cut; airports need `flatten` after)
+            src = bwt._bake_cell(_G["source"][0], _G["source"][1], e_sw, n_sw, fetch_missing=False)
+            data = np.zeros(px * px, dtype="<f4") if src is None else np.asarray(src, dtype="<f4").ravel()
+            fresh = True
         new, cs, cl = carve(data.reshape(px, px), e_sw, n_sw, px, tile_m, water)
         sea_px = max(sea_px, cs)
         land_px = max(land_px, cl)
-        if (cs or cl) and not _G["dry"]:
+        if (cs or cl or fresh) and not _G["dry"]:
             new.tofile(p)
             wrote += 1
     kind = 0 if water is None else 1
     return kind, sea_px, land_px, wrote
+
+
+def _create(cell):
+    """A tile the region lacks although the coastline has land in it (an
+    island the height model missed): written from the coastline alone. Only
+    with sea in the tile too, so nothing grows inland over a border."""
+    ei, ni = cell
+    px, tile_m = _G["px"], _G["tile_m"]
+    e_sw, n_sw = ei * tile_m, ni * tile_m
+    if _G["tree"] is None:
+        return cell, False
+    tile = box(e_sw, n_sw, e_sw + tile_m, n_sw + tile_m)
+    window = box(e_sw - MARGIN_M, n_sw - MARGIN_M, e_sw + tile_m + MARGIN_M, n_sw + tile_m + MARGIN_M)
+    idx = _G["tree"].query(window, predicate="intersects")
+    if not len(idx):
+        return cell, False
+    water = shapely.union_all(shapely.make_valid(shapely.intersection(_G["geoms"][idx], window))).buffer(0.05)
+    sea_m2 = water.intersection(tile).area
+    land_m2 = tile.area - sea_m2
+    sp = tile_m / (px - 1)
+    if land_m2 < sp * sp or sea_m2 < sp * sp:
+        return cell, False
+    new, _, _ = carve(np.zeros((px, px), dtype="<f4"), e_sw, n_sw, px, tile_m, water)
+    if not (new > 0.0).any():
+        return cell, False
+    if not _G["dry"]:
+        for d in _G["dirs"]:
+            if Path(d).is_dir():
+                new.tofile(Path(d) / f"tile_{e_sw}_{n_sw}.raw")
+    return cell, True
 
 
 def fix_airports(region, dry):
@@ -191,6 +239,7 @@ def main():
     ap.add_argument("--bbox", type=float, nargs=4, metavar=("E0", "N0", "E1", "N1"), help="LV95 box (default: every tile of the region)")
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--from-source", action="store_true", help="coastal tiles: cut the height model's ground, not the tile's (run flatten, then this script once more without the flag)")
     ap.add_argument("--airports-only", action="store_true", help="only lift the airport heights in runways.json")
     args = ap.parse_args()
     region = bwt.get_region(args.region)
@@ -218,7 +267,7 @@ def main():
     cells.sort()
     tot = {"coast": 0, "sea_px": 0, "land_px": 0, "files": 0}
     done = 0
-    with ProcessPoolExecutor(max_workers=args.jobs, initializer=_init, initargs=(geoms, dirs, px, tile_m, args.dry_run)) as ex:
+    with ProcessPoolExecutor(max_workers=args.jobs, initializer=_init, initargs=(geoms, dirs, px, tile_m, args.dry_run, region.id if args.from_source else None)) as ex:
         for kind, sp_, lp_, wrote in ex.map(_work, cells, chunksize=64):
             tot["coast"] += kind
             tot["sea_px"] += sp_
@@ -229,8 +278,68 @@ def main():
                 print(f"  {done}/{len(cells)} tiles, {tot['coast']} with sea, {tot['files']} files written ({time.time() - t0:.0f} s)", flush=True)
     print(f"  {len(cells)} tiles: {tot['coast']} with sea in reach, {tot['sea_px']} sea pixels and {tot['land_px']} land pixels changed, "
           f"{tot['files']} files {'would be ' if args.dry_run else ''}written ({time.time() - t0:.0f} s)")
+    created = complete_islands(region, set(cells), geoms, dirs, px, tile_m, args)
+    if created and not args.dry_run:
+        update_manifest(region, tile_m)
     fix_airports(region, args.dry_run)
     return 0
+
+
+def complete_islands(region, have, geoms, dirs, px, tile_m, args):
+    """Tiles next to the region's own that it lacks and that hold land by the
+    coastline are created (CREATE_ROUNDS tiles outward at most), unless
+    another region has the tile: a missing tile then always means open sea."""
+    others = []
+    for e in bwt.load_config()["regions"]:
+        if e["id"] != region.id:
+            try:
+                others.append(bwt.get_region(e["id"]).terrain_out)
+            except Exception:
+                pass
+    frontier = set(have)
+    total = 0
+    for _ in range(CREATE_ROUNDS):
+        cand = set()
+        for ei, ni in frontier:
+            for c in ((ei + 1, ni), (ei - 1, ni), (ei, ni + 1), (ei, ni - 1)):
+                if c in have or c in cand:
+                    continue
+                if args.bbox and not (args.bbox[0] - tile_m < c[0] * tile_m < args.bbox[2] and args.bbox[1] - tile_m < c[1] * tile_m < args.bbox[3]):
+                    continue
+                cand.add(c)
+        cand = sorted(c for c in cand if not any((o / f"tile_{c[0] * tile_m}_{c[1] * tile_m}.raw").exists() for o in others))
+        if not cand:
+            break
+        made = set()
+        with ProcessPoolExecutor(max_workers=args.jobs, initializer=_init, initargs=(geoms, dirs, px, tile_m, args.dry_run)) as ex:
+            for cell, ok in ex.map(_create, cand, chunksize=64):
+                if ok:
+                    made.add(cell)
+        total += len(made)
+        have |= made
+        frontier = made
+        if not made:
+            break
+    print(f"  islands: {total} tiles the height model lacked {'would be ' if args.dry_run else ''}created from the coastline")
+    return total
+
+
+def update_manifest(region, tile_m):
+    import json
+    path = region.terrain_out / "manifest.json"
+    if not path.exists():
+        return
+    m = json.loads(path.read_text())
+    eis, nis, n = [], [], 0
+    for p in region.terrain_out.glob("tile_*.raw"):
+        _, e, nn = p.stem.split("_")
+        eis.append(int(e) // tile_m)
+        nis.append(int(nn) // tile_m)
+        n += 1
+    m["tile_count"] = n
+    if isinstance(m.get("grid"), dict):
+        m["grid"].update({"ei_min": min(eis), "ei_max": max(eis), "ni_min": min(nis), "ni_max": max(nis)})
+    path.write_text(json.dumps(m, indent=2))
 
 
 if __name__ == "__main__":

@@ -380,7 +380,14 @@ bool Runways::add_runway(Batch &batch, const Transform3D &inv, const Dictionary 
 	const Vector2 h = end_heights(rw, p0, p1, terrain);
 	const PackedInt32Array g0 = RunwaysLib::glyph_codes(desigs.size() > 0 ? String(desigs[0]) : String());
 	const PackedInt32Array g1 = RunwaysLib::glyph_codes(desigs.size() > 1 ? String(desigs[1]) : String());
-	const int kind = surface_kind(rw.get("surface", "asphalt"));
+	// "other" is a catalog row without a surface word: a lighted or long
+	// runway is paved (Aalborg 08L/26R, 2647 m), the rest stays unmarked
+	String surface = rw.get("surface", "asphalt");
+	if (surface == "other" && ((bool)rw.get("lighted", false) || length >= 1200.0))
+	{
+		surface = "asphalt";
+	}
+	const int kind = surface_kind(surface);
 	const int bars = bars_for_width(2.0 * half_w);
 	const int aiming = length >= 1800.0 ? 1 : 0;
 	const float c0[4] = {(float)half_w, (float)length, (float)(double)e0.get("displaced_m", 0.0), (float)(double)e1.get("displaced_m", 0.0)};
