@@ -20,7 +20,19 @@ func _ready() -> void:
 	await get_tree().create_timer(3.0).timeout
 	root._settings.get_settings()["aircraft_md80_start_agl_ft"] = 4500.0
 	root._settings.get_settings()["aircraft_md80_start_speed_kt"] = 220.0
-	root._on_welcome_flight_requested("md80", E, N, 250.0)
+	var se := E
+	var sn := N
+	var hdg := 250.0
+	# DUSK_LAT / DUSK_LON / DUSK_HDG / DUSK_AGL_FT: anywhere else (the Oslofjord for the sea)
+	if OS.get_environment("DUSK_LAT") != "":
+		var lv: Vector2 = Geo.wgs84_to_lv95(float(OS.get_environment("DUSK_LAT")), float(OS.get_environment("DUSK_LON")))
+		se = lv.x
+		sn = lv.y
+	if OS.get_environment("DUSK_HDG") != "":
+		hdg = float(OS.get_environment("DUSK_HDG"))
+	if OS.get_environment("DUSK_AGL_FT") != "":
+		root._settings.get_settings()["aircraft_md80_start_agl_ft"] = float(OS.get_environment("DUSK_AGL_FT"))
+	root._on_welcome_flight_requested("md80", se, sn, hdg)
 	var waited := 0.0
 	while not root.terrain_initialized and waited < 60.0:
 		await get_tree().create_timer(0.5).timeout

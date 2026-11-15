@@ -54,6 +54,7 @@ var _sky := SkyAtmosphere.new()       # sun, atmosphere, fog
 var _clouds: CloudLayers = null
 var _runways: Runways = null          # airport surfaces + lights (design §12)
 var _city_lights: CityLights = null   # town and city lights at night (docs/CITY_LIGHTS.md)
+var _sea: SeaSurface = null           # the sea surface at 0 m (docs/SEA.md)
 var _runways_merged: Dictionary = {}  # icao -> merged pack airport entry
 var _live_weather: Node = null        # C++ LiveWeather (METAR)
 var _welcome_screen: WelcomeScreen = null
@@ -217,6 +218,9 @@ func _create_settings_screen() -> void:
 	_runways = Runways.new()
 	_runways.name = "Runways"
 	add_child(_runways)
+	_sea = SeaSurface.new()
+	_sea.name = "SeaSurface"
+	add_child(_sea)
 	_city_lights = CityLights.new()
 	_city_lights.name = "CityLights"
 	add_child(_city_lights)
@@ -283,10 +287,15 @@ func _process(delta: float) -> void:
 		_clouds.update(cam, _sky.sun_dir_now, _sky.sun_color_now, _sky.sun_energy_now,
 			env.ambient_light_color if env else Color(0.55, 0.65, 0.85), _sky.cloud_ambient_now,
 			env.fog_density if env and env.fog_enabled else 0.0, _sky.fog_color_now, delta)
+	if _sea and cam:
+		# sea state from the FDM's wind at the aircraft (m/s toward east / north)
+		var wn: float = jsb_node.get_property("atmosphere/wind-north-fps") * 0.3048 if jsb_node else 0.0
+		var we: float = jsb_node.get_property("atmosphere/wind-east-fps") * 0.3048 if jsb_node else 0.0
+		_sea.update(cam, _sky.sun_dir_now, _sky.sun_color_now, _sky.sun_energy_now, _sky.twilight_now * _sky.twilight_now, Vector2(we, wn), delta)
 	if _city_lights and cam:
-		# town lights come on through dusk (twilight 0.55 -> 0.2) and with the airfields' in poor visibility
+		# town lights come on through dusk (twilight 0.55 -> 0.2); the airfields' come earlier, with the sun 4 deg up
 		var env2: Environment = _sky.environment
-		var town: float = maxf(1.0 - smoothstep(0.2, 0.55, _sky.twilight_now), night * 0.6)
+		var town: float = 1.0 - smoothstep(0.2, 0.55, _sky.twilight_now)
 		_city_lights.update(cam, town, env2.fog_density if env2 and env2.fog_enabled else 0.0, delta)
 	_hud.set_time_text("Time: " + _sky.get_time_string())
 

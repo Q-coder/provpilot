@@ -224,7 +224,9 @@ double WorldScenery::ground_height_geodetic(double lat, double lon) const
 	{
 		return NAN;
 	}
-	const double ground = h + runway_lift_at(geo::ecef_of(lat, lon, h));
+	// the sea floor lies under water (scripts/build_world_sea.py): the
+	// surface at 0 m is what carries a hull or stops a wheel
+	const double ground = std::max(h + runway_lift_at(geo::ecef_of(lat, lon, h)), 0.0);
 	const double road = road_surface_at(lat, lon, h);
 	return std::isnan(road) ? ground : std::max(ground, road);
 }
@@ -239,7 +241,7 @@ double WorldScenery::ground_height_below(const Vector3 &world_pos) const
 	}
 	// the drawn ground is the top-most surface: pavement over terrain, a
 	// road ribbon over both (a ribbon sunk into a terrain bump stays below)
-	const double ground = h + runway_lift_at(world_pos);
+	const double ground = std::max(h + runway_lift_at(world_pos), 0.0);   // the sea surface, not its floor
 	const double road = road_surface_at(g.lat, g.lon, g.h);
 	return std::isnan(road) ? ground : std::max(ground, road);
 }

@@ -41,6 +41,7 @@
 #include "sky_atmosphere.h"
 #include "cloud_layers.h"
 #include "city_lights.h"
+#include "sea_surface.h"
 #include "exhaust_effects.h"
 #include "aircraft_settings_panel.h"
 #include "joystick_settings_panel.h"
@@ -108,6 +109,7 @@ void initialize_gojsb_module(ModuleInitializationLevel p_level)
 	ClassDB::register_class<SkyAtmosphere>();
 	ClassDB::register_class<CloudLayers>();
 	ClassDB::register_class<CityLights>();
+	ClassDB::register_class<SeaSurface>();
 	ClassDB::register_class<ExhaustEffects>();
 	ClassDB::register_class<AircraftSettingsPanel>();
 	ClassDB::register_class<JoystickSettingsPanel>();
