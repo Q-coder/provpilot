@@ -55,6 +55,9 @@ var _clouds: CloudLayers = null
 var _runways: Runways = null          # airport surfaces + lights (design §12)
 var _city_lights: CityLights = null   # town and city lights at night (docs/CITY_LIGHTS.md)
 var _sea: SeaSurface = null           # the sea surface at 0 m (docs/SEA.md)
+const WATER_DRAFT_M := 0.8            # how deep the water lets the wheels in before it carries
+const WATER_SINK_MPS := 0.4           # a ditched aircraft goes down this fast
+var _water_sink_m := 0.8
 var _runways_merged: Dictionary = {}  # icao -> merged pack airport entry
 var _live_weather: Node = null        # C++ LiveWeather (METAR)
 var _welcome_screen: WelcomeScreen = null
@@ -287,6 +290,21 @@ func _process(delta: float) -> void:
 		_clouds.update(cam, _sky.sun_dir_now, _sky.sun_color_now, _sky.sun_energy_now,
 			env.ambient_light_color if env else Color(0.55, 0.65, 0.85), _sky.cloud_ambient_now,
 			env.fog_density if env and env.fog_enabled else 0.0, _sky.fog_color_now, delta)
+	# Ditching: the water takes the wheels WATER_DRAFT_M under its surface; an
+	# aircraft that has come down on it and lost its speed sinks to the sea floor.
+	if jsb_node and is_instance_valid(_ac):
+		var floor_m: float = _world.terrain_elevation_below(_ac.global_position)
+		var wet := false
+		if not is_nan(floor_m) and floor_m < -0.5:
+			for c in jsb_node.get_gear_contacts():
+				if c["wow"]:
+					wet = true
+					break
+		if wet and jsb_node.get_property("velocities/vg-fps") < 50.0:
+			_water_sink_m = minf(_water_sink_m + delta * WATER_SINK_MPS, 200.0)
+		elif is_nan(floor_m) or floor_m >= -0.5 or W3DCoords.ecef_to_geodetic(_ac.global_position).z > 6.0:
+			_water_sink_m = WATER_DRAFT_M   # back over land, or flying again
+		_world.water_sink_m = _water_sink_m
 	if _sea and cam:
 		# sea state from the FDM's wind at the aircraft (m/s toward east / north)
 		var wn: float = jsb_node.get_property("atmosphere/wind-north-fps") * 0.3048 if jsb_node else 0.0

@@ -43,6 +43,9 @@ void WorldScenery::_bind_methods()
 	ClassDB::bind_method(D_METHOD("terrain_elevation_geodetic", "lat", "lon"), &WorldScenery::terrain_elevation_geodetic);
 	ClassDB::bind_method(D_METHOD("terrain_elevation_below", "world_pos"), &WorldScenery::terrain_elevation_below);
 	ClassDB::bind_method(D_METHOD("ground_height_geodetic", "lat", "lon"), &WorldScenery::ground_height_geodetic);
+	ClassDB::bind_method(D_METHOD("set_water_sink_m", "m"), &WorldScenery::set_water_sink_m);
+	ClassDB::bind_method(D_METHOD("get_water_sink_m"), &WorldScenery::get_water_sink_m);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "water_sink_m"), "set_water_sink_m", "get_water_sink_m");
 	ClassDB::bind_method(D_METHOD("ground_height_below", "world_pos"), &WorldScenery::ground_height_below);
 	ClassDB::bind_method(D_METHOD("road_surface_at", "lat", "lon", "h_hint"), &WorldScenery::road_surface_at);
 	ClassDB::bind_method(D_METHOD("max_terrain_around", "e", "n", "true_heading_deg"), &WorldScenery::max_terrain_around);
@@ -217,6 +220,9 @@ double WorldScenery::road_surface_at(double lat, double lon, double h_hint) cons
 	return rm->call("surface_height_at", en.x, en.y, h_hint, ROAD_SURFACE_TOL_M);
 }
 
+void WorldScenery::set_water_sink_m(double m) { water_sink_m = Math::max(m, 0.0); }
+double WorldScenery::get_water_sink_m() const { return water_sink_m; }
+
 double WorldScenery::ground_height_geodetic(double lat, double lon) const
 {
 	const double h = scenery_elevation_geodetic(lat, lon);
@@ -225,8 +231,9 @@ double WorldScenery::ground_height_geodetic(double lat, double lon) const
 		return NAN;
 	}
 	// the sea floor lies under water (scripts/build_world_sea.py): the
-	// surface at 0 m is what carries a hull or stops a wheel
-	const double ground = std::max(h + runway_lift_at(geo::ecef_of(lat, lon, h)), 0.0);
+	// water stops a wheel a little under its surface, and what has come
+	// down on it sinks (water_sink_m, from the host) to the floor
+	const double ground = std::max(h + runway_lift_at(geo::ecef_of(lat, lon, h)), -water_sink_m);
 	const double road = road_surface_at(lat, lon, h);
 	return std::isnan(road) ? ground : std::max(ground, road);
 }
@@ -241,7 +248,7 @@ double WorldScenery::ground_height_below(const Vector3 &world_pos) const
 	}
 	// the drawn ground is the top-most surface: pavement over terrain, a
 	// road ribbon over both (a ribbon sunk into a terrain bump stays below)
-	const double ground = std::max(h + runway_lift_at(world_pos), 0.0);   // the sea surface, not its floor
+	const double ground = std::max(h + runway_lift_at(world_pos), -water_sink_m);   // the water, then the floor as the aircraft sinks
 	const double road = road_surface_at(g.lat, g.lon, g.h);
 	return std::isnan(road) ? ground : std::max(ground, road);
 }

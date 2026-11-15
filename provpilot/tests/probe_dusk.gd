@@ -20,6 +20,8 @@ func _ready() -> void:
 	await get_tree().create_timer(3.0).timeout
 	root._settings.get_settings()["aircraft_md80_start_agl_ft"] = 4500.0
 	root._settings.get_settings()["aircraft_md80_start_speed_kt"] = 220.0
+	if OS.get_environment("DUSK_AIRCRAFT") != "":
+		root._settings.get_settings()["aircraft_%s_start_speed_kt" % OS.get_environment("DUSK_AIRCRAFT")] = float(OS.get_environment("DUSK_KT")) if OS.get_environment("DUSK_KT") != "" else 220.0
 	var se := E
 	var sn := N
 	var hdg := 250.0
@@ -31,8 +33,8 @@ func _ready() -> void:
 	if OS.get_environment("DUSK_HDG") != "":
 		hdg = float(OS.get_environment("DUSK_HDG"))
 	if OS.get_environment("DUSK_AGL_FT") != "":
-		root._settings.get_settings()["aircraft_md80_start_agl_ft"] = float(OS.get_environment("DUSK_AGL_FT"))
-	root._on_welcome_flight_requested("md80", se, sn, hdg)
+		root._settings.get_settings()["aircraft_%s_start_agl_ft" % (OS.get_environment("DUSK_AIRCRAFT") if OS.get_environment("DUSK_AIRCRAFT") != "" else "md80")] = float(OS.get_environment("DUSK_AGL_FT"))
+	root._on_welcome_flight_requested(OS.get_environment("DUSK_AIRCRAFT") if OS.get_environment("DUSK_AIRCRAFT") != "" else "md80", se, sn, hdg)
 	var waited := 0.0
 	while not root.terrain_initialized and waited < 60.0:
 		await get_tree().create_timer(0.5).timeout
@@ -58,6 +60,7 @@ func _ready() -> void:
 				n += 1
 		var env: Environment = root._sky.environment
 		print("probe_dusk: %05.2f h: twilight %.2f, fog light %.3f, cloud sky light %.3f, sun %.2f | mean brightness upper half %.3f, lower half %.3f" % [h, root._sky.twilight_now, env.fog_light_energy, root._sky.cloud_ambient_now, root._sky.sun_energy_now, up / (n * 0.5), lo / (n * 0.5)])
+		print("probe_dusk: %05.2f h: aircraft %.2f m above sea level, water sink %.2f m, FDM agl %.2f m, sea floor %.1f m, ground query %.2f m" % [h, W3DCoords.ecef_to_geodetic(root.get_node("AC").global_position).z, root._world.water_sink_m, root.jsb_node.get_property("position/h-agl-ft") * 0.3048, root._world.terrain_elevation_below(root.get_node("AC").global_position), root._world.ground_height_below(root.get_node("AC").global_position)])
 		print("probe_dusk: %05.2f h: city lights %s" % [h, str(root._city_lights.stats())])
 		print("probe_dusk: %05.2f h: %.0f fps, %d draw calls" % [h, Engine.get_frames_per_second(), RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)])
 		if OS.get_environment("DUSK_NO_CITY") != "":

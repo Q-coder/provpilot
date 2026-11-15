@@ -40,8 +40,15 @@ shallow to deep colour with depth, sky reflection by Fresnel, a sun glint,
 ripples as procedural normals anchored to the world and drifting with the
 FDM's wind. Dark at night through the twilight factor.
 
-`WorldScenery::ground_height_*` clamps the ground at 0 m: wheels and hulls
-meet the surface, not the sea floor.
+Ditching: `WorldScenery::ground_height_*` answers the water surface minus
+`water_sink_m` over the sea (never below the floor). `node_3d.gd` keeps it at
+0.8 m (the water lets the wheels in before it carries) and, once an aircraft
+rests on the water below 30 kt, lowers it by 0.4 m/s: the aircraft goes down
+to the sea floor. Back over land or 6 m up, it resets.
+
+The heat shimmer (`ExhaustEffects`) reads the screen copy, which is taken
+before the sea is drawn: it is left out where the opaque scene behind the
+plume lies under the sea plane (it showed the green sea floor).
 
 Test: `DUSK_LAT=59.76 DUSK_LON=10.56 DUSK_HDG=15 DUSK_AGL_FT=2500 probe_dusk -- <out_dir> 12.5`.
 

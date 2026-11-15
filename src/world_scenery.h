@@ -76,6 +76,10 @@ namespace jsbgodot
         // ROAD_SURFACE_TOL_M of the terrain). NAN without patch data (the
         // bridge keeps its flat fallback).
         double ground_height_geodetic(double lat, double lon) const;
+        // How far the aircraft has sunk into the sea (m): the ground query over
+        // water answers the surface minus this, down to the sea floor.
+        void set_water_sink_m(double m);
+        double get_water_sink_m() const;
         // Terrain (patch or globe) plus the runway lift under a world
         // position, or the drawn road surface there when it is higher. The
         // position's own height is the hint for the road lookup: a car keeps
@@ -137,6 +141,7 @@ namespace jsbgodot
         uint64_t globe_id = 0;
         uint64_t vegetation_id = 0;
         uint64_t runways_id = 0;
+        double water_sink_m = 0.0;
         mutable uint64_t road_manager_id = 0;   // Scenery3D's S3DRoadManager child, found on first use
         static Node *live_node(uint64_t id);
         Node *road_manager_node() const;

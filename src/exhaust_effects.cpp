@@ -1,5 +1,6 @@
 #include "exhaust_effects.h"
 #include "jsbgodot.h"
+#include "geo_frame.h"
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/geometry_instance3d.hpp>
@@ -43,6 +44,13 @@ render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabl
 // (seen along the jet axis, where the cone is edge-on). UV.y runs along the
 // plume, UV.x round the cone / out from the axis on the discs.
 uniform sampler2D screen_tex : hint_screen_texture, repeat_disable, filter_linear;
+uniform sampler2D depth_tex : hint_depth_texture, repeat_disable, filter_nearest;
+// The sea surface is drawn after the screen copy: behind the plume the copy
+// holds the sea floor (green land cover), not the water. Where the opaque
+// scene lies under the sea plane (a point and the up direction, view space)
+// the shimmer is left out.
+uniform vec3 sea_point_view = vec3(0.0, -1.0e9, 0.0);
+uniform vec3 sea_up_view = vec3(0.0, 1.0, 0.0);
 instance uniform float power = 1.0;
 instance uniform float amplitude_m = 0.2;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -77,7 +85,17 @@ void fragment()
 	vec2 to_uv = vec2(PROJECTION_MATRIX[0][0], PROJECTION_MATRIX[1][1]) * 0.5 / dist;
 	vec2 uv = SCREEN_UV + off * 2.0 * amplitude_m * to_uv * fade;
 	ALBEDO = textureLod(screen_tex, uv, 0.0).rgb;
-	ALPHA = clamp(fade * 4.0, 0.0, 1.0);
+	float keep = 1.0;
+	float dz = texture(depth_tex, SCREEN_UV).x;
+	if (dz > 0.0)
+	{
+		vec4 vp = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, dz, 1.0);
+		float h = dot(vp.xyz / vp.w - sea_point_view, sea_up_view);
+		// a camera under the plane sees no water in front of the scene
+		float cam_h = dot(-sea_point_view, sea_up_view);
+		if (h < -0.02 && cam_h > 0.0) keep = 0.0;
+	}
+	ALPHA = clamp(fade * 4.0, 0.0, 1.0) * keep;
 }
 )";
 
@@ -493,6 +511,19 @@ void ExhaustEffects::_process(double delta)
 	if (ac == nullptr || nozzles.empty())
 	{
 		return;
+	}
+	// the sea plane under the aircraft, in the camera's frame (see the haze shader)
+	Camera3D *sea_cam = get_viewport() != nullptr ? get_viewport()->get_camera_3d() : nullptr;
+	if (sea_cam != nullptr && haze_material.is_valid())
+	{
+		const Vector3 ap = ac->get_global_position();
+		if (ap.is_finite() && ap.length() > 1.0e6)
+		{
+			const geo::Geodetic g = geo::geodetic_of(ap);
+			const Transform3D inv = sea_cam->get_global_transform().affine_inverse();
+			haze_material->set_shader_parameter("sea_point_view", inv.xform(geo::ecef_of(g.lat, g.lon, 0.0)));
+			haze_material->set_shader_parameter("sea_up_view", inv.basis.xform(geo::wun_basis(g.lat, g.lon).get_column(1)).normalized());
+		}
 	}
 	JSBGodot *fdm = Object::cast_to<JSBGodot>(jsb_obj);
 	if (fdm == nullptr || !fdm->is_initialized())
