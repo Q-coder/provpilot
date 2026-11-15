@@ -1167,7 +1167,7 @@ func _end_logged_flight() -> void:
 		return
 	var lat := 0.0
 	var lon := 0.0
-	if is_instance_valid(_ac) and _ac.global_position.length() > 1.0e6:
+	if is_instance_valid(_ac) and _ac.is_inside_tree() and _ac.global_position.length() > 1.0e6:
 		var g: Vector3 = W3DCoords.ecef_to_geodetic(_ac.global_position)
 		lat = g.x
 		lon = g.y

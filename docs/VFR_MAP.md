@@ -114,6 +114,13 @@ python scripts/generate_vfr_map_tiles.py --terrain-dir .../CH/terrain \
 - **Orientation** — two buttons left of the centre button: aircraft heading up
   (default) or north up (`[map] map_north_up`). North up, the aircraft symbol
   and the dashed nose line turn with the heading instead of the map.
+- **Sea** — where no tile lies the map is filled in the sea colour of the
+  tiles (a missing tile is open sea, docs/SEA.md), and sea samples are drawn
+  flat, without hillshade from the carved sea floor. Land outside every
+  installed region is therefore blue as well. Samples without data inside a
+  cell are transparent in the same colour (black bled into a dark line along
+  the edge of the data). `render2` in the cache signature: bump it when the
+  rendering of cached cells changes.
 - **Terrain checkbox** — the title bar's checkbox (`[map] map_background`)
   turns the background off: symbols, rings and ILS feathers on a plain fill.
 - **Redraw** — `_draw()` is throttled to ~10 Hz and only re-queued when
@@ -150,6 +157,6 @@ the 250 / 160 / 40 / 20 km views and checks the Terrain checkbox.
 
 ## Future Work
 
-- Water bodies composited into map tiles (elevation-band based).
+- Lakes composited into map tiles.
 - Airspace layer (CTR/TMA) once `airspace.json` lands (see
   SCENERY_ARCHITECTURE.md).

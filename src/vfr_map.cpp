@@ -1635,7 +1635,7 @@ void VfrMap::push_loader_sources()
     PackedStringArray purge;
     if (!terrain_paths.is_empty())
     {
-        String sig;
+        String sig = "render2;"; // bump when render_terrain_image changes what a cached cell looks like
         for (int i = 0; i < terrain_paths.size(); i++)
         {
             const String ov = String(terrain_paths[i]).trim_suffix("/").get_base_dir().path_join("map_overview").path_join("L2");
@@ -1875,6 +1875,12 @@ namespace
     constexpr int16_t OVERVIEW_NO_DATA = -32768;     // map_overview cells: no tile
     constexpr int16_t OVERVIEW_SEA = -32767;         // ... a sea level sample (the bake stores 0.01 m)
     const Color C_SEA(0.60f, 0.72f, 0.86f, 1.0f);   // sea level samples (the bake stores 0.01 m)
+    // The sea is drawn flat (no hillshade from the carved sea floor), at the
+    // brightness of level ground under the 45 degree light; the same colour
+    // fills the map where no tile lies: a missing tile is open sea.
+    constexpr float SEA_SHADE = 0.35f + 0.65f * 0.70710678f;
+    const Color C_SEA_DRAWN(float(uint8_t(C_SEA.r * SEA_SHADE * 255.0f)) / 255.0f, float(uint8_t(C_SEA.g * SEA_SHADE * 255.0f)) / 255.0f,
+            float(uint8_t(C_SEA.b * SEA_SHADE * 255.0f)) / 255.0f, 1.0f);
 
     Color tint_of(double elev)
     {
@@ -2060,7 +2066,12 @@ Ref<Image> VfrMap::render_terrain_image(const PackedStringArray &terrain_paths, 
             const float v = h[size_t(y) * S + x];
             if (v == NO_DATA)
             {
-                q[0] = q[1] = q[2] = q[3] = 0;
+                // transparent, in the sea fill's colour: black here bled into
+                // the edge of the data as a dark line (texture filtering)
+                q[0] = uint8_t(C_SEA.r * SEA_SHADE * 255.0f);
+                q[1] = uint8_t(C_SEA.g * SEA_SHADE * 255.0f);
+                q[2] = uint8_t(C_SEA.b * SEA_SHADE * 255.0f);
+                q[3] = 0;
                 continue;
             }
             const double dz_de = (at(x + 1, y, v) - at(x - 1, y, v)) / (2.0 * m_per_px);
@@ -2069,7 +2080,7 @@ Ref<Image> VfrMap::render_terrain_image(const PackedStringArray &terrain_paths, 
             const double norm = std::sqrt(nx * nx + ny * ny + nz * nz);
             const double shade = std::max(0.0, std::min(1.0, (nx * lx + ny * ly + nz * lz) / norm));
             const Color t = tint_of(v);
-            const double k = 0.35 + 0.65 * shade;
+            const double k = v < 0.05f ? double(SEA_SHADE) : 0.35 + 0.65 * shade;
             q[0] = uint8_t(std::min(255.0, t.r * k * 255.0));
             q[1] = uint8_t(std::min(255.0, t.g * k * 255.0));
             q[2] = uint8_t(std::min(255.0, t.b * k * 255.0));
@@ -2149,7 +2160,7 @@ void VfrMap::draw_world(CanvasItem *ci)
     ci->draw_set_transform(-map_area.position, 0.0, Vector2(1, 1));
     Ref<Font> font = ThemeDB::get_singleton()->get_default_theme()->get_font("font", "Label");
     double view_m = VIEW_WIDTHS_M[zoom_index];
-    ci->draw_rect(map_area, C_NO_TILE); // fill under missing tiles
+    ci->draw_rect(map_area, background ? C_SEA_DRAWN : C_NO_TILE); // no tile = open sea; plain fill without the terrain
 
     // ── Rotated map world (heading-up) ────────────────────────────────────
     // Local screen axes: +x right, +y down. Map axes in meters:

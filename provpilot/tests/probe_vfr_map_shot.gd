@@ -3,7 +3,7 @@ extends Node
 ## VFR map's zoom, optionally move / resize the frame, wait for the tiles and
 ## save the map frame's pixels (plus the whole viewport) as PNGs.
 ## Run NON-headless:
-##   godot --path provpilot res://tests/probe_vfr_map_shot.tscn -- <zoom_index 0-6> [out_dir] [resize_w,resize_h]
+##   godot --path provpilot res://tests/probe_vfr_map_shot.tscn -- <zoom_index 0-6> [out_dir] [resize_w,resize_h | -] [lat lon]
 ## Output: <out_dir>/vfr_map_z<zoom>.png (frame crop) and vfr_map_z<zoom>_full.png.
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -13,7 +13,10 @@ func _ready() -> void:
 	var root: Node = (load("res://node_3d.tscn") as PackedScene).instantiate()
 	add_child(root)
 	await get_tree().create_timer(3.0).timeout
-	root._on_welcome_flight_requested("c172p", 2682767.0, 1258797.0, 155.0)
+	var at := Vector2(2682767.0, 1258797.0)
+	if args.size() > 4:
+		at = Geo.wgs84_to_lv95(float(args[3]), float(args[4]))
+	root._on_welcome_flight_requested("c172p", at.x, at.y, 155.0)
 	var waited := 0.0
 	while not root.terrain_initialized and waited < 60.0:
 		await get_tree().create_timer(0.5).timeout
@@ -28,11 +31,15 @@ func _ready() -> void:
 		map.zoom_out()
 	while map.get_zoom_index() > zoom:
 		map.zoom_in()
-	if args.size() > 2:
+	if args.size() > 2 and args[2] != "-":
 		var wh := args[2].split(",")
 		var cur: Vector2 = map.get_frame_size()
 		map.resize_frame_by(Vector2(float(wh[0]) - cur.x, float(wh[1]) - cur.y))
 		map.move_frame_by(Vector2(-200.0, 120.0))
+	waited = 0.0
+	while root._fly_loading and waited < 40.0:   # the map is fed once the destination has settled
+		await get_tree().create_timer(0.5).timeout
+		waited += 0.5
 	await get_tree().create_timer(8.0).timeout
 	var img: Image = get_viewport().get_texture().get_image()
 	img.save_png(out_dir.path_join("vfr_map_z%d_full.png" % zoom))

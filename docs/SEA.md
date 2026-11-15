@@ -79,4 +79,6 @@ Test: `probe_view -- <out_dir> <lat> <lon> <alt_m> <pitch_down> <bearing ...>` (
   sea floor painted sand instead of the land-cover base green.
 - Stage 3: waves and swell from the wind, foam at the shore, whitecaps; the
   sky's actual colours in the reflection (sunset), cloud reflections.
-- VFR map and map_overview tiles do not know the cut yet.
+- The VFR map shows the cut once `build_map_overview.py` has run after the
+  sea bake (done for the seven coastal regions 2026-11-15); the open sea is
+  the map's fill colour.
