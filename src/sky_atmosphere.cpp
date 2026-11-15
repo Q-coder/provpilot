@@ -40,6 +40,9 @@ void SkyAtmosphere::_bind_methods()
 	ClassDB::bind_method(D_METHOD("get_sun_color_now"), &SkyAtmosphere::get_sun_color_now);
 	ClassDB::bind_method(D_METHOD("get_sun_energy_now"), &SkyAtmosphere::get_sun_energy_now);
 	ClassDB::bind_method(D_METHOD("get_ambient_energy_now"), &SkyAtmosphere::get_ambient_energy_now);
+	ClassDB::bind_method(D_METHOD("get_fog_color_now"), &SkyAtmosphere::get_fog_color_now);
+	ClassDB::bind_method(D_METHOD("get_cloud_ambient_now"), &SkyAtmosphere::get_cloud_ambient_now);
+	ClassDB::bind_method(D_METHOD("get_twilight_now"), &SkyAtmosphere::get_twilight_now);
 	ClassDB::bind_method(D_METHOD("get_time_seconds"), &SkyAtmosphere::get_time_seconds);
 	ClassDB::bind_method(D_METHOD("set_time_seconds", "value"), &SkyAtmosphere::set_time_seconds);
 	ClassDB::bind_method(D_METHOD("get_clear_air"), &SkyAtmosphere::get_clear_air);
@@ -54,6 +57,9 @@ void SkyAtmosphere::_bind_methods()
 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "sun_color_now"), "", "get_sun_color_now");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "sun_energy_now"), "", "get_sun_energy_now");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "ambient_energy_now"), "", "get_ambient_energy_now");
+	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "fog_color_now"), "", "get_fog_color_now");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cloud_ambient_now"), "", "get_cloud_ambient_now");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "twilight_now"), "", "get_twilight_now");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "time_seconds"), "set_time_seconds", "get_time_seconds");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "clear_air"), "set_clear_air", "get_clear_air");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "base_sun_energy"), "", "get_base_sun_energy");
@@ -73,6 +79,9 @@ void SkyAtmosphere::set_observer_lon(double v) { observer_lon = v; }
 Vector3 SkyAtmosphere::get_sun_dir_now() const { return sun_dir_now; }
 Color SkyAtmosphere::get_sun_color_now() const { return sun_color_now; }
 double SkyAtmosphere::get_sun_energy_now() const { return sun_energy_now; }
+Color SkyAtmosphere::get_fog_color_now() const { return fog_color_now; }
+double SkyAtmosphere::get_cloud_ambient_now() const { return cloud_ambient_now; }
+double SkyAtmosphere::get_twilight_now() const { return twilight_now; }
 double SkyAtmosphere::get_ambient_energy_now() const { return ambient_energy_now; }
 double SkyAtmosphere::get_time_seconds() const { return time_seconds; }
 void SkyAtmosphere::set_time_seconds(double v) { time_seconds = v; }
@@ -92,6 +101,8 @@ void SkyAtmosphere::setup(Environment *env, DirectionalLight3D *sun, Directional
 	if (environment != nullptr)
 	{
 		base_fog_density = environment->get_fog_density();
+		base_fog_color = environment->get_fog_light_color();
+		base_fog_light_energy = environment->get_fog_light_energy();
 		base_ambient_energy = environment->get_ambient_light_energy();
 		base_glow_intensity = environment->get_glow_intensity();
 		install_sky_material();
@@ -197,7 +208,7 @@ void SkyAtmosphere::update(double delta, Viewport *viewport)
 			sky_material->set_shader_parameter("planet_center", cam->get_global_position() - cam_normal * (PLANET_RADIUS + alt));
 		}
 	}
-	apply_altitude(alt, day, space);
+	apply_altitude(alt, day, space, sin_elev);
 }
 
 void SkyAtmosphere::install_sky_material()
@@ -228,8 +239,22 @@ void SkyAtmosphere::install_sky_material()
 // atmosphere sky gives little usable ambient, and a normal-independent floor
 // keeps terrain with odd normals readable). The background stays on the sky
 // shader, which renders space black + the atmospheric limb by itself.
-void SkyAtmosphere::apply_altitude(double alt, double day, double space)
+void SkyAtmosphere::apply_altitude(double alt, double day, double space, double sin_elev)
 {
+	// The haze and the clouds are lit by the sky, and the sky fades through
+	// twilight: full with the sun 5 deg up, dark with it 8 deg down. A
+	// constant fog light left the ground haze and every distant cloud at
+	// their daytime brightness all night. Warm near the horizon sun.
+	double tw = Math::clamp((sin_elev + 0.14) / 0.23, 0.0, 1.0);
+	tw = tw * tw * (3.0 - 2.0 * tw);
+	twilight_now = Math::lerp(tw, 1.0, space);
+	const double sky_light = Math::lerp(FOG_NIGHT_LIGHT, 1.0, twilight_now * twilight_now);
+	const double dusk = Math::clamp(1.0 - std::fabs(sin_elev) / 0.12, 0.0, 1.0) * (1.0 - space);
+	const Color fog_tint = base_fog_color.lerp(Color(0.80, 0.62, 0.55), 0.35 * dusk);
+	environment->set_fog_light_color(fog_tint);
+	environment->set_fog_light_energy(base_fog_light_energy * sky_light);
+	fog_color_now = Color(fog_tint.r * sky_light, fog_tint.g * sky_light, fog_tint.b * sky_light);
+	cloud_ambient_now = Math::lerp(AMBIENT_NIGHT_ENERGY, AMBIENT_DAY_ENERGY, twilight_now * twilight_now);
 	double t = Math::clamp(HAZE_LAYER_M / Math::max(alt, HAZE_LAYER_M), 0.0, 1.0);
 	if (alt >= FOG_ZERO_ALT_M || clear_air)
 	{

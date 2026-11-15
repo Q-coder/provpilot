@@ -374,6 +374,40 @@ Dictionary ItAutoflight::get_published() const
 	{
 		d[String(FMA("blink-")) + String::num_int64(w)] = blink_active[w] ? 1.0 : 0.0;
 	}
+	// One set of windows per FMA (instrumentation/fma/s1|s2/...): the modes
+	// above, or the DFGC power-up built-in test of this side's computer
+	// (fma.nas: "DFGC 973 BOX n / PWR UP TST" in all four windows, 2 s on and
+	// 2 s off) while the FDM runs it (/systems/dfgs/bit-n/active: at power-up,
+	// and on the ground two minutes after the nose wheel came down with the
+	// autopilot and the autothrottle off).
+	static const char *const names[4][2] = {{"thr-mode-a", "thr-mode-b"}, {"arm-mode-a", "arm-mode-b"}, {"roll-mode-a", "roll-mode-b"}, {"pitch-mode-a", "pitch-mode-b"}};
+	const bool ap = b(OUT("ap1")) || b(OUT("ap2"));
+	for (int n = 0; n < 2; n++)
+	{
+		const String side = String("instrumentation/fma/s") + String::num_int64(n + 1) + String("/");
+		const bool bit = inb(n == 0 ? "systems/dfgs/bit-1/active" : "systems/dfgs/bit-2/active");
+		if (bit)
+		{
+			const bool lit = std::fmod(elapsed() < 0.0 ? 0.0 : elapsed(), 4.0) < 2.0;
+			const String texts[4][2] = {{"DFGC", "PWR"}, {"973", "UP"}, {"", "TST"}, {String("BOX") + String::num_int64(n + 1), ""}};
+			for (int w = 0; w < 4; w++)
+			{
+				d[side + String(names[w][0])] = lit ? texts[w][0] : String();
+				d[side + String(names[w][1])] = lit ? texts[w][1] : String();
+			}
+		}
+		else
+		{
+			for (int w = 0; w < 4; w++)
+			{
+				d[side + String(names[w][0])] = d.get(String("instrumentation/fma/") + String(names[w][0]), String());
+				d[side + String(names[w][1])] = d.get(String("instrumentation/fma/") + String(names[w][1]), String());
+			}
+		}
+		d[side + String("show-thr")] = (bit || b(OUT("athr"))) ? 1.0 : 0.0;
+		d[side + String("show-modes")] = (bit || ap || b(n == 0 ? OUT("fd1") : OUT("fd2"))) ? 1.0 : 0.0;
+		d[side + String("bit")] = bit ? 1.0 : 0.0;
+	}
 	return d;
 }
 

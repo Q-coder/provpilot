@@ -1675,6 +1675,12 @@ bool JSBGodot::load_aircraft(const String &aircraft_id, const String &jsbsim_mod
     // process working directory or RootDir state.
     bool was_loaded = switching_models;
     // (the variant-aware folders computed above, as std::string via named CharStrings)
+    // The step the FDM runs at, set BEFORE the load: every flight-control and
+    // system component keeps the dt of its construction (FGFCSComponent), and
+    // JSBSim's default is 1/120 s. Loaded at that and stepped at 240 Hz, all
+    // actuators, rate limits, lags, timers and controller integrals ran at
+    // twice their speed (a 7 s lamp in 3.5 s, the DFGS's 120 s timer in 60 s).
+    FDMExec->Setdt(1.0 / FDM_TARGET_HZ);
     if (FDMExec->LoadModel(SGPath(std::string(aircraft_dir_cs.get_data())),
                            SGPath(std::string(engine_dir_cs.get_data())),
                            SGPath(std::string(systems_dir_cs.get_data())),

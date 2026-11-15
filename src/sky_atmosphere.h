@@ -61,6 +61,9 @@ namespace jsbgodot
         Color get_sun_color_now() const;
         double get_sun_energy_now() const;
         double get_ambient_energy_now() const;
+        Color get_fog_color_now() const;
+        double get_cloud_ambient_now() const;
+        double get_twilight_now() const;
         double get_time_seconds() const; void set_time_seconds(double v);
         bool get_clear_air() const; void set_clear_air(bool v);
         double get_base_sun_energy() const;
@@ -78,6 +81,7 @@ namespace jsbgodot
         static constexpr double SKY_TAPER_ALT_M = 100000.0; // fully tapered at/above
         static constexpr double AMBIENT_DAY_ENERGY = 0.7;
         static constexpr double AMBIENT_NIGHT_ENERGY = 0.04;
+        static constexpr double FOG_NIGHT_LIGHT = 0.012;    // the haze's brightness at night, of its day value
         // Camera altitudes between which the local dusk fade gives way to
         // full-strength global sunlight (terminator on the globe).
         static constexpr double SUN_LOCAL_ALT_M = 30000.0;
@@ -95,6 +99,14 @@ namespace jsbgodot
         Color sun_color_now = Color(1.0, 0.97, 0.92);
         double sun_energy_now = 1.0;
         double ambient_energy_now = 0.7;
+        // Twilight: how bright the sky still is (0 night .. 1 day), the sun from
+        // 8 deg under the horizon to 5 deg over it. Drives the fog's light and
+        // the clouds' sky light (the sun's own light ends at the horizon).
+        double twilight_now = 1.0;
+        Color base_fog_color = Color(0.7, 0.75, 0.85);
+        double base_fog_light_energy = 1.0;
+        Color fog_color_now = Color(0.7, 0.75, 0.85);
+        double cloud_ambient_now = 0.7;
         bool use_system_time = true;
         int manual_minutes = 720;
         double time_seconds = 43200.0; // local time-of-day (s)
@@ -106,7 +118,7 @@ namespace jsbgodot
         bool clear_air = false; // scenery editor: no fog at all
 
         void install_sky_material();
-        void apply_altitude(double alt, double day, double space);
+        void apply_altitude(double alt, double day, double space, double sin_elev);
         void orient_sun(const Vector3 &dir_to_sun);
         static Color sun_color(double sin_elev);
         Vector2 current_time(); // (day_of_year, utc_hours)

@@ -1,5 +1,5 @@
 {
- "_comment": "Label3D texts laid out on a screen mesh (FGAnimator::load_screen_texts): 'cells' is one list per column, top to bottom; the labels show while 'power' >= 24 V, a column while any of its 'show' properties is true, and blank at 1 Hz while its 'blink' property is true; 'font' is a TTF next to this file, 'colors' one per column. The MD-80 FMA windows THR / ARM / ROLL / PITCH, each two lines (instrumentation/fma/*-mode-a / -b, written by the autoflight module): green active modes, amber armed ones, the 16-segment face of fma.svg; THR shows with the autothrottle on, the others with an autopilot or this side's flight director on (fma.nas).",
+ "_comment": "Label3D texts laid out on a screen mesh (FGAnimator::load_screen_texts): 'cells' is one list per column, top to bottom; the labels show while 'power' >= 24 V, a column while any of its 'show' properties is true, and blank at 1 Hz while its 'blink' property is true; 'font' is a TTF next to this file, 'colors' one per column. The MD-80 FMA windows THR / ARM / ROLL / PITCH, each two lines (instrumentation/fma/*-mode-a / -b, written by the autoflight module): green active modes, amber armed ones, the 16-segment face of fma.svg; THR shows with the autothrottle on, the others with an autopilot or this side's flight director on (fma.nas). Each FMA reads its own set (instrumentation/fma/s1|s2/...): the modes, or its computer's power-up test (DFGC 973 BOX n / PWR UP TST).",
  "screens": [
   {
    "node": "FMA1__fma1_screen",
@@ -8,20 +8,20 @@
    "rows": 2,
    "cells": [
     [
-     "instrumentation/fma/thr-mode-a",
-     "instrumentation/fma/thr-mode-b"
+     "instrumentation/fma/s1/thr-mode-a",
+     "instrumentation/fma/s1/thr-mode-b"
     ],
     [
-     "instrumentation/fma/arm-mode-a",
-     "instrumentation/fma/arm-mode-b"
+     "instrumentation/fma/s1/arm-mode-a",
+     "instrumentation/fma/s1/arm-mode-b"
     ],
     [
-     "instrumentation/fma/roll-mode-a",
-     "instrumentation/fma/roll-mode-b"
+     "instrumentation/fma/s1/roll-mode-a",
+     "instrumentation/fma/s1/roll-mode-b"
     ],
     [
-     "instrumentation/fma/pitch-mode-a",
-     "instrumentation/fma/pitch-mode-b"
+     "instrumentation/fma/s1/pitch-mode-a",
+     "instrumentation/fma/s1/pitch-mode-b"
     ]
    ],
    "font": "fonts/Std16Seg.ttf",
@@ -33,22 +33,16 @@
    ],
    "show": [
     [
-     "it-autoflight/output/athr"
+     "instrumentation/fma/s1/show-thr"
     ],
     [
-     "it-autoflight/output/ap1",
-     "it-autoflight/output/ap2",
-     "it-autoflight/output/fd1"
+     "instrumentation/fma/s1/show-modes"
     ],
     [
-     "it-autoflight/output/ap1",
-     "it-autoflight/output/ap2",
-     "it-autoflight/output/fd1"
+     "instrumentation/fma/s1/show-modes"
     ],
     [
-     "it-autoflight/output/ap1",
-     "it-autoflight/output/ap2",
-     "it-autoflight/output/fd1"
+     "instrumentation/fma/s1/show-modes"
     ]
    ],
    "blink": [
@@ -66,20 +60,20 @@
    "rows": 2,
    "cells": [
     [
-     "instrumentation/fma/thr-mode-a",
-     "instrumentation/fma/thr-mode-b"
+     "instrumentation/fma/s2/thr-mode-a",
+     "instrumentation/fma/s2/thr-mode-b"
     ],
     [
-     "instrumentation/fma/arm-mode-a",
-     "instrumentation/fma/arm-mode-b"
+     "instrumentation/fma/s2/arm-mode-a",
+     "instrumentation/fma/s2/arm-mode-b"
     ],
     [
-     "instrumentation/fma/roll-mode-a",
-     "instrumentation/fma/roll-mode-b"
+     "instrumentation/fma/s2/roll-mode-a",
+     "instrumentation/fma/s2/roll-mode-b"
     ],
     [
-     "instrumentation/fma/pitch-mode-a",
-     "instrumentation/fma/pitch-mode-b"
+     "instrumentation/fma/s2/pitch-mode-a",
+     "instrumentation/fma/s2/pitch-mode-b"
     ]
    ],
    "font": "fonts/Std16Seg.ttf",
@@ -91,22 +85,16 @@
    ],
    "show": [
     [
-     "it-autoflight/output/athr"
+     "instrumentation/fma/s2/show-thr"
     ],
     [
-     "it-autoflight/output/ap1",
-     "it-autoflight/output/ap2",
-     "it-autoflight/output/fd2"
+     "instrumentation/fma/s2/show-modes"
     ],
     [
-     "it-autoflight/output/ap1",
-     "it-autoflight/output/ap2",
-     "it-autoflight/output/fd2"
+     "instrumentation/fma/s2/show-modes"
     ],
     [
-     "it-autoflight/output/ap1",
-     "it-autoflight/output/ap2",
-     "it-autoflight/output/fd2"
+     "instrumentation/fma/s2/show-modes"
     ]
    ],
    "blink": [

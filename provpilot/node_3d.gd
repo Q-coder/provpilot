@@ -276,8 +276,8 @@ func _process(delta: float) -> void:
 	if _clouds:
 		var env: Environment = _sky.environment
 		_clouds.update(cam, _sky.sun_dir_now, _sky.sun_color_now, _sky.sun_energy_now,
-			env.ambient_light_color if env else Color(0.55, 0.65, 0.85), _sky.ambient_energy_now,
-			env.fog_density if env and env.fog_enabled else 0.0, env.fog_light_color if env else Color(0.7, 0.75, 0.85), delta)
+			env.ambient_light_color if env else Color(0.55, 0.65, 0.85), _sky.cloud_ambient_now,
+			env.fog_density if env and env.fog_enabled else 0.0, _sky.fog_color_now, delta)
 	_hud.set_time_text("Time: " + _sky.get_time_string())
 
 	# Post-Fly loading: the destination settles while the intro zoom plays

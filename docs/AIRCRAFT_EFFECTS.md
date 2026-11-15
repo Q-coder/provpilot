@@ -72,3 +72,11 @@ about 3 000 camera-facing quads per engine, rebuilt into one mesh per frame.
 
 Test: `tests/probe_exhaust.tscn -- <out_dir> [id] [ground|air|both]` (real
 renderer) saves screenshots with the effect on and off.
+
+## Sky light through twilight (2026-11-15)
+
+`SkyAtmosphere` computes a twilight factor (the sun from 8 deg under the
+horizon to 5 deg over it) and scales the fog's light and the clouds' sky light
+with it (`fog_color_now`, `cloud_ambient_now`; a warm tint near the horizon
+sun). The fog light used to be constant: ground haze and distant clouds kept
+their daytime brightness all night. Test: `probe_dusk -- <out_dir> [hours ...]`.

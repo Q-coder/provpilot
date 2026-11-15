@@ -991,3 +991,17 @@ as upstream.
   the nose strut compressed by braking. Corrected to 2.55 / 2.481 in
   `animations.json` and in the source XML — re-apply after a rebuild from a
   fresh FlightGear package. Test: `probe_brake_dip -- md80 "^LGN"`.
+
+## DFGC power-up test on the FMAs, FDM step at load (2026-11-15)
+
+- Each FMA reads its own windows (`instrumentation/fma/s1|s2/...`, written by
+  `ItAutoflight::get_published`): the modes, or "DFGC 973 BOX n / PWR UP TST"
+  (2 s on, 2 s off, fma.nas) while the FDM's `/systems/dfgs/bit-n/active` runs:
+  8 s at power-up, and on the ground 120 s after the nose wheel came down with
+  the autopilots and the autothrottle off, EPR below 1.1 and under 60 kt.
+  Test: `probe_md80_bit -- [shot_dir] [seconds]` (ground start: the test shows
+  after two minutes).
+- `JSBGodot` sets the FDM step (1/240 s) before `LoadModel`: FCS and system
+  components keep the dt of their construction, and with JSBSim's default
+  1/120 s every actuator, rate limit, lag, timer and integral of every aircraft
+  ran at twice its speed.

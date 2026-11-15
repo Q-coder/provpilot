@@ -150,21 +150,21 @@ func _ready() -> void:
 	root._aircraft.get_fg_controls().set_state(st_n)
 	# landing lights: the cockpit switches light the FDM's exterior-light levels, which drive the fixtures
 	var al = root._aircraft.get_aircraft_lights()
-	_check(al != null and al.fixture_count_of("landing") == 3 and al.fixture_count_of("flood") == 4, "MD-80 has 3 landing light fixtures and 4 cockpit floods")
+	_check(al != null and al.fixture_count_of("landing") == 4 and al.fixture_count_of("flood") == 4, "MD-80 has 4 landing light fixtures (two wing lamps, two nose lamps) and 4 cockpit floods")
 	var st_l: Dictionary = root._aircraft.get_fg_controls().get_state()
 	st_l["controls/lighting/landing-light-n"] = 1.0
 	st_l["controls/lighting/capt-flood"] = 1.0
 	root._aircraft.get_fg_controls().set_state(st_l)
 	await get_tree().create_timer(3.0).timeout
-	print("  [diag] lights: nose level %.2f (FDM %s), left %.2f, capt flood %.2f" % [al.get_fixture_level("landing", 1), str(jsb.get_property("/systems/exterior-lights/nose-landing-light")), al.get_fixture_level("landing", 0), al.get_fixture_level("flood", 0)])
-	_check(al.get_fixture_level("landing", 1) > 0.9, "nose landing light lit from the switch (%.2f)" % al.get_fixture_level("landing", 1))
+	print("  [diag] lights: nose level %.2f (FDM %s), left %.2f, capt flood %.2f" % [al.get_fixture_level("landing", 2), str(jsb.get_property("/systems/exterior-lights/nose-landing-light")), al.get_fixture_level("landing", 0), al.get_fixture_level("flood", 0)])
+	_check(al.get_fixture_level("landing", 2) > 0.9, "nose landing light lit from the switch (%.2f)" % al.get_fixture_level("landing", 2))
 	_check(al.get_fixture_level("flood", 0) > 0.9, "captain's flood follows the knob (%.2f)" % al.get_fixture_level("flood", 0))
 	# nose light DIM: the systems give 0.6 at the switch's middle position; the spot's energy follows the level
 	st_l = root._aircraft.get_fg_controls().get_state()
 	st_l["controls/lighting/landing-light-n"] = 0.5
 	root._aircraft.get_fg_controls().set_state(st_l)
 	await get_tree().create_timer(3.0).timeout
-	_check(absf(al.get_fixture_level("landing", 1) - 0.6) < 0.05, "nose landing light at DIM reads the systems' 0.6 (%.2f)" % al.get_fixture_level("landing", 1))
+	_check(absf(al.get_fixture_level("landing", 2) - 0.6) < 0.05, "nose landing light at DIM reads the systems' 0.6 (%.2f)" % al.get_fixture_level("landing", 2))
 	# flood knobs: rotate animations without a binding in FlightGear, given a property-adjust action by the cfg
 	var bound: PackedStringArray = root._aircraft.get_fg_controls().binding_properties()
 	_check(bound.has("controls/lighting/capt-flood") and bound.has("controls/lighting/fo-flood") and bound.has("controls/lighting/pedestal-flood") and bound.has("controls/lighting/overhead-flood"), "the four flood knobs are clickable (knob_actions)")
