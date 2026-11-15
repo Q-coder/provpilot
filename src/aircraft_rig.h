@@ -12,6 +12,8 @@
 #include <godot_cpp/variant/vector3.hpp>
 
 #include "aircraft_config.h"
+#include "gear_struts.h"
+#include "exhaust_effects.h"
 #include "aircraft_lights.h"
 #include "camera_rig.h"
 #include "cockpit_controls.h"
@@ -152,6 +154,9 @@ namespace jsbgodot
         Ref<CockpitControls> get_cockpit_controls() const;
         Ref<EngineSound> get_engine_sound() const;
         Ref<FGBridge> get_fg_bridge() const;
+        // Strut shift of each configured gear unit, metres up from the drawn pose (tests).
+        PackedFloat64Array get_strut_shifts() const;
+        ExhaustEffects *get_exhaust_effects() const;
         Ref<FGControls> get_fg_controls() const;
         FGSounds *get_fg_sounds() const;
         Ref<FGPropertyRules> get_fg_property_rules() const;
@@ -241,6 +246,9 @@ namespace jsbgodot
         Array landing_props, flood_props, landing_switch_props; // [lights] *_props (see setup)
         double landing_switch_on = 1.0, landing_switch_off = 0.0;
         Object *last_jsb = nullptr;
+        GearStruts gear_struts;          // wheels pinned to the FDM's gear contacts ([gear] strut_*)
+        void setup_gear_struts();
+        ExhaustEffects *exhaust = nullptr; // heat shimmer and contrails ([exhaust]); a child of the host
 
         bool has_fg_sounds() const;
         void sync_parking_brake(Object *jsb);

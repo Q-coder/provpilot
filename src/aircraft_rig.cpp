@@ -69,6 +69,8 @@ void AircraftRig::_bind_methods()
 	ClassDB::bind_method(D_METHOD("get_parking_brake"), &AircraftRig::get_parking_brake);
 	ClassDB::bind_method(D_METHOD("set_parking_brake", "on"), &AircraftRig::set_parking_brake);
 	ClassDB::bind_method(D_METHOD("get_fg_bridge"), &AircraftRig::get_fg_bridge);
+	ClassDB::bind_method(D_METHOD("get_strut_shifts"), &AircraftRig::get_strut_shifts);
+	ClassDB::bind_method(D_METHOD("get_exhaust_effects"), &AircraftRig::get_exhaust_effects);
 	ClassDB::bind_method(D_METHOD("get_fg_controls"), &AircraftRig::get_fg_controls);
 	ClassDB::bind_method(D_METHOD("get_fg_property_rules"), &AircraftRig::get_fg_property_rules);
 	ClassDB::bind_method(D_METHOD("get_autoflight"), &AircraftRig::get_autoflight);
@@ -517,6 +519,8 @@ void AircraftRig::resolve_nodes(Object *p_jsb)
 	ControlSurfaces *cs = control_surfaces.ptr();
 	cs->reset();
 	cockpit_controls->reset();
+	gear_struts.reset();
+	fg_bridge->clear_compression_norms();
 
 	struct Surface
 	{
@@ -585,6 +589,18 @@ void AircraftRig::resolve_nodes(Object *p_jsb)
 	// FlightGear select cannot re-show them.
 	setup_aircraft_lights();
 	setup_fg_animations();
+	setup_gear_struts();
+	if (exhaust == nullptr && host != nullptr)
+	{
+		exhaust = memnew(ExhaustEffects);
+		exhaust->set_name("ExhaustEffects");
+		host->add_child(exhaust);
+	}
+	if (exhaust != nullptr)
+	{
+		exhaust->setup(ac_node, p_jsb);
+		exhaust->configure(cfg);
+	}
 	setup_fg_sounds();
 	setup_fg_property_rules();
 	setup_autoflight();
@@ -692,6 +708,89 @@ void AircraftRig::resolve_gear_legs(Object *p_jsb)
 	ap->pause();
 	UtilityFunctions::print("Gear animation '", gear_anim_name, "' found (length=", clip->get_length(), "s)");
 	cs->set_gear_anim(ap, clip->get_length());
+}
+
+// Strut compression from cfg [gear] (src/gear_struts.h), one entry per FDM
+// gear unit in the FDM's order:
+//   strut_tyres     the tyre meshes (node names, or paths under the model root)
+//   strut_travel_m  FlightGear models: metres of wheel travel per unit of
+//                   gear/gear[n]/compression-norm (the oleo translate's factor)
+//   strut_nodes     other models: the nodes to move (default: the tyres)
+//   strut_range_m   "down, up" limits from the drawn pose, metres
+//   strut_units     FDM unit indices, when not 0, 1, 2 ...
+void AircraftRig::setup_gear_struts()
+{
+	if (cfg.is_null())
+	{
+		return;
+	}
+	const Array tyres = cfg->get_string_array("gear", "strut_tyres", Array());
+	if (tyres.is_empty())
+	{
+		return;
+	}
+	const Array nodes = cfg->get_string_array("gear", "strut_nodes", Array());
+	const Array travel = cfg->get_string_array("gear", "strut_travel_m", Array());
+	const Array range = cfg->get_string_array("gear", "strut_range_m", Array());
+	const Array unit_idx = cfg->get_string_array("gear", "strut_units", Array());
+	Node *root = get_model_root();
+	auto find = [&](const String &ref) -> Node3D * {
+		const String r = ref.strip_edges();
+		if (r.is_empty())
+		{
+			return nullptr;
+		}
+		if (r.contains("/"))
+		{
+			return resolve_model_node(r);
+		}
+		return root != nullptr ? Object::cast_to<Node3D>(root->find_child(r, true, false)) : nullptr;
+	};
+	for (int i = 0; i < tyres.size(); i++)
+	{
+		GearStruts::Unit u;
+		u.fdm_unit = i < unit_idx.size() ? String(unit_idx[i]).strip_edges().to_int() : i;
+		u.tyre = Object::cast_to<MeshInstance3D>(find(tyres[i]));
+		if (u.tyre == nullptr)
+		{
+			UtilityFunctions::print("WARNING: gear strut tyre mesh not found: ", tyres[i]);
+			continue;
+		}
+		if (!travel.is_empty())
+		{
+			u.travel_m = String(travel[MIN(i, travel.size() - 1)]).strip_edges().to_float();
+			u.min_m = -0.1;
+			u.max_m = 0.6;
+		}
+		else
+		{
+			u.node = i < nodes.size() ? find(nodes[i]) : nullptr;
+			if (u.node == nullptr)
+			{
+				u.node = u.tyre;
+			}
+		}
+		if (range.size() >= 2)
+		{
+			u.min_m = String(range[0]).strip_edges().to_float();
+			u.max_m = String(range[1]).strip_edges().to_float();
+		}
+		gear_struts.add_unit(u);
+	}
+	UtilityFunctions::print("Gear struts: ", gear_struts.unit_count(), " wheels follow the FDM's gear contacts (",
+			travel.is_empty() ? "node shift" : "FlightGear compression-norm", ")");
+}
+
+ExhaustEffects *AircraftRig::get_exhaust_effects() const { return exhaust; }
+
+PackedFloat64Array AircraftRig::get_strut_shifts() const
+{
+	PackedFloat64Array out;
+	for (int i = 0; i < gear_struts.unit_count(); i++)
+	{
+		out.push_back(gear_struts.shift_m(i));
+	}
+	return out;
 }
 
 void AircraftRig::resolve_levers(Object *p_jsb)
@@ -964,7 +1063,14 @@ void AircraftRig::update(Object *p_jsb, double delta, double user_volume_pct)
 	{
 		return;
 	}
+	// wheels on the FDM's gear contacts: the control surfaces rewrite the
+	// wheel transforms from their drawn pose, the strut shift goes on top
+	gear_struts.undo_node_shifts();
 	control_surfaces->update(p_jsb, delta);
+	if (!gear_struts.empty())
+	{
+		gear_struts.apply_node_shifts(ac_node, Object::cast_to<JSBGodot>(p_jsb), gear_retractable ? control_surfaces->get_gear_visual_pos() : 1.0);
+	}
 	// the engine loop is driven from update_systems() (it runs during the
 	// intro zoom too, with the same sounds_active gate as the FlightGear set)
 }
@@ -1373,6 +1479,17 @@ void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *renderin
 	{
 		// last frame's autoflight state reaches the FDM mirror with this collect
 		fg_bridge->set_extra_properties(autoflight->get_published());
+	}
+	if (!gear_struts.empty())
+	{
+		gear_struts.update_fg(ac_node, fdm, gear_retractable ? fdm->get_gear_pos() : 1.0);
+		for (int i = 0; i < gear_struts.unit_count(); i++)
+		{
+			if (gear_struts.is_fg(i))
+			{
+				fg_bridge->set_compression_norm(gear_struts.fdm_unit(i), gear_struts.norm(i));
+			}
+		}
 	}
 	Dictionary props = fg_bridge->collect(p_jsb, airborne, night);
 	if (mcdu.is_valid())

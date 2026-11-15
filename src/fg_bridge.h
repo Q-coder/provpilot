@@ -87,6 +87,11 @@ namespace jsbgodot
         // The nose gear's full steering angle ([jsbsim] nose_steer_max_deg): FlightGear's
         // gear/gear[0]/steering-norm is the steering angle over this maximum.
         double get_nose_steer_max_deg() const; void set_nose_steer_max_deg(double v);
+        // Strut compression per gear unit from GearStruts (the wheel pinned to
+        // the FDM's contact point); without it the FDM's compression over a
+        // nominal oleo travel.
+        void set_compression_norm(int unit, double norm);
+        void clear_compression_norms();
         void set_surface_norm_per_deg(double elevator, double rudder);
         // The animator's / sound set's property names to pull from the FDM.
         void set_mirror_pull_keys(const PackedStringArray &keys);
@@ -134,6 +139,8 @@ namespace jsbgodot
         String power_property;
         double power_threshold = 24.0;
         double nose_steer_max_deg = 20.0;
+        double compression_norm[3] = {0.0, 0.0, 0.0};
+        bool compression_set[3] = {false, false, false};
         // [animation] elevator/rudder_pos_norm_per_deg: FlightGear models built
         // against YASim read surface-positions/*-pos-norm scaled past +-1
         // (the ASK 21: +-4 for full travel); 0 = the FDM's own norm

@@ -117,6 +117,21 @@ void FGBridge::set_surface_norm_per_deg(double elevator, double rudder)
 }
 double FGBridge::get_nose_steer_max_deg() const { return nose_steer_max_deg; }
 void FGBridge::set_nose_steer_max_deg(double v) { nose_steer_max_deg = v; }
+void FGBridge::set_compression_norm(int unit, double norm)
+{
+	if (unit >= 0 && unit < GEAR_UNITS)
+	{
+		compression_norm[unit] = norm;
+		compression_set[unit] = true;
+	}
+}
+void FGBridge::clear_compression_norms()
+{
+	for (int i = 0; i < GEAR_UNITS; i++)
+	{
+		compression_set[i] = false;
+	}
+}
 double FGBridge::get_power_threshold() const { return power_threshold; }
 void FGBridge::set_power_threshold(double v) { power_threshold = v; }
 void FGBridge::set_mirror_pull_keys(const PackedStringArray &keys) { pull_keys = keys; }
@@ -718,7 +733,7 @@ void FGBridge::gear(JSBGodot *jsb, Dictionary &p, bool airborne)
 	{
 		p[idx("gear/gear[%d]/position-norm", i)] = gear_pos_all;
 		const double comp_ft = jsb->get_property(idx("gear/unit[%d]/compression-ft", i));
-		p[idx("gear/gear[%d]/compression-norm", i)] = Math::clamp(comp_ft / OLEO_TRAVEL_FT[i], 0.0, 1.0);
+		p[idx("gear/gear[%d]/compression-norm", i)] = compression_set[i] ? compression_norm[i] : Math::clamp(comp_ft / OLEO_TRAVEL_FT[i], 0.0, 1.0);
 		const double wow = jsb->get_property(idx("gear/unit[%d]/WOW", i));
 		const double wheel_fps = jsb->get_property(idx("gear/unit[%d]/wheel-speed-fps", i));
 		const double roll_ms = std::abs(wheel_fps) > 1e-6 ? wheel_fps * 0.3048 : (wow > 0.5 ? ground_speed_ms : 0.0);

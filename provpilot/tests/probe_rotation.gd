@@ -110,6 +110,7 @@ func _ready() -> void:
 	var max_pitch := 0.0
 	var shot_done := false
 	var worst_roll := 0.0
+	var worst_note := ""
 	var first_touch_pitch := -1.0
 	var worst_vertex_h := INF
 	var worst_body := Vector3.ZERO
@@ -152,7 +153,14 @@ func _ready() -> void:
 				worst_all = r[0]
 				worst_name = r[2]
 				worst_pitch = pitch
-			worst_wheel = minf(worst_wheel, r[1])
+			if r[1] < worst_wheel:
+				worst_wheel = r[1]
+				var comps: Array = []
+				for c in jsb.get_gear_contacts():
+					if c["bogey"]:
+						comps.append("%.3f" % c["compression_m"])
+				worst_note = "strut shifts %s m, FDM compression %s m, pitch %.1f deg, roll %.2f deg, %.0f kt; node %.3f m above the scene's ground, FDM CG %.3f m above its own (node = CG %+.2f m)" % [
+					str(_root._aircraft.get_strut_shifts()), str(comps), pitch, roll, kt, _ac_h - _ac_ground, jsb.get_property("position/h-agl-ft") * 0.3048, jsb.get_godot_terrain_y_offset()]
 			if shot_dir != "" and not shot_done and pitch > 8.0:
 				shot_done = true
 				get_viewport().get_texture().get_image().save_png(shot_dir.path_join("rotation_%s.png" % id))
@@ -160,6 +168,7 @@ func _ready() -> void:
 			break
 	print("probe_rotation: %s rotating with the mains on the ground (to %.1f deg): tyres lowest %+.3f m, airframe lowest %+.3f m (%s at %.1f deg); roll up to %.1f deg (frames beyond 2 deg left out)" % [
 		id, max_pitch, worst_wheel, worst_all, worst_name, worst_pitch, worst_roll])
+	print("probe_rotation: %s at the tyres' lowest: %s" % [id, worst_note])
 	if worst_vertex_h < 0.0:
 		print("probe_rotation: %s airframe first under the surface at %.1f deg nose up, %.2f m aft of the CG (tail contact: see probe_gear_align)" % [id, first_touch_pitch, -worst_body.x])
 	var ok: bool = worst_all > -max_sink and worst_wheel > -max_sink and max_pitch > 3.0
