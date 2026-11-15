@@ -201,6 +201,13 @@ namespace jsbgodot
         // godot_y = jsbsim_altitude - terrain_elevation + godot_terrain_y
         void set_godot_terrain_y_offset(double offset_m);
         double get_godot_terrain_y_offset() const;
+        // The aircraft node (model origin, cameras, lights) sits this many
+        // metres ahead of the FDM's centre of gravity along the nose
+        // ([jsbsim] origin_forward_m). JSBSim moves and pitches the CG; a
+        // model drawn with another point there swings its wheels and tail
+        // through the runway when the nose comes up.
+        void set_origin_forward_m(double m);
+        double get_origin_forward_m() const;
         
         // Check if JSBSim is fully initialized and ready
         bool is_initialized() const;
@@ -242,6 +249,9 @@ namespace jsbgodot
         // Centre of gravity: {cg_x_in, cg_y_in, cg_z_in, weight_lbs, mac_ft, aero_rp_x_in, pct_mac}
         // pct_mac estimates the aerodynamic centre at 25 % MAC (LEMAC = rp - 0.25 * MAC).
         Dictionary get_cg_info() const;
+        // Ground contact points of the FDM, body axes from the CG in metres:
+        // [{name, bogey, forward_m, right_m, down_m, wow, compression_m}]
+        Array get_gear_contacts() const;
         // Generic FDM property write (e.g. fcs/speedbrake-cmd-norm from a key).
         void set_property(const String &name, double value);
         // Attitude readouts (degrees): JSBSim theta / phi.
@@ -301,6 +311,8 @@ namespace jsbgodot
         bool jsbsim_initialized = false;  // Track if JSBSim has been properly initialized
         double pending_terrain_elevation = 0.0;  // Terrain elevation to use at initialization
         bool has_pending_terrain = false;  // Whether we have a terrain elevation to set
+        double origin_forward_m = 0.0;
+        Vector3 cg_of_node(const Vector3 &node_pos, double true_heading_deg) const; // level attitude
         double godot_terrain_y_offset = 0.0;  // Y offset to apply (Godot terrain Y - JSBSim terrain elevation)
         std::string loaded_jsbsim_model;  // Model name currently loaded into FDMExec (empty = none)
         // Last finite pose handed to the node + terrain: a non-finite FDM state

@@ -194,7 +194,9 @@
 
   <contact type="BOGEY" name="NOSE">
     <location unit="IN">
-      <x>    83.30 </x>
+      <!-- 5.28 m ahead of the main wheels, as on the airframe (the generated
+           value, 83.3, was 8 m ahead: in front of the nose) -->
+      <x>   191.90 </x>
       <y>     0.00 </y>
       <z>   -90.90 </z>
     </location>
@@ -211,7 +213,7 @@
   <contact type="BOGEY" name="LEFT_MAIN">
     <location unit="IN">
       <x>   399.86 </x>
-      <y>   -62.21 </y>
+      <y>  -104.30 </y>
       <z>   -90.90 </z>
     </location>
     <static_friction>  0.80 </static_friction>
@@ -227,7 +229,7 @@
   <contact type="BOGEY" name="RIGHT_MAIN">
     <location unit="IN">
       <x>   399.86 </x>
-      <y>    62.21 </y>
+      <y>   104.30 </y>
       <z>   -90.90 </z>
     </location>
     <static_friction>  0.80 </static_friction>
@@ -238,6 +240,34 @@
     <max_steer unit="DEG">0</max_steer>
     <brake_group> RIGHT </brake_group>
     <retractable> 1 </retractable>
+  </contact>
+
+  <!-- Tail strike: the bottom of the fin, the first point of the airframe to
+       meet the runway when the nose comes up (17.9 deg, tests/probe_gear_align) -->
+  <contact type="STRUCTURE" name="LEFT_FIN">
+    <location unit="IN">
+     <x>   702.20 </x>
+     <y>   -112.60 </y>
+     <z>     9.90 </z>
+    </location>
+   <static_friction>  0.8 </static_friction>
+   <dynamic_friction> 0.5 </dynamic_friction>
+   <spring_coeff unit="LBS/FT">      50000.00 </spring_coeff>
+   <damping_coeff unit="LBS/FT/SEC"> 25000.00 </damping_coeff>
+  </contact>
+
+  <!-- Tail strike: the bottom of the fin, the first point of the airframe to
+       meet the runway when the nose comes up (17.9 deg, tests/probe_gear_align) -->
+  <contact type="STRUCTURE" name="RIGHT_FIN">
+    <location unit="IN">
+     <x>   702.20 </x>
+     <y>    112.60 </y>
+     <z>     9.90 </z>
+    </location>
+   <static_friction>  0.8 </static_friction>
+   <dynamic_friction> 0.5 </dynamic_friction>
+   <spring_coeff unit="LBS/FT">      50000.00 </spring_coeff>
+   <damping_coeff unit="LBS/FT/SEC"> 25000.00 </damping_coeff>
   </contact>
 
   <contact type="STRUCTURE" name="LEFT_WING">

@@ -1533,6 +1533,7 @@ void AircraftRig::apply_fdm_init_properties(JSBGodot *fdm)
 	fg_bridge->set_power_threshold(cfg->get_float("electrical", "power_threshold", 24.0));
 	fg_bridge->set_nose_steer_max_deg(cfg->get_float("jsbsim", "nose_steer_max_deg", 20.0));
 	fdm->set_default_pitch_trim(cfg->get_float("jsbsim", "pitch_trim_default", 0.0));
+	fdm->set_origin_forward_m(cfg->get_float("jsbsim", "origin_forward_m", 0.0));
 	fdm->set_mac_reference(cfg->get_float("performance", "mac_le_x_in", 0.0), cfg->get_float("performance", "mac_in", 0.0));
 	// an FDM without a gear kinematic (the MD-80's gear ran in Nasal): PVP moves gear-pos-norm
 	fdm->set_gear_transit(cfg->get_bool("gear", "fdm_position", true) ? 0.0 : cfg->get_float("gear", "retract_seconds", 10.0));

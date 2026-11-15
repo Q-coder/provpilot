@@ -550,3 +550,32 @@ hand-written sounds.json (or a FlightGear <fx> file) later.
   any pick that adjusts a property (up +step, down −step, Shift ×5),
   `smoke_a10_controls`.
 
+## Model on the FDM's wheels (2026-11-15)
+
+JSBSim moves and pitches the centre of gravity; the aircraft node (model
+origin, cameras, lights) was placed exactly there. The A-10's model origin is
+its nose, so the jet was drawn 7.7 m too far aft and turned about its nose on
+rotation: main wheels and tail went up to 1.9 m under the runway. The other
+aircraft were off by 0.3 - 1.4 m.
+
+- `[jsbsim] origin_forward_m` (all five aircraft): the node sits this many
+  metres ahead of the CG along the nose (`JSBGodot::set_origin_forward_m`;
+  applied in `copy_outputs_from_JSBSim`, inverted in the three initialise
+  paths). Values from `tests/probe_gear_align.tscn`, which lists the FDM's
+  contact points and the model's wheels from the CG: C172 -0.31, PC-7 -1.15,
+  A-10 7.67, MD-80 0.89, ASK 21 -1.42.
+- The same probe finds the tail-strike point of the drawn airframe (the
+  vertex that meets the ground at the smallest nose-up angle about the main
+  wheels) and prints it in the FDM's structural frame. Contacts set there:
+  A-10 `LEFT_FIN` / `RIGHT_FIN` (17.9 deg), PC-7 `TAIL` (10.8 deg), MD-80
+  `TAIL_STRIKE` (11.6 deg), C172 `TAIL_SKID` moved (8.5 deg). The ASK 21's
+  tail wheel touches before its fuselage.
+- A-10 gear geometry as on the airframe: nose wheel 5.28 m ahead of the mains
+  (the generated FDM had it 8 m ahead, in front of the nose), track 5.30 m
+  (was 3.16 m).
+- `tests/probe_rotation.tscn -- <id> <rotate_kt>` takes off from Zurich runway
+  16 with the stick held back and measures the lowest tyre and airframe point
+  while a main wheel is on the ground. 2026-11-15: A-10, C172, PC-7, MD-80
+  within 3 cm of the surface.
+- The node's height is not the CG's height (a constant per aircraft, covered
+  by `[model] offset`): measure heights in the scene, not from `h-agl`.

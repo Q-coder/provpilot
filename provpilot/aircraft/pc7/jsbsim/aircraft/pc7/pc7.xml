@@ -157,6 +157,21 @@
     <retractable> 1 </retractable>
   </contact>
 
+  <!-- Tail strike: where the drawn fuselage meets the runway first when the
+       nose comes up (10.8 deg, tests/probe_gear_align.tscn). Without it the
+       tail went through the ground on an eager rotation. -->
+  <contact type="STRUCTURE" name="TAIL">
+    <location unit="IN">
+     <x>   357.60 </x>
+     <y>     0.00 </y>
+     <z>    -4.50 </z>
+    </location>
+   <static_friction>  0.8 </static_friction>
+   <dynamic_friction> 0.5 </dynamic_friction>
+   <spring_coeff unit="LBS/FT">      20000.00 </spring_coeff>
+   <damping_coeff unit="LBS/FT/SEC">  6000.00 </damping_coeff>
+  </contact>
+
   <contact type="STRUCTURE" name="LEFT_WING">
     <location unit="IN">
      <x>   154.02 </x>

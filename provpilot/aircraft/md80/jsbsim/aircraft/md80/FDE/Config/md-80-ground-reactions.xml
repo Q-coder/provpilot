@@ -282,6 +282,23 @@
 		<retractable>0</retractable>
 	</contact>
 
+	<!-- ProvPilot: where the drawn fuselage meets the runway first when the nose
+	     comes up (11.6 deg, tests/probe_gear_align.tscn); TAIL_1 further aft
+	     let it through by half a degree. -->
+	<contact type="STRUCTURE" name="TAIL_STRIKE">
+		<location unit="M">
+			<x>33.652</x>
+			<y>0</y>
+			<z>-0.714</z>
+		</location>
+		<static_friction>1.0</static_friction>
+		<dynamic_friction>0.4</dynamic_friction>
+		<rolling_friction>0.4</rolling_friction>
+		<spring_coeff unit="LBS/FT">50000</spring_coeff>
+		<damping_coeff unit="LBS/FT/SEC">50000</damping_coeff>
+		<retractable>0</retractable>
+	</contact>
+
 	<contact type="STRUCTURE" name="TAIL_1">
 		<location unit="M">
 			<x>41.8893</x>

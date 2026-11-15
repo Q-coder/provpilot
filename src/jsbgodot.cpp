@@ -5,6 +5,8 @@
 #include <chrono>
 #include <functional>
 #include "models/FGFCS.h"
+#include "models/FGGroundReactions.h"
+#include "models/FGLGear.h"
 #include "models/FGMassBalance.h"
 #include "models/FGAircraft.h"
 #include "initialization/FGInitialCondition.h"
@@ -172,6 +174,8 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_slew_mode"), &JSBGodot::get_slew_mode);
     ClassDB::bind_method(D_METHOD("set_godot_terrain_y_offset", "offset_m"), &JSBGodot::set_godot_terrain_y_offset);
     ClassDB::bind_method(D_METHOD("get_godot_terrain_y_offset"), &JSBGodot::get_godot_terrain_y_offset);
+    ClassDB::bind_method(D_METHOD("set_origin_forward_m", "m"), &JSBGodot::set_origin_forward_m);
+    ClassDB::bind_method(D_METHOD("get_origin_forward_m"), &JSBGodot::get_origin_forward_m);
     ClassDB::bind_method(D_METHOD("get_latitude_deg"), &JSBGodot::get_latitude_deg);
     ClassDB::bind_method(D_METHOD("get_longitude_deg"), &JSBGodot::get_longitude_deg);
     ClassDB::bind_method(D_METHOD("get_godot_position"), &JSBGodot::get_godot_position);
@@ -188,6 +192,7 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("apply_joystick", "roll", "pitch", "yaw", "throttle", "throttle_absolute", "brakes_axis", "brakes_button"), &JSBGodot::apply_joystick);
     ClassDB::bind_method(D_METHOD("set_trim_buttons", "up", "down"), &JSBGodot::set_trim_buttons);
     ClassDB::bind_method(D_METHOD("get_cg_info"), &JSBGodot::get_cg_info);
+    ClassDB::bind_method(D_METHOD("get_gear_contacts"), &JSBGodot::get_gear_contacts);
     ClassDB::bind_method(D_METHOD("get_pitch_deg"), &JSBGodot::get_pitch_deg);
     ClassDB::bind_method(D_METHOD("get_roll_deg"), &JSBGodot::get_roll_deg);
     ClassDB::bind_method(D_METHOD("reinitialize_from_pose", "ac_global", "airspeed_kts", "terrain_elevation_m"), &JSBGodot::reinitialize_from_pose);
@@ -598,6 +603,21 @@ void JSBGodot::set_godot_terrain_y_offset(double offset_m)
     printf("JSBGodot: Godot terrain Y offset set to %f m\n", offset_m);
 }
 
+void JSBGodot::set_origin_forward_m(double m) { origin_forward_m = m; }
+double JSBGodot::get_origin_forward_m() const { return origin_forward_m; }
+
+// Where the CG goes for an aircraft node placed level at node_pos.
+Vector3 JSBGodot::cg_of_node(const Vector3 &node_pos, double true_heading_deg) const
+{
+    if (origin_forward_m == 0.0)
+        return node_pos;
+    const geo::Geodetic g = geo::geodetic_of(node_pos);
+    const Basis w = geo::wun_basis(g.lat, g.lon); // west, up, north
+    const double h = Math::deg_to_rad(true_heading_deg);
+    const Vector3 fwd = w.get_column(2) * std::cos(h) - w.get_column(0) * std::sin(h);
+    return node_pos - fwd * origin_forward_m;
+}
+
 double JSBGodot::get_godot_terrain_y_offset() const
 {
     return godot_terrain_y_offset;
@@ -861,6 +881,29 @@ void JSBGodot::set_fuel_percent(double pct)
         }
         set_tank_contents_lbs(i, lbs);
     }
+}
+
+Array JSBGodot::get_gear_contacts() const
+{
+    Array out;
+    if (!FDMExec)
+        return out;
+    auto gr = FDMExec->GetGroundReactions();
+    for (int i = 0; i < gr->GetNumGearUnits(); i++)
+    {
+        auto g = gr->GetGearUnit(i);
+        const JSBSim::FGColumnVector3 b = g->GetBodyLocation(); // feet, body axes from the CG
+        Dictionary d;
+        d["name"] = String(g->GetName().c_str());
+        d["bogey"] = g->IsBogey();
+        d["forward_m"] = b(1) * 0.3048;
+        d["right_m"] = b(2) * 0.3048;
+        d["down_m"] = b(3) * 0.3048;
+        d["wow"] = g->GetWOW();
+        d["compression_m"] = g->GetCompLen() * 0.3048;
+        out.push_back(d);
+    }
+    return out;
 }
 
 Dictionary JSBGodot::get_cg_info() const
@@ -1228,7 +1271,8 @@ void JSBGodot::reinitialize_from_pose(Transform3D ac_global, double airspeed_kts
         UtilityFunctions::print("Cannot reinitialize: FDMExec not created");
         return;
     }
-    const geo::Geodetic g = geo::geodetic_of(ac_global.origin);
+    // the node is origin_forward_m ahead of the CG along its nose
+    const geo::Geodetic g = geo::geodetic_of(ac_global.origin - ac_global.basis.get_column(2).normalized() * origin_forward_m);
     const double heading = geo::true_heading_deg(ac_global.basis, g.lat, g.lon);
     const double altitude_ft = g.h * 3.28084;
     // Diagnostic for a one-off "aircraft upside down after teleport" report
@@ -1809,7 +1853,7 @@ void JSBGodot::initialize_at_terrain(double terrain_elevation_m, Vector3 godot_p
     double gear_height_ft = 4.33;
     double aircraft_altitude_ft = terrain_ft + gear_height_ft;
 
-    const geo::Geodetic g = geo::geodetic_of(godot_pos);
+    const geo::Geodetic g = geo::geodetic_of(cg_of_node(godot_pos, heading_deg_param));
     UtilityFunctions::print("Initializing JSBSim at lat=", g.lat, " lon=", g.lon,
         " terrain=", terrain_elevation_m, " m, heading=", heading_deg_param);
     std::shared_ptr<JSBSim::FGInitialCondition> ic = FDMExec->GetIC();
@@ -1843,7 +1887,7 @@ void JSBGodot::initialize_airborne(double terrain_elevation_m, Vector3 godot_pos
         return;
     }
     const double terrain_ft = terrain_elevation_m * 3.28084;
-    const geo::Geodetic g = geo::geodetic_of(godot_pos);
+    const geo::Geodetic g = geo::geodetic_of(cg_of_node(godot_pos, heading_deg_param));
     UtilityFunctions::print("Initializing JSBSim airborne at lat=", g.lat, " lon=", g.lon,
         " terrain=", terrain_elevation_m, " m, ", agl_m, " m above it, heading=", heading_deg_param, " airspeed=", airspeed_kts, " kts");
     std::shared_ptr<JSBSim::FGInitialCondition> ic = FDMExec->GetIC();
@@ -2214,6 +2258,7 @@ void JSBGodot::copy_outputs_from_JSBSim()
     const Vector3 bx((double)m(1, 1), (double)m(2, 1), (double)m(3, 1));
     const Vector3 by((double)m(1, 2), (double)m(2, 2), (double)m(3, 2));
     const Vector3 bz((double)m(1, 3), (double)m(2, 3), (double)m(3, 3));
+    pos += bx.normalized() * origin_forward_m; // the node is ahead of the CG along the nose
     // Wheel/CG clearance offset along local up.
     pos += geo::wun_basis(cached_latitude, cached_longitude).get_column(1) * godot_terrain_y_offset;
     cached_godot_position = pos;
