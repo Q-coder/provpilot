@@ -18,7 +18,10 @@ surface at 0 m everywhere; the depth test makes the shore.
   a sea pixel, falls on the coastline; land below sea level (polders, tidal
   flats) is lifted to 0.3 m so the sea cannot flood it.
 - **In place, idempotent**: the same pixels in `terrain/` and `terrain_base/`;
-  runway plateaus and road corridors stay. Order after a rebake:
+  runway plateaus and road corridors stay. Airport heights fitted to ground
+  below 0.3 m (runway planes, taxiway paths, aprons, lights: 233 in Denmark,
+  724 in Norway) are lifted with the land in `airports/runways.json`. Order
+  after a rebake:
   `bake` -> `flatten` -> **sea** -> road bake.
 - **Streaming**: nothing new to ship. A streamed base scenery carries the
   coast in the terrain tiles it downloads anyway; open sea outside any pack is
@@ -46,8 +49,6 @@ Test: `DUSK_LAT=59.76 DUSK_LON=10.56 DUSK_HDG=15 DUSK_AGL_FT=2500 probe_dusk -- 
 
 - Lakes: still painted land cover only; the same surface at each lake's own
   level is the natural next step (per-lake level, a small polygon set).
-- An airport whose runway plane lies below 0 m (none in the nine regions that
-  was checked for) would be under water: the plateau is not lifted.
 - Stage 2: depth colour from real bathymetry (GEBCO where SRTM is flat),
   sea floor painted sand instead of the land-cover base green.
 - Stage 3: waves and swell from the wind, foam at the shore, whitecaps; the

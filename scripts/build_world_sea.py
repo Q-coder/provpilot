@@ -14,7 +14,8 @@ split-4326, in <cache_root>/osm_coast/):
 No extra file is written: the coast is part of the terrain tiles, which is all
 a streamed base scenery needs to carry. The pass is idempotent and edits both
 terrain/ and terrain_base/ in place (the same pixels in both; road corridors
-and runway plateaus stay). Re-run it after `build_world_terrain.py bake` or
+and runway plateaus stay), and lifts airport heights below LAND_MIN_M in
+airports/runways.json with the land. Re-run it after `build_world_terrain.py bake` or
 `flatten`, before the road bake.
 
   .venv/bin/python scripts/build_world_sea.py --region norway [--bbox E0 N0 E1 N1] [--jobs 8] [--dry-run]
@@ -148,16 +149,56 @@ def _work(cell):
     return kind, sea_px, land_px, wrote
 
 
+def fix_airports(region, dry):
+    """Airport heights fitted to the terrain before the cut (runway planes,
+    taxiway paths, apron polygons, mapped lights) follow the land floor: a
+    strip on ground that lay below LAND_MIN_M would be drawn under it."""
+    import json
+    import runway_plateau as rp
+    path = rp.runways_json_path(region)
+    if not path.exists():
+        return 0
+    data = json.loads(path.read_text())
+    n = 0
+    for ap in data.get("airports", []):
+        for rw in ap.get("runways", []):
+            for end in rw.get("ends", []):
+                v = end.get("plane_elev_m")
+                if isinstance(v, (int, float)) and v < LAND_MIN_M:
+                    end["plane_elev_m"] = LAND_MIN_M
+                    n += 1
+        for key, sub in (("taxiways", "path"), ("aprons", "polygon")):
+            for item in ap.get(key, []):
+                for pt in item.get(sub) or []:
+                    if isinstance(pt, list) and len(pt) >= 3 and isinstance(pt[2], (int, float)) and pt[2] < LAND_MIN_M:
+                        pt[2] = LAND_MIN_M
+                        n += 1
+        for lt in ap.get("lights", []):
+            v = lt.get("elev_m")
+            if isinstance(v, (int, float)) and v < LAND_MIN_M:
+                lt["elev_m"] = LAND_MIN_M
+                n += 1
+    if n and not dry:
+        with open(path, "w") as f:
+            json.dump(data, f, indent=1, ensure_ascii=False)
+    print(f"  airports: {n} heights below {LAND_MIN_M} m {'would be ' if dry else ''}lifted in {path.name}")
+    return n
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--region", required=True)
     ap.add_argument("--bbox", type=float, nargs=4, metavar=("E0", "N0", "E1", "N1"), help="LV95 box (default: every tile of the region)")
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--airports-only", action="store_true", help="only lift the airport heights in runways.json")
     args = ap.parse_args()
     region = bwt.get_region(args.region)
     px, tile_m = region.px, region.tile_m
     t0 = time.time()
+    if args.airports_only:
+        fix_airports(region, args.dry_run)
+        return 0
     cells = []
     for p in region.terrain_out.glob("tile_*.raw"):
         _, e, n = p.stem.split("_")
@@ -188,6 +229,7 @@ def main():
                 print(f"  {done}/{len(cells)} tiles, {tot['coast']} with sea, {tot['files']} files written ({time.time() - t0:.0f} s)", flush=True)
     print(f"  {len(cells)} tiles: {tot['coast']} with sea in reach, {tot['sea_px']} sea pixels and {tot['land_px']} land pixels changed, "
           f"{tot['files']} files {'would be ' if args.dry_run else ''}written ({time.time() - t0:.0f} s)")
+    fix_airports(region, args.dry_run)
     return 0
 
 
