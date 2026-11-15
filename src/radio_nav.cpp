@@ -265,6 +265,7 @@ void RadioNav::update_nav(double delta)
 	{
 		nav_ok = true;
 		nav_radial = Math::fposmod(b21 - station_declination(st), 360.0);
+		target_true = Math::fposmod(obs_deg + station_declination(st), 360.0);
 		// FlightGear navradio: course error r = selected - radial; beyond 90
 		// deg the needle shows the inbound course and the TO flag
 		double r = NavaidsLib::angle_diff_deg(obs_deg, nav_radial);
@@ -307,6 +308,7 @@ void RadioNav::update_ils(double delta)
 	const bool in_range = nav_dist_m <= range_m;
 	nav_signal = in_range ? Math::clamp((range_m - nav_dist_m) / (0.1 * range_m + 1.0), 0.0, 1.0) : 0.0; // 1 within range, fading over the last tenth (the MD-80 flags below 0.99)
 	nav_radial = Math::fposmod(b21, 360.0);
+	target_true = Math::fposmod(s.course_deg, 360.0);
 	if (in_range)
 	{
 		nav_ok = true;
@@ -395,6 +397,12 @@ void RadioNav::write_properties(Dictionary &p) const
 	p[N + String("frequencies/selected-mhz")] = nav_mhz;
 	p[N + String("radials/selected-deg")] = obs_deg;
 	p[N + String("radials/target-radial-deg")] = obs_deg;
+	// FlightGear navradio's target radial in true degrees: a VOR's radials are
+	// laid out by the station's declination, not by the variation under the aircraft
+	if (nav_ok)
+		p[N + String("radials/target-radial-true-deg")] = target_true;
+	else
+		p.erase(N + String("radials/target-radial-true-deg"));
 	p[N + String("in-range")] = nav_ok ? 1.0 : 0.0;
 	p[N + String("signal-quality-norm")] = nav_ok ? nav_signal : 0.0;
 	p[N + String("to-flag")] = to_flag ? 1.0 : 0.0;

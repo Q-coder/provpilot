@@ -103,6 +103,8 @@ func _ready() -> void:
 	var vcam: Camera3D = get_viewport().get_camera_3d()
 	if L and vcam:
 		for f in L.get_fixtures():
+			if f.get("sprite") == null:   # cockpit floods have no lens sprite
+				continue
 			var gp: Vector3 = f.sprite.global_transform * f.sprite.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX][0]
 			var sp: Vector2 = vcam.unproject_position(gp)
 			var ac_p: Vector3 = ac.global_transform.affine_inverse() * gp

@@ -108,6 +108,7 @@ namespace jsbgodot
         double nav_rescan = 0.0;
         bool nav_ok = false;          // azimuth usable
         double nav_radial = 0.0;
+        double target_true = 0.0;   // the selected course (VOR: by the station's declination) or the localizer course, true
         double nav_bearing_to = 0.0;
         double nav_dist_m = 0.0;
         double nav_signal = 0.0;      // 0..1

@@ -962,3 +962,17 @@ as upstream.
 - The airframe animates `surface-positions/flap-pos-norm` (unsided); the
   bridge only wrote the left / right names.
 - `tests/probe_md80_surfaces` checks both and the NAV 2 DME.
+
+## VOR LOC steering and exterior lights (2026-11-15)
+
+- `radials/target-auto-hdg-deg` (the heading the DFGS flies in VOR LOC) is built
+  from the receiver's own true target radial: the selected course by the
+  *station's* declination for a VOR, the localizer's course for an ILS. It used
+  the variation under the aircraft (needle a third of the difference off centre,
+  1.4 deg at KPT) and the reciprocal course with the FROM flag (the aircraft
+  turned back to the station). Test: `probe_md80_vor -- <to|from> [course]`.
+- Position lights, strobes and beacons: `[lights] nav_left_pos / nav_right_pos /
+  nav_tail_pos / strobe_pos / beacon_pos` at FlightGear's placements, switched
+  by `nav_prop / strobe_prop / beacon_prop` (`/systems/exterior-lights/*`: the
+  POS/STROBE and ANTI-COLLISION switches, bus voltage, strobes off with the nose
+  wheel on the ground). The flight starts with POS/STROBE at BOTH.

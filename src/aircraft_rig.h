@@ -244,6 +244,7 @@ namespace jsbgodot
         bool reverse_engaged = false;
         bool landing_key_held = false;
         Array landing_props, flood_props, landing_switch_props; // [lights] *_props (see setup)
+        String nav_prop, strobe_prop, beacon_prop;               // [lights] FDM properties that switch the position / strobe / beacon lights
         double landing_switch_on = 1.0, landing_switch_off = 0.0;
         Object *last_jsb = nullptr;
         GearStruts gear_struts;          // wheels pinned to the FDM's gear contacts ([gear] strut_*)

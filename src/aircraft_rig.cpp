@@ -1165,6 +1165,9 @@ void AircraftRig::setup_aircraft_lights()
 	// the switch properties the L key sets (landing_switch_props)
 	landing_props = cfg->get_string_array("lights", "landing_props", Array());
 	flood_props = cfg->get_string_array("lights", "flood_props", Array());
+	nav_prop = cfg->get_string("lights", "nav_prop", "").strip_edges();
+	strobe_prop = cfg->get_string("lights", "strobe_prop", "").strip_edges();
+	beacon_prop = cfg->get_string("lights", "beacon_prop", "").strip_edges();
 	landing_switch_props = cfg->get_string_array("lights", "landing_switch_props", Array());
 	landing_switch_on = cfg->get_float("lights", "landing_switch_on", 1.0);
 	landing_switch_off = cfg->get_float("lights", "landing_switch_off", 0.0);
@@ -1457,6 +1460,20 @@ void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *renderin
 		{
 			const String pr = String(flood_props[i]).strip_edges();
 			aircraft_lights->set_fixture_level("flood", i, fdm->has_property(pr) ? fdm->get_property(pr) : 0.0);
+		}
+		// position / strobe / beacon lights switched by the aircraft's own systems
+		// (the MD-80's POS/STROBE switch, bus voltage and nose wheel logic)
+		if (!nav_prop.is_empty())
+		{
+			aircraft_lights->set_nav_enabled(fdm->has_property(nav_prop) && fdm->get_property(nav_prop) > 0.5);
+		}
+		if (!strobe_prop.is_empty())
+		{
+			aircraft_lights->set_strobe_enabled(fdm->has_property(strobe_prop) && fdm->get_property(strobe_prop) > 0.5);
+		}
+		if (!beacon_prop.is_empty())
+		{
+			aircraft_lights->set_beacon_enabled(fdm->has_property(beacon_prop) && fdm->get_property(beacon_prop) > 0.5);
 		}
 	}
 	const bool landing_on = aircraft_lights != nullptr && aircraft_lights->landing_lights_on() && gear_down;

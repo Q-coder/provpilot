@@ -85,7 +85,7 @@
  "/controls/flight/speedbrake-arm": 0,
  "/controls/flight/dial-a-flap": -1,
  "/controls/lighting/beacon": 1,
- "/controls/lighting/position-strobe-lights": 0.5,
+ "/controls/lighting/position-strobe-lights": 1,
  "/controls/switches/seatbelt-sign": 1,
  "/controls/switches/no-smoking-sign": 1,
  "/controls/switches/heater-meter-sel": 9,
