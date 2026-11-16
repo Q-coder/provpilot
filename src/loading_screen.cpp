@@ -65,7 +65,7 @@ void LoadingScreen::build_ui()
 	vbox->add_child(title);
 
 	Label *sub = memnew(Label);
-	sub->set_text("Swiss Flight Simulator");
+	sub->set_text("Flight Simulator");
 	sub->add_theme_font_size_override("font_size", 24);
 	sub->add_theme_color_override("font_color", Color(0.5, 0.55, 0.6));
 	sub->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
