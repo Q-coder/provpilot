@@ -114,8 +114,8 @@ the same section, and **Save** writes `keyboard.cfg` next to `provpilot.cfg`
 ### Vehicles (ground)
 The welcome screen has a **Vehicles** frame under the aircraft: a low-poly car
 and an SBB Re 4/4 locomotive (credits in `aircraft/<id>/CREDITS.txt`; the
-locomotive is CC-BY-4.0 by hotdoghans, the car Sketchfab Standard by
-assetfactory). Fly! places the selected vehicle on the chosen runway. The car
+locomotive is CC-BY-4.0 by hotdoghans, the car is the CC0 "sedan" from
+Kenney's Car Kit). Fly! places the selected vehicle on the chosen runway. The car
 is driven by a kinematic model on the drawn ground (`src/drive_mode.cpp`, no
 physics engine; the baked road ribbons, embankments and bridge decks are part
 of that ground, see [docs/VEHICLES.md](docs/VEHICLES.md)): the vehicle keys

@@ -32,7 +32,7 @@ with its submodules.
 | Instruments of the Cessna 172 and PC-7, `third_party/fgdata` | FlightGear base package | GPL-2.0 |
 | Cessna 172 model | "Cessna172" by KOG_THORNS, Sketchfab | CC-BY-4.0 |
 | Locomotive Re 4/4 | "Swiss Lok Re 4/4" by hotdoghans, Sketchfab | CC-BY-4.0 |
-| Car | "Low poly car 6" by assetfactory, Sketchfab | Sketchfab Standard |
+| Car | "sedan" from the Car Kit by Kenney (www.kenney.nl) | CC0 |
 
 Each aircraft folder carries its licence text and credits (`LICENSE`,
 `CREDITS.txt`, `AUTHORS.md`). The ported files are modified from the
