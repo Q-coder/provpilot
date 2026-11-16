@@ -1711,6 +1711,7 @@ void AircraftRig::apply_fdm_init_properties(JSBGodot *fdm)
 	const Array rels = cfg->get_string_array("jsbsim", "init_properties", Array());
 	if (rels.is_empty())
 	{
+		fdm->set_init_state(Dictionary(), Dictionary());   // nothing of the previous aircraft
 		return;
 	}
 	Dictionary d;
@@ -1739,19 +1740,20 @@ void AircraftRig::apply_fdm_init_properties(JSBGodot *fdm)
 	fdm->set_property_links(links.get_type() == Variant::DICTIONARY ? Dictionary(links) : Dictionary());
 	const Variant pulses = d.get("_pulse", Variant());
 	const Array keys = d.keys();
-	int n = 0;
+	Dictionary values;
 	for (int i = 0; i < keys.size(); i++)
 	{
 		const Variant v = d[keys[i]];
 		if (v.get_type() == Variant::FLOAT || v.get_type() == Variant::INT || v.get_type() == Variant::BOOL)
 		{
 			// a leading slash is an absolute (FlightGear-side) path; JSBSim's own live under fdm/jsbsim
-			fdm->set_property(String(keys[i]), (double)v);
-			n++;
+			values[keys[i]] = (double)v;
 		}
 	}
+	const int n = values.size();
+	// set now and again at every flight start (JSBGodot::restart_init_state);
 	// the pulses start after the plain values (they override some of them for a while)
-	fdm->set_init_pulses(pulses.get_type() == Variant::DICTIONARY ? Dictionary(pulses) : Dictionary());
+	fdm->set_init_state(values, pulses.get_type() == Variant::DICTIONARY ? Dictionary(pulses) : Dictionary());
 	UtilityFunctions::print("FDM init properties for '", aircraft_id, "': ", n, " set from ", String(", ").join(PackedStringArray(rels)));
 }
 

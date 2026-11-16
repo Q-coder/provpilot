@@ -202,6 +202,8 @@ void JSBGodot::_bind_methods()
     ClassDB::bind_method(D_METHOD("get_engine_count"), &JSBGodot::get_engine_count);
     ClassDB::bind_method(D_METHOD("set_property_links", "links"), &JSBGodot::set_property_links);
     ClassDB::bind_method(D_METHOD("set_init_pulses", "pulses"), &JSBGodot::set_init_pulses);
+    ClassDB::bind_method(D_METHOD("set_init_state", "values", "pulses"), &JSBGodot::set_init_state);
+    ClassDB::bind_method(D_METHOD("restart_init_state"), &JSBGodot::restart_init_state);
     ClassDB::bind_method(D_METHOD("set_default_pitch_trim", "trim"), &JSBGodot::set_default_pitch_trim);
     ClassDB::bind_method(D_METHOD("get_default_pitch_trim"), &JSBGodot::get_default_pitch_trim);
     ClassDB::bind_method(D_METHOD("get_pitch_trim"), &JSBGodot::get_pitch_trim);
@@ -1021,6 +1023,59 @@ void JSBGodot::set_init_pulses(const Dictionary &pulses)
     }
 }
 
+void JSBGodot::set_init_state(const Dictionary &values, const Dictionary &pulses)
+{
+    init_values = values.duplicate();
+    init_pulse_durations = pulses.duplicate();
+    restart_init_state();
+}
+
+// A flight start: the aircraft's initial values again and the pulses at full
+// length. Until 1.1.1 they were applied once, when the model was loaded. On
+// the first flight of a session the FDM does not step before it is
+// initialised, so that was enough; on a later flight with another aircraft
+// the FDM stepped while the destination loaded, the MD-80's 5 s setup pulse
+// ran out before the flight began and its systems shut the engines down
+// again: a silent, cold MD-80 after any other aircraft (gery 2026-11-16).
+void JSBGodot::restart_init_state()
+{
+    if (FDMExec)
+    {
+        const Array keys = init_values.keys();
+        for (int i = 0; i < keys.size(); i++)
+        {
+            set_property(String(keys[i]), (double)init_values[keys[i]]);
+        }
+    }
+    set_init_pulses(init_pulse_durations);
+}
+
+// propulsion/set-running = -1 runs InitRunning on every engine, but a turbine
+// that JSBSim has flagged as starved goes straight back to off, and the flag
+// only clears while fuel is being consumed. An aircraft loaded for a second
+// flight of the session steps a few frames before its flight is set up: the
+// MD-80's feed pipes (a few pounds, filled by its fuel system) are still
+// empty then, both engines latch "starved" and the aircraft came up cold and
+// silent after any other aircraft (gery 2026-11-16). The first flight of a
+// session never stepped before its initialisation, so it never showed.
+void JSBGodot::light_engines()
+{
+    if (!FDMExec)
+    {
+        return;
+    }
+    top_up_feed_tanks();
+    auto prop = FDMExec->GetPropulsion();
+    for (unsigned int e = 0; prop && e < prop->GetNumEngines(); e++)
+    {
+        if (auto eng = prop->GetEngine(e))
+        {
+            eng->SetStarved(false);
+        }
+    }
+    FDMExec->SetPropertyValue("propulsion/set-running", -1);
+}
+
 // Before each FDM step: the init pulses count down in FDM time (a flight may
 // be held for many seconds while the scenery loads, so wall time would
 // expire unseen), the property links copy src -> dst, and -- as FlightGear's
@@ -1337,7 +1392,14 @@ void JSBGodot::reinitialize_from_pose(Transform3D ac_global, double airspeed_kts
         ic->SetWBodyFpsIC(0.0);
     }
     FDMExec->RunIC();
-    FDMExec->SetPropertyValue("propulsion/set-running", -1);
+    // a start at rest (Fly!, a teleport, the terrain pin of either) begins
+    // from the aircraft's initial state; a re-pin in motion (slew release
+    // with airspeed) keeps the systems as they are
+    if (airspeed_kts <= 0.0)
+    {
+        restart_init_state();
+    }
+    light_engines();
     FDMExec->SetPropertyValue("fcs/mixture-cmd-norm", input_mixture);
     jsbsim_initialized = true;
 }
@@ -1896,10 +1958,11 @@ void JSBGodot::initialize_at_terrain(double terrain_elevation_m, Vector3 godot_p
     ic->SetVBodyFpsIC(0.0);
     ic->SetWBodyFpsIC(0.0);
     FDMExec->RunIC();
+    restart_init_state();
     // Properly initialize engine(s): propulsion/set-running = -1 runs InitRunning
     // on EVERY engine (RPM, mixture, magnetos, Running=true). A value >= 0 would
     // only start that one engine — wrong for multi-engine aircraft (A-10).
-    FDMExec->SetPropertyValue("propulsion/set-running", -1);
+    light_engines();
     FDMExec->SetPropertyValue("fcs/brake-cmd-norm", 0.0);
     FDMExec->SetPropertyValue("fcs/parking-brake-cmd-norm", 0.0);
     // Override mixture to current user setting (InitRunning sets it to PressureRatio*1.3)
@@ -1947,7 +2010,8 @@ void JSBGodot::initialize_airborne(double terrain_elevation_m, Vector3 godot_pos
         winds->SetProbabilityOfExceedence(0);
     }
     FDMExec->RunIC();
-    FDMExec->SetPropertyValue("propulsion/set-running", -1);
+    restart_init_state();
+    light_engines();
     FDMExec->SetPropertyValue("fcs/brake-cmd-norm", 0.0);
     FDMExec->SetPropertyValue("fcs/parking-brake-cmd-norm", 0.0);
     FDMExec->SetPropertyValue("fcs/mixture-cmd-norm", input_mixture);

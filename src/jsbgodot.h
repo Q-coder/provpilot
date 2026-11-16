@@ -285,6 +285,14 @@ namespace jsbgodot
         int get_engine_count() const;
         void set_property_links(const Dictionary &links);
         void set_init_pulses(const Dictionary &pulses);
+        // The aircraft's initial FDM state (cfg [jsbsim] init_properties:
+        // plain values + pulse durations), kept so that every flight start
+        // begins from it, not only the one right after the model was loaded.
+        void set_init_state(const Dictionary &values, const Dictionary &pulses);
+        void restart_init_state();
+        // Engines running for a flight start: feed pipes full, JSBSim's
+        // starvation latch cleared, then propulsion/set-running.
+        void light_engines();
         // [jsbsim] pitch_trim_default (cfg): the pitch trim command of a fresh
         // session (the MD-80 starts about 3 units nose-up like FlightGear's).
         void set_default_pitch_trim(double trim);
@@ -347,6 +355,8 @@ namespace jsbgodot
         };
         Dictionary property_links; // dst -> src
         Dictionary init_pulses;    // prop -> seconds left (<= 0: done)
+        Dictionary init_values;          // prop -> value, re-applied by restart_init_state()
+        Dictionary init_pulse_durations; // prop -> seconds, the pulses' full length
         bool links_applied_once = false;
         std::vector<WeatherLayer> weather_layers;  // sorted by base_m
         double weather_qnh_hpa = 1013.25;

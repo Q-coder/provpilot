@@ -21,7 +21,7 @@ reads `releases/latest.json` for the update notice on the welcome screen and
      `application/product_version` (Windows, four components);
    - `src/aircraft_installer.h` `BUNDLE_VERSION` only when the bundled
      aircraft data changed (it forces a re-extraction on existing installs;
-     1.0.20 ships bundle 1.0.12, 1.1.0 bundle 1.1.0, 1.1.1 bundle 1.1.1).
+     1.0.20 ships bundle 1.0.12, 1.1.0 bundle 1.1.0, 1.1.1 and 1.1.2 bundle 1.1.1).
 3. The two export presets must carry the same `include_filter`: the aircraft
    folders hold non-resource files (JSBSim XML, `sounds/*.xml`, the livery
    PNGs behind a `.gdignore`, `model/*.json`) that Godot only packs when the
