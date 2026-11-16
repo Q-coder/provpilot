@@ -1,7 +1,7 @@
 # World3D — Global Globe Integration
 
 ProVPilot renders the whole Earth using the **world3d** GDExtension
-(`gitlab.md80.ch:gery/world3d`, `namespace world3d`) as the far/low-detail base,
+(`github.com/Q-coder/world3d`, `namespace world3d`) as the far/low-detail base,
 with the detailed Scenery3D regions (Switzerland, Baden-Württemberg,
 Scandinavia, …) placed on top. This document describes how world3d is wired
 into ProVPilot after step C of the worldwide-scenery design

@@ -837,7 +837,7 @@ void WelcomeScreen::show_about_dialog()
 			"[b]Built with[/b]\n"
 			"\xE2\x80\xA2 [url=https://godotengine.org]Godot Engine[/url] 4.6 (custom [i]4.6-macdev[/i] fork, double precision) \xE2\x80\x94 MIT\n"
 			"\xE2\x80\xA2 [url=https://jsbsim.sourceforge.net]JSBSim[/url] flight dynamics model \xE2\x80\x94 LGPL 2.1\n"
-			"\xE2\x80\xA2 [url=https://gitlab.md80.ch/gery/scenery3d]Scenery3D[/url] GDExtension \xE2\x80\x94 MIT\n\n"
+			"\xE2\x80\xA2 [url=https://github.com/Q-coder/scenery3d]Scenery3D[/url] and [url=https://github.com/Q-coder/world3d]world3d[/url] GDExtensions \xE2\x80\x94 MIT\n\n"
 			"[b]Data sources[/b]\n"
 			"\xE2\x80\xA2 Switzerland terrain, orthophotos, buildings, roads, water: [url=https://www.swisstopo.admin.ch]swisstopo[/url] (swissALTI3D, SWISSIMAGE, swissTLM3D) \xE2\x80\x94 [url=https://www.swisstopo.admin.ch/en/terms-of-use-free-geodata-and-geoservices]free geodata licence[/url]\n"
 			"\xE2\x80\xA2 Baden-W\xC3\xBCrttemberg terrain & orthophotos: [url=https://www.lgl-bw.de]LGL Baden-W\xC3\xBCrttemberg[/url] \xE2\x80\x94 [url=https://www.govdata.de/dl-de/by-2-0]dl-de/by-2-0[/url] (Datenquelle: LGL, www.lgl-bw.de)\n"
@@ -854,7 +854,7 @@ void WelcomeScreen::show_about_dialog()
 			"\xE2\x80\xA2 Locomotive: [url=https://sketchfab.com/3d-models/swiss-lok-re-44-ed93e661475549d3b53270f5b9246ab4]\"Swiss Lok Re 4/4\"[/url] by [url=https://sketchfab.com/hotdoghans]hotdoghans[/url] \xE2\x80\x94 CC-BY-4.0; car: [url=https://sketchfab.com/3d-models/low-poly-car-6-64ce11dd61af43c285d82cf0091e53be]\"Low poly car 6\"[/url] by assetfactory \xE2\x80\x94 Sketchfab Standard\n"
 			"The licence texts and credits are in each aircraft's folder (LICENSE, CREDITS.txt). All product and company names are trademarks of their owners and are used to identify the aircraft only; ProVPilot is not affiliated with or endorsed by them.\n\n"
 			"[b]ProVPilot license[/b]\n"
-			"ProVPilot's own source code is released under the [url=https://opensource.org/license/mit]MIT License[/url]. The program as distributed contains the MD-80 autoflight logic, a port of GPL-2.0 code, and is therefore distributed as a whole under the GNU General Public License, version 2; the complete source is at [url=https://gitlab.md80.ch/gery/provpilot]gitlab.md80.ch/gery/provpilot[/url]. See [code]LICENSE[/code] and [code]NOTICE.md[/code] there.\n\n"
+			"ProVPilot is free software under the [url=https://www.gnu.org/licenses/old-licenses/gpl-2.0.html]GNU General Public License, version 2[/url]. The complete source is at [url=https://github.com/Q-coder/provpilot]github.com/Q-coder/provpilot[/url]; [code]NOTICE.md[/code] there lists every component.\n\n"
 			"[b]Disclaimer[/b]\n"
 			"ProVPilot is provided \"AS IS\", without warranty of any kind. It is intended for entertainment and educational purposes only. It is [b]not[/b] certified for flight training and must [b]not[/b] be used for real-world navigation, flight planning, or any safety-critical purpose. Use at your own risk."));
 	dlg->add_child(rtl);

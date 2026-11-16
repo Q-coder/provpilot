@@ -8,7 +8,7 @@
 #   4. ProvPilot GDExtension DLL
 #   5. Scenery3D GDExtension DLL (submodule provpilot\addons\scenery3d)
 #   5b. world3d GDExtension DLL (sibling checkout ..\world3d — clone
-#       git@gitlab.md80.ch:gery/world3d.git next to this repo first)
+#       https://github.com/Q-coder/world3d.git next to this repo first)
 #
 # Prerequisites (must be on PATH):
 #   - Visual Studio 2019+ (run from a VS Developer Command Prompt, or let this
@@ -383,14 +383,14 @@ if (-not $SkipScenery3D) {
 # ---------------------------------------------------------------------------
 # Step 5b - Build world3d (global globe) GDExtension DLL
 # ---------------------------------------------------------------------------
-# world3d is a separate repo (gitlab.md80.ch:gery/world3d), expected as a
+# world3d is a separate repo (github.com/Q-coder/world3d), expected as a
 # sibling checkout of this repo (..\world3d). The game cannot start without
 # it since step C (the world is ECEF; W3DCoords/W3DGlobe are used everywhere).
 if (-not $SkipWorld3D) {
     Write-Host ''
     Write-Host '[5b] Building world3d GDExtension DLL (precision=double)...' -ForegroundColor Yellow
     if (-not (Test-Path (Join-Path $world3dDir 'SConstruct'))) {
-        throw "world3d checkout not found at $world3dDir - clone git@gitlab.md80.ch:gery/world3d.git next to this repo (branch globe-rebase-suppress) or pass -SkipWorld3D"
+        throw "world3d checkout not found at $world3dDir - clone https://github.com/Q-coder/world3d.git next to this repo (branch globe-rebase-suppress) or pass -SkipWorld3D"
     }
     Invoke-VcVars
     # world3d's SConstruct defaults to its own double-precision API file when

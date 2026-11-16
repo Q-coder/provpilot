@@ -1,18 +1,17 @@
 # Third-party components and licences
 
-ProVPilot's own source code (everything in this repository that is not listed
-below) is released under the MIT License (`LICENSE`).
+ProVPilot is released under the GNU General Public License, version 2
+(`LICENSE`). Source: https://github.com/Q-coder/provpilot
 
 ## Licence of the distributed program
 
 `src/it_autoflight.cpp` / `.h` are a C++ port of the mode logic of
 IT-AUTOFLIGHT from the FlightGear MD-80 by Octal450 (Joshua Davidson),
 licensed under the GNU General Public License, version 2. They are compiled
-into `libprovpilot`. The built library, and a ProVPilot release that contains
-it, is therefore a combined work distributed under the **GNU GPL, version 2**
-(text: `provpilot/aircraft/md80/LICENSE`). The MIT licence continues to apply
-to ProVPilot's own files taken by themselves. The complete corresponding
-source of every release is this repository at the release tag.
+into `libprovpilot`, and the FlightGear aircraft shipped with the program are
+GPL-2.0 as well; this is why the project as a whole is GPL-2.0. The complete
+corresponding source of every release is this repository at the release tag,
+with its submodules.
 
 ## Code
 
@@ -20,7 +19,7 @@ source of every release is this repository at the release tag.
 |---|---|
 | Godot Engine (double precision fork), godot-cpp | MIT |
 | JSBSim | LGPL 2.1 |
-| Scenery3D, world3d | MIT |
+| Scenery3D (github.com/Q-coder/scenery3d), world3d (github.com/Q-coder/world3d) | MIT |
 | IT-AUTOFLIGHT port (`src/it_autoflight.*`) | GPL-2.0 |
 
 ## Aircraft and models

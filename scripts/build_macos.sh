@@ -74,7 +74,7 @@ else
     echo "  - libscenery3d submodule not checked out — using existing dylib in provpilot/bin/"
 fi
 
-# 1c. libworld3d (global globe) — separate repo (gitlab.md80.ch:gery/world3d),
+# 1c. libworld3d (global globe) — separate repo (github.com/Q-coder/world3d),
 # expected as a sibling checkout of this repo. The release dylib is a gitignored
 # build artifact (see docs/WORLD3D.md); without it the export's shared-object
 # copy loop fails and — because that loop breaks on the first error — can

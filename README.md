@@ -168,7 +168,7 @@ For every joystick action:
 
 1. Clone the repository with submodules:
    ```bash
-   git clone --recursive git@gitlab.md80.ch:gery/provpilot.git
+   git clone --recursive https://github.com/Q-coder/provpilot.git
    cd provpilot
    ```
 
@@ -527,10 +527,9 @@ The engine audio system uses an `AudioStreamPlayer` with RPM-mapped pitch (0.7â€
 
 ## License
 
-ProVPilot's own source code is MIT (`LICENSE`). The built program contains
-GPL-2.0 code (the MD-80 autoflight port) and is distributed as a whole under
-the GNU GPL, version 2. Every third-party component, aircraft and data
-source with its licence is listed in [NOTICE.md](NOTICE.md).
+ProVPilot is released under the GNU General Public License, version 2
+(`LICENSE`). Every third-party component, aircraft and data source with its
+licence is listed in [NOTICE.md](NOTICE.md).
 
 ## Acknowledgments
 

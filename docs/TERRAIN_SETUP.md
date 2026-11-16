@@ -1,6 +1,6 @@
 # Terrain Setup (Scenery3D)
 
-ProvPilot uses the [Scenery3D](https://gitlab.md80.ch/gery/scenery3d) GDExtension
+ProvPilot uses the [Scenery3D](https://github.com/Q-coder/scenery3d) GDExtension
 for all world streaming — terrain, buildings, roads, water, and orthophotos.
 Scenery3D replaced the Terrain3D + per-loader architecture in April 2026.
 

@@ -81,7 +81,7 @@ is a separate repo, expected next to this one:
 
 ```powershell
 cd ..
-git clone git@gitlab.md80.ch:gery/world3d.git
+git clone https://github.com/Q-coder/world3d.git
 cd world3d; git checkout globe-rebase-suppress; git submodule update --init --recursive
 ```
 

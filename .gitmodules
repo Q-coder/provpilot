@@ -1,14 +1,14 @@
 [submodule "jsbsim"]
 	path = jsbsim
-	url = git@gitlab.md80.ch:gery/jsbsim.git
+	url = https://github.com/JSBSim-Team/jsbsim.git
 [submodule "godot-cpp"]
 	path = godot-cpp
 	url = https://github.com/godotengine/godot-cpp.git
 [submodule "godot"]
 	path = godot
-	url = git@gitlab.md80.ch:gery/godot.git
-	branch = 4.6-macdev
+	url = https://github.com/Q-coder/godot.git
+	branch = 4.7-flightsim
 [submodule "provpilot/addons/scenery3d"]
 	path = provpilot/addons/scenery3d
-	url = git@gitlab.md80.ch:gery/scenery3d.git
+	url = https://github.com/Q-coder/scenery3d.git
 	branch = main
