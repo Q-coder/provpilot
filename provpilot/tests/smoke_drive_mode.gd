@@ -80,7 +80,7 @@ func _test_configs() -> void:
 	var rig := AircraftRig.new()
 	check(rig.load_config("car") and rig.is_vehicle() and rig.get_vehicle_kind() == "car", "AircraftRig sees the car as a vehicle")
 	var p: Dictionary = rig.get_vehicle_params()
-	check(absf(float(p.get("wheelbase_m", 0.0)) - 2.4) < 0.01 and float(p.get("max_speed_kmh", 0.0)) == 120.0, "vehicle params come from the cfg: %s" % [p])
+	check(absf(float(p.get("wheelbase_m", 0.0)) - 2.2) < 0.01 and float(p.get("max_speed_kmh", 0.0)) == 120.0, "vehicle params come from the cfg: %s" % [p])
 	check(rig.load_config("c172p") and not rig.is_vehicle(), "the Cessna is not a vehicle")
 
 

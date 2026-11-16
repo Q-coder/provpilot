@@ -62,14 +62,14 @@ func _ready() -> void:
 	cam.global_position = Vector3(0.0, 1200.0, 0.0)
 	cam.current = true
 	var mesh: Mesh = veg.get_card_mesh()
-	_check(mesh != null and mesh.get_surface_count() == 1 and mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX].size() == 24, "card mesh: one surface of 8 triangles (three crossed quads + canopy)")
+	_check(mesh != null and mesh.get_surface_count() == 1 and mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX].size() == 18, "card mesh: one surface of 6 triangles (three crossed quads, no canopy card since 2026-11-14)")
 	if mesh != null:
 		var cols: PackedColorArray = mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
 		var tops := 0
 		for c in cols:
 			if c.r > 0.5:
 				tops += 1
-		_check(tops == 4, "the canopy quad is marked in COLOR.r (%d of %d vertices)" % [tops, cols.size()])
+		_check(tops == 0, "no canopy quad is marked in COLOR.r (%d of %d vertices)" % [tops, cols.size()])
 	_check(veg.get_species_count() == 7, "seven species from trees/tree_atlas.json (%d)" % veg.get_species_count())
 	var waited := 0.0
 	var counts: PackedInt32Array = []

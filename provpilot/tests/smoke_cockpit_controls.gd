@@ -53,6 +53,9 @@ func press_key(k: Key) -> void:
 	ev.keycode = k
 	ev.physical_keycode = k
 	ev.pressed = true
+	# a real keyboard flags Shift on the keys typed while it is held; an event
+	# without the flag reads as "Shift is up" (KeyBindings releases a stale one)
+	ev.shift_pressed = k == KEY_SHIFT or Input.is_key_pressed(KEY_SHIFT)
 	Input.parse_input_event(ev)
 
 
