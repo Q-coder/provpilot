@@ -851,6 +851,7 @@ void WelcomeScreen::show_about_dialog()
 			"\xE2\x80\xA2 ASK 21: FlightGear ASK21 by Heiko Schulz, Thomas Polzer, Viktor Radnai, Benedikt Wolf, Gilberto Agostinho and contributors \xE2\x80\x94 GPL-2.0 or later\n"
 			"\xE2\x80\xA2 Cockpit instruments of the Cessna 172 and PC-7: [url=https://www.flightgear.org]FlightGear[/url] base package \xE2\x80\x94 GPL-2.0\n"
 			"\xE2\x80\xA2 Cessna 172: [url=https://sketchfab.com/3d-models/cessna172-d1b15841c29c43d0862667300bad55a4]\"Cessna172\"[/url] by [url=https://sketchfab.com/ioai25312]KOG_THORNS[/url] on Sketchfab \xE2\x80\x94 [url=http://creativecommons.org/licenses/by/4.0/]CC-BY-4.0[/url]\n"
+			"\xE2\x80\xA2 Pilatus PC-7: [url=https://sketchfab.com/3d-models/pilatus-pc-7-mk-i-b13c98ceef134febac09dacc51c005f7]\"Pilatus PC-7 Mk I\"[/url] by [url=https://sketchfab.com/helijah]helijah[/url] on Sketchfab \xE2\x80\x94 [url=http://creativecommons.org/licenses/by/4.0/]CC-BY-4.0[/url]\n"
 			"\xE2\x80\xA2 Locomotive: [url=https://sketchfab.com/3d-models/swiss-lok-re-44-ed93e661475549d3b53270f5b9246ab4]\"Swiss Lok Re 4/4\"[/url] by [url=https://sketchfab.com/hotdoghans]hotdoghans[/url] \xE2\x80\x94 CC-BY-4.0; car: [url=https://kenney.nl/assets/car-kit]Car Kit[/url] by Kenney \xE2\x80\x94 CC0\n"
 			"The licence texts and credits are in each aircraft's folder (LICENSE, CREDITS.txt). All product and company names are trademarks of their owners and are used to identify the aircraft only; ProVPilot is not affiliated with or endorsed by them.\n\n"
 			"[b]ProVPilot license[/b]\n"

@@ -546,3 +546,4 @@ licence is listed in [NOTICE.md](NOTICE.md).
 ### Model Credits
 
 - **Cessna 172**: [KOG_THORNS](https://sketchfab.com/ioai25312) — [Cessna172 on Sketchfab](https://sketchfab.com/3d-models/cessna172-d1b15841c29c43d0862667300bad55a4)
+- **Pilatus PC-7**: [helijah](https://sketchfab.com/helijah) — [Pilatus PC-7 Mk I on Sketchfab](https://sketchfab.com/3d-models/pilatus-pc-7-mk-i-b13c98ceef134febac09dacc51c005f7), CC-BY-4.0
