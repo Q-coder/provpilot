@@ -197,11 +197,19 @@ EOF
 echo ""
 
 # --- Step 7: Notarize + staple (skipped without a keychain profile) ---
-if xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+NOTARY_CHECK="$(xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" 2>&1)" && NOTARY_OK=1 || NOTARY_OK=0
+if [ "$NOTARY_OK" = 1 ]; then
     echo "[7/7] Notarizing with keychain profile '$NOTARY_PROFILE' (this uploads the DMG and waits)..."
     xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
     xcrun stapler staple "$DMG_PATH"
     spctl -a -t open --context context:primary-signature -v "$DMG_PATH"
+elif ! echo "$NOTARY_CHECK" | grep -qi "keychain\|profile\|credential"; then
+    # The profile exists but Apple refused (e.g. HTTP 403: a developer
+    # agreement waits to be signed at developer.apple.com).
+    echo "[7/7] NOT notarized: notarytool failed with:"
+    echo "$NOTARY_CHECK" | sed 's/^/      /'
+    echo "      after fixing: xcrun notarytool submit \"$DMG_PATH\" --keychain-profile $NOTARY_PROFILE --wait && xcrun stapler staple \"$DMG_PATH\""
+    echo "      (stapling changes the DMG: recompute sha256 and size for latest.json)"
 else
     echo "[7/7] No notarytool keychain profile '$NOTARY_PROFILE': not notarized. Create one with"
     echo "      xcrun notarytool store-credentials $NOTARY_PROFILE --apple-id <id> --team-id DUWB54DV3A"
