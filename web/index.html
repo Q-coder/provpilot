@@ -258,8 +258,8 @@
     <a href="#changelog">Changelog</a>
   </nav>
   <div class="dl-buttons">
-    <a class="dl-btn" id="dmg-link" href="releases/ProvPilot-1.0.20-arm64.dmg">macOS</a>
-    <a class="dl-btn win" id="win-link" href="releases/ProvPilot-Windows-1.0.20.zip">Windows</a>
+    <a class="dl-btn" id="dmg-link" href="releases/ProvPilot-1.1.0-arm64.dmg">macOS</a>
+    <a class="dl-btn win" id="win-link" href="releases/ProvPilot-Windows-1.1.0.zip">Windows</a>
   </div>
 </header>
 
@@ -277,8 +277,8 @@
       pick an airport, and go.
     </p>
     <div class="ctas">
-      <a class="dl-btn" id="dmg-link-hero" href="releases/ProvPilot-1.0.20-arm64.dmg">Download for macOS (Apple Silicon)</a>
-      <a class="dl-btn win" id="win-link-hero" href="releases/ProvPilot-Windows-1.0.20.zip">Download for Windows</a>
+      <a class="dl-btn" id="dmg-link-hero" href="releases/ProvPilot-1.1.0-arm64.dmg">Download for macOS (Apple Silicon)</a>
+      <a class="dl-btn win" id="win-link-hero" href="releases/ProvPilot-Windows-1.1.0.zip">Download for Windows</a>
     </div>
 
     <div class="shots">
@@ -563,6 +563,24 @@
     <p style="color: var(--fg-dim);">
       Latest builds are linked from the download buttons above.
     </p>
+
+    <article class="release">
+      <h3>v1.1.0 &mdash; The sea, forests and city lights, MD-80 autoflight, open source on GitHub</h3>
+      <p class="release-date">November 2026</p>
+      <ul>
+        <li><strong>The sea</strong> &mdash; the OpenStreetMap coastline is cut into the base terrain of the seven coastal countries and one water surface reaches the horizon: a soft shore, sky reflection, sun glint and ripples that drift with the wind. Islands the height model lacks are completed from the coastline. Aircraft can ditch; a ditched aircraft sinks.</li>
+        <li><strong>Forests and land cover</strong> &mdash; forests from OpenStreetMap in all nine countries, drawn as trees of seven species near the aircraft (conifers take over with altitude) and painted into the ground to the horizon together with farmland, towns, industry, rock, glaciers and sand. Roads and railways stay clear of trees.</li>
+        <li><strong>Night</strong> &mdash; towns, industry and their streets are lit after dusk out to 45&nbsp;km; haze and clouds darken with twilight; PAPI lights follow each runway's real glide path.</li>
+        <li><strong>MD-80 autoflight</strong> &mdash; the DFGS flies: heading select and hold, VOR&nbsp;/&nbsp;LOC, ILS and autoland, altitude hold and capture, vertical speed, IAS&nbsp;/&nbsp;Mach, autothrottle with EPR limits and TOGA, the flight mode annunciators with their power-up test. The MCDU works as far as the FlightGear package goes, reverse thrust is on <code>R</code>, the landing and position lights sit where the real ones do.</li>
+        <li><strong>ILS and navaids</strong> &mdash; the ILS catalog is corrected against current AIPs and OpenStreetMap (51 frequency and ident changes), parallel runways resolve to the right localizer, NAV&nbsp;2 has DME.</li>
+        <li><strong>Crash detection, pause and logbook</strong> &mdash; hard touchdowns, overstress, overspeed, water and overturned aircraft end the flight with a Restart&nbsp;/&nbsp;Resume dialog (Settings &rarr; Realism); <code>P</code> pauses; every flight is recorded in Settings &rarr; Logbook with totals and an altitude&nbsp;/&nbsp;speed profile.</li>
+        <li><strong>VFR map</strong> &mdash; pan with the mouse, north-up or heading-up, a movable and resizable frame, the open sea in blue, and wide views that fill in a fraction of a second from prebuilt overview cells.</li>
+        <li><strong>Aircraft</strong> &mdash; every aircraft rotates about its wheels and compresses its struts with the flight model; heat shimmer behind jet nozzles and contrails in cold air; clear canopy glass on the PC-7 and ASK&nbsp;21; clouds with a new shape and lighting model.</li>
+        <li><strong>Controls</strong> &mdash; every gamepad axis and button is bound in Settings &rarr; Joystick and can be left unassigned; <code>Alt+Enter</code> toggles fullscreen.</li>
+        <li><strong>Base scenery packs v2</strong> &mdash; all nine countries are republished with the coastline, forests, land cover and map overview data; Settings &rarr; Downloads offers them as updates.</li>
+        <li><strong>Open source</strong> &mdash; ProVPilot is now released under the GNU GPL, version 2, with the complete source at <a href="https://github.com/Q-coder/provpilot">github.com/Q-coder/provpilot</a>. Every aircraft, model and data source is credited in the About dialog; the car is a new public-domain model.</li>
+      </ul>
+    </article>
 
     <article class="release">
       <h3>v1.0.20 &mdash; A European globe, the MD-80 family, radio navigation</h3>

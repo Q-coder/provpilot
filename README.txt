@@ -63,7 +63,7 @@ axes and buttons in Settings -> Joystick. The defaults:
 
   Joystick        Aileron, elevator, rudder, throttle, brakes (Settings -> Joystick)
   W / S, A / D    Elevator and aileron (keyboard fallback), Y / X rudder
-  P / O           Throttle up / down (fine)
+  U / O           Throttle up / down (fine)      P   Pause / resume
   F / Shift+F     Flaps down / up a notch
   G               Landing gear            B      Speed brakes
   . / ,           Wheel brakes on / off    L      Landing / taxi lights
@@ -78,6 +78,8 @@ axes and buttons in Settings -> Joystick. The defaults:
                   wheel down turns a knob down / counter-clockwise, right
                   button or wheel up turns it up / clockwise
   Escape          Back to the welcome screen
+  Settings -> Logbook lists your flights; Settings -> Realism sets the
+  crash detection.
   F8              Scenery editor (developer mode)
 
 
@@ -88,7 +90,7 @@ SYSTEM REQUIREMENTS
   GPU     : Vulkan 1.0 capable (any GPU of the last ten years; integrated
             graphics work at reduced settings)
   RAM     : 8 GB minimum, 16 GB recommended with detail add-ons
-  Storage : ~300 MB for the application, 0.4-4 GB per base scenery country
+  Storage : ~300 MB for the application, 0.5-6 GB per base scenery country
   Joystick: Optional but recommended (any USB / HID joystick or yoke)
 
 No additional runtime libraries or installers are required.

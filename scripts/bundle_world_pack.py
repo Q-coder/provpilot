@@ -51,7 +51,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = ROOT / "scripts" / "world_regions.json"
 DEFAULT_BASE_URL = "https://www.md80.ch/provpilot/scenery/"
-DEFAULT_SUBDIRS = ("terrain", "airports", "roads", "map_overview")
+DEFAULT_SUBDIRS = ("terrain", "airports", "roads", "map_overview", "vegetation")
 SKIP_NAMES = {".DS_Store", "Thumbs.db"}
 
 

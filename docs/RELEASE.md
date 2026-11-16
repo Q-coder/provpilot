@@ -21,7 +21,7 @@ reads `releases/latest.json` for the update notice on the welcome screen and
      `application/product_version` (Windows, four components);
    - `src/aircraft_installer.h` `BUNDLE_VERSION` only when the bundled
      aircraft data changed (it forces a re-extraction on existing installs;
-     1.0.20 ships bundle 1.0.12).
+     1.0.20 ships bundle 1.0.12, 1.1.0 bundle 1.1.0).
 3. The two export presets must carry the same `include_filter`: the aircraft
    folders hold non-resource files (JSBSim XML, `sounds/*.xml`, the livery
    PNGs behind a `.gdignore`, `model/*.json`) that Godot only packs when the
@@ -77,7 +77,7 @@ outside `#ifndef _WIN32`, `_USE_MATH_DEFINES` comes from the SConstruct.
 The nine base-tier regions (`scripts/world_regions.json`) are distributed as
 one ZIP each through Settings → Downloads:
 ```bash
-python3 scripts/bundle_world_pack.py --all --manifest          # ~21 GB raw, ~17 GB zipped
+python3 scripts/bundle_world_pack.py --all --version 2 --manifest   # 1.1.0: v2 with vegetation/ and map_overview/
 python3 scripts/bundle_world_pack.py --manifest-only           # after re-packing one region
 ```
 Output `/Volumes/Data1/provpilot/build/world-packs/<id>-base-v<ver>.zip` plus

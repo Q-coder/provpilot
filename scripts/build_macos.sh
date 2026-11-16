@@ -166,6 +166,9 @@ rm -f "$DMG_PATH"
 # Stage just the .app so the DMG doesn't pick up build/ siblings.
 STAGE_DIR=$(mktemp -d -t provpilot-dmg)
 cp -R "$APP_PATH" "$STAGE_DIR/"
+# the GPL text and the component list travel with the app
+cp "$REPO_ROOT/LICENSE" "$STAGE_DIR/LICENSE.txt"
+cp "$REPO_ROOT/NOTICE.md" "$STAGE_DIR/NOTICE.md"
 hdiutil create -volname "ProvPilot ${VERSION}" \
     -srcfolder "$STAGE_DIR" -ov -format UDZO "$DMG_PATH" >/dev/null
 rm -rf "$STAGE_DIR"

@@ -478,6 +478,8 @@ New-Item -ItemType Directory -Force $stageRoot | Out-Null
 Copy-Item (Join-Path $buildOutput 'ProvPilot.exe')  $stageRoot -Force
 Copy-Item (Join-Path $buildOutput 'ProvPilot.pck')  $stageRoot -Force
 Copy-Item (Join-Path $repoRoot    'README.txt')      $stageRoot -Force
+Copy-Item (Join-Path $repoRoot    'LICENSE')         (Join-Path $stageRoot 'LICENSE.txt') -Force
+Copy-Item (Join-Path $repoRoot    'NOTICE.md')       $stageRoot -Force
 Copy-Item (Join-Path $buildOutput 'bin')    (Join-Path $stageRoot 'bin')    -Recurse -Force
 
 # Create the ZIP (overwrite if it exists)
