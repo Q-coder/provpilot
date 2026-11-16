@@ -30,11 +30,20 @@ reads `releases/latest.json` for the update notice on the welcome screen and
    godot/bin/godot.macos.editor.double.arm64 --headless --path provpilot \
        --export-pack "Windows Desktop" /tmp/pck.zip && unzip -l /tmp/pck.zip | grep aircraft/md80/sounds
    ```
-4. Submodules: a release builds from the recorded gitlinks. Commit and push
+   Nothing below `provpilot/addons/scenery3d/` reaches the pack (the addon
+   folder has a `.gdignore`; an `include_filter` does not help). Its shaders
+   are compiled into the library instead (`S3DShaders`, generated header from
+   `shaders/*.gdshader` by the addon's SConstruct; `smoke_embedded_shaders`).
+   The first 1.1.0 build drew untextured trees for this reason.
+4. Airport catalog: after a runway rebuild of any region run
+   `.venv/bin/python scripts/sync_catalog_runways.py`, so the bundled
+   `provpilot/airports.json` lists every runway (with thresholds) before a
+   scenery pack is installed.
+5. Submodules: a release builds from the recorded gitlinks. Commit and push
    `provpilot/addons/scenery3d` first, then the parent's pointer; the engine
    (`godot`, `godot-cpp`, `jsbsim`) rarely moves — if it did, both machines
    rebuild it (MACOS_SETUP.md "Engine upgrade", WINDOWS_SETUP.md step 4).
-5. `README.txt` (shipped in the Windows ZIP) names the aircraft and the
+6. `README.txt` (shipped in the Windows ZIP) names the aircraft and the
    controls: keep it current.
 
 ## 2. macOS
@@ -53,6 +62,9 @@ Smoke the export, not the editor run (the editor cannot load the release
 dylibs): copy the app out of `build/` so the first-run extraction does not
 land inside the signed bundle, run the binary from a terminal, and check the
 log for the extension load lines and the aircraft extraction, then fly once.
+Do it once as a clean install too: `HOME=<empty dir>` and no `provpilot.cfg`
+next to the app (the first 1.1.0 build showed the default cockpit before the
+welcome screen only then, during the switch to fullscreen).
 
 ## 3. Windows
 

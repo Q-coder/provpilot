@@ -55,6 +55,7 @@ var _clouds: CloudLayers = null
 var _runways: Runways = null          # airport surfaces + lights (design §12)
 var _city_lights: CityLights = null   # town and city lights at night (docs/CITY_LIGHTS.md)
 var _sea: SeaSurface = null           # the sea surface at 0 m (docs/SEA.md)
+var _welcome_scenery_sig := ""       # installed packs + scenery areas the welcome airport list was built from
 var _fullscreen_applied := false      # the "fullscreen" setting the window was last set from
 var _crash := CrashMonitor.new()      # docs/CRASH_DETECTION.md
 var _crash_reason := ""               # set while the crash message is up
@@ -115,6 +116,13 @@ var _parking_brake: bool:
 # ── Startup ────────────────────────────────────────────────────────────────
 
 func _ready() -> void:
+	# Nothing of the 3D scene is drawn before the first flight. Set first:
+	# the switch to fullscreen further down draws frames of its own on macOS
+	# (the default cockpit over an empty world, before the welcome screen
+	# existed: clean install of 1.1.0, gery 2026-11-16).
+	# (the app only: a probe instances this scene under its own and looks at it)
+	if get_tree().current_scene == self:
+		_show_3d(false)
 	add_child(_hud)
 	_hud.register_flight_hud($Control)
 	_hud.weather_overlay_toggled.connect(func(_show: bool) -> void: _refresh_weather_overlay())
@@ -180,15 +188,10 @@ func _ready() -> void:
 
 	# UI + environment (the settings store must exist before the sky reads
 	# the time of day and the tree density is applied).
-	_loading_screen.hide_loading()
+	# The loading cover stays up until the welcome screen exists.
 	_create_settings_screen()
 	_create_welcome_screen()
-	# Nothing of the 3D scene is drawn before the first flight: the window
-	# switching to fullscreen at start showed the default cockpit for a
-	# second or two beside the welcome screen (gery 2026-11-15).
-	# (the app only: a probe instances this scene under its own and looks at it)
-	if get_tree().current_scene == self:
-		_show_3d(false)
+	_loading_screen.hide_loading()
 	_setup_sky_atmosphere()
 	_apply_tree_density()
 	_apply_scenery_sources()
@@ -272,13 +275,29 @@ func _create_welcome_screen() -> void:
 	_welcome_screen.scenery_setup_requested.connect(_on_welcome_scenery_setup_requested)
 	# The bundled airport catalog, tagged by the installed scenery packs plus
 	# any region present on disk outside the in-app downloader.
+	_refresh_welcome_airports()
+	_welcome_screen.show_welcome()
+
+
+## The welcome list from the catalog and the scenery installed right now.
+## Called again when Settings closes with other scenery than before (a pack
+## downloaded there used to reach the list only at the next start).
+func _refresh_welcome_airports() -> void:
+	if not _welcome_screen:
+		return
 	var regions: Dictionary = {}
 	if _settings:
 		regions = AirportsLib.installed_regions(_settings.get_setting("installed_scenery_packs"))
 		regions.merge(AirportsLib.installed_regions_from_areas(_settings.get_scenery_areas()))
+		_welcome_scenery_sig = _scenery_signature()
 	_welcome_screen.set_installed_regions(regions)
 	_welcome_screen.populate_airports(_catalog_with_pack_runways())
-	_welcome_screen.show_welcome()
+
+
+func _scenery_signature() -> String:
+	if not _settings:
+		return ""
+	return str(_settings.get_setting("installed_scenery_packs")) + "|" + str(_settings.get_scenery_areas())
 
 
 ## Day/night sun + atmospheric sky: the scene Environment, the Sun/Fill
@@ -805,6 +824,9 @@ func _on_settings_closed() -> void:
 	_push_weather_settings()
 	_world.mark_suppress_dirty()   # scenery areas may have changed
 	_world.refresh_globe_suppress()
+	if _welcome_screen and _scenery_signature() != _welcome_scenery_sig:
+		_runways_merged = RunwaysLib.load_merged(_settings.get_scenery_areas())
+		_refresh_welcome_airports()
 	if _welcome_screen:
 		_welcome_screen.set_continue_enabled(not _spawn.is_first_flight())
 		_welcome_screen.visible = true

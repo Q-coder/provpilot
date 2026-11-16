@@ -268,7 +268,7 @@ void WelcomeScreen::build_ui()
 	Label *title = header_label("ProVPilot", FONT_TITLE, ACCENT_COLOR);
 	title->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 	title_hbox->add_child(title);
-	title_hbox->add_child(header_label(String::utf8("  \xE2\x80\x94  Swiss Flight Simulator"), FONT_LG, Color(0.6, 0.65, 0.7)));
+	title_hbox->add_child(header_label(String::utf8("  \xE2\x80\x94  Flight Simulator"), FONT_LG, Color(0.6, 0.65, 0.7)));
 
 	// Update-available banner (hidden until the version check resolves)
 	update_label = memnew(RichTextLabel);
@@ -833,7 +833,7 @@ void WelcomeScreen::show_about_dialog()
 	const String ver = ProjectSettings::get_singleton()->get_setting("application/config/version", "0.0.0");
 	rtl->set_text(String::utf8(
 			"[center][b]ProVPilot v") + ver + String::utf8("[/b]\n"
-			"Swiss Flight Simulator \xE2\x80\x94 \xC2\xA9 2025 Gerhard Gubler[/center]\n\n"
+			"Flight Simulator \xE2\x80\x94 \xC2\xA9 2025-2026 Gerhard Gubler[/center]\n\n"
 			"[b]Built with[/b]\n"
 			"\xE2\x80\xA2 [url=https://godotengine.org]Godot Engine[/url] 4.6 (custom [i]4.6-macdev[/i] fork, double precision) \xE2\x80\x94 MIT\n"
 			"\xE2\x80\xA2 [url=https://jsbsim.sourceforge.net]JSBSim[/url] flight dynamics model \xE2\x80\x94 LGPL 2.1\n"
@@ -1054,7 +1054,7 @@ void WelcomeScreen::show_first_run_dialog()
 	vbox->add_theme_constant_override("separation", 12);
 	first_run_dialog->add_child(vbox);
 	Label *intro = memnew(Label);
-	intro->set_text("ProVPilot needs to know where your scenery library is located.\n\nPick a folder that contains region subfolders such as 'Switzerland/' or 'Baden-Wuertemberg/'. You can change or add more folders later in Settings.");
+	intro->set_text("ProVPilot needs to know where your scenery library is located.\n\nPick a folder that contains region subfolders such as 'Norway/' or 'Switzerland/'. You can change or add more folders later in Settings.\n\nNo scenery yet? Choose 'Skip for Now' and get the base scenery of a country under Settings > Downloads; the globe is flyable without it.");
 	intro->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	intro->add_theme_font_size_override("font_size", FONT_MD);
 	intro->set_custom_minimum_size(Vector2(660, 0));

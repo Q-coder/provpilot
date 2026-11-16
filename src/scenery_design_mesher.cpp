@@ -1,5 +1,6 @@
 #include "scenery_design_mesher.h"
 
+#include <godot_cpp/classes/class_db_singleton.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/core/memory.hpp>
@@ -178,7 +179,10 @@ void SceneryDesignMesher::ensure_material()
 	if (material.is_null())
 	{
 		material.instantiate();
-		material->set_shader(ResourceLoader::get_singleton()->load("res://addons/scenery3d/shaders/roads.gdshader"));
+		// through the addon: an exported game has no shader file below
+		// res://addons/scenery3d (.gdignore), the library carries the source
+		Ref<Shader> sh = ClassDBSingleton::get_singleton()->class_call_static("S3DShaders", "load", String("roads"));
+		material->set_shader(sh);
 	}
 }
 

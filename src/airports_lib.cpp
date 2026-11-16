@@ -153,7 +153,27 @@ Dictionary AirportsLib::resolve(const Dictionary &raw)
 		rwy["length_m"] = length;
 		rwy["surface"] = r.get("surface", "asphalt");
 		const PackedStringArray parts = desig.split("/");
-		if (parts.size() >= 2 && length > 0.0)
+		// "thresholds": [[lat, lon], [lat, lon]] of the two designators
+		// (scripts/sync_catalog_runways.py, from the region's surveyed
+		// runway ends); without them the runway is centred on the airport's
+		// reference point, which is wrong for every airport with more than
+		// one runway.
+		const Array ths = r.get("thresholds", Array());
+		if (parts.size() >= 2 && ths.size() == 2 && ths[0].get_type() == Variant::ARRAY && ths[1].get_type() == Variant::ARRAY
+				&& Array(ths[0]).size() >= 2 && Array(ths[1]).size() >= 2)
+		{
+			const Array a0 = ths[0], a1 = ths[1];
+			const Vector2 p0 = Geo::wgs84_to_lv95(a0[0], a0[1]);
+			const Vector2 p1 = Geo::wgs84_to_lv95(a1[0], a1[1]);
+			Dictionary t0, t1;
+			t0["e"] = p0.x;
+			t0["n"] = p0.y;
+			t1["e"] = p1.x;
+			t1["n"] = p1.y;
+			rwy[String("threshold_") + parts[0]] = t0;
+			rwy[String("threshold_") + parts[1]] = t1;
+		}
+		else if (parts.size() >= 2 && length > 0.0)
 		{
 			const double hdg_rad = Math::deg_to_rad(grid_heading);
 			const double half = length * 0.5;
