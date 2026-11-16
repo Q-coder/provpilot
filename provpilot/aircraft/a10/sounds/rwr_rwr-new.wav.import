@@ -1,0 +1,9 @@
+[remap]
+
+importer="keep"
+type=""
+
+[deps]
+
+source_file="res://aircraft/a10/sounds/rwr_rwr-new.wav"
+dest_files=[]

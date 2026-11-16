@@ -4,6 +4,8 @@
 # ...but DO track aircraft model import settings (keep-mode glb fix must reach all platforms)
 !provpilot/aircraft/*/model/*.glb.import
 !provpilot/aircraft/*/model/liveries/**/*.png.import
+# ...and the sound sets: FGSounds reads the raw .wav from the installed aircraft folder
+!provpilot/aircraft/*/sounds/*.wav.import
 
 # Build artifacts
 *.o

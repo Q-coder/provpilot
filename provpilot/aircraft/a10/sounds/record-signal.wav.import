@@ -1,0 +1,9 @@
+[remap]
+
+importer="keep"
+type=""
+
+[deps]
+
+source_file="res://aircraft/a10/sounds/record-signal.wav"
+dest_files=[]

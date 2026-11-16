@@ -1,0 +1,9 @@
+[remap]
+
+importer="keep"
+type=""
+
+[deps]
+
+source_file="res://aircraft/a10/sounds/canopy-close2.wav"
+dest_files=[]

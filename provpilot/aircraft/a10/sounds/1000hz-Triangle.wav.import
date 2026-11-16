@@ -1,0 +1,9 @@
+[remap]
+
+importer="keep"
+type=""
+
+[deps]
+
+source_file="res://aircraft/a10/sounds/1000hz-Triangle.wav"
+dest_files=[]

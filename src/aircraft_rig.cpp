@@ -1258,6 +1258,7 @@ void AircraftRig::setup_fg_sounds()
 	}
 	fg_sounds->clear();
 	const String rel = cfg.is_valid() ? cfg->get_string("sound", "fg_sounds", "") : String();
+	fg_sounds_declared = !rel.is_empty();
 	if (rel.is_empty())
 	{
 		return;
@@ -1277,6 +1278,13 @@ void AircraftRig::setup_fg_sounds()
 	}
 	fg_sounds->set_aliases(aliases);
 	UtilityFunctions::print("FlightGear sounds for '", aircraft_id, "': ", n, " loaded, ", fg_sounds->get_skipped().size(), " without a file");
+	if (n == 0)
+	{
+		// 1.1.0 shipped without the .wav files (packed only as imported
+		// samples): no sound for the A-10 / MD-80, and the glider played the
+		// previous aircraft's engine loop.
+		UtilityFunctions::push_warning("AircraftRig: sound set of '", aircraft_id, "' loaded no sound from ", path.get_base_dir(), " (are the .wav files installed?)");
+	}
 }
 
 // cfg [jsbsim] property_rules "a.xml, b.xml": FlightGear property-rule files
@@ -1423,7 +1431,9 @@ void AircraftRig::update_systems(Object *p_jsb, double delta, Camera3D *renderin
 	// aircraft that play their own engines. Loading / welcome: everything silent.
 	if (engine_audio != nullptr)
 	{
-		if (sounds_active && !has_fg_sounds())
+		// (a declared set keeps the loop silent even when none of its files
+		// loaded: the loop is another aircraft's engine)
+		if (sounds_active && !fg_sounds_declared)
 		{
 			engine_sound->update(control_surfaces->get_visual_rpm(), user_volume_pct);
 		}

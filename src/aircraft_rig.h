@@ -205,6 +205,7 @@ namespace jsbgodot
         Ref<EngineSound> engine_sound;
         AudioStreamPlayer *engine_audio = nullptr;
         String engine_sound_path = "res://sounds/c172_engine_inflight.ogg";
+        bool fg_sounds_declared = false;   // cfg [sound] fg_sounds names a set (the basic engine loop stays silent)
 
         bool gear_retractable = false;
         String gear_anim_name;

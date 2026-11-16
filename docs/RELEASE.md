@@ -21,7 +21,7 @@ reads `releases/latest.json` for the update notice on the welcome screen and
      `application/product_version` (Windows, four components);
    - `src/aircraft_installer.h` `BUNDLE_VERSION` only when the bundled
      aircraft data changed (it forces a re-extraction on existing installs;
-     1.0.20 ships bundle 1.0.12, 1.1.0 bundle 1.1.0).
+     1.0.20 ships bundle 1.0.12, 1.1.0 bundle 1.1.0, 1.1.1 bundle 1.1.1).
 3. The two export presets must carry the same `include_filter`: the aircraft
    folders hold non-resource files (JSBSim XML, `sounds/*.xml`, the livery
    PNGs behind a `.gdignore`, `model/*.json`) that Godot only packs when the
@@ -35,6 +35,12 @@ reads `releases/latest.json` for the update notice on the welcome screen and
    are compiled into the library instead (`S3DShaders`, generated header from
    `shaders/*.gdshader` by the addon's SConstruct; `smoke_embedded_shaders`).
    The first 1.1.0 build drew untextured trees for this reason.
+   Sound sets: `FGSounds` reads the raw `.wav` from the installed aircraft
+   folder, so every `aircraft/*/sounds/*.wav` needs a keep-mode `.import`
+   (tracked, see `.gitignore`) and the filter entry `aircraft/*/sounds/*.wav`;
+   with Godot's default wav import only the `.sample` is packed and a fresh
+   install has no sound (1.1.0). Check: the clean-install smoke below must
+   leave `.wav` files in `<install root>/aircraft/a10/sounds/`.
 4. Airport catalog: after a runway rebuild of any region run
    `.venv/bin/python scripts/sync_catalog_runways.py`, so the bundled
    `provpilot/airports.json` lists every runway (with thresholds) before a

@@ -1,0 +1,9 @@
+[remap]
+
+importer="keep"
+type=""
+
+[deps]
+
+source_file="res://aircraft/md80/sounds/CAWS_20.wav"
+dest_files=[]

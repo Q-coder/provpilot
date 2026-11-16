@@ -1,0 +1,9 @@
+[remap]
+
+importer="keep"
+type=""
+
+[deps]
+
+source_file="res://aircraft/md80/sounds/SASA_Engines_Exterior_idle.wav"
+dest_files=[]
