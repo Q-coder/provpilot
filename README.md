@@ -6,6 +6,13 @@ and a double-precision build of the [Godot](https://godotengine.org/) engine.
 
 Homepage and downloads (macOS, Windows): **https://www.md80.ch/provpilot/**
 
+![A-10 over the Danish coast](images/a10-coast.jpg)
+
+| | | |
+|---|---|---|
+| ![MD-80 cockpit on an ILS approach at dusk](images/md80-cockpit-approach.jpg) | ![MD-80 on final at dusk](images/md80-final-dusk.jpg) | ![A-10 lined up on a lit runway at night](images/a10-runway-night.jpg) |
+| MD-80 cockpit, ILS approach | MD-80 on final at dusk | A-10, runway lights at night |
+
 ProVPilot started as a Cessna over Swiss terrain. It now draws the whole
 globe, streams base scenery for nine European countries, and flies a small
 fleet from a glider to an airliner with working cockpits.
